@@ -2,6 +2,8 @@
 
 #include "screenshotcaptureperfinstrumentation.h"
 #include "snow_shot/presentation/screenshotcapturecoordinator.h"
+#include "snow_shot/presentation/capture/screenshotcapturepolicy.h"
+#include "snow_shot/storage/settingsadapters.h"
 
 #include "snow_capture.h"
 
@@ -246,6 +248,13 @@ bool ScreenshotCaptureWorker::ensureSession() {
 
     SnowCaptureDesktopSessionConfig config{};
     config.capture_retry_count = 1;
+    const QString apiMode = snow_shot::storage::ScreenshotSettings().apiMode();
+    auto requested = snow_shot::presentation::capture::screenshotApiModeFromValue(
+        apiMode.toLatin1().constData());
+    if (requested == snow_shot::presentation::capture::ScreenshotApiMode::Auto) {
+        requested = snow_shot::presentation::capture::resolveAutoScreenshotApiMode();
+    }
+    config.capture_backend = snow_shot::presentation::capture::nativeBackendForNormalScreenshot(requested);
 #if defined(Q_OS_WIN) || defined(_WIN32)
     config.pixel_format = SNOW_CAPTURE_PIXEL_FORMAT_BGRA8;
 #endif

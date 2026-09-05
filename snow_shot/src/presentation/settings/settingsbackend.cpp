@@ -147,6 +147,8 @@ QVariant BuiltInSettingsBackend::selectValue(SettingsSelectBinding binding) cons
     }
     case SettingsSelectBinding::Proxy:
         return storage::NetworkSettings().proxy();
+    case SettingsSelectBinding::ScreenshotApiMode:
+        return storage::ScreenshotSettings().apiMode();
     case SettingsSelectBinding::ScreenshotToolbarSize:
         return storage::ScreenshotUiSettings().toolbarSize();
     case SettingsSelectBinding::ColorPickerDisplayMode:
@@ -231,6 +233,8 @@ bool BuiltInSettingsBackend::applySelectValue(SettingsSelectBinding binding,
     }
     case SettingsSelectBinding::Proxy:
         return storage::NetworkSettings().setProxy(value.toString());
+    case SettingsSelectBinding::ScreenshotApiMode:
+        return storage::ScreenshotSettings().setApiMode(value.toString());
     case SettingsSelectBinding::ScreenshotToolbarSize:
         return storage::ScreenshotUiSettings().setToolbarSize(value.toString());
     case SettingsSelectBinding::ColorPickerDisplayMode:
@@ -1013,6 +1017,10 @@ bool BuiltInSettingsBackend::resetSection(SettingsSectionReset reset) {
         return applySelectValue(
             SettingsSelectBinding::Proxy,
             storage::ConfigurationSchema::defaultValue(QStringLiteral("network/proxy")));
+    case SettingsSectionReset::Screenshot:
+        return applySelectValue(
+            SettingsSelectBinding::ScreenshotApiMode,
+            storage::ConfigurationSchema::defaultValue(QStringLiteral("screenshot/api_mode")));
     case SettingsSectionReset::SystemSettings: {
         auto& storage = storage::ApplicationStorage::instance();
         if (!storage.isInitialized()) {

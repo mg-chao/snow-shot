@@ -16,7 +16,8 @@ use snow_capture::frame::{CaptureEvent, CapturePixelFormat, CapturedFrame, Frame
 use snow_capture::{
     CaptureOptions, CaptureRegion, CaptureSession, CaptureStream, CaptureStreamConfig,
     CaptureSystem, CaptureTarget, CaptureWorkload, MonitorId, MonitorLayout, WgcUpdateMode,
-    WindowId, backend::CaptureBackendKind,
+    WindowId,
+    backend::{AutoBackendPolicy, CaptureBackendKind},
 };
 use snow_core::error::RecvTimeoutError;
 use snow_screen_recorder::{
@@ -530,6 +531,16 @@ fn default_options(
         },
         capture_backend,
     ))
+}
+
+fn desktop_backend_policy(preferred: CaptureBackendKind) -> Option<AutoBackendPolicy> {
+    if preferred == CaptureBackendKind::Auto {
+        return None;
+    }
+    let mut policy = AutoBackendPolicy::default();
+    policy.priority.retain(|kind| *kind != preferred);
+    policy.priority.insert(0, preferred);
+    Some(policy)
 }
 
 #[allow(clippy::needless_update)] // needed when snow-capture enables its `stage-timing` feature
@@ -1087,10 +1098,12 @@ pub extern "C" fn snow_capture_desktop_session_create(
             return ptr::null_mut();
         }
     };
-    match CaptureSystem::builder()
-        .with_backend_kind(capture_backend)
-        .build()
-    {
+    // Desktop screenshots treat the configured API as a preference, with per-target fallback.
+    let mut builder = CaptureSystem::builder();
+    if let Some(policy) = desktop_backend_policy(capture_backend) {
+        builder = builder.with_auto_backend_policy(policy);
+    }
+    match builder.build() {
         Ok(system) => {
             let mut session = SnowCaptureDesktopSessionImpl {
                 system,
@@ -3103,6 +3116,33 @@ mod tests {
         assert_eq!(options.wgc_update_mode, WgcUpdateMode::CompleteOnly);
         assert_eq!(options.output_pixel_format, CapturePixelFormat::Rgba8);
         assert_eq!(backend, CaptureBackendKind::WindowsGraphicsCapture);
+    }
+
+    #[test]
+    fn desktop_backend_preferences_keep_all_fallbacks() {
+        use CaptureBackendKind::{DxgiDuplication, Gdi, WindowsGraphicsCapture};
+
+        for (preferred, expected) in [
+            (
+                DxgiDuplication,
+                [DxgiDuplication, WindowsGraphicsCapture, Gdi],
+            ),
+            (
+                WindowsGraphicsCapture,
+                [WindowsGraphicsCapture, DxgiDuplication, Gdi],
+            ),
+            (Gdi, [Gdi, DxgiDuplication, WindowsGraphicsCapture]),
+        ] {
+            let policy = desktop_backend_policy(preferred).unwrap();
+            assert_eq!(policy.normalized_priority(), expected);
+        }
+    }
+
+    #[test]
+    fn desktop_auto_preserves_default_target_priorities() {
+        assert_eq!(desktop_backend_policy(CaptureBackendKind::Auto), None);
+        let (_, backend) = default_options(ptr::null()).unwrap();
+        assert_eq!(backend, CaptureBackendKind::Auto);
     }
 
     #[test]

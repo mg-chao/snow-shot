@@ -420,6 +420,28 @@ SettingsItemDefinition proxyItem() {
     };
 }
 
+SettingsItemDefinition screenshotApiModeItem() {
+    SettingsSelectDefinition payload;
+    payload.binding = SettingsSelectBinding::ScreenshotApiMode;
+    payload.options = {
+        {QStringLiteral("auto"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Auto"))},
+        {QStringLiteral("dxgi"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "DXGI"))},
+        {QStringLiteral("wgc"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "WGC"))},
+        {QStringLiteral("gdi"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "GDI"))},
+    };
+    return {
+        QStringLiteral("screenshot.api-mode"),
+        settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "API Mode")),
+        settingsText(QT_TRANSLATE_NOOP(
+            "SettingsCatalog",
+            "Choose the preferred API for normal screenshots; Auto uses DXGI on HDR displays and GDI otherwise")),
+        {settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Screenshot API")),
+         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Capture backend"))},
+        QStringLiteral("screenshot/api_mode"),
+        payload,
+    };
+}
+
 SettingsItemDefinition historyEnabledItem() {
     return {
         QStringLiteral("history.enabled"),
@@ -1544,6 +1566,14 @@ QVector<SettingsPageDefinition> builtInPages() {
                     {autoStartItem()},
                 },
                 {
+                    QStringLiteral("screenshot"),
+                    settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Screenshot")),
+                    settingsText(QT_TRANSLATE_NOOP(
+                        "SettingsCatalog", "Configure the normal screenshot capture API")),
+                    SettingsSectionReset::Screenshot,
+                    {screenshotApiModeItem()},
+                },
+                {
                     QStringLiteral("network"),
                     settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Network")),
                     settingsText(QT_TRANSLATE_NOOP(
@@ -2159,6 +2189,9 @@ QStringList SettingsCatalog::validationErrors() const {
                         break;
                     case SettingsSelectBinding::Proxy:
                         expectedKey = QStringLiteral("network/proxy");
+                        break;
+                    case SettingsSelectBinding::ScreenshotApiMode:
+                        expectedKey = QStringLiteral("screenshot/api_mode");
                         break;
                     case SettingsSelectBinding::ScreenshotToolbarSize:
                         expectedKey = QStringLiteral("screenshot_ui/toolbar_size");

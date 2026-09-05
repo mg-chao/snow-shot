@@ -75,6 +75,8 @@ class GlobalShortcutSettings final {
 
 class ScreenshotSettings final {
   public:
+    [[nodiscard]] QString apiMode() const;
+    bool setApiMode(const QString& mode) const;
     [[nodiscard]] int delaySeconds() const;
     bool setDelaySeconds(int seconds) const;
     [[nodiscard]] QString autoExecuteAfterTextRecognition() const;

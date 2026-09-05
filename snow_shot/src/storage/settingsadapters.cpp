@@ -513,6 +513,22 @@ QStringList ScreenshotShortcutSettings::copyColor() const {
     return shortcuts(QStringLiteral("copy_color"));
 }
 
+QString ScreenshotSettings::apiMode() const {
+    const QString value = cache().value(QStringLiteral("screenshot/api_mode")).toString();
+    return value == QStringLiteral("dxgi") || value == QStringLiteral("wgc") ||
+                   value == QStringLiteral("gdi")
+               ? value
+               : QStringLiteral("auto");
+}
+
+bool ScreenshotSettings::setApiMode(const QString& mode) const {
+    if (mode != QStringLiteral("auto") && mode != QStringLiteral("dxgi") &&
+        mode != QStringLiteral("wgc") && mode != QStringLiteral("gdi")) {
+        return false;
+    }
+    return cache().setValue(QStringLiteral("screenshot/api_mode"), mode);
+}
+
 bool ScreenshotShortcutSettings::isReservedShortcut(const QString& shortcut) {
     return isReservedLocalShortcut(shortcut);
 }

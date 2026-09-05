@@ -38,6 +38,8 @@ typedef enum SnowCapturePixelFormat {
 typedef struct SnowCaptureDesktopSessionConfig {
     size_t capture_retry_count;
     uint8_t wgc_update_mode;
+    /* Preferred backend; remaining backends are tried in default order on eligible failures.
+       AUTO retains the default priority for each capture target. */
     uint8_t capture_backend;
     uint8_t pixel_format;
     uint8_t reserved[29];
