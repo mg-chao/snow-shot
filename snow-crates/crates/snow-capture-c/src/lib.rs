@@ -322,7 +322,7 @@ enum WorkerCommand {
 }
 
 pub const SCREENSHOT_REQUEST_VERSION: u32 = 1;
-const SCREENSHOT_REQUEST_V1_SIZE: u32 = std::mem::size_of::<SnowCaptureScreenshotRequest>() as u32;
+const SCREENSHOT_REQUEST_SIZE: u32 = std::mem::size_of::<SnowCaptureScreenshotRequest>() as u32;
 const SCREENSHOT_REQUEST_REFRESH_LAYOUT: u32 = 1 << 0;
 pub const WINDOW_FRAME_INFO_VERSION: u32 = 1;
 const WINDOW_FRAME_INFO_SIZE: u32 = std::mem::size_of::<SnowCaptureWindowFrameInfo>() as u32;
@@ -379,10 +379,10 @@ unsafe fn read_screenshot_request(
             header.version
         ));
     }
-    if header.struct_size < SCREENSHOT_REQUEST_V1_SIZE {
+    if header.struct_size < SCREENSHOT_REQUEST_SIZE {
         return Err(format!(
             "screenshot request is too small: {} < {}",
-            header.struct_size, SCREENSHOT_REQUEST_V1_SIZE
+            header.struct_size, SCREENSHOT_REQUEST_SIZE
         ));
     }
     let request = unsafe { *request };
@@ -488,7 +488,7 @@ struct SnowCaptureRecordingExportConfigHeader {
     struct_size: u32,
 }
 
-pub const RECORDING_EXPORT_CONFIG_VERSION: u32 = 2;
+pub const RECORDING_EXPORT_CONFIG_VERSION: u32 = 1;
 const RECORDING_EXPORT_CONFIG_SIZE: u32 =
     std::mem::size_of::<SnowCaptureRecordingExportConfig>() as u32;
 
@@ -2413,7 +2413,7 @@ fn parse_recording_export_config(
         ));
     }
     if config.struct_size < RECORDING_EXPORT_CONFIG_SIZE {
-        return Err("recording export config is smaller than version 1".to_string());
+        return Err("recording export config is too small".to_string());
     }
     if (config.maximum_width == 0) != (config.maximum_height == 0) {
         return Err(
@@ -2470,7 +2470,7 @@ unsafe fn read_recording_export_config(
 
     // Read only the fixed header until the caller-provided size has been
     // validated. This keeps undersized future/foreign-language inputs from
-    // being dereferenced as a complete version 1 structure.
+    // being dereferenced as a complete structure.
     let header = unsafe {
         std::ptr::read_unaligned(config.cast::<SnowCaptureRecordingExportConfigHeader>())
     };
@@ -2481,7 +2481,7 @@ unsafe fn read_recording_export_config(
         ));
     }
     if header.struct_size < RECORDING_EXPORT_CONFIG_SIZE {
-        return Err("recording export config is smaller than version 1".to_string());
+        return Err("recording export config is too small".to_string());
     }
 
     Ok(unsafe { std::ptr::read_unaligned(config) })
@@ -3145,7 +3145,7 @@ mod tests {
     #[test]
     fn versioned_screenshot_abi_has_expected_layout() {
         assert_eq!(
-            SCREENSHOT_REQUEST_V1_SIZE as usize,
+            SCREENSHOT_REQUEST_SIZE as usize,
             std::mem::size_of::<SnowCaptureScreenshotRequest>()
         );
         assert_eq!(
@@ -3176,7 +3176,7 @@ mod tests {
 
         let unknown = SnowCaptureScreenshotRequestHeader {
             version: SCREENSHOT_REQUEST_VERSION + 1,
-            struct_size: SCREENSHOT_REQUEST_V1_SIZE,
+            struct_size: SCREENSHOT_REQUEST_SIZE,
         };
         let request = (&raw const unknown).cast::<SnowCaptureScreenshotRequest>();
         assert!(unsafe { read_screenshot_request(request) }.is_err());
@@ -3186,7 +3186,7 @@ mod tests {
     fn versioned_screenshot_request_rejects_unsupported_flags() {
         let request = SnowCaptureScreenshotRequest {
             version: SCREENSHOT_REQUEST_VERSION,
-            struct_size: SCREENSHOT_REQUEST_V1_SIZE,
+            struct_size: SCREENSHOT_REQUEST_SIZE,
             flags: SCREENSHOT_REQUEST_REFRESH_LAYOUT | (1 << 31),
             reserved0: 0,
             focused_window: 0,

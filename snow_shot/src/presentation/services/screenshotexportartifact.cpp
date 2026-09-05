@@ -121,10 +121,6 @@ bool ScreenshotExportSource::isValid() const {
            static_cast<bool>(m_rowSourceFactory);
 }
 
-bool ScreenshotExportSource::hasDirectRowSource() const {
-    return static_cast<bool>(m_rowSourceFactory);
-}
-
 struct ScreenshotExportArtifact::Impl final {
     struct ImageSubscriber final {
         QPointer<QObject> receiver;
@@ -545,8 +541,4 @@ bool ScreenshotExportArtifact::isCancelled() const {
     }
     QMutexLocker lock(&m_impl->mutex);
     return m_impl->cancelled;
-}
-
-bool ScreenshotExportArtifact::hasDirectRowSource() const {
-    return m_impl != nullptr && m_impl->source.hasDirectRowSource();
 }

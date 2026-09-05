@@ -172,7 +172,7 @@ class ScreenshotToolPaletteStyleControls final {
     [[nodiscard]] ScreenshotToolPaletteStyleState& styleState();
     [[nodiscard]] const ScreenshotToolPaletteStyleState& styleState() const;
 
-    // Stages compatible editor roots from the visible source composition so
+    // Stages reusable editor roots from the visible source composition so
     // the destination builder can adopt them without rebuilding their widget
     // and popup subtrees.
     void parkStyleEditors(int tool, QWidget* controls);

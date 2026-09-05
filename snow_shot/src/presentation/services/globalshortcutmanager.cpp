@@ -604,7 +604,7 @@ class GlobalShortcutManager::Impl {
     };
 
     Impl(GlobalShortcutManager& owner, std::unique_ptr<GlobalShortcutBackend> backend,
-         const QString&, const QString&, std::function<bool()> focusedFullscreenDetector)
+         std::function<bool()> focusedFullscreenDetector)
         : q(owner), m_backend(backend != nullptr ? std::move(backend) : createPlatformBackend()),
           m_focusedFullscreenDetector(
               focusedFullscreenDetector
@@ -625,8 +625,7 @@ class GlobalShortcutManager::Impl {
                     return;
                 }
                 const bool suppressionEnabled =
-                    snow_shot::storage::GlobalShortcutSettings()
-                        .disableOnFocusedFullscreenWindow();
+                    snow_shot::storage::GlobalShortcutSettings().disableOnFocusedFullscreenWindow();
                 if (suppressionEnabled && m_focusedFullscreenDetector &&
                     m_focusedFullscreenDetector()) {
                     return;
@@ -791,15 +790,13 @@ class GlobalShortcutManager::Impl {
 };
 
 GlobalShortcutManager::GlobalShortcutManager(QObject* parent)
-    : GlobalShortcutManager(nullptr, {}, {}, parent, {}) {}
+    : GlobalShortcutManager(nullptr, parent, {}) {}
 
 GlobalShortcutManager::GlobalShortcutManager(std::unique_ptr<GlobalShortcutBackend> backend,
-                                             const QString& organization,
-                                             const QString& application, QObject* parent,
+                                             QObject* parent,
                                              std::function<bool()> focusedFullscreenDetector)
-    : QObject(parent),
-      m_impl(std::make_unique<Impl>(*this, std::move(backend), organization, application,
-                                    std::move(focusedFullscreenDetector))) {}
+    : QObject(parent), m_impl(std::make_unique<Impl>(*this, std::move(backend),
+                                                     std::move(focusedFullscreenDetector))) {}
 
 GlobalShortcutManager::~GlobalShortcutManager() = default;
 
@@ -817,7 +814,7 @@ GlobalShortcutManager::validateShortcut(const QString& shortcut) const {
 }
 
 void GlobalShortcutManager::setShortcuts(GlobalShortcutAction action,
-                                          const QStringList& shortcuts) {
+                                         const QStringList& shortcuts) {
     m_impl->setShortcuts(action, shortcuts);
 }
 

@@ -105,9 +105,9 @@ void missingSavedScreenBoundsSkipsEveryTranslation() {
               QRect(QPoint(10, 10), QSize(400, 200))),
         target, screens);
     require(restored.nativeGeometry == QRect(QPoint(100, 60), QSize(200, 100)),
-            "legacy records without saved screen bounds should not be translated");
+            "records without saved screen bounds should not be translated");
     require(restored.preThumbnailNativeGeometry == QRect(QPoint(10, 10), QSize(400, 200)),
-            "legacy pre-thumbnail geometry should not be translated");
+            "optional pre-thumbnail geometry should not be translated without screen bounds");
 }
 
 void offscreenRestoredGeometryMovesOntoTargetWorkArea() {

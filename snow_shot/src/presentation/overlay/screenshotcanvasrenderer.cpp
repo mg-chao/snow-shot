@@ -222,9 +222,8 @@ MeasuredSingleLineLayout createMeasuredSingleLineLayout(const QString& text, con
     return measured;
 }
 
-MeasuredSingleLineLayout createWidthExpandedSingleLineLayout(const QString& text,
-                                                              const QFont& font,
-                                                              qreal targetAspectRatio) {
+MeasuredSingleLineLayout createWidthExpandedSingleLineLayout(const QString& text, const QFont& font,
+                                                             qreal targetAspectRatio) {
     MeasuredSingleLineLayout baseline = createMeasuredSingleLineLayout(text, font);
     const qreal baselineWidth = baseline.visualBounds.width();
     const qreal baselineHeight = baseline.visualBounds.height();
@@ -249,12 +248,10 @@ MeasuredSingleLineLayout createWidthExpandedSingleLineLayout(const QString& text
          ++attempt) {
         QFont spacedFont = font;
         spacedFont.setLetterSpacing(QFont::AbsoluteSpacing, letterSpacing);
-        MeasuredSingleLineLayout candidate =
-            createMeasuredSingleLineLayout(text, spacedFont);
+        MeasuredSingleLineLayout candidate = createMeasuredSingleLineLayout(text, spacedFont);
         const qreal candidateWidth = candidate.visualBounds.width();
         const qreal candidateHeight = candidate.visualBounds.height();
-        const qreal error =
-            std::abs(candidateWidth - targetAspectRatio * candidateHeight);
+        const qreal error = std::abs(candidateWidth - targetAspectRatio * candidateHeight);
         if (error < bestError) {
             bestError = error;
             best = std::move(candidate);
@@ -782,8 +779,8 @@ constexpr qreal kMaximumSourceChunkSpan = 2048.0;
 constexpr qreal kMinimumSourceSamplingPadding = 1.0;
 
 bool finiteRect(const QRectF& rect) {
-    return std::isfinite(rect.left()) && std::isfinite(rect.top()) &&
-           std::isfinite(rect.width()) && std::isfinite(rect.height());
+    return std::isfinite(rect.left()) && std::isfinite(rect.top()) && std::isfinite(rect.width()) &&
+           std::isfinite(rect.height());
 }
 
 QImage imageWindow(const QImage& image, const QRect& bounds) {
@@ -802,8 +799,7 @@ QImage imageWindow(const QImage& image, const QRect& bounds) {
         const qsizetype byteOffset = data - image.constBits();
         const qsizetype availableBytes = image.sizeInBytes() - byteOffset;
         const qsizetype requiredBytes = image.bytesPerLine() * bounds.height();
-        const bool scanLinesAligned =
-            reinterpret_cast<quintptr>(data) % alignof(quint32) == 0;
+        const bool scanLinesAligned = reinterpret_cast<quintptr>(data) % alignof(quint32) == 0;
         if (scanLinesAligned && requiredBytes <= availableBytes) {
             QImage view(data, bounds.width(), bounds.height(), image.bytesPerLine(),
                         image.format());
@@ -822,18 +818,16 @@ QImage imageWindow(const QImage& image, const QRect& bounds) {
     return copy;
 }
 
-bool sourceMappingFitsRaster(const QRectF& source, qreal sourcePerTargetX,
-                             qreal sourcePerTargetY) {
+bool sourceMappingFitsRaster(const QRectF& source, qreal sourcePerTargetX, qreal sourcePerTargetY) {
     return finiteRect(source) && source.left() >= 0.0 && source.top() >= 0.0 &&
            source.right() < kMaximumRasterSourceCoordinate &&
-           source.bottom() < kMaximumRasterSourceCoordinate &&
-           sourcePerTargetX > 0.0 && sourcePerTargetY > 0.0 &&
-           sourcePerTargetX <= kMaximumRasterSourceScale &&
+           source.bottom() < kMaximumRasterSourceCoordinate && sourcePerTargetX > 0.0 &&
+           sourcePerTargetY > 0.0 && sourcePerTargetX <= kMaximumRasterSourceScale &&
            sourcePerTargetY <= kMaximumRasterSourceScale;
 }
 
-void paintScaledSourceWindow(QPainter& painter, const QRectF& targetWindow,
-                             const QImage& image, const QRect& sourceBounds) {
+void paintScaledSourceWindow(QPainter& painter, const QRectF& targetWindow, const QImage& image,
+                             const QRect& sourceBounds) {
     if (targetWindow.isEmpty() || sourceBounds.isEmpty()) {
         return;
     }
@@ -846,17 +840,16 @@ void paintScaledSourceWindow(QPainter& painter, const QRectF& targetWindow,
     // source-coordinate representation. The resulting image is deliberately bounded so the
     // final painter call itself remains inside that representation as well.
     const QRectF deviceWindow = painter.deviceTransform().mapRect(targetWindow);
-    constexpr int kMaximumScaledDimension =
-        static_cast<int>(kMaximumRasterSourceCoordinate) - 4;
-    const int scaledWidth = std::clamp(qCeil(std::abs(deviceWindow.width())), 1,
-                                       kMaximumScaledDimension);
-    const int scaledHeight = std::clamp(qCeil(std::abs(deviceWindow.height())), 1,
-                                        kMaximumScaledDimension);
-    const Qt::TransformationMode mode =
-        painter.testRenderHint(QPainter::SmoothPixmapTransform) ? Qt::SmoothTransformation
-                                                                 : Qt::FastTransformation;
-    QImage scaled = sourceWindow.scaled(QSize(scaledWidth, scaledHeight), Qt::IgnoreAspectRatio,
-                                        mode);
+    constexpr int kMaximumScaledDimension = static_cast<int>(kMaximumRasterSourceCoordinate) - 4;
+    const int scaledWidth =
+        std::clamp(qCeil(std::abs(deviceWindow.width())), 1, kMaximumScaledDimension);
+    const int scaledHeight =
+        std::clamp(qCeil(std::abs(deviceWindow.height())), 1, kMaximumScaledDimension);
+    const Qt::TransformationMode mode = painter.testRenderHint(QPainter::SmoothPixmapTransform)
+                                            ? Qt::SmoothTransformation
+                                            : Qt::FastTransformation;
+    QImage scaled =
+        sourceWindow.scaled(QSize(scaledWidth, scaledHeight), Qt::IgnoreAspectRatio, mode);
     if (scaled.isNull()) {
         return;
     }
@@ -891,7 +884,7 @@ void paintExposedImageSlice(QPainter& painter, const QRectF& targetRect, const Q
         return;
     }
 
-    // Keep the ordinary path identical to the old single draw. The explicit clip makes this
+    // Keep the ordinary path as a single draw. The explicit clip makes this
     // correct even when a caller supplies a damage region without clipping its painter first.
     if (sourceMappingFitsRaster(sourceRect, sourcePerTargetX, sourcePerTargetY)) {
         painter.save();
@@ -931,14 +924,14 @@ void paintExposedImageSlice(QPainter& painter, const QRectF& targetRect, const Q
         // Keep each source chunk bounded in both dimensions. A ratio above the signed 16.16
         // increment limit is handled by QImage::scaled below, so that axis does not need to be
         // split into sub-pixel target cells.
-        const int chunkCountX = sourcePerTargetX > kMaximumRasterSourceScale
-                                    ? 1
-                                    : qMax(1, qCeil(exposedSource.width() /
-                                                    kMaximumSourceChunkSpan));
-        const int chunkCountY = sourcePerTargetY > kMaximumRasterSourceScale
-                                    ? 1
-                                    : qMax(1, qCeil(exposedSource.height() /
-                                                    kMaximumSourceChunkSpan));
+        const int chunkCountX =
+            sourcePerTargetX > kMaximumRasterSourceScale
+                ? 1
+                : qMax(1, qCeil(exposedSource.width() / kMaximumSourceChunkSpan));
+        const int chunkCountY =
+            sourcePerTargetY > kMaximumRasterSourceScale
+                ? 1
+                : qMax(1, qCeil(exposedSource.height() / kMaximumSourceChunkSpan));
 
         painter.save();
         painter.setClipRect(exposedRectangle, Qt::IntersectClip);
@@ -959,12 +952,11 @@ void paintExposedImageSlice(QPainter& painter, const QRectF& targetRect, const Q
                     continue;
                 }
 
-                const QRectF sampleSource =
-                    chunkSource.adjusted(-samplingPaddingX, -samplingPaddingY, samplingPaddingX,
-                                         samplingPaddingY)
-                        .intersected(drawableSource);
-                const QRect sourceBounds =
-                    sampleSource.toAlignedRect().intersected(image.rect());
+                const QRectF sampleSource = chunkSource
+                                                .adjusted(-samplingPaddingX, -samplingPaddingY,
+                                                          samplingPaddingX, samplingPaddingY)
+                                                .intersected(drawableSource);
+                const QRect sourceBounds = sampleSource.toAlignedRect().intersected(image.rect());
                 if (!sampleSource.isValid() || sampleSource.isEmpty() || sourceBounds.isEmpty()) {
                     continue;
                 }
@@ -997,8 +989,7 @@ void paintExposedImageSlice(QPainter& painter, const QRectF& targetRect, const Q
 }
 
 void paintImageLayer(QPainter& painter, const ScreenshotImageLayer& layer,
-                     const QTransform& canvasToTarget,
-                     const QRegion* exposedRegion = nullptr) {
+                     const QTransform& canvasToTarget, const QRegion* exposedRegion = nullptr) {
     const QRectF sourcePixels = sourcePixelsForImageLayer(layer);
     if (sourcePixels.isEmpty()) {
         return;
@@ -1022,16 +1013,15 @@ bool pinnedResultUsesLinearFiltering(const SnowCanvasRenderContext& context,
     }
     const QSize deviceSize(qRound(targetRect.width() * context.devicePixelRatio),
                            qRound(targetRect.height() * context.devicePixelRatio));
-    return deviceSize.width() < sourceSize.width() ||
-           deviceSize.height() < sourceSize.height();
+    return deviceSize.width() < sourceSize.width() || deviceSize.height() < sourceSize.height();
 }
 } // namespace
 
 void ScreenshotOcrGraphicsTextItem::configure(const QString& text, const QFont& font,
-                                               const QColor& textColor,
-                                               const ScreenshotOcrTextRange& selection,
-                                               ScreenshotOcrTextDirection direction,
-                                               qreal targetAspectRatio) {
+                                              const QColor& textColor,
+                                              const ScreenshotOcrTextRange& selection,
+                                              ScreenshotOcrTextDirection direction,
+                                              qreal targetAspectRatio) {
     targetAspectRatio = std::max<qreal>(0.0, targetAspectRatio);
     const bool selectionChanged =
         m_selection.start != selection.start || m_selection.length != selection.length;
@@ -1102,9 +1092,8 @@ void ScreenshotOcrGraphicsTextItem::configure(const QString& text, const QFont& 
 
         if (graphemeCount > 1 && targetAspectRatio > 0.0) {
             const qreal targetColumnHeight = columnWidth / targetAspectRatio;
-            m_verticalCellAdvance =
-                std::max(m_verticalCellAdvance,
-                         targetColumnHeight / static_cast<qreal>(graphemeCount));
+            m_verticalCellAdvance = std::max(
+                m_verticalCellAdvance, targetColumnHeight / static_cast<qreal>(graphemeCount));
         }
 
         m_layoutOrigin = {};
@@ -1397,7 +1386,7 @@ void ScreenshotOcrTextLayer::rebuildTextItems() {
 }
 
 void ScreenshotOcrTextLayer::synchronizeTextItem(TextItem& item,
-                                                  const QTransform& canvasToViewTransform) {
+                                                 const QTransform& canvasToViewTransform) {
     if (m_presentation == nullptr || item.graphicsText == nullptr || item.lineIndex < 0 ||
         item.lineIndex >= m_presentation->lines.size()) {
         return;
@@ -1432,8 +1421,8 @@ void ScreenshotOcrTextLayer::synchronizeTextItem(TextItem& item,
                                2.0;
     const qreal targetAspectRatio = targetHeight > 0.0 ? targetWidth / targetHeight : 0.0;
     item.graphicsText->configure(text, font, m_textColor,
-                                  m_presentation->textSelectionForLine(item.lineIndex),
-                                  line.direction, targetAspectRatio);
+                                 m_presentation->textSelectionForLine(item.lineIndex),
+                                 line.direction, targetAspectRatio);
 
     const QRectF sourceBounds = item.graphicsText->boundingRect();
     QTransform transform;
@@ -1449,8 +1438,7 @@ void ScreenshotOcrTextLayer::synchronizeTextItem(TextItem& item,
     item.graphicsText->show();
 }
 
-ScreenshotCanvasRenderer::ScreenshotCanvasRenderer(SnowCanvasWidget& canvas)
-    : m_canvas(canvas) {}
+ScreenshotCanvasRenderer::ScreenshotCanvasRenderer(SnowCanvasWidget& canvas) : m_canvas(canvas) {}
 
 ScreenshotCanvasRenderer::~ScreenshotCanvasRenderer() {
     delete m_ocrTextLayer.data();
@@ -1492,9 +1480,9 @@ void ScreenshotCanvasRenderer::setImageViewportPhysicalSize(const QSize& size) {
     m_canvas.update();
 }
 
-void ScreenshotCanvasRenderer::setPinnedResultSurface(
-    const QRectF& contentCanvasRect, const QRectF& surfaceCanvasRect,
-    const ScreenshotResultStyle& style) {
+void ScreenshotCanvasRenderer::setPinnedResultSurface(const QRectF& contentCanvasRect,
+                                                      const QRectF& surfaceCanvasRect,
+                                                      const ScreenshotResultStyle& style) {
     m_pinnedContentCanvasRect = contentCanvasRect.normalized();
     m_pinnedSurfaceCanvasRect = surfaceCanvasRect.normalized();
     m_pinnedResultStyle = ScreenshotResultCompositor::normalizedStyle(style);
@@ -1673,8 +1661,8 @@ void ScreenshotCanvasRenderer::setOcrPresentation(
     if (m_ocrPresentation != nullptr) {
         const adqt::theme::ThemeMapToken theme =
             adqt::theme::ThemeManager::instance().resolveTheme(&m_canvas);
-        m_ocrBackgroundColor = theme.colorBgContainer.isValid() ? theme.colorBgContainer
-                                                                  : QColor(Qt::white);
+        m_ocrBackgroundColor =
+            theme.colorBgContainer.isValid() ? theme.colorBgContainer : QColor(Qt::white);
     }
     invalidateCachedContent();
     if (m_ocrPresentationMode == OcrPresentationMode::BackgroundAndText) {
@@ -1686,8 +1674,8 @@ void ScreenshotCanvasRenderer::setOcrPresentation(
     // (BackgroundAndText) or when the selection decorations toggle with its
     // presence; otherwise the damage comes from the filtered image, which is set
     // separately with its own targeted update.
-    if (m_ocrPresentationMode == OcrPresentationMode::BackgroundAndText ||
-        modeChanged || hadPresentation != (m_ocrPresentation != nullptr)) {
+    if (m_ocrPresentationMode == OcrPresentationMode::BackgroundAndText || modeChanged ||
+        hadPresentation != (m_ocrPresentation != nullptr)) {
         m_canvas.update();
     } else if (hadFilteredImage) {
         const QRegion dirtyRegion = ocrFilterImageDamageRegion(clearedFilteredCanvasRect);
@@ -1777,10 +1765,9 @@ void ScreenshotCanvasRenderer::clearOcrPresentation() {
 }
 
 void ScreenshotCanvasRenderer::reset() {
-    const bool hadCachedContent = m_imageSource.isValid() ||
-                                  !m_imageViewportPhysicalSize.isEmpty() ||
-                                  m_renderMode != RenderMode::Standard ||
-                                  m_ocrPresentation != nullptr;
+    const bool hadCachedContent =
+        m_imageSource.isValid() || !m_imageViewportPhysicalSize.isEmpty() ||
+        m_renderMode != RenderMode::Standard || m_ocrPresentation != nullptr;
     const bool hadState = m_imageSource.isValid() || !m_imageViewportPhysicalSize.isEmpty() ||
                           m_renderMode != RenderMode::Standard || m_maskVisible ||
                           m_selectionState.present || m_selectionState.shadowWidth > 0 ||
@@ -1866,8 +1853,7 @@ bool ScreenshotCanvasRenderer::coversWidgetRect(const QRect& widgetRect) const {
         return false;
     }
 
-    if (m_renderMode == RenderMode::ScrollingCapture ||
-        m_renderMode == RenderMode::PinnedResult) {
+    if (m_renderMode == RenderMode::ScrollingCapture || m_renderMode == RenderMode::PinnedResult) {
         return true;
     }
 
@@ -1879,10 +1865,9 @@ bool ScreenshotCanvasRenderer::coversWidgetRect(const QRect& widgetRect) const {
     const qreal devicePixelRatio = m_canvas.devicePixelRatioF();
     if (m_imageViewportPhysicalSize.isValid() && !m_imageViewportPhysicalSize.isEmpty() &&
         devicePixelRatio > 0.0) {
-        const QRectF targetRect(
-            QPointF(canvasRect.topLeft()),
-            QSizeF(m_imageViewportPhysicalSize.width() / devicePixelRatio,
-                   m_imageViewportPhysicalSize.height() / devicePixelRatio));
+        const QRectF targetRect(QPointF(canvasRect.topLeft()),
+                                QSizeF(m_imageViewportPhysicalSize.width() / devicePixelRatio,
+                                       m_imageViewportPhysicalSize.height() / devicePixelRatio));
         return rectFCovers(targetRect, widgetRect);
     }
 
@@ -1919,14 +1904,12 @@ ScreenshotOcrTextLayer* ScreenshotCanvasRenderer::ensureOcrTextLayer() {
 
 void ScreenshotCanvasRenderer::renderBeforeCanvas(QPainter& painter,
                                                   const SnowCanvasRenderContext& context) {
-    if (m_renderMode == RenderMode::ScrollingCapture ||
-        m_renderMode == RenderMode::PinnedResult) {
+    if (m_renderMode == RenderMode::ScrollingCapture || m_renderMode == RenderMode::PinnedResult) {
         painter.setCompositionMode(QPainter::CompositionMode_Source);
-        painter.fillRect(context.viewportRect,
-                         m_renderMode == RenderMode::PinnedResult &&
-                                 m_pinnedBackgroundColor.isValid()
-                             ? m_pinnedBackgroundColor
-                             : QColor(Qt::transparent));
+        painter.fillRect(context.viewportRect, m_renderMode == RenderMode::PinnedResult &&
+                                                       m_pinnedBackgroundColor.isValid()
+                                                   ? m_pinnedBackgroundColor
+                                                   : QColor(Qt::transparent));
         painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
         if (m_renderMode == RenderMode::ScrollingCapture) {
             return;
@@ -1939,8 +1922,7 @@ void ScreenshotCanvasRenderer::renderBeforeCanvas(QPainter& painter,
 
     const bool physicalViewport = m_imageViewportPhysicalSize.isValid() &&
                                   !m_imageViewportPhysicalSize.isEmpty() &&
-                                  context.devicePixelRatio > 0.0 &&
-                                  m_imageSource.isMaterialized();
+                                  context.devicePixelRatio > 0.0 && m_imageSource.isMaterialized();
     if (physicalViewport) {
         const QRectF targetRect(
             QPointF(context.viewportRect.topLeft()),
@@ -1962,16 +1944,15 @@ void ScreenshotCanvasRenderer::renderBeforeCanvas(QPainter& painter,
             m_renderMode == RenderMode::PinnedResult
                 ? context.canvasToViewTransform.mapRect(m_imageSource.materializedCanvasRect)
                 : snappedOutwardToDevicePixels(
-                      context.canvasToViewTransform.mapRect(
-                          m_imageSource.materializedCanvasRect),
+                      context.canvasToViewTransform.mapRect(m_imageSource.materializedCanvasRect),
                       context.devicePixelRatio);
         if (context.exposedRegion.intersects(targetRect.toAlignedRect())) {
             painter.save();
             if (m_renderMode == RenderMode::PinnedResult) {
-                painter.setRenderHint(QPainter::SmoothPixmapTransform,
-                                      pinnedResultUsesLinearFiltering(
-                                          context, targetRect,
-                                          m_imageSource.materializedImage.size()));
+                painter.setRenderHint(
+                    QPainter::SmoothPixmapTransform,
+                    pinnedResultUsesLinearFiltering(context, targetRect,
+                                                    m_imageSource.materializedImage.size()));
             }
             paintExposedImageSlice(painter, targetRect, m_imageSource.materializedImage,
                                    QRectF(m_imageSource.materializedImage.rect()),
@@ -1999,8 +1980,8 @@ void ScreenshotCanvasRenderer::renderBeforeCanvas(QPainter& painter,
             painter.save();
             if (m_renderMode == RenderMode::PinnedResult) {
                 painter.setRenderHint(QPainter::SmoothPixmapTransform,
-                                      pinnedResultUsesLinearFiltering(
-                                          context, targetRect, m_ocrFilteredImage.size()));
+                                      pinnedResultUsesLinearFiltering(context, targetRect,
+                                                                      m_ocrFilteredImage.size()));
             }
             painter.setClipRegion(context.exposedRegion, Qt::IntersectClip);
             painter.setClipRect(targetRect, Qt::IntersectClip);
@@ -2013,13 +1994,11 @@ void ScreenshotCanvasRenderer::renderBeforeCanvas(QPainter& painter,
 void ScreenshotCanvasRenderer::renderAfterCanvas(QPainter& painter,
                                                  const SnowCanvasRenderContext& context) {
     if (m_renderMode == RenderMode::PinnedResult) {
-        const QRectF contentView =
-            context.canvasToViewTransform.mapRect(m_pinnedContentCanvasRect);
+        const QRectF contentView = context.canvasToViewTransform.mapRect(m_pinnedContentCanvasRect);
         ScreenshotResultCompositor::finishLiveSurface(
             painter, QRectF(context.viewportRect), contentView, m_pinnedResultStyle,
             context.devicePixelRatio,
-            std::hypot(context.canvasToViewTransform.m11(),
-                       context.canvasToViewTransform.m12()));
+            std::hypot(context.canvasToViewTransform.m11(), context.canvasToViewTransform.m12()));
         // The live-surface compositor clears pixels outside the result shape.
         // In thumbnail mode the viewport is square while the result can keep
         // its original aspect ratio, so restore the themed backing color in

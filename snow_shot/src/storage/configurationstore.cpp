@@ -275,7 +275,7 @@ void ConfigurationStore::load() {
         error = QStringLiteral("Configuration storage is not readable");
     } else if (!QFileInfo::exists(m_configurationFile)) {
         dirty = true;
-        qCInfo(storageLog) << "Configuration file is missing; schema-v1 defaults will be written";
+        qCInfo(storageLog) << "Configuration file is missing; schema defaults will be written";
     } else {
         QFile file(m_configurationFile);
         QJsonParseError parseError;

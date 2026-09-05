@@ -1160,7 +1160,7 @@ SettingsItemDefinition clearHistoryItem() {
     payload.confirmation = {
         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Clear screenshot history?")),
         settingsText(QT_TRANSLATE_NOOP(
-            "SettingsCatalog", "All screenshot history and quarantined records will be removed")),
+            "SettingsCatalog", "All screenshot history will be removed")),
         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Clear history")),
         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Cancel")),
     };
@@ -1168,7 +1168,7 @@ SettingsItemDefinition clearHistoryItem() {
         QStringLiteral("history.clear"),
         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Clear screenshot history")),
         settingsText(QT_TRANSLATE_NOOP(
-            "SettingsCatalog", "Permanently remove all saved screenshots and quarantined records")),
+            "SettingsCatalog", "Permanently remove all saved screenshots")),
         {settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Delete history")),
          settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Remove screenshots"))},
         {},

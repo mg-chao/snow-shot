@@ -1039,10 +1039,10 @@ bool ScreenshotToolPalette::setSecondaryToolbarVisibility(bool actionToolbarVisi
     if (m_scrollingRecognitionControls != nullptr) {
         m_scrollingRecognitionControls->setVisible(scrollingVisible);
     }
-    // The OCR mode shares the selection action panel for compatibility with
-    // the existing toolbar layout, but it must not retain selection-only
-    // separators and spacers. Otherwise the OCR controls appear shifted right
-    // with the old selection toolbar contents still occupying the row.
+    // The OCR mode shares the selection action panel so both modes keep a
+    // single action row, but it must not retain selection-only separators
+    // and spacers. Otherwise the OCR controls appear shifted right with the
+    // selection toolbar contents still occupying the row.
     const auto setSpacersVisible = [this](const QVector<QSpacerItem*>& spacers, bool visible) {
         for (QSpacerItem* spacer : spacers) {
             setStyleToolbarSpacingVisible(spacer, visible);
@@ -1169,7 +1169,7 @@ bool ScreenshotToolPalette::prepareStyleControlsForActivation(Tool destinationTo
         (destinationTool == Tool::RectangleHighlight || destinationTool == Tool::PenHighlight);
     if (highlightPair && sourceControls != nullptr) {
         m_styleControls->stageExternalStyleEditorWidget(
-            "highlight-mode", "radio:highlight-mode-v1",
+            "highlight-mode", "radio:highlight-mode",
             sourceControls->findChild<QWidget*>(QStringLiteral("screenshotHighlightModeSelector")));
     }
 
@@ -1178,14 +1178,14 @@ bool ScreenshotToolPalette::prepareStyleControlsForActivation(Tool destinationTo
         (destinationTool == Tool::RectangleFilter || destinationTool == Tool::PenFilter);
     if (filterPair && sourceControls != nullptr) {
         m_styleControls->stageExternalStyleEditorWidget(
-            "filter-mode", "radio:filter-mode-v1",
+            "filter-mode", "radio:filter-mode",
             sourceControls->findChild<QWidget*>(QStringLiteral("screenshotFilterModeSelector")));
         FilterEditor& sourceEditor =
             sourceTool == Tool::PenFilter ? m_penFilterEditor : m_filterEditor;
-        m_styleControls->stageExternalStyleEditorWidget("filter-type", "select:filter-types-v1",
+        m_styleControls->stageExternalStyleEditorWidget("filter-type", "select:filter-types",
                                                         sourceEditor.typeSelect);
         m_styleControls->stageExternalStyleEditorWidget(
-            "filter-intensity", "slider:filter-intensity-v1",
+            "filter-intensity", "slider:filter-intensity",
             sourceEditor.intensitySlider != nullptr ? sourceEditor.intensitySlider->parentWidget()
                                                     : nullptr);
     }

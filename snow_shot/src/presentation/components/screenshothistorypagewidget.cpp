@@ -540,7 +540,7 @@ class HistoryThumbnailLoader final : public adqt::widgets::AdImageLoader {
         } else {
             sourceKey = source.toString();
         }
-        sourceKey += QStringLiteral("|%1x%2|%3|%4|v2")
+        sourceKey += QStringLiteral("|%1x%2|%3|%4")
                          .arg(options.targetPixelSize.width())
                          .arg(options.targetPixelSize.height())
                          .arg(static_cast<int>(options.aspectRatioMode))

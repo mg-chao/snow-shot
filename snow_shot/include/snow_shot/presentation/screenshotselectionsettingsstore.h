@@ -4,13 +4,11 @@
 #include "snow_shot/presentation/screenshotselectionexportworkflowports.h"
 #include "snow_shot/presentation/screenshotselectionparams.h"
 
-#include <QString>
 #include <QVector>
 
 class ScreenshotSelectionSettingsStore final : public ScreenshotSelectionParamsStorePort {
   public:
-    explicit ScreenshotSelectionSettingsStore(const QString& organization = QString(),
-                                              const QString& application = QString());
+    explicit ScreenshotSelectionSettingsStore();
 
     [[nodiscard]] bool hasPreviousSelectionParams() const;
     [[nodiscard]] ScreenshotSelectionParams previousSelectionParams() const;
@@ -20,7 +18,6 @@ class ScreenshotSelectionSettingsStore final : public ScreenshotSelectionParamsS
     void setPresets(const QVector<ScreenshotSelectionPreset>& presets);
 
     void clear();
-
 };
 
 #endif // SNOW_SHOT_PRESENTATION_SCREENSHOTSELECTIONSETTINGSSTORE_H

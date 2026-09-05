@@ -111,7 +111,7 @@ impl DirectMlCapabilityCache {
 
 fn capability_key() -> String {
     let mut parts = vec![
-        "snow-shot-directml-v1".to_string(),
+        "snow-shot-directml".to_string(),
         env!("CARGO_PKG_VERSION").to_string(),
         "ort-2.0.0-rc.13".to_string(),
         std::env::consts::OS.to_string(),

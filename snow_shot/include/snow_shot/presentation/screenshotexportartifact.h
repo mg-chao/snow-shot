@@ -70,7 +70,6 @@ class ScreenshotExportSource final {
     fromProducer(ImageProducer producer, RowSourceFactory rowSourceFactory = {});
 
     [[nodiscard]] bool isValid() const;
-    [[nodiscard]] bool hasDirectRowSource() const;
 
   private:
     ImageLoader m_imageLoader;
@@ -100,7 +99,6 @@ class ScreenshotExportArtifact final : public QObject {
 
     [[nodiscard]] bool isValid() const;
     [[nodiscard]] bool isCancelled() const;
-    [[nodiscard]] bool hasDirectRowSource() const;
 
   private:
     struct Impl;

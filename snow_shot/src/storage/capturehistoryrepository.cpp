@@ -818,20 +818,13 @@ class CaptureHistoryRepositoryImpl final : public CaptureHistoryRepository {
     }
 
     StorageResult clearNow() {
-        // Only explicit clear discovers/removes unmanaged legacy and crash leftovers.
+        // Only explicit clear walks the history tree for unmanaged leftovers.
         bool success = true;
-        for (const QString& path :
-             {m_root,
-              QDir(m_configurationDirectory).filePath(QStringLiteral("capture_history_records")),
-              QDir(m_configurationDirectory)
-                  .filePath(QStringLiteral("capture_history_quarantine"))}) {
-            if (QFileInfo::exists(path) && (!containedPath(m_configurationDirectory, path) ||
-                                            !QDir(path).removeRecursively())) {
-                success = false;
-            }
+        if (QFileInfo::exists(m_root) && (!containedPath(m_configurationDirectory, m_root) ||
+                                          !QDir(m_root).removeRecursively())) {
+            success = false;
         }
         if (!success) {
-            // Keep the old index state when possible; missing files fail on actual reads.
             return fail(QStringLiteral("Unable to clear all managed capture-history data"));
         }
         if (!commit({}))

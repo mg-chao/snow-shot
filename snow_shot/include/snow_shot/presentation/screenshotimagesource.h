@@ -32,8 +32,7 @@ struct ScreenshotImageSource {
     QRectF materializedCanvasRect;
     QList<ScreenshotImageLayer> layers;
 
-    [[nodiscard]] static ScreenshotImageSource fromImage(QImage image,
-                                                         const QRectF& canvasRect) {
+    [[nodiscard]] static ScreenshotImageSource fromImage(QImage image, const QRectF& canvasRect) {
         ScreenshotImageSource source;
         source.materializedImage = std::move(image);
         source.materializedCanvasRect = canvasRect.normalized();
@@ -63,14 +62,8 @@ struct ScreenshotImageSource {
         return true;
     }
 
-    [[nodiscard]] bool isValid() const { return isMaterialized() || isLayered(); }
-
-    [[nodiscard]] qsizetype retainedBytes() const {
-        qsizetype bytes = materializedImage.sizeInBytes();
-        for (const ScreenshotImageLayer& layer : layers) {
-            bytes += layer.image.sizeInBytes();
-        }
-        return bytes;
+    [[nodiscard]] bool isValid() const {
+        return isMaterialized() || isLayered();
     }
 };
 

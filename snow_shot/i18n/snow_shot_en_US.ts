@@ -3981,8 +3981,8 @@
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="1162"/>
-        <source>All screenshot history and quarantined records will be removed</source>
-        <translation>All screenshot history and quarantined records will be removed</translation>
+        <source>All screenshot history will be removed</source>
+        <translation>All screenshot history will be removed</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="1169"/>
@@ -3991,8 +3991,8 @@
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="1170"/>
-        <source>Permanently remove all saved screenshots and quarantined records</source>
-        <translation>Permanently remove all saved screenshots and quarantined records</translation>
+        <source>Permanently remove all saved screenshots</source>
+        <translation>Permanently remove all saved screenshots</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="1173"/>

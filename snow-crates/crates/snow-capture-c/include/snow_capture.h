@@ -251,7 +251,7 @@ typedef enum SnowCaptureEncoderPreference {
     SNOW_CAPTURE_ENCODER_PREFERENCE_H264_HARDWARE = 1,
 } SnowCaptureEncoderPreference;
 
-#define SNOW_CAPTURE_RECORDING_EXPORT_CONFIG_VERSION 2u
+#define SNOW_CAPTURE_RECORDING_EXPORT_CONFIG_VERSION 1u
 
 typedef struct SnowCaptureRecordingExportConfig {
     uint32_t version;

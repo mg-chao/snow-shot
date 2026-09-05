@@ -135,7 +135,6 @@ void publicationAndRecovery() {
                 "manifest total byte accounting is inconsistent");
         const storage::CaptureHistoryUsage usage = repository->usage();
         require(usage.entryCount == 1 && usage.recordBytes == physicalBytes &&
-                    usage.quarantineBytes == 0 && usage.temporaryBytes == 0 &&
                     usage.indexBytes == QFileInfo(indexPath(temporary.path())).size() &&
                     usage.totalBytes == physicalBytes + usage.indexBytes,
                 "capture-history usage includes data outside self-contained records");
@@ -155,10 +154,6 @@ void publicationAndRecovery() {
         require(loadedResult->format() == QImage::Format_ARGB32,
                 "Windows history result image should use BGRA-backed ARGB32 pixels");
 #endif
-        require(
-            !QFileInfo::exists(
-                QDir(temporary.path()).filePath(QStringLiteral("capture_history_catalog.json"))),
-            "capture-history publication unexpectedly created a catalog");
     }
 
     {
@@ -237,41 +232,31 @@ void quickCaptureSourcesRoundTrip() {
     verifySource(storage::CaptureHistorySource::FocusedWindow, QStringLiteral("focused_window"));
 }
 
-void trustedStartupAndExplicitLegacyClear() {
+void trustedStartupAndExplicitClear() {
     QTemporaryDir temporary;
-    require(temporary.isValid(), "failed to create quarantine directory");
+    require(temporary.isValid(), "failed to create history leftover directory");
     QString recordDirectory;
     {
         auto repository = storage::makeCaptureHistoryRepository(temporary.path());
         require(repository->publish(draftAt(QDateTime::currentDateTimeUtc())).get().storage.success,
-                "failed to publish quarantine fixture");
+                "failed to publish leftover fixture");
         recordDirectory = onlyRecordDirectory(temporary.path());
     }
     writeBytes(QDir(recordDirectory).filePath(QStringLiteral("canvas_history.json")),
                QByteArrayLiteral("not-json"));
     const QString temporaryRecord =
-        QDir(temporary.path()).filePath(QStringLiteral("capture_history_records/.tmp-abandoned"));
+        QDir(temporary.path()).filePath(QStringLiteral("capture_history/records/.tmp-abandoned"));
     require(QDir().mkpath(temporaryRecord), "failed to create temporary fixture");
     writeBytes(QDir(temporaryRecord).filePath(QStringLiteral("partial")), QByteArrayLiteral("x"));
-    const QString expiredQuarantine =
-        QDir(temporary.path())
-            .filePath(QStringLiteral(
-                "capture_history_quarantine/expired.quarantine-20200101-000000-000"));
-    require(QDir().mkpath(expiredQuarantine), "failed to create expired quarantine fixture");
-    writeBytes(QDir(expiredQuarantine).filePath(QStringLiteral("partial")), QByteArrayLiteral("x"));
 
     auto repository = storage::makeCaptureHistoryRepository(temporary.path());
-    require(repository->records().size() == 1 && QFileInfo::exists(temporaryRecord) &&
-                QFileInfo::exists(expiredQuarantine) && repository->usage().quarantineBytes == 0,
-            "startup inspected payloads or legacy data");
+    require(repository->records().size() == 1 && QFileInfo::exists(temporaryRecord),
+            "startup inspected payloads or unmanaged leftovers");
     const auto clearResult = repository->requestClear().get();
     require(clearResult.success && repository->usage().entryCount == 0 &&
                 repository->usage().totalBytes == repository->usage().indexBytes &&
-                !QFileInfo::exists(
-                    QDir(temporary.path()).filePath(QStringLiteral("capture_history_records"))) &&
-                !QFileInfo::exists(
-                    QDir(temporary.path()).filePath(QStringLiteral("capture_history_quarantine"))),
-            "clear did not remove every managed history area");
+                !QFileInfo::exists(temporaryRecord),
+            "clear did not remove unmanaged leftovers inside the history tree");
 }
 
 void policyBoundariesAndDisabledPreservation() {
@@ -403,7 +388,7 @@ void displayAssetsAreMetadataOnly() {
     require(repository->records().isEmpty(),
             "invalid payload was not removed after lazy validation failure");
 
-    require(!QFileInfo::exists(imagePath), "quarantine left the invalid display payload in place");
+    require(!QFileInfo::exists(imagePath), "invalid display payload was left in place");
     require(!repository->displayAssets(record).has_value(),
             "asset lookup accepted a missing display file");
 }
@@ -629,7 +614,7 @@ int main(int argc, char** argv) {
     publicationAndRecovery();
     preparedResultBytesAreCommittedWithoutReplacement();
     quickCaptureSourcesRoundTrip();
-    trustedStartupAndExplicitLegacyClear();
+    trustedStartupAndExplicitClear();
     policyBoundariesAndDisabledPreservation();
     publicationQueueCapacity();
     displayAssetsAreMetadataOnly();

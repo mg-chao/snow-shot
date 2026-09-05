@@ -3980,8 +3980,8 @@
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="1162"/>
-        <source>All screenshot history and quarantined records will be removed</source>
-        <translation>所有截图历史和隔离记录都将被删除</translation>
+        <source>All screenshot history will be removed</source>
+        <translation>所有截图历史都将被删除</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="1169"/>
@@ -3990,8 +3990,8 @@
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="1170"/>
-        <source>Permanently remove all saved screenshots and quarantined records</source>
-        <translation>永久移除所有已保存的截图和隔离记录</translation>
+        <source>Permanently remove all saved screenshots</source>
+        <translation>永久移除所有已保存的截图</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="1173"/>

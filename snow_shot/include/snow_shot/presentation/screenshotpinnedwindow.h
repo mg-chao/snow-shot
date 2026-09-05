@@ -80,10 +80,6 @@ class ScreenshotPinnedWindow final : public QWidget {
     Q_OBJECT
 
   public:
-    enum class RuntimeMode {
-        NoDocument,
-    };
-
     struct Config {
         QRect nativeGeometry;
         QRectF canvasSourceRect;
@@ -94,8 +90,6 @@ class ScreenshotPinnedWindow final : public QWidget {
         QString mouseWheelZoomMode = QStringLiteral("mouse_position");
         ScreenshotImageSource imageSource;
         ScreenshotImageLoader imageLoader;
-        // Compatibility input for direct callers. New pin transactions use imageSource.
-        QImage backgroundImage;
         QScreen* screen = nullptr;
         bool enableEditing = true;
         bool automaticTextRecognition = true;
@@ -124,16 +118,13 @@ class ScreenshotPinnedWindow final : public QWidget {
         QString groupId = QStringLiteral("default");
     };
 
-    explicit ScreenshotPinnedWindow(RuntimeMode mode, QWidget* parent = nullptr);
+    explicit ScreenshotPinnedWindow(QWidget* parent = nullptr);
     ~ScreenshotPinnedWindow() override;
 
     bool present(const Config& config, std::function<void(bool, QImage)> completion = {});
-    bool presentPending(const Config& config, std::function<void(bool, QImage)> completion = {});
-    bool publishMaterializedImage(QImage image);
     bool prewarm(QScreen* screen = nullptr);
     QRect currentNativeGeometry() const;
     [[nodiscard]] snow_shot::storage::PinnedWindowRecord persistenceSnapshot() const;
-    void setPersistenceId(const QString& id);
     [[nodiscard]] QString persistenceId() const {
         return m_persistenceId;
     }
@@ -193,8 +184,6 @@ class ScreenshotPinnedWindow final : public QWidget {
     void updateCanvasViewport();
     void updateControlsGeometry();
     void destroyCanvas();
-    bool presentInternal(const Config& config, std::function<void(bool, QImage)> completion,
-                         bool allowPending);
     using MaterializationCallback = std::function<void(bool)>;
     using PresentationCompletion = std::function<void(bool, QImage)>;
     void requestMaterializedImage(MaterializationCallback callback);
@@ -296,7 +285,6 @@ class ScreenshotPinnedWindow final : public QWidget {
     PresentationCompletion m_presentationCompletion;
     ScreenshotImageLoader m_imageLoader;
     bool m_materializationLoading = false;
-    bool m_pendingImage = false;
     bool m_firstContentFramePublished = false;
     bool m_firstFramePaintPending = false;
     bool m_firstFramePaintSucceeded = true;
