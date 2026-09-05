@@ -22,6 +22,8 @@ struct ScreenshotHistoryDisplay {
 };
 
 struct ScreenshotHistoryEntry {
+    snow_shot::storage::CaptureHistoryContentKind contentKind =
+        snow_shot::storage::CaptureHistoryContentKind::ScreenshotSession;
     QString id;
     QDateTime createdUtc;
     QRect recordedCanvasBounds;

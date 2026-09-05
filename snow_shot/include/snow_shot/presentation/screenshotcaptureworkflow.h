@@ -33,14 +33,7 @@ struct ScreenshotCaptureWorkflowContext {
     ScreenshotCapturePresentationCallbacks presentation;
     std::function<void()> captureTerminated = []() {};
     std::function<bool()> smartSelectionEnabled = []() { return true; };
-    std::function<void(std::optional<ScreenshotWindowCaptureFrame>)> focusedWindowCaptured =
-        [](std::optional<ScreenshotWindowCaptureFrame>) {};
     std::function<void()> refreshCanvasCreationStyles = []() {};
-};
-
-enum class ScreenshotCapturePresentationMode {
-    Overlay,
-    Silent,
 };
 
 class ScreenshotCaptureWorkflow final : private ScreenshotCaptureWorkerEventSink {
@@ -49,9 +42,7 @@ class ScreenshotCaptureWorkflow final : private ScreenshotCaptureWorkerEventSink
     ~ScreenshotCaptureWorkflow() override;
 
     void prewarmResources();
-    void startCapture(ScreenshotCapturePresentationMode presentationMode =
-                          ScreenshotCapturePresentationMode::Overlay,
-                      quintptr focusedWindowHandle = 0);
+    void startCapture();
     void cancelCapture();
     void cancelCaptureForExport();
     void completeDeferredExportCleanup();
@@ -90,9 +81,6 @@ class ScreenshotCaptureWorkflow final : private ScreenshotCaptureWorkerEventSink
     quint64 m_initialSmartSelectionPendingSessionId = 0;
     quint64 m_initialSmartSelectionResolvedSessionId = 0;
     quint64 m_visiblePresentationSessionId = 0;
-    ScreenshotCapturePresentationMode m_presentationMode =
-        ScreenshotCapturePresentationMode::Overlay;
-    quintptr m_focusedWindowHandle = 0;
     bool m_captureModelsClean = false;
     bool m_canvasRuntimeClean = false;
     bool m_deferredExportCleanup = false;

@@ -2,6 +2,19 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="zh_CN" sourcelanguage="en_US">
 <context>
+    <name>DirectCaptureController</name>
+    <message>
+        <location filename="../src/presentation/capture/directcaptureworkflow.cpp" line="12"/>
+        <source>The capture operation could not be queued</source>
+        <translation>无法将捕获操作加入队列</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/capture/directcaptureworkflow.cpp" line="55"/>
+        <source>The capture returned an invalid image</source>
+        <translation>捕获返回了无效图像</translation>
+    </message>
+</context>
+<context>
     <name>DrawingToolbarEditorSettingsWidget</name>
     <message>
         <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="51"/>
@@ -384,123 +397,123 @@
 <context>
     <name>ScreenshotController</name>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2589"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2511"/>
         <source>Save screenshot</source>
         <translation>保存截图</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2762"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2684"/>
         <location filename="../src/presentation/pinned/screenshotpinnedwindow.cpp" line="3825"/>
         <location filename="../src/presentation/pinned/screenshotpinnedwindow.cpp" line="3835"/>
         <source>The screenshot could not be saved: %1</source>
         <translation>无法保存截图：%1</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3189"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3403"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3111"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3325"/>
         <source>The screenshot export queue is full</source>
         <translation>截图导出队列已满</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2135"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2194"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2893"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2057"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2116"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2815"/>
         <source>The scrolling screenshot could not be prepared</source>
         <translation>无法准备滚动截图</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2117"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2162"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2182"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2039"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2084"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2104"/>
         <source>The scrolling screenshot could not be pinned</source>
         <translation>无法将滚动截图固定到屏幕</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2365"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2287"/>
         <source>The clipboard does not contain content that can be pinned</source>
         <translation>剪贴板中没有可固定到屏幕的内容</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2475"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2397"/>
         <source>The clipboard content could not be pinned</source>
         <translation>无法将剪贴板内容固定到屏幕</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2522"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2444"/>
         <source>The clipboard content could not be pinned: %1</source>
         <translation>无法将剪贴板内容固定到屏幕：%1</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2483"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2554"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2405"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2476"/>
         <source>The clipboard pin could not be presented</source>
         <translation>无法显示已固定的剪贴板内容</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2563"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2485"/>
         <source>The clipboard pin queue is full</source>
         <translation>剪贴板内容固定队列已满</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2652"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2574"/>
         <source>The screenshot could not be prepared for saving</source>
         <translation>无法准备要保存的截图</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2848"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2770"/>
         <location filename="../src/presentation/pinned/screenshotpinnedwindow.cpp" line="3587"/>
         <source>No recognized result is available to copy</source>
         <translation>没有可复制的识别结果</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3376"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3298"/>
         <source>The scrolling screenshot could not be copied: %1</source>
         <translation>无法复制滚动截图：%1</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3029"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3243"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2951"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3165"/>
         <source>Automatic screenshot saving failed: %1</source>
         <translation>自动保存截图失败：%1</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3038"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3252"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2960"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3174"/>
         <source>The screenshot will be copied, but automatic saving could not be queued</source>
         <translation>仍会复制截图，但无法将自动保存任务加入队列</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3089"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3304"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3011"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3226"/>
         <source>The clipboard did not accept the screenshot</source>
         <translation>剪贴板未接受截图</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3095"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3162"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3310"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3436"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3457"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3017"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3084"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3232"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3358"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3379"/>
         <source>The screenshot could not be copied: %1</source>
         <translation>无法复制截图：%1</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3120"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3334"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3042"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3256"/>
         <source>The screenshot file could not be copied: the clipboard did not accept the file</source>
         <translation>无法复制截图文件：剪贴板未接受该文件</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3142"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3356"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3064"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3278"/>
         <source>The screenshot clipboard image is unavailable</source>
         <translation>截图的剪贴板图像不可用</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3177"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3391"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3475"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3486"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3099"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3313"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3397"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3408"/>
         <source>The screenshot clipboard operation could not be started</source>
         <translation>无法启动截图剪贴板操作</translation>
     </message>
@@ -1991,17 +2004,17 @@
     <message>
         <location filename="../src/presentation/tools/screenshottoolpalettestylecontrols.cpp" line="280"/>
         <source>Corner radius (scroll to adjust)</source>
-        <translation type="unfinished"></translation>
+        <translation>圆角半径（滚动调整）</translation>
     </message>
     <message>
         <location filename="../src/presentation/tools/screenshottoolpalettestylecontrols.cpp" line="281"/>
         <source>Text fill corner radius (scroll to adjust)</source>
-        <translation type="unfinished"></translation>
+        <translation>文字填充圆角半径（滚动调整）</translation>
     </message>
     <message>
         <location filename="../src/presentation/tools/screenshottoolpalettestylecontrols.cpp" line="282"/>
         <source>Sequence number (scroll to adjust)</source>
-        <translation type="unfinished"></translation>
+        <translation>序号（滚动调整）</translation>
     </message>
     <message>
         <location filename="../src/presentation/tools/screenshottoolpalettestylecontrols.cpp" line="286"/>
@@ -2929,7 +2942,7 @@
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="1571"/>
         <source>Configure the normal screenshot capture API</source>
-        <translation type="unfinished"></translation>
+        <translation>配置常规截图使用的捕获 API</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="1578"/>
@@ -3571,42 +3584,42 @@
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="427"/>
         <source>Auto</source>
-        <translation type="unfinished"></translation>
+        <translation>自动</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="428"/>
         <source>DXGI</source>
-        <translation type="unfinished"></translation>
+        <translation>DXGI</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="429"/>
         <source>WGC</source>
-        <translation type="unfinished"></translation>
+        <translation>WGC</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="430"/>
         <source>GDI</source>
-        <translation type="unfinished"></translation>
+        <translation>GDI</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="434"/>
         <source>API Mode</source>
-        <translation type="unfinished"></translation>
+        <translation>API 模式</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="435"/>
         <source>Choose the preferred API for normal screenshots; Auto uses DXGI on HDR displays and GDI otherwise</source>
-        <translation type="unfinished"></translation>
+        <translation>选择常规截图的首选 API；自动模式在 HDR 显示器上使用 DXGI，其他情况下使用 GDI</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="438"/>
         <source>Screenshot API</source>
-        <translation type="unfinished"></translation>
+        <translation>截图 API</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="439"/>
         <source>Capture backend</source>
-        <translation type="unfinished"></translation>
+        <translation>捕获后端</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="448"/>
@@ -4700,6 +4713,34 @@ Change the shortcut and try again</source>
     </message>
 </context>
 <context>
+    <name>snow_shot::presentation::DirectCaptureController</name>
+    <message>
+        <location filename="../src/presentation/capture/directcapturecontroller.cpp" line="70"/>
+        <source>History publication could not be queued</source>
+        <translation>无法将历史记录写入操作加入队列</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/capture/directcapturecontroller.cpp" line="83"/>
+        <source>Capture failed: %1</source>
+        <translation>捕获失败：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/capture/directcapturecontroller.cpp" line="112"/>
+        <source>The capture operation failed</source>
+        <translation>捕获操作失败</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/capture/directcapturecontroller.cpp" line="146"/>
+        <source>The image could not be prepared for the clipboard</source>
+        <translation>无法准备要复制到剪贴板的图像</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/capture/directcapturecontroller.cpp" line="162"/>
+        <source>The clipboard publication could not be queued</source>
+        <translation>无法将剪贴板写入操作加入队列</translation>
+    </message>
+</context>
+<context>
     <name>snow_shot::presentation::PinnedWindowGroupManager</name>
     <message>
         <location filename="../src/presentation/services/pinnedwindowgroupmanager.cpp" line="87"/>
@@ -4742,6 +4783,14 @@ Change the shortcut and try again</source>
         <location filename="../src/presentation/services/pinnedwindowgroupmanager.cpp" line="429"/>
         <source>Cancel</source>
         <translation>取消</translation>
+    </message>
+</context>
+<context>
+    <name>snow_shot::presentation::SystemTrayController</name>
+    <message>
+        <location filename="../src/presentation/services/systemtraycontroller.cpp" line="543"/>
+        <source>Capture</source>
+        <translation>捕获</translation>
     </message>
 </context>
 </TS>

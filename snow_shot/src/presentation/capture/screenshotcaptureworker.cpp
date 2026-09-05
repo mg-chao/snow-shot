@@ -1,4 +1,5 @@
 #include "screenshotcaptureworker.h"
+#include "captureframeimage.h"
 
 #include "screenshotcaptureperfinstrumentation.h"
 #include "snow_shot/presentation/screenshotcapturecoordinator.h"
@@ -15,79 +16,8 @@
 #include <utility>
 
 namespace {
-void releaseFrameLease(void* lease) {
-    snow_capture_frame_lease_release(static_cast<SnowCaptureFrameLease*>(lease));
-}
-
-bool validFrameInfo(const SnowCaptureFrameInfo& info) {
-    if (info.rgba_bytes == nullptr || info.rgba_len == 0 || info.width == 0 || info.height == 0) {
-        return false;
-    }
-
-    if (info.pixel_format != SNOW_CAPTURE_PIXEL_FORMAT_RGBA8 &&
-        info.pixel_format != SNOW_CAPTURE_PIXEL_FORMAT_BGRA8) {
-        return false;
-    }
-
-    if (info.width > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
-        info.height > static_cast<std::uint32_t>(std::numeric_limits<int>::max())) {
-        return false;
-    }
-
-    const quint64 expectedStride = static_cast<quint64>(info.width) * 4ULL;
-    if (expectedStride > std::numeric_limits<std::uint32_t>::max() ||
-        expectedStride > static_cast<quint64>(std::numeric_limits<int>::max()) ||
-        static_cast<quint64>(info.height) > std::numeric_limits<quint64>::max() / expectedStride) {
-        return false;
-    }
-    const quint64 expectedLen = expectedStride * static_cast<quint64>(info.height);
-    return info.stride_bytes == static_cast<std::uint32_t>(expectedStride) &&
-           info.rgba_len >= expectedLen;
-}
-
-QImage imageFromFrameLease(SnowCaptureFrameLease* lease, const std::uint8_t* rgbaBytes,
-                           std::size_t rgbaLen, std::uint32_t width, std::uint32_t height,
-                           std::uint32_t strideBytes, std::uint8_t pixelFormat) {
-    if (lease == nullptr || rgbaBytes == nullptr || rgbaLen == 0 || width == 0 || height == 0 ||
-        (pixelFormat != SNOW_CAPTURE_PIXEL_FORMAT_RGBA8 &&
-         pixelFormat != SNOW_CAPTURE_PIXEL_FORMAT_BGRA8)) {
-        if (lease != nullptr) {
-            snow_capture_frame_lease_release(lease);
-        }
-        return {};
-    }
-
-    if (width > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
-        height > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
-        static_cast<quint64>(width) * 4ULL >
-            static_cast<quint64>(std::numeric_limits<int>::max())) {
-        snow_capture_frame_lease_release(lease);
-        return {};
-    }
-
-    const quint64 expectedStride = static_cast<quint64>(width) * 4ULL;
-    if (static_cast<quint64>(height) > std::numeric_limits<quint64>::max() / expectedStride) {
-        snow_capture_frame_lease_release(lease);
-        return {};
-    }
-    const quint64 expectedLen = expectedStride * static_cast<quint64>(height);
-    if (strideBytes != static_cast<std::uint32_t>(expectedStride) || rgbaLen < expectedLen) {
-        snow_capture_frame_lease_release(lease);
-        return {};
-    }
-
-    // Desktop BGRA frames are already opaque. Tag them as RGB32 so Qt takes the
-    // non-alpha blit without copying; the little-endian packing is still BGRA.
-    const QImage::Format format = pixelFormat == SNOW_CAPTURE_PIXEL_FORMAT_BGRA8
-                                      ? QImage::Format_RGB32
-                                      : QImage::Format_RGBA8888;
-    QImage image(rgbaBytes, static_cast<int>(width), static_cast<int>(height),
-                 static_cast<int>(strideBytes), format, &releaseFrameLease, lease);
-    if (image.isNull()) {
-        snow_capture_frame_lease_release(lease);
-    }
-    return image;
-}
+using snow_shot::presentation::capture::imageFromFrameLease;
+using snow_shot::presentation::capture::validFrameInfo;
 
 ScreenshotCaptureBackend backendFromNative(std::uint8_t backend) {
     switch (backend) {
@@ -154,7 +84,6 @@ void ScreenshotCaptureWorker::capture(const ScreenshotCaptureRequest& request,
     nativeRequest.struct_size = sizeof(nativeRequest);
     nativeRequest.flags =
         request.refreshLayout ? SNOW_CAPTURE_SCREENSHOT_REQUEST_REFRESH_LAYOUT : 0;
-    nativeRequest.focused_window = static_cast<intptr_t>(request.focusedWindowHandle);
     nativeRequest.cancellation_token = cancellationToken;
 
     SnowCaptureScreenshotResult* nativeResult = nullptr;
@@ -203,36 +132,11 @@ void ScreenshotCaptureWorker::capture(const ScreenshotCaptureRequest& request,
         captureResult.displays.push_back(std::move(display));
     }
 
-    if (valid && request.focusedWindowHandle != 0) {
-        SnowCaptureWindowFrameInfo info{};
-        info.version = SNOW_CAPTURE_WINDOW_FRAME_INFO_VERSION;
-        info.struct_size = sizeof(info);
-        if (snow_capture_screenshot_result_focused_window_info(nativeResult, &info) == 0) {
-            valid = false;
-        } else {
-            SnowCaptureFrameLease* lease =
-                snow_capture_screenshot_result_focused_window_retain(nativeResult);
-            QImage image = imageFromFrameLease(lease, info.rgba_bytes, info.rgba_len, info.width,
-                                               info.height, info.stride_bytes, info.pixel_format);
-            ScreenshotWindowCaptureFrame focused;
-            focused.image = std::move(image);
-            focused.physicalRect =
-                QRect(info.x, info.y, static_cast<int>(info.width), static_cast<int>(info.height));
-            focused.backend = backendFromNative(info.backend_kind);
-            if (!focused.isValid()) {
-                valid = false;
-            } else {
-                captureResult.focusedWindow = std::move(focused);
-            }
-        }
-    }
-
     if (!valid && captureResult.errorMessage.isEmpty()) {
         captureResult.errorMessage = nativeCaptureError("Screenshot capture returned invalid data");
     }
     if (!valid) {
         captureResult.displays.clear();
-        captureResult.focusedWindow.reset();
     }
     captureResult.succeeded = valid;
     snow_capture_screenshot_result_destroy(nativeResult);

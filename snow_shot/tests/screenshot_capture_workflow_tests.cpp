@@ -593,54 +593,6 @@ void overlayCaptureWarmsNativeSurfaceAfterCaptureDispatch() {
             "reveal must still present the captured overlay after the surface is warmed");
 }
 
-void silentCaptureNeverPreparesOrShowsOverlays() {
-    ScreenshotCaptureState state;
-    state.sessionState = ScreenshotSessionState::IdlePrepared;
-    ScreenshotDisplaySession displaySession;
-    ScreenshotGeometryMapper geometry;
-    ScreenshotInteractionState interaction;
-    ScreenshotSelectionModel selection;
-    ScreenshotIntelligentSelectionModel intelligentSelection;
-    CaptureRuntime runtime;
-    int capturePresentedCalls = 0;
-    ScreenshotCaptureWorkflow workflow({
-        state,
-        runtime,
-        geometry,
-        displaySession,
-        interaction,
-        selection,
-        intelligentSelection,
-        ScreenshotCapturePresentationCallbacks{
-            {},
-            {},
-            {},
-            [&capturePresentedCalls]() { ++capturePresentedCalls; },
-        },
-    });
-
-    CapturedDisplayModel snapshot;
-    snapshot.stableId = QStringLiteral("primary");
-    snapshot.name = QStringLiteral("Primary");
-    snapshot.physicalRect = QRect(0, 0, 64, 48);
-    snapshot.image = QImage(snapshot.physicalRect.size(), QImage::Format_RGBA8888);
-    snapshot.image.fill(Qt::blue);
-
-    workflow.startCapture(ScreenshotCapturePresentationMode::Silent);
-    require(runtime.eventSink != nullptr, "capture workflow did not register its event sink");
-    runtime.eventSink->handleCaptureFinished(successfulResult(state.sessionId, snapshot));
-
-    require(runtime.preparePreCaptureOverlayCalls == 0,
-            "silent capture must not prepare screenshot windows");
-    require(runtime.showOverlayCalls == 0 && runtime.applyDisplayModelsCalls == 0,
-            "silent capture must not bind or show screenshot windows");
-    require(runtime.startWorkflowRefreshCalls == 0,
-            "silent capture must not initialize smart selection");
-    require(runtime.prewarmToolbarSurfaceCalls == 0,
-            "silent capture must not prewarm the editing toolbar");
-    require(capturePresentedCalls == 1,
-            "silent capture must notify the controller when pixels are ready");
-}
 
 void displayChangesRefreshWithoutCancelingIdleOrActiveCapture() {
     ScreenshotCaptureState idleState;
@@ -670,7 +622,7 @@ void displayChangesRefreshWithoutCancelingIdleOrActiveCapture() {
     auto activeWorkflow =
         makeWorkflow(activeState, activeDisplays, activeGeometry, activeInteraction,
                      activeSelection, activeSmartSelection, activeRuntime);
-    activeWorkflow.startCapture(ScreenshotCapturePresentationMode::Silent);
+    activeWorkflow.startCapture();
     activeWorkflow.handleDisplayConfigurationChanged();
     require(activeState.captureInProgress && activeRuntime.refreshLayoutCalls == 0 &&
                 activeRuntime.cancelActiveCaptureCalls == 0,
@@ -687,84 +639,7 @@ void displayChangesRefreshWithoutCancelingIdleOrActiveCapture() {
             "a display change during capture must refresh after capture completion");
 }
 
-void focusedWindowCaptureUsesOneCompoundWorkerTransaction() {
-    ScreenshotCaptureState state;
-    state.sessionState = ScreenshotSessionState::IdlePrepared;
-    ScreenshotDisplaySession displaySession;
-    ScreenshotGeometryMapper geometry;
-    ScreenshotInteractionState interaction;
-    ScreenshotSelectionModel selection;
-    ScreenshotIntelligentSelectionModel intelligentSelection;
-    CaptureRuntime runtime;
-    std::optional<ScreenshotWindowCaptureFrame> deliveredFocusedWindow;
-    ScreenshotCaptureWorkflow workflow({
-        state,
-        runtime,
-        geometry,
-        displaySession,
-        interaction,
-        selection,
-        intelligentSelection,
-        {},
-        {},
-        []() { return true; },
-        [&deliveredFocusedWindow](std::optional<ScreenshotWindowCaptureFrame> frame) {
-            deliveredFocusedWindow = std::move(frame);
-        },
-    });
 
-    constexpr quintptr focusedHandle = 0x1234;
-    workflow.startCapture(ScreenshotCapturePresentationMode::Silent, focusedHandle);
-    require(runtime.captureAllAsyncCalls == 1 &&
-                runtime.lastCaptureRequest.requestId == state.sessionId &&
-                runtime.lastCaptureRequest.focusedWindowHandle == focusedHandle,
-            "focused capture must submit the HWND with the desktop request");
-
-    CapturedDisplayModel snapshot;
-    snapshot.stableId = QStringLiteral("primary");
-    snapshot.name = QStringLiteral("Primary");
-    snapshot.physicalRect = QRect(0, 0, 64, 48);
-    snapshot.image = QImage(snapshot.physicalRect.size(), QImage::Format_RGBA8888);
-    snapshot.image.fill(Qt::blue);
-
-    ScreenshotCaptureResult result = successfulResult(state.sessionId, snapshot);
-    ScreenshotWindowCaptureFrame focused;
-    focused.physicalRect = QRect(8, 9, 20, 12);
-    focused.image = QImage(focused.physicalRect.size(), QImage::Format_RGBA8888);
-    focused.image.fill(Qt::red);
-    result.focusedWindow = focused;
-    runtime.eventSink->handleCaptureFinished(result);
-
-    require(deliveredFocusedWindow.has_value() && deliveredFocusedWindow->isValid(),
-            "focused frame must be delivered before the capture is presented");
-}
-
-void focusedWindowCaptureIsAllOrNothing() {
-    ScreenshotCaptureState state;
-    state.sessionState = ScreenshotSessionState::IdlePrepared;
-    ScreenshotDisplaySession displaySession;
-    ScreenshotGeometryMapper geometry;
-    ScreenshotInteractionState interaction;
-    ScreenshotSelectionModel selection;
-    ScreenshotIntelligentSelectionModel intelligentSelection;
-    CaptureRuntime runtime;
-    auto workflow = makeWorkflow(state, displaySession, geometry, interaction, selection,
-                                 intelligentSelection, runtime);
-
-    workflow.startCapture(ScreenshotCapturePresentationMode::Silent, 0x4321);
-    CapturedDisplayModel snapshot;
-    snapshot.stableId = QStringLiteral("primary");
-    snapshot.name = QStringLiteral("Primary");
-    snapshot.physicalRect = QRect(0, 0, 64, 48);
-    snapshot.image = QImage(snapshot.physicalRect.size(), QImage::Format_RGBA8888);
-    ScreenshotCaptureResult result = successfulResult(state.sessionId, snapshot);
-    runtime.eventSink->handleCaptureFinished(result);
-
-    require(!state.captureInProgress &&
-                state.sessionState == ScreenshotSessionState::IdlePrepared &&
-                runtime.cancelActiveCaptureCalls == 1,
-            "missing focused pixels must cancel the compound request");
-}
 
 void capturedImagePlacementFollowsNormalizedCanvasGeometry() {
     CapturedDisplayModel snapshot;
@@ -902,10 +777,7 @@ int main() {
     capturedOverlayWaitsForImageAndSelectionInEitherOrder();
     overlayCapturePrewarmsToolbarSurfaceAfterCaptureDispatch();
     overlayCaptureWarmsNativeSurfaceAfterCaptureDispatch();
-    silentCaptureNeverPreparesOrShowsOverlays();
     displayChangesRefreshWithoutCancelingIdleOrActiveCapture();
-    focusedWindowCaptureUsesOneCompoundWorkerTransaction();
-    focusedWindowCaptureIsAllOrNothing();
     capturedImagePlacementFollowsNormalizedCanvasGeometry();
     intelligentSelectionTargetsPreserveElementPathBehavior();
     captureSessionsApplyTheCurrentSmartSelectionSetting();

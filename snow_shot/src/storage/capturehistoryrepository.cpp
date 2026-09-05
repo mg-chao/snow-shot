@@ -136,6 +136,9 @@ QJsonObject recordJson(const StoredRecord& stored) {
                       imageJson(record.result->imageSize, record.result->encodedBytes,
                                 *stored.resultFileName));
     }
+    if (record.contentKind == CaptureHistoryContentKind::Image) {
+        object.insert(QStringLiteral("content_kind"), QStringLiteral("image"));
+    }
     return object;
 }
 
@@ -158,6 +161,12 @@ bool parseImage(const QJsonObject& object, const QString& file, QSize* size, qin
 
 bool parseRecord(const QJsonObject& object, StoredRecord* stored) {
     auto& record = stored->record;
+    const QJsonValue contentKind = object.value(QStringLiteral("content_kind"));
+    if (!contentKind.isUndefined()) {
+        if (contentKind.toString() != QStringLiteral("image"))
+            return false;
+        record.contentKind = CaptureHistoryContentKind::Image;
+    }
     record.id = object.value(QStringLiteral("id")).toString();
     const QString date = object.value(QStringLiteral("created_utc")).toString();
     record.createdUtc = QDateTime::fromString(date, Qt::ISODateWithMs);
@@ -230,7 +239,9 @@ bool parseRecord(const QJsonObject& object, StoredRecord* stored) {
         stored->displayFileNames.append(file);
         bytes += image.encodedBytes;
     }
-    return record.totalBytes == bytes;
+    return record.totalBytes == bytes &&
+           (record.contentKind != CaptureHistoryContentKind::Image ||
+            (record.displays.size() == 1 && record.result.has_value()));
 }
 
 QByteArray indexBytes(const Snapshot& snapshot) {
@@ -282,6 +293,9 @@ QImage decodeImage(const QString& path) {
 }
 
 bool encodeDraft(const CaptureHistoryDraft& draft, qint64 quota, EncodedDraft* result) {
+    if (draft.contentKind == CaptureHistoryContentKind::Image &&
+        (draft.displays.size() != 1 || (!draft.resultImage && !draft.preparedResultImage)))
+        return false;
     if (!validUuid(draft.id) || !draft.createdUtc.isValid() ||
         draft.createdUtc.timeSpec() != Qt::UTC || draft.canvasBounds.isEmpty() ||
         draft.selection.rectangle.isEmpty() || !draft.selection.shadowColor.isValid() ||
@@ -293,6 +307,7 @@ bool encodeDraft(const CaptureHistoryDraft& draft, qint64 quota, EncodedDraft* r
     }
     auto& stored = result->stored;
     auto& record = stored.record;
+    record.contentKind = draft.contentKind;
     record.id = draft.id;
     record.createdUtc = draft.createdUtc;
     record.canvasBounds = draft.canvasBounds;

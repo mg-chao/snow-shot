@@ -95,6 +95,7 @@ presentationSelection(const snow_shot::storage::PersistedSelection& selection) {
 
 snow_shot::storage::CaptureHistoryDraft storageDraft(const ScreenshotHistoryEntry& entry) {
     snow_shot::storage::CaptureHistoryDraft draft;
+    draft.contentKind = entry.contentKind;
     draft.id = entry.id;
     draft.createdUtc = entry.createdUtc.toUTC();
     draft.canvasBounds = entry.recordedCanvasBounds;
@@ -112,6 +113,7 @@ snow_shot::storage::CaptureHistoryDraft storageDraft(const ScreenshotHistoryEntr
 snow_shot::storage::CaptureHistoryRecord
 placeholderRecord(const snow_shot::storage::CaptureHistoryDraft& draft) {
     snow_shot::storage::CaptureHistoryRecord record;
+    record.contentKind = draft.contentKind;
     record.id = draft.id;
     record.createdUtc = draft.createdUtc;
     record.canvasBounds = draft.canvasBounds;
@@ -138,6 +140,7 @@ presentationEntry(const snow_shot::storage::CaptureHistoryRecord& record,
         return std::nullopt;
     }
     ScreenshotHistoryEntry entry;
+    entry.contentKind = record.contentKind;
     entry.id = record.id;
     entry.createdUtc = record.createdUtc;
     entry.recordedCanvasBounds = record.canvasBounds;
@@ -480,8 +483,12 @@ void ScreenshotHistoryService::finishPersistentNavigation(
     }
 
     m_navigationInProgress = false;
-    const bool targetStillExists =
-        index > 0 && index <= m_entries.size() && m_entries[index - 1].id == entryId;
+    const auto target =
+        std::find_if(m_entries.cbegin(), m_entries.cend(),
+                     [&entryId](const auto& record) { return record.id == entryId; });
+    const bool targetStillExists = target != m_entries.cend();
+    if (targetStillExists)
+        index = static_cast<int>(std::distance(m_entries.cbegin(), target)) + 1;
     if (!entry.has_value()) {
         if (targetStillExists) {
             m_entries.removeAt(index - 1);
@@ -500,7 +507,12 @@ void ScreenshotHistoryService::finishPersistentNavigation(
 bool ScreenshotHistoryService::applyEntry(const ScreenshotHistoryEntry& entry) {
     const QRect bounds = currentCanvasBounds();
     ScreenshotSelectionModel restoredSelection = m_context.selection;
-    if (!restoredSelection.applyParams(entry.selection, bounds)) {
+    auto selectionParams = entry.selection;
+    const bool imageOnly =
+        entry.contentKind == snow_shot::storage::CaptureHistoryContentKind::Image;
+    if (imageOnly)
+        selectionParams.selection.translate(bounds.topLeft());
+    if (!restoredSelection.applyParams(selectionParams, bounds)) {
         return false;
     }
 
@@ -549,6 +561,11 @@ bool ScreenshotHistoryService::applyEntry(const ScreenshotHistoryEntry& entry) {
 
     for (qsizetype currentOrder = 0; currentOrder < current.size(); ++currentOrder) {
         CapturedDisplayModel& display = m_context.displays.displayAt(current[currentOrder]);
+        if (imageOnly) {
+            display.image = entry.displays.front().image;
+            display.imageSourceCanvasRect = QRect(bounds.topLeft(), display.image.size());
+            continue;
+        }
         const int savedIndex = matchedSaved[currentOrder];
         if (savedIndex < 0) {
             display.image = QImage();
@@ -649,6 +666,9 @@ void ScreenshotHistoryService::drainPendingWrites() {
 }
 
 void ScreenshotHistoryService::refreshMetadata() {
+    const QString selectedId = m_navigationIndex > 0 && m_navigationIndex <= m_entries.size()
+                                   ? m_entries[m_navigationIndex - 1].id
+                                   : QString();
     reapCompletedWrites();
     QVector<snow_shot::storage::CaptureHistoryRecord> refreshed = m_repository->records();
     for (const PendingWrite& pending : m_pendingWrites) {
@@ -668,6 +688,14 @@ void ScreenshotHistoryService::refreshMetadata() {
         return first.createdUtc > second.createdUtc;
     });
     m_entries = std::move(refreshed);
+    if (!selectedId.isEmpty()) {
+        const auto selected =
+            std::find_if(m_entries.cbegin(), m_entries.cend(),
+                         [&selectedId](const auto& record) { return record.id == selectedId; });
+        if (selected != m_entries.cend()) {
+            m_navigationIndex = static_cast<int>(std::distance(m_entries.cbegin(), selected)) + 1;
+        }
+    }
     if (m_navigationIndex > m_entries.size()) {
         m_navigationIndex = static_cast<int>(m_entries.size()) + 1;
     }

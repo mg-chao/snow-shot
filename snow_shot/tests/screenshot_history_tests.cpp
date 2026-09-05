@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/screenshothistoryservice.h"
+#include "snow_shot/presentation/directcapturehistory.h"
 #include "snowimageqtcodec.h"
 
 #include "snow_shot/presentation/screenshotcapturestate.h"
@@ -123,6 +124,74 @@ void requireCanvasHistoryPayload(const QByteArray& payload) {
                 object.value(QStringLiteral("document")).isObject() &&
                 object.value(QStringLiteral("history")).isObject(),
             "canvas history payload contains screenshot-local editor state");
+}
+
+void directImagesPersistWithoutTouchingTheEditor(const QString& root) {
+    using namespace snow_shot::presentation;
+    DirectCaptureRequest request;
+    request.target = DirectCaptureTarget::FocusedWindow;
+    request.requestedAt = QDateTime::currentDateTimeUtc();
+    QImage image = solidImage(QSize(137, 91), qRgb(24, 50, 70));
+    DirectCaptureFrame frame{
+        image, QRect(-1500, -300, 137, 91), QStringLiteral("window:123"), 2, {}};
+    QString id;
+    {
+        auto repository = storage::makeCaptureHistoryRepository(root);
+        auto draft = directCaptureHistoryDraft(request, frame);
+        require(draft.displays.size() == 1 && draft.displays.front().image == image &&
+                    draft.resultImage == image && draft.selection.rectangle == image.rect() &&
+                    draft.selection.cornerRadius == 0 && draft.selection.shadowWidth == 0,
+                "direct history did not store exactly the raw target");
+        requireCanvasHistoryPayload(draft.canvasHistory);
+        const auto result = repository->publish(std::move(draft)).get();
+        require(result.storage.success, "direct history publication failed");
+        id = result.record.id;
+    }
+    auto repository = storage::makeCaptureHistoryRepository(root);
+    const auto records = repository->records();
+    require(records.size() == 1 &&
+                records.front().contentKind == storage::CaptureHistoryContentKind::Image &&
+                records.front().source == storage::CaptureHistorySource::FocusedWindow,
+            "direct history metadata did not survive restart");
+    const auto restoredImage = repository->loadResultImage(records.front());
+    require(restoredImage.has_value() && restoredImage->convertToFormat(QImage::Format_ARGB32) ==
+                image.convertToFormat(QImage::Format_ARGB32),
+            "direct history pixels did not survive restart");
+    ScreenshotDisplaySession displays;
+    const QImage liveImage = solidImage(QSize(200, 120), qRgb(100, 120, 140));
+    displays.appendDisplay(
+        display(QStringLiteral("A"), QStringLiteral("Left"), QRect(-100, 10, 100, 120), liveImage));
+    displays.appendDisplay(
+        display(QStringLiteral("B"), QStringLiteral("Right"), QRect(0, 10, 100, 120), liveImage));
+    SnowCanvasRuntime runtime;
+    ScreenshotSelectionModel selection;
+    selection.setSelectionRect(QRectF(-90, 20, 30, 40));
+    const QRect liveSelection = selection.pixelSelection();
+    ScreenshotInteractionState interaction;
+    interaction.confirmSelection();
+    ScreenshotIntelligentSelectionModel intelligent;
+    ScreenshotHistoryService history({displays, runtime, selection, interaction, intelligent},
+                                     *repository);
+    require(history.navigateToRecord(id), "direct image history could not be opened");
+    // A publication during the asynchronous load must not invalidate its target index.
+    request.requestedAt = request.requestedAt.addSecs(1);
+    request.target = DirectCaptureTarget::CurrentMonitor;
+    require(repository->publish(directCaptureHistoryDraft(request, frame)).get().storage.success,
+            "second direct capture failed to publish");
+    history.refreshMetadata();
+    waitForNavigation(history, "direct image navigation timed out");
+    require(selection.pixelSelection() == QRect(-100, 10, 137, 91),
+            "direct image selection was misplaced");
+    for (int i = 0; i < 2; ++i) {
+        require(displays.displayAt(i).image.convertToFormat(QImage::Format_ARGB32) ==
+                    image.convertToFormat(QImage::Format_ARGB32) &&
+                    displays.displayAt(i).imageSourceCanvasRect == QRect(-100, 10, 137, 91),
+                "direct image pixels and selection use different canvas origins");
+    }
+    require(history.returnToCurrentScreenshot(),
+            "direct image history lost the live editor endpoint");
+    require(selection.pixelSelection() == liveSelection && displays.displayAt(0).image == liveImage,
+            "direct image history changed the live editor");
 }
 
 void navigationMatchesDisplaysAndRestoresLiveEndpoint(const QString& root) {
@@ -1911,6 +1980,8 @@ int main(int argc, char** argv) {
     }
     navigationMatchesDisplaysAndRestoresLiveEndpoint(
         QDir(temporary.path()).filePath(QStringLiteral("navigation")));
+    directImagesPersistWithoutTouchingTheEditor(
+        QDir(temporary.path()).filePath(QStringLiteral("direct-images")));
     navigationSharesCanvasCreationStyles(
         QDir(temporary.path()).filePath(QStringLiteral("creation-styles")));
     fullSessionEntriesRemainReadable(

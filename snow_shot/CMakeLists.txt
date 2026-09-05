@@ -704,6 +704,9 @@ if(WIN32)
 endif()
 
 set(PROJECT_HEADERS
+    include/snow_shot/presentation/directcapturecontroller.h
+    include/snow_shot/presentation/directcaptureworkflow.h
+    include/snow_shot/presentation/directcapturehistory.h
     include/snow_shot/network/snowshotapiclient.h
     include/snow_shot/presentation/screenshottabledocument.h
     include/snow_shot/presentation/screenshottableeditor.h
@@ -822,6 +825,11 @@ set(PROJECT_HEADERS
 )
 
 set(PROJECT_CXX_SOURCES
+    src/presentation/capture/directcapturecontroller.cpp
+    src/presentation/capture/directcapturenative.cpp
+    src/presentation/capture/directcaptureworkflow.cpp
+    src/presentation/capture/directcapturehistory.cpp
+    src/presentation/capture/camerashuttersound.cpp
     src/app/applicationcontroller.cpp
     src/app/main.cpp
     src/app/singleinstancecoordinator.cpp
@@ -1640,6 +1648,39 @@ if(SNOW_SHOT_BUILD_TESTS)
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
     )
 
+    add_executable(snow-shot-direct-capture-workflow-tests
+        tests/direct_capture_workflow_tests.cpp
+        src/presentation/capture/directcaptureworkflow.cpp
+    )
+    target_include_directories(snow-shot-direct-capture-workflow-tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    target_link_libraries(snow-shot-direct-capture-workflow-tests PRIVATE Qt6::Gui)
+    add_test(NAME snow-shot-direct-capture-workflow-tests
+        COMMAND snow-shot-direct-capture-workflow-tests)
+
+    add_executable(snow-shot-direct-capture-frame-tests tests/direct_capture_frame_tests.cpp)
+    target_include_directories(snow-shot-direct-capture-frame-tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/presentation/capture"
+        "${SNOW_SHOT_CAPTURE_CRATES_DIR}/crates/snow-capture-c/include")
+    target_link_libraries(snow-shot-direct-capture-frame-tests PRIVATE Qt6::Gui)
+    add_test(NAME snow-shot-direct-capture-frame-tests COMMAND snow-shot-direct-capture-frame-tests)
+
+    if(WIN32)
+        # Explicit opt-in: captures a visible fixture and its actual monitor.
+        add_executable(snow-shot-direct-capture-native-smoke
+            tests/direct_capture_native_smoke.cpp
+            src/presentation/capture/directcapturenative.cpp)
+        target_compile_definitions(snow-shot-direct-capture-native-smoke PRIVATE NOMINMAX)
+        target_include_directories(snow-shot-direct-capture-native-smoke PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/presentation/capture"
+            "${SNOW_SHOT_CAPTURE_CRATES_DIR}/crates/snow-capture-c/include")
+        target_link_libraries(snow-shot-direct-capture-native-smoke PRIVATE
+            Qt6::Widgets snow_capture_c PkgConfig::SNOW_SHOT_FFMPEG
+            d3d11 dxgi dxguid dwmapi gdi32 ole32 oleaut32 runtimeobject
+            user32 userenv winmm windowsapp ws2_32 advapi32 bcrypt psapi)
+    endif()
+
     add_executable(snow-shot-capture-workflow-tests
         tests/screenshot_capture_workflow_tests.cpp
         include/snow_shot/presentation/screenshotcapturedisplaymodelreconciler.h
@@ -1775,6 +1816,7 @@ if(SNOW_SHOT_BUILD_TESTS)
 
     add_executable(snow-shot-screenshot-history-tests
         tests/screenshot_history_tests.cpp
+        src/presentation/capture/directcapturehistory.cpp
         include/snow_shot/presentation/screenshothistoryservice.h
         include/snow_shot/presentation/screenshotdisplaysession.h
         include/snow_shot/presentation/screenshotgeometry.h

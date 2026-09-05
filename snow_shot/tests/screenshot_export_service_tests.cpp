@@ -172,63 +172,12 @@ QImage waitForPinnedResult(ScreenshotExportService& service,
     return image;
 }
 
-void directSourceKeepsFullWgcFrameForResultAndClipboard() {
-    ExportFixture fixture;
-    require(fixture.isValid(), "export fixture could not initialize the canvas runtime");
-
-    const QRect visibleSelection(12, 8, 37, 29);
-    const ScreenshotResultStyle style;
-    const QImage directSource = patternedImage(QSize(137, 91), 11);
-    const QImage expected = ScreenshotResultCompositor::compose(directSource, style);
-    const QImage displayBefore = fixture.displaySnapshot().copy();
-
-    fixture.service().setNextSelectionSourceImage(directSource);
-    const QImage result = waitForResult(
-        [&](QObject* receiver, auto callback) {
-            return fixture.service().requestSelectionResult(visibleSelection, style, receiver,
-                                                            std::move(callback));
-        },
-        [](QImage image) { return image; });
-
-    require(result.size() == directSource.size(),
-            "result export cropped the direct WGC source to the display selection");
-    require(hasSamePixels(result, expected), "result export changed the direct WGC source pixels");
-    require(fixture.displaySnapshot() == displayBefore,
-            "result export modified the display snapshot retained for history");
-
-    fixture.service().setNextSelectionSourceImage(directSource);
-    const QImage clipboardResult = waitForResult(
-        [&](QObject* receiver, auto callback) {
-            return fixture.service().requestSelectionClipboard(visibleSelection, style, receiver,
-                                                               std::move(callback));
-        },
-        [](ScreenshotSelectionClipboardResult result) {
-            require(result.isValid(), "clipboard export did not produce a valid payload");
-#if defined(Q_OS_WIN) || defined(_WIN32)
-            require(ScreenshotClipboardPayloadTestAccess::hasDib(result.payload),
-                    "plain clipboard export did not prepare CF_DIB");
-            require(!ScreenshotClipboardPayloadTestAccess::hasDibV5(result.payload),
-                    "plain clipboard export unexpectedly prepared CF_DIBV5");
-#endif
-            return std::move(result.image);
-        });
-
-    require(clipboardResult.size() == directSource.size(),
-            "clipboard export cropped the direct WGC source to the display selection");
-    require(hasSamePixels(clipboardResult, expected),
-            "clipboard export changed the direct WGC source pixels");
-    require(fixture.displaySnapshot() == displayBefore,
-            "clipboard export modified the display snapshot retained for history");
-}
-
 void styledClipboardResultRetainsDibV5() {
     ExportFixture fixture;
     require(fixture.isValid(), "styled export fixture could not initialize the canvas runtime");
 
     const QRect visibleSelection(12, 8, 37, 29);
     const ScreenshotResultStyle style{8, 0, QColor(0, 0, 0, 180)};
-    const QImage directSource = patternedImage(QSize(64, 48), 17);
-    fixture.service().setNextSelectionSourceImage(directSource);
 
     const QImage resultImage = waitForResult(
         [&](QObject* receiver, auto callback) {
@@ -316,7 +265,6 @@ void pinnedSelectionMaterializesCompositedImage() {
 
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
-    directSourceKeepsFullWgcFrameForResultAndClipboard();
     styledClipboardResultRetainsDibV5();
     pinnedSelectionMaterializesCompositedImage();
     std::cout << "All screenshot export service tests passed\n";

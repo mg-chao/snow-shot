@@ -4,6 +4,7 @@
 #include "snow_shot/presentation/mainwindow.h"
 #include "snow_shot/presentation/pinnedwindowgroupmanager.h"
 #include "snow_shot/presentation/screenshotcontroller.h"
+#include "snow_shot/presentation/directcapturecontroller.h"
 #include "snow_shot/presentation/screenshotocrrecognitionservice.h"
 #include "snow_shot/presentation/screenshotpinnedwindow.h"
 #include "snow_shot/presentation/systemtraycontroller.h"
@@ -271,14 +272,10 @@ class ApplicationController::Impl {
             }
             break;
         case presentation::GlobalShortcutAction::ScreenshotFullScreen:
-            if (ScreenshotController* controller = ensureScreenshotController()) {
-                controller->captureCurrentMonitor();
-            }
+            ensureDirectCaptureController().captureCurrentMonitor();
             break;
         case presentation::GlobalShortcutAction::ScreenshotFocusedWindow:
-            if (ScreenshotController* controller = ensureScreenshotController()) {
-                controller->captureFocusedWindow();
-            }
+            ensureDirectCaptureController().captureFocusedWindow();
             break;
         case presentation::GlobalShortcutAction::ScreenRecord:
             if (ScreenshotController* controller = ensureScreenshotController()) {
@@ -302,6 +299,20 @@ class ApplicationController::Impl {
             }
             break;
         }
+    }
+
+    presentation::DirectCaptureController& ensureDirectCaptureController() {
+        if (!directCaptureController) {
+            directCaptureController = std::make_unique<presentation::DirectCaptureController>(&q);
+            QObject::connect(directCaptureController.get(),
+                             &presentation::DirectCaptureController::operationFailed, &q,
+                             [this](const QString& message, bool warning) {
+                                 systemTray.showCaptureMessage(message, warning);
+                             });
+            QObject::connect(&app, &QCoreApplication::aboutToQuit, directCaptureController.get(),
+                             &presentation::DirectCaptureController::shutdown);
+        }
+        return *directCaptureController;
     }
 
     void showMainWindow() {
@@ -332,6 +343,7 @@ class ApplicationController::Impl {
     std::unique_ptr<presentation::settings::SettingsRuntimeSession> runtimeSession;
     std::unique_ptr<ScreenshotOcrRecognitionService> ocrRecognition;
     std::unique_ptr<ScreenshotController> screenshotController;
+    std::unique_ptr<presentation::DirectCaptureController> directCaptureController;
     QPointer<MainWindow> mainWindow;
     bool started = false;
 };

@@ -16,6 +16,7 @@
 #include <optional>
 
 namespace snow_shot::storage {
+enum class CaptureHistoryContentKind { ScreenshotSession, Image };
 enum class CaptureHistorySource {
     CopiedToClipboard,
     SavedToFile,
@@ -69,6 +70,7 @@ struct CaptureHistoryResultAsset {
 };
 
 struct CaptureHistoryDraft {
+    CaptureHistoryContentKind contentKind = CaptureHistoryContentKind::ScreenshotSession;
     QString id;
     QDateTime createdUtc;
     QRect canvasBounds;
@@ -94,6 +96,7 @@ struct CaptureHistoryDisplayRecord {
 };
 
 struct CaptureHistoryRecord {
+    CaptureHistoryContentKind contentKind = CaptureHistoryContentKind::ScreenshotSession;
     QString id;
     QDateTime createdUtc;
     QRect canvasBounds;
@@ -105,11 +108,11 @@ struct CaptureHistoryRecord {
     CaptureHistorySource source = CaptureHistorySource::CopiedToClipboard;
 
     friend bool operator==(const CaptureHistoryRecord& first, const CaptureHistoryRecord& second) {
-        return first.id == second.id && first.createdUtc == second.createdUtc &&
-               first.canvasBounds == second.canvasBounds && first.selection == second.selection &&
-               first.displays == second.displays && first.result == second.result &&
-               first.canvasBytes == second.canvasBytes && first.totalBytes == second.totalBytes &&
-               first.source == second.source;
+        return first.contentKind == second.contentKind && first.id == second.id &&
+               first.createdUtc == second.createdUtc && first.canvasBounds == second.canvasBounds &&
+               first.selection == second.selection && first.displays == second.displays &&
+               first.result == second.result && first.canvasBytes == second.canvasBytes &&
+               first.totalBytes == second.totalBytes && first.source == second.source;
     }
 };
 

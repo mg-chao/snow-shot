@@ -50,6 +50,20 @@ pub struct SnowCaptureWindowSessionImpl {
     frame: Frame,
 }
 
+pub struct SnowCaptureMonitorSessionImpl {
+    session: CaptureSession,
+    entry: MonitorEntry,
+    frame: Option<SnapshotFrame>,
+}
+
+#[repr(C)]
+pub struct SnowCaptureMonitorSessionConfig {
+    device_name_utf8: *const c_char,
+    capture_retry_count: usize,
+    pixel_format: u8,
+    reserved: [u8; 31],
+}
+
 pub struct SnowCaptureCancellationTokenImpl {
     canceled: Arc<AtomicBool>,
 }
@@ -965,6 +979,132 @@ fn reset_workers_to_prepared(session: &mut SnowCaptureDesktopSessionImpl) -> Res
     }
     session.prepared = true;
     Ok(())
+}
+
+fn select_monitor_entry(
+    entries: Vec<MonitorEntry>,
+    device_name: &str,
+) -> Result<MonitorEntry, String> {
+    entries
+        .into_iter()
+        .find(|entry| entry.id.name() == device_name)
+        .ok_or_else(|| format!("capture monitor is unavailable: {device_name}"))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn snow_capture_monitor_session_create(
+    config: *const SnowCaptureMonitorSessionConfig,
+) -> *mut SnowCaptureMonitorSessionImpl {
+    let result = (|| {
+        let config = unsafe { config.as_ref() }.ok_or("monitor session config is null")?;
+        if config.device_name_utf8.is_null() {
+            return Err("monitor device name is null".to_owned());
+        }
+        let name = unsafe { CStr::from_ptr(config.device_name_utf8) }
+            .to_str()
+            .map_err(|error| error.to_string())?;
+        if name.is_empty() {
+            return Err("monitor device name is empty".to_owned());
+        }
+        let options = snapshot_options(
+            config.capture_retry_count,
+            0,
+            parse_pixel_format(config.pixel_format)?,
+        )?;
+        let system = CaptureSystem::builder()
+            .build()
+            .map_err(|error| error.to_string())?;
+        let entry = select_monitor_entry(build_monitor_entries(&system)?, name)?;
+        let session = system
+            .open_session(CaptureTarget::Monitor(entry.id.clone()), options)
+            .map_err(|error| error.to_string())?;
+        Ok(SnowCaptureMonitorSessionImpl {
+            session,
+            entry,
+            frame: None,
+        })
+    })();
+    match result {
+        Ok(session) => {
+            clear_last_error();
+            Box::into_raw(Box::new(session))
+        }
+        Err(error) => {
+            set_last_error(error);
+            ptr::null_mut()
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn snow_capture_monitor_session_destroy(
+    session: *mut SnowCaptureMonitorSessionImpl,
+) {
+    if !session.is_null() {
+        drop(unsafe { Box::from_raw(session) });
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn snow_capture_monitor_session_capture(
+    session: *mut SnowCaptureMonitorSessionImpl,
+    out_info: *mut SnowCaptureFrameInfo,
+) -> u8 {
+    let result = (|| {
+        let session = unsafe { session.as_mut() }.ok_or("monitor session is null")?;
+        if out_info.is_null() {
+            return Err("monitor frame out_info is null".to_owned());
+        }
+        session.frame = None;
+        let frame = session
+            .session
+            .capture_once()
+            .map_err(|error| error.to_string())?;
+        if session.session.active_capture_access_count() != 0 {
+            return Err("capture access remained active after one-shot monitor capture".to_owned());
+        }
+        let target = session
+            .session
+            .target_info_for_backend(frame.metadata().backend_kind())
+            .map_err(|error| error.to_string())?;
+        let mut entry = session.entry.clone();
+        entry.x = target.origin_x;
+        entry.y = target.origin_y;
+        session.frame = Some(SnapshotFrame {
+            entry,
+            frame: Arc::new(frame),
+        });
+        write_snapshot_frame_info(session.frame.as_ref().unwrap(), out_info)
+    })();
+    match result {
+        Ok(()) => {
+            clear_last_error();
+            1
+        }
+        Err(error) => {
+            set_last_error(error);
+            0
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn snow_capture_monitor_session_frame_retain(
+    session: *const SnowCaptureMonitorSessionImpl,
+) -> *mut SnowCaptureFrameLeaseImpl {
+    let frame = unsafe { session.as_ref() }.and_then(|session| session.frame.as_ref());
+    match frame {
+        Some(frame) => {
+            clear_last_error();
+            Box::into_raw(Box::new(SnowCaptureFrameLeaseImpl {
+                _frame: Arc::clone(&frame.frame),
+            }))
+        }
+        None => {
+            set_last_error("monitor session has no captured frame");
+            ptr::null_mut()
+        }
+    }
 }
 
 fn backend_kind_ptr(session: &SnowCaptureDesktopSessionImpl) -> *const c_char {
@@ -2852,6 +2992,39 @@ mod tests {
             reserved: [0; 29],
         };
         assert!(unsafe { snow_capture_region_session_create(&config) }.is_null());
+    }
+
+    #[test]
+    fn monitor_session_rejects_missing_names_without_opening_capture() {
+        assert!(unsafe { snow_capture_monitor_session_create(ptr::null()) }.is_null());
+        let mut config = SnowCaptureMonitorSessionConfig {
+            device_name_utf8: ptr::null(),
+            capture_retry_count: 1,
+            pixel_format: 0,
+            reserved: [0; 31],
+        };
+        assert!(unsafe { snow_capture_monitor_session_create(&config) }.is_null());
+        config.device_name_utf8 = c"".as_ptr();
+        assert!(unsafe { snow_capture_monitor_session_create(&config) }.is_null());
+        assert_eq!(
+            unsafe { snow_capture_monitor_session_capture(ptr::null_mut(), ptr::null_mut()) },
+            0
+        );
+        assert!(unsafe { snow_capture_monitor_session_frame_retain(ptr::null()) }.is_null());
+    }
+
+    #[test]
+    fn monitor_selection_requires_exact_device_identity() {
+        let first = test_entry();
+        let mut second = test_entry();
+        second.id = MonitorId::from_name(2, "secondary", false);
+        assert_eq!(
+            select_monitor_entry(vec![first.clone(), second.clone()], "secondary")
+                .unwrap()
+                .id,
+            second.id
+        );
+        assert!(select_monitor_entry(vec![first, second], "disconnected").is_err());
     }
 
     #[test]
