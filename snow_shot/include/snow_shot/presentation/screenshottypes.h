@@ -42,6 +42,7 @@ struct ScreenshotCaptureRequest {
     quint64 requestId = 0;
     bool refreshLayout = false;
     bool restoreOriginalScreenColors = false;
+    bool captureCursor = false;
 };
 
 struct ScreenshotDisplayPresentationState {

@@ -813,20 +813,26 @@ void captureSnapshotsScreenColorSetting() {
     ScreenshotIntelligentSelectionModel intelligentSelection;
     CaptureRuntime runtime;
     bool enabled = false;
+    bool captureCursor = false;
     ScreenshotCaptureWorkflowContext context{
         state, runtime, geometry, displays, interaction, selection, intelligentSelection, {}};
     context.restoreOriginalScreenColors = [&enabled]() { return enabled; };
+    context.captureCursor = [&captureCursor]() { return captureCursor; };
     ScreenshotCaptureWorkflow workflow(context);
     workflow.startCapture();
     require(!runtime.lastCaptureRequest.restoreOriginalScreenColors &&
-                !state.restoreOriginalScreenColors,
-            "capture must propagate the disabled color setting");
+                !state.restoreOriginalScreenColors && !runtime.lastCaptureRequest.captureCursor &&
+                !state.captureCursor,
+            "capture must propagate disabled screenshot settings");
     enabled = true;
-    require(!state.restoreOriginalScreenColors, "active capture must retain its setting snapshot");
+    captureCursor = true;
+    require(!state.restoreOriginalScreenColors && !state.captureCursor,
+            "active capture must retain its setting snapshot");
     workflow.startCapture();
     require(runtime.lastCaptureRequest.restoreOriginalScreenColors &&
-                state.restoreOriginalScreenColors,
-            "the next capture must observe the changed color setting");
+                state.restoreOriginalScreenColors && runtime.lastCaptureRequest.captureCursor &&
+                state.captureCursor,
+            "the next capture must observe changed screenshot settings");
 }
 
 int main() {

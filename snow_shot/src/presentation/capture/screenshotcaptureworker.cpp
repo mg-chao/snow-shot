@@ -88,6 +88,9 @@ void ScreenshotCaptureWorker::capture(const ScreenshotCaptureRequest& request,
     if (request.restoreOriginalScreenColors) {
         nativeRequest.flags |= SNOW_CAPTURE_SCREENSHOT_REQUEST_RESTORE_ORIGINAL_COLORS;
     }
+    if (request.captureCursor) {
+        nativeRequest.flags |= SNOW_CAPTURE_SCREENSHOT_REQUEST_INCLUDE_CURSOR;
+    }
     nativeRequest.cancellation_token = cancellationToken;
 
     SnowCaptureScreenshotResult* nativeResult = nullptr;
