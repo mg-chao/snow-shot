@@ -1,4 +1,12 @@
 //! Best-effort reversal of the Windows full-screen Magnifier color matrix.
+//!
+//! DXGI HDR sources are corrected in linear scRGB before clamping, SDR white-level
+//! normalization, and tone mapping. This restores SDR content on HDR displays;
+//! it does not require reversing the tone mapper. GPU conversion consumes the
+//! correction in its existing shader pass, while CPU conversion fuses it into
+//! the existing HDR kernels. Neither path reapplies it to GPU-converted pixels.
+//! SDR sources use the corresponding encoded RGB matrix. WGC already returns
+//! original pixels and does not opt into either transform.
 
 use nalgebra::{Matrix3, Vector3};
 
@@ -35,6 +43,14 @@ pub struct ScreenColorTransform {
 }
 
 impl ScreenColorTransform {
+    /// Floating-point DXGI surfaces carry the effect in linear scRGB units.
+    pub(crate) fn linear_rows(self) -> [[f32; 4]; 3] {
+        self.rows.map(|mut row| {
+            row[3] /= 255.0;
+            row
+        })
+    }
+
     /// Accepts the row-major MAGCOLOREFFECT matrix (row-vector convention).
     /// Identity, unsupported alpha effects, and unstable inverses return None.
     pub fn from_magnifier_matrix(matrix: &[f32; 25]) -> Option<Self> {

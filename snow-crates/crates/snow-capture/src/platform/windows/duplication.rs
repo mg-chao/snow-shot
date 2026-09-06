@@ -1881,15 +1881,7 @@ struct OutputCapturer {
 
 impl OutputCapturer {
     fn effective_screen_transform(&self) -> Option<crate::color_effect::ScreenColorTransform> {
-        if self.hdr_to_sdr.is_none()
-            && self
-                .cached_src_desc
-                .is_some_and(|desc| desc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT)
-        {
-            self.screen_color_transform
-        } else {
-            None
-        }
+        self.staging_ring.screen_color_transform
     }
 
     fn set_screen_color_transform(
@@ -2225,13 +2217,7 @@ impl OutputCapturer {
         D3D11_TEXTURE2D_DESC,
         Option<HdrFrameContext>,
     )> {
-        // HDR tone mapping is not invertible; only correct native SDR surfaces.
-        self.staging_ring.screen_color_transform =
-            if self.hdr_to_sdr.is_none() && src_desc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT {
-                self.screen_color_transform
-            } else {
-                None
-            };
+        self.staging_ring.screen_color_transform = self.screen_color_transform;
         if src_desc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT {
             return Ok((desktop_texture.clone(), src_desc, self.hdr_to_sdr));
         }
@@ -2248,9 +2234,12 @@ impl OutputCapturer {
                         desktop_texture,
                         &src_desc,
                         params.sanitized(),
+                        self.screen_color_transform,
                     )?;
                     let output_tex = output.clone();
                     let out_desc = tonemapper.output_desc();
+                    // The shader already reversed the effect before tone mapping.
+                    self.staging_ring.screen_color_transform = None;
                     return Ok((output_tex, out_desc, None));
                 }
             }
@@ -2259,10 +2248,16 @@ impl OutputCapturer {
                 self.gpu_f16_converter = GpuF16Converter::new(&self.device).ok();
             }
             if let Some(converter) = self.gpu_f16_converter.as_mut() {
-                let output =
-                    converter.convert(&self.device, &self.context, desktop_texture, &src_desc)?;
+                let output = converter.convert(
+                    &self.device,
+                    &self.context,
+                    desktop_texture,
+                    &src_desc,
+                    self.screen_color_transform,
+                )?;
                 let output_tex = output.clone();
                 let out_desc = converter.output_desc();
+                self.staging_ring.screen_color_transform = None;
                 return Ok((output_tex, out_desc, None));
             }
         }

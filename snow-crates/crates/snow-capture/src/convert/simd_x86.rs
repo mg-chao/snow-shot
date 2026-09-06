@@ -938,6 +938,31 @@ pub(crate) unsafe fn convert_f16_rgba_to_srgb_hdr_f16c_fma_prepared_opaque_unche
     }
 }
 
+#[target_feature(enable = "avx2")]
+unsafe fn restore_hdr_screen_colors(
+    rgb: [std::arch::x86_64::__m256; 3],
+    rows: Option<[[f32; 4]; 3]>,
+) -> [std::arch::x86_64::__m256; 3] {
+    use std::arch::x86_64::*;
+    let restored = if let Some(rows) = rows {
+        rows.map(|row| {
+            _mm256_add_ps(
+                _mm256_add_ps(
+                    _mm256_add_ps(
+                        _mm256_mul_ps(_mm256_set1_ps(row[0]), rgb[0]),
+                        _mm256_mul_ps(_mm256_set1_ps(row[1]), rgb[1]),
+                    ),
+                    _mm256_mul_ps(_mm256_set1_ps(row[2]), rgb[2]),
+                ),
+                _mm256_set1_ps(row[3]),
+            )
+        })
+    } else {
+        rgb
+    };
+    restored.map(|channel| _mm256_max_ps(channel, _mm256_setzero_ps()))
+}
+
 #[target_feature(enable = "avx2,f16c")]
 unsafe fn convert_f16_rgba_to_srgb_hdr_f16c_inner<
     const USE_LUT: bool,
@@ -1151,9 +1176,14 @@ unsafe fn convert_f16_rgba_to_srgb_hdr_f16c_inner<
             let bb = _mm256_shuffle_ps(t1, t3, 0b01_00_01_00);
             let aa = _mm256_shuffle_ps(t1, t3, 0b11_10_11_10);
 
-            let mut r = _mm256_max_ps(_mm256_permutevar8x32_ps(rr, perm), v_zero);
-            let mut g = _mm256_max_ps(_mm256_permutevar8x32_ps(gg, perm), v_zero);
-            let mut b = _mm256_max_ps(_mm256_permutevar8x32_ps(bb, perm), v_zero);
+            let [mut r, mut g, mut b] = restore_hdr_screen_colors(
+                [
+                    _mm256_permutevar8x32_ps(rr, perm),
+                    _mm256_permutevar8x32_ps(gg, perm),
+                    _mm256_permutevar8x32_ps(bb, perm),
+                ],
+                prepared.screen_color_rows,
+            );
             let a = _mm256_min_ps(
                 _mm256_max_ps(_mm256_permutevar8x32_ps(aa, perm), v_zero),
                 v_one,
@@ -1872,9 +1902,14 @@ unsafe fn convert_f16_rgba_to_srgb_hdr_avx512_inner<
                 let bb = _mm256_shuffle_ps(t1, t3, 0b01_00_01_00);
                 let aa = _mm256_shuffle_ps(t1, t3, 0b11_10_11_10);
 
-                let mut r = _mm256_max_ps(_mm256_permutevar8x32_ps(rr, perm), v_zero);
-                let mut g = _mm256_max_ps(_mm256_permutevar8x32_ps(gg, perm), v_zero);
-                let mut b = _mm256_max_ps(_mm256_permutevar8x32_ps(bb, perm), v_zero);
+                let [mut r, mut g, mut b] = restore_hdr_screen_colors(
+                    [
+                        _mm256_permutevar8x32_ps(rr, perm),
+                        _mm256_permutevar8x32_ps(gg, perm),
+                        _mm256_permutevar8x32_ps(bb, perm),
+                    ],
+                    prepared.screen_color_rows,
+                );
                 let a = _mm256_min_ps(
                     _mm256_max_ps(_mm256_permutevar8x32_ps(aa, perm), v_zero),
                     v_one,

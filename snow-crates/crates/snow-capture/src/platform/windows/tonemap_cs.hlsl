@@ -11,6 +11,9 @@ cbuffer Params : register(b0) {
     float lut_inv_step;
     float _pad1;
     float _pad2;
+    float4 color_row_r;
+    float4 color_row_g;
+    float4 color_row_b;
 };
 
 Texture2D<float4> src_tex : register(t0);
@@ -30,6 +33,15 @@ static const float SDR_OUTPUT_BLACK_NITS = 0.1;
 static const float HDR_INPUT_BLACK_NITS = 0.001;
 static const float EPSILON = 1e-6;
 static const uint FLAG_USE_LUT = 1u;
+static const uint FLAG_RESTORE_COLORS = 2u;
+
+float3 restore_screen_colors(float3 rgb) {
+    if ((flags & FLAG_RESTORE_COLORS) != 0u) {
+        float4 input = float4(rgb, 1.0);
+        return float3(dot(color_row_r, input), dot(color_row_g, input), dot(color_row_b, input));
+    }
+    return rgb;
+}
 
 float nits_to_pq(float nits) {
     float p = pow(max(nits, 0.0) / PQ_ABSOLUTE_NITS, PQ_M1);
@@ -134,7 +146,7 @@ void main(uint3 dtid : SV_DispatchThreadID) {
     }
 
     float4 src = src_tex[coord];
-    float3 rgb = inverse_windows_sdr_boost(max(src.rgb, 0.0));
+    float3 rgb = inverse_windows_sdr_boost(max(restore_screen_colors(src.rgb), 0.0));
     bool is_sdr = is_sdr_identity_pixel(rgb);
     if (!is_sdr) {
         rgb = tone_map_hdr_pixel_bt2390(rgb);
@@ -152,7 +164,7 @@ void main_1d(uint3 dtid : SV_DispatchThreadID) {
     }
 
     float4 src = src_tex[coord];
-    float3 rgb = inverse_windows_sdr_boost(max(src.rgb, 0.0));
+    float3 rgb = inverse_windows_sdr_boost(max(restore_screen_colors(src.rgb), 0.0));
     bool is_sdr = is_sdr_identity_pixel(rgb);
     if (!is_sdr) {
         rgb = tone_map_hdr_pixel_bt2390(rgb);
@@ -168,7 +180,7 @@ void convert_f16_pixel(uint2 coord, uint w, uint h) {
     }
 
     float4 src = src_tex[coord];
-    float3 rgb = saturate(src.rgb);
+    float3 rgb = saturate(restore_screen_colors(src.rgb));
     float3 srgb = float3(linear_to_srgb(rgb.r), linear_to_srgb(rgb.g), linear_to_srgb(rgb.b));
     dst_tex[coord] = float4(srgb, saturate(src.a));
 }

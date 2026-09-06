@@ -146,7 +146,7 @@ impl Default for HdrFrameContext {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SurfaceConversionOptions {
-    /// Inverse effect for native 8-bit SDR sources; ignored for RGBA16Float.
+    /// Inverse effect in encoded RGB for 8-bit sources, or linear scRGB before F16 tone mapping.
     pub screen_color_transform: Option<crate::color_effect::ScreenColorTransform>,
     pub hdr_to_sdr: Option<HdrFrameContext>,
     pub force_opaque_alpha: bool,
@@ -303,11 +303,7 @@ impl SurfaceRowConverter {
             None
         };
         Self {
-            screen_color_transform: if format == SurfacePixelFormat::Rgba16Float {
-                None
-            } else {
-                options.screen_color_transform
-            },
+            screen_color_transform: options.screen_color_transform,
             format,
             output_pixel_format: options.output_pixel_format,
             plan: surface_format_plan(format, options),
@@ -363,6 +359,19 @@ impl SurfaceRowConverter {
         }
 
         if let Some(transform) = self.screen_color_transform {
+            if self.format == SurfacePixelFormat::Rgba16Float {
+                unsafe {
+                    color_effect::convert_f16_surface(
+                        layout,
+                        self.output_pixel_format,
+                        self.force_opaque_alpha,
+                        transform,
+                        self.hdr_params,
+                        allow_parallel,
+                    );
+                }
+                return;
+            }
             unsafe {
                 color_effect::convert_surface(
                     layout,
@@ -555,11 +564,16 @@ pub fn convert_row_to_rgba_with_options(
     pixel_count: usize,
     options: SurfaceConversionOptions,
 ) {
-    if options.screen_color_transform.is_some() && format != SurfacePixelFormat::Rgba16Float {
+    if options.screen_color_transform.is_some() {
         convert_surface_to_rgba(
             format,
             src_row,
-            pixel_count * 4,
+            pixel_count
+                * if format == SurfacePixelFormat::Rgba16Float {
+                    8
+                } else {
+                    4
+                },
             dst_row,
             pixel_count * 4,
             pixel_count,
@@ -1324,9 +1338,20 @@ pub(crate) unsafe fn convert_surface_to_rgba_unchecked(
         return;
     }
 
-    if format != SurfacePixelFormat::Rgba16Float
-        && let Some(transform) = options.screen_color_transform
-    {
+    if let Some(transform) = options.screen_color_transform {
+        if format == SurfacePixelFormat::Rgba16Float {
+            unsafe {
+                color_effect::convert_f16_surface(
+                    layout,
+                    options.output_pixel_format,
+                    options.force_opaque_alpha,
+                    transform,
+                    options.hdr_to_sdr,
+                    true,
+                );
+            }
+            return;
+        }
         unsafe {
             color_effect::convert_surface(
                 layout,

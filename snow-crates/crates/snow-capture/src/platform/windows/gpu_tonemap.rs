@@ -12,6 +12,7 @@ use windows::Win32::Graphics::Dxgi::Common::{
 };
 use windows::core::Interface;
 
+use crate::color_effect::ScreenColorTransform;
 use crate::convert::{HDR_LUMA_LUT_SIZE, HdrFrameContext, build_bt2390_luma_lut};
 use crate::error::{CaptureError, CaptureResult};
 
@@ -153,7 +154,7 @@ fn compile_shader_runtime_with_entry(entry: &[u8]) -> CaptureResult<Vec<u8>> {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 struct GpuParams {
     sdr_white_nits: f32,
     hdr_peak_nits: f32,
@@ -167,9 +168,21 @@ struct GpuParams {
     lut_inv_step: f32,
     _pad1: f32,
     _pad2: f32,
+    color_rows: [[f32; 4]; 3],
+}
+
+impl GpuParams {
+    fn with_color_transform(mut self, transform: Option<ScreenColorTransform>) -> Self {
+        if let Some(transform) = transform {
+            self.flags |= GPU_FLAG_RESTORE_COLORS;
+            self.color_rows = transform.linear_rows();
+        }
+        self
+    }
 }
 
 const GPU_FLAG_USE_LUT: u32 = 1;
+const GPU_FLAG_RESTORE_COLORS: u32 = 2;
 
 /// Threshold below which we use the 1D dispatch path.
 /// For textures smaller than 512px on either axis, the 16x16 thread
@@ -407,7 +420,7 @@ impl GpuComputePass {
 pub(crate) struct GpuTonemapper {
     pass: GpuComputePass,
     /// Combined cache of tonemap params and dimensions written to the
-    cached_cbuf_state: Option<(HdrFrameContext, u32, u32, u32)>,
+    cached_cbuf_state: Option<GpuParams>,
     cached_lut_state: Option<(HdrFrameContext, f32, f32)>,
     lut_tex: Option<ID3D11Texture2D>,
     lut_srv: Option<ID3D11ShaderResourceView>,
@@ -497,6 +510,7 @@ impl GpuTonemapper {
         source: &ID3D11Texture2D,
         source_desc: &D3D11_TEXTURE2D_DESC,
         params: HdrFrameContext,
+        screen_color_transform: Option<ScreenColorTransform>,
     ) -> CaptureResult<&ID3D11Texture2D> {
         let params = params.sanitized();
         let width = source_desc.Width;
@@ -521,26 +535,25 @@ impl GpuTonemapper {
                 (None, 0.0, 0.0, 0)
             };
 
-        let needs_cbuf_update = self
-            .cached_cbuf_state
-            .is_none_or(|(p, w, h, f)| p != params || w != width || h != height || f != flags);
-        if needs_cbuf_update {
-            let gpu_params = GpuParams {
-                sdr_white_nits: params.sdr_white_nits,
-                hdr_peak_nits: params.hdr_peak_nits,
-                sdr_identity_eps: 1e-3,
-                flags,
-                tex_width: width,
-                tex_height: height,
-                lut_size_minus_one: (HDR_LUMA_LUT_SIZE - 1) as u32,
-                _pad0: 0,
-                lut_input_max,
-                lut_inv_step,
-                _pad1: 0.0,
-                _pad2: 0.0,
-            };
+        let gpu_params = GpuParams {
+            sdr_white_nits: params.sdr_white_nits,
+            hdr_peak_nits: params.hdr_peak_nits,
+            sdr_identity_eps: 1e-3,
+            flags,
+            tex_width: width,
+            tex_height: height,
+            lut_size_minus_one: (HDR_LUMA_LUT_SIZE - 1) as u32,
+            _pad0: 0,
+            lut_input_max,
+            lut_inv_step,
+            _pad1: 0.0,
+            _pad2: 0.0,
+            color_rows: [[0.; 4]; 3],
+        }
+        .with_color_transform(screen_color_transform);
+        if self.cached_cbuf_state != Some(gpu_params) {
             self.pass.update_cbuf(context, &gpu_params)?;
-            self.cached_cbuf_state = Some((params, width, height, flags));
+            self.cached_cbuf_state = Some(gpu_params);
         }
 
         let srv = self.pass.get_or_create_srv(device, source)?;
@@ -563,7 +576,7 @@ impl GpuTonemapper {
 /// CPU readback path only needs to handle RGBA8 (a simple memcpy-equivalent).
 pub(crate) struct GpuF16Converter {
     pass: GpuComputePass,
-    cached_cbuf_state: Option<(u32, u32)>,
+    cached_cbuf_state: Option<GpuParams>,
 }
 
 impl GpuF16Converter {
@@ -588,29 +601,31 @@ impl GpuF16Converter {
         context: &ID3D11DeviceContext,
         source: &ID3D11Texture2D,
         source_desc: &D3D11_TEXTURE2D_DESC,
+        screen_color_transform: Option<ScreenColorTransform>,
     ) -> CaptureResult<&ID3D11Texture2D> {
         let width = source_desc.Width;
         let height = source_desc.Height;
         self.pass.ensure_output(device, width, height)?;
 
-        let needs_cbuf_update = self.cached_cbuf_state != Some((width, height));
-        if needs_cbuf_update {
-            let gpu_params = GpuParams {
-                sdr_white_nits: 0.0,
-                hdr_peak_nits: 0.0,
-                sdr_identity_eps: 0.0,
-                flags: 0,
-                tex_width: width,
-                tex_height: height,
-                lut_size_minus_one: 0,
-                _pad0: 0,
-                lut_input_max: 0.0,
-                lut_inv_step: 0.0,
-                _pad1: 0.0,
-                _pad2: 0.0,
-            };
+        let gpu_params = GpuParams {
+            sdr_white_nits: 0.0,
+            hdr_peak_nits: 0.0,
+            sdr_identity_eps: 0.0,
+            flags: 0,
+            tex_width: width,
+            tex_height: height,
+            lut_size_minus_one: 0,
+            _pad0: 0,
+            lut_input_max: 0.0,
+            lut_inv_step: 0.0,
+            _pad1: 0.0,
+            _pad2: 0.0,
+            color_rows: [[0.; 4]; 3],
+        }
+        .with_color_transform(screen_color_transform);
+        if self.cached_cbuf_state != Some(gpu_params) {
             self.pass.update_cbuf(context, &gpu_params)?;
-            self.cached_cbuf_state = Some((width, height));
+            self.cached_cbuf_state = Some(gpu_params);
         }
 
         let srv = self.pass.get_or_create_srv(device, source)?;
@@ -624,5 +639,144 @@ impl GpuF16Converter {
 
     pub(crate) fn release_capture_surfaces(&mut self) {
         self.pass.release_capture_surfaces();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use windows::Win32::Graphics::Direct3D::{D3D_DRIVER_TYPE_WARP, D3D_FEATURE_LEVEL_11_0};
+    use windows::Win32::Graphics::Direct3D11::*;
+    use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R16G16B16A16_FLOAT;
+
+    fn read_pixel(
+        device: &ID3D11Device,
+        context: &ID3D11DeviceContext,
+        texture: &ID3D11Texture2D,
+    ) -> anyhow::Result<[u8; 4]> {
+        let mut desc = D3D11_TEXTURE2D_DESC::default();
+        unsafe { texture.GetDesc(&mut desc) };
+        desc.Usage = D3D11_USAGE_STAGING;
+        desc.BindFlags = 0;
+        desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ.0 as u32;
+        let mut staging = None;
+        unsafe { device.CreateTexture2D(&desc, None, Some(&mut staging)) }?;
+        let staging = staging.unwrap();
+        let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+        unsafe {
+            context.CopyResource(&staging, texture);
+            context.Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))?;
+            let pixel = std::ptr::read_unaligned(mapped.pData.cast::<[u8; 4]>());
+            context.Unmap(&staging, 0);
+            Ok(pixel)
+        }
+    }
+
+    #[test]
+    fn hdr_color_correction_shader_restores_sdr_and_updates_cached_constants() -> anyhow::Result<()>
+    {
+        let mut device = None;
+        let mut context = None;
+        unsafe {
+            D3D11CreateDevice(
+                None,
+                D3D_DRIVER_TYPE_WARP,
+                windows::Win32::Foundation::HMODULE::default(),
+                D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                Some(&[D3D_FEATURE_LEVEL_11_0]),
+                D3D11_SDK_VERSION,
+                Some(&mut device),
+                None,
+                Some(&mut context),
+            )?;
+        }
+        let device = device.unwrap();
+        let context = context.unwrap();
+        let original = [0.07f32, 0.35, 2.8, 0.5];
+        let filtered = [0.93f32, 0.65, -1.8, 0.5].map(|v| half::f16::from_f32(v).to_bits());
+        let desc = D3D11_TEXTURE2D_DESC {
+            Width: 1,
+            Height: 1,
+            MipLevels: 1,
+            ArraySize: 1,
+            Format: DXGI_FORMAT_R16G16B16A16_FLOAT,
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
+            },
+            Usage: D3D11_USAGE_DEFAULT,
+            BindFlags: D3D11_BIND_SHADER_RESOURCE.0 as u32,
+            ..Default::default()
+        };
+        let data = D3D11_SUBRESOURCE_DATA {
+            pSysMem: filtered.as_ptr().cast(),
+            SysMemPitch: 8,
+            SysMemSlicePitch: 0,
+        };
+        let mut source = None;
+        unsafe { device.CreateTexture2D(&desc, Some(&data), Some(&mut source)) }?;
+        let source = source.unwrap();
+        let transform = ScreenColorTransform {
+            inverted: true,
+            rows: [
+                [-1., 0., 0., 255.],
+                [0., -1., 0., 255.],
+                [0., 0., -1., 255.],
+            ],
+        };
+        let params = HdrFrameContext {
+            sdr_white_nits: 280.,
+            ..Default::default()
+        };
+        let bytes = original
+            .into_iter()
+            .flat_map(|v| half::f16::from_f32(v).to_bits().to_ne_bytes())
+            .collect::<Vec<_>>();
+        for use_1d in [true, false] {
+            for hdr in [true, false] {
+                let mut mapper = GpuTonemapper::new(&device)?;
+                let mut converter = GpuF16Converter::new(&device)?;
+                if !use_1d {
+                    mapper.pass.cs_1d = None;
+                    converter.pass.cs_1d = None;
+                }
+                let mut expected = [0u8; 4];
+                crate::convert::convert_row_to_rgba_with_options(
+                    crate::convert::SurfacePixelFormat::Rgba16Float,
+                    &bytes,
+                    &mut expected,
+                    1,
+                    crate::convert::SurfaceConversionOptions {
+                        hdr_to_sdr: hdr.then_some(params),
+                        ..Default::default()
+                    },
+                );
+                let mut baseline = None;
+                for correction in [None, Some(transform), None] {
+                    let output = if hdr {
+                        mapper.tonemap(&device, &context, &source, &desc, params, correction)?
+                    } else {
+                        converter.convert(&device, &context, &source, &desc, correction)?
+                    };
+                    let actual = read_pixel(&device, &context, output)?;
+                    if correction.is_some() {
+                        for (a, b) in actual.into_iter().zip(expected) {
+                            assert!(
+                                a.abs_diff(b) <= 1,
+                                "GPU {actual:?} != SDR baseline {expected:?}"
+                            );
+                        }
+                    } else if let Some(baseline) = baseline {
+                        assert_eq!(
+                            actual, baseline,
+                            "disabling correction must update GPU constants"
+                        );
+                    } else {
+                        baseline = Some(actual);
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }

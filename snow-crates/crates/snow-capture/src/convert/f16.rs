@@ -92,6 +92,7 @@ pub(crate) struct HdrBt2390Curve {
 
 #[derive(Clone)]
 pub(crate) struct HdrPreparedContext {
+    pub(crate) screen_color_rows: Option<[[f32; 4]; 3]>,
     pub(crate) inv_boost: f32,
     pub(crate) curve: HdrBt2390Curve,
     pub(crate) luma_lut: Option<HdrLumaLut>,
@@ -265,6 +266,7 @@ pub(crate) fn prepare_hdr_context(params: HdrFrameContext) -> HdrPreparedContext
         None
     };
     HdrPreparedContext {
+        screen_color_rows: None,
         inv_boost,
         curve,
         luma_lut,
@@ -585,13 +587,9 @@ unsafe fn convert_f16_rgba_to_srgb_hdr_scalar_prepared_impl<const FORCE_OPAQUE_A
         #[cfg(target_endian = "big")]
         let packed = packed.swap_bytes();
 
-        let r = f16::from_bits((packed & 0xFFFF) as u16).to_f32().max(0.0);
-        let g = f16::from_bits(((packed >> 16) & 0xFFFF) as u16)
-            .to_f32()
-            .max(0.0);
-        let b = f16::from_bits(((packed >> 32) & 0xFFFF) as u16)
-            .to_f32()
-            .max(0.0);
+        let r = f16::from_bits((packed & 0xFFFF) as u16).to_f32();
+        let g = f16::from_bits(((packed >> 16) & 0xFFFF) as u16).to_f32();
+        let b = f16::from_bits(((packed >> 32) & 0xFFFF) as u16).to_f32();
         let a = if FORCE_OPAQUE_ALPHA {
             1.0
         } else {
@@ -601,6 +599,10 @@ unsafe fn convert_f16_rgba_to_srgb_hdr_scalar_prepared_impl<const FORCE_OPAQUE_A
         };
 
         let mut rgb = [r, g, b];
+        if let Some(rows) = prepared.screen_color_rows {
+            rgb = rows.map(|row| row[0] * r + row[1] * g + row[2] * b + row[3]);
+        }
+        rgb = rgb.map(|v| v.max(0.0));
         inverse_windows_sdr_boost(&mut rgb, inv_boost);
         if !is_sdr_identity_pixel(rgb) {
             if let Some(lut) = hdr_lut {
@@ -620,6 +622,38 @@ unsafe fn convert_f16_rgba_to_srgb_hdr_scalar_prepared_impl<const FORCE_OPAQUE_A
         src_words = unsafe { src_words.add(4) };
         dst_px = unsafe { dst_px.add(1) };
         remaining -= 1;
+    }
+}
+
+pub(super) unsafe fn convert_corrected_row(
+    src: *const u8,
+    dst: *mut u8,
+    count: usize,
+    rows: [[f32; 4]; 3],
+    output: crate::CapturePixelFormat,
+    opaque: bool,
+) {
+    for i in 0..count {
+        let pixel = unsafe { std::ptr::read_unaligned(src.add(i * 8).cast::<[u16; 4]>()) };
+        let input = pixel.map(|bits| f16::from_bits(bits).to_f32());
+        // Undo the scRGB effect before clamping negative values or removing SDR white boost.
+        let rgb = rows.map(|row| {
+            (row[0] * input[0] + row[1] * input[1] + row[2] * input[2] + row[3]).max(0.0)
+        });
+        let mut encoded = [
+            linear_to_srgb_u8(rgb[0]),
+            linear_to_srgb_u8(rgb[1]),
+            linear_to_srgb_u8(rgb[2]),
+            if opaque {
+                255
+            } else {
+                (input[3].clamp(0., 1.) * 255. + 0.5) as u8
+            },
+        ];
+        if output == crate::CapturePixelFormat::Bgra8 {
+            encoded.swap(0, 2);
+        }
+        unsafe { std::ptr::write_unaligned(dst.add(i * 4).cast::<[u8; 4]>(), encoded) };
     }
 }
 

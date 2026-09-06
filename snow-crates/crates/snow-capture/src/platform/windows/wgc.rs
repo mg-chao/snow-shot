@@ -1122,6 +1122,7 @@ impl WgcWorker {
                         &source,
                         &source_desc,
                         params.sanitized(),
+                        None,
                     )?
                     .clone();
                 return Ok((output, tonemapper.output_desc(), None));
@@ -1134,7 +1135,7 @@ impl WgcWorker {
                 CaptureError::platform(anyhow::anyhow!("failed to initialize WGC F16 converter"))
             })?;
             let output = converter
-                .convert(&self.device, &self.context, &source, &source_desc)?
+                .convert(&self.device, &self.context, &source, &source_desc, None)?
                 .clone();
             return Ok((output, converter.output_desc(), None));
         }

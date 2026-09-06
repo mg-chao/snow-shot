@@ -4,6 +4,53 @@ use super::{
 };
 use crate::{CapturePixelFormat, color_effect::ScreenColorTransform};
 
+pub(super) unsafe fn convert_f16_surface(
+    layout: SurfaceLayout,
+    output: CapturePixelFormat,
+    opaque: bool,
+    transform: ScreenColorTransform,
+    hdr: Option<super::HdrFrameContext>,
+    allow_parallel: bool,
+) {
+    layout.assert_pitches(8);
+    let prepared = hdr.map(|params| {
+        let mut prepared = super::prepare_hdr_context_cached(params);
+        prepared.screen_color_rows = Some(transform.linear_rows());
+        prepared
+    });
+    let rows = transform.linear_rows();
+    let config = super::surface_format_plan(
+        SurfacePixelFormat::Rgba16Float,
+        super::SurfaceConversionOptions::default(),
+    )
+    .parallel;
+    let convert = |src, dst, count| unsafe {
+        if let Some(prepared) = &prepared {
+            let kernel = if opaque {
+                super::f16_hdr_prepared_opaque_kernel()
+            } else {
+                super::f16_hdr_prepared_kernel()
+            };
+            kernel(src, dst, count, prepared);
+            if output == CapturePixelFormat::Bgra8 {
+                super::swap_rgba_to_bgra_in_place(
+                    std::slice::from_raw_parts_mut(dst, count * 4),
+                    count,
+                );
+            }
+        } else {
+            super::f16::convert_corrected_row(src, dst, count, rows, output, opaque);
+        }
+    };
+    if allow_parallel
+        && let Some(chunks) = maybe_parallel_row_chunks(layout, config, layout.total_pixels())
+    {
+        unsafe { run_rows_parallel_with(layout, chunks, config.max_workers, convert) };
+    } else {
+        unsafe { super::run_rows_serial_with(layout, convert) };
+    }
+}
+
 pub(super) unsafe fn convert_surface(
     layout: SurfaceLayout,
     format: SurfacePixelFormat,
@@ -177,7 +224,7 @@ mod tests {
     use super::*;
     use crate::convert::{SurfaceConversionOptions, convert_surface_to_rgba};
     #[test]
-    fn hdr_sources_do_not_apply_sdr_correction() {
+    fn hdr_sources_restore_sdr_before_tone_mapping_and_clamping() {
         let transform = ScreenColorTransform {
             inverted: true,
             rows: [
@@ -186,14 +233,67 @@ mod tests {
                 [0., 0., -1., 255.],
             ],
         };
-        let converter = super::super::SurfaceRowConverter::new(
-            SurfacePixelFormat::Rgba16Float,
-            SurfaceConversionOptions {
-                screen_color_transform: Some(transform),
-                ..Default::default()
-            },
-        );
-        assert!(!converter.has_screen_color_transform());
+        for boost in [1., 2., 3.5] {
+            let original =
+                [[0.02, 0.1, 0.3, 0.5], [0.8, 0.6, 0.4, 1.], [2., 3., 4., 1.]].repeat(11);
+            let pack = |filtered: bool| {
+                original
+                    .iter()
+                    .flat_map(|pixel| {
+                        pixel.iter().enumerate().flat_map(move |(c, value)| {
+                            let value = if c < 3 { value * boost } else { *value };
+                            half::f16::from_f32(if filtered && c < 3 { 1. - value } else { value })
+                                .to_bits()
+                                .to_ne_bytes()
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            };
+            for output in [CapturePixelFormat::Rgba8, CapturePixelFormat::Bgra8] {
+                for opaque in [true, false] {
+                    let options = SurfaceConversionOptions {
+                        hdr_to_sdr: Some(super::super::HdrFrameContext {
+                            sdr_white_nits: 80. * boost,
+                            ..Default::default()
+                        }),
+                        output_pixel_format: output,
+                        force_opaque_alpha: opaque,
+                        ..Default::default()
+                    };
+                    let mut expected = [0u8; 132];
+                    let mut actual = [0u8; 132];
+                    convert_surface_to_rgba(
+                        SurfacePixelFormat::Rgba16Float,
+                        &pack(false),
+                        264,
+                        &mut expected,
+                        132,
+                        33,
+                        1,
+                        options,
+                    );
+                    convert_surface_to_rgba(
+                        SurfacePixelFormat::Rgba16Float,
+                        &pack(true),
+                        264,
+                        &mut actual,
+                        132,
+                        33,
+                        1,
+                        SurfaceConversionOptions {
+                            screen_color_transform: Some(transform),
+                            ..options
+                        },
+                    );
+                    for (a, b) in actual.into_iter().zip(expected) {
+                        assert!(
+                            a.abs_diff(b) <= 1,
+                            "HDR correction {actual:?} != {expected:?}"
+                        );
+                    }
+                }
+            }
+        }
     }
     #[test]
     fn general_matrix_simd_matches_scalar_including_clipping_and_alpha() {
