@@ -482,8 +482,8 @@ void capturedOverlayWaitsForImageAndSelectionInEitherOrder() {
                                      intelligentSelection, runtime);
 
         workflow.startCapture();
-        require(runtime.warmSurfaceShowCalls == 1 && runtime.capturedImageShowCalls == 0,
-                "capture must warm the surface without revealing incomplete content");
+        require(runtime.showOverlayCalls == 0,
+                "capture preparation must not show or warm overlays during initial selection");
         CapturedDisplayModel snapshot;
         snapshot.stableId = QStringLiteral("primary");
         snapshot.physicalRect = QRect(0, 0, 64, 48);
@@ -497,10 +497,10 @@ void capturedOverlayWaitsForImageAndSelectionInEitherOrder() {
         } else {
             runtime.eventSink->handleCaptureFinished(result);
         }
-        require(runtime.capturedImageShowCalls == 0,
-                "neither the image nor the selection alone may reveal the overlay");
+        require(runtime.showOverlayCalls == 0,
+                "neither the image nor the selection alone may show or warm the overlay");
         workflow.handleInitialSmartSelectionResolved(state.sessionId + 1);
-        require(runtime.capturedImageShowCalls == 0,
+        require(runtime.showOverlayCalls == 0,
                 "a different session's selection must not release the reveal gate");
 
         if (selectionFirst) {
@@ -508,11 +508,12 @@ void capturedOverlayWaitsForImageAndSelectionInEitherOrder() {
         } else {
             workflow.handleInitialSmartSelectionResolved(state.sessionId);
         }
-        require(runtime.capturedImageShowCalls == 1 && runtime.applyDisplayModelsCalls == 1,
+        require(runtime.showOverlayCalls == 1 && runtime.capturedImageShowCalls == 1 &&
+                    runtime.applyDisplayModelsCalls == 1,
                 "image and selection readiness must reveal the prepared overlay once");
         workflow.handleInitialSmartSelectionResolved(state.sessionId);
         runtime.eventSink->handleCaptureFinished(result);
-        require(runtime.capturedImageShowCalls == 1,
+        require(runtime.showOverlayCalls == 1 && runtime.capturedImageShowCalls == 1,
                 "duplicate readiness callbacks must not reveal or repaint the frame again");
     }
 }
@@ -540,7 +541,7 @@ void overlayCapturePrewarmsToolbarSurfaceAfterCaptureDispatch() {
             "session retired it");
 }
 
-void overlayCaptureWarmsNativeSurfaceAfterCaptureDispatch() {
+void overlayCaptureDoesNotWarmNativeSurfaceAfterCaptureDispatch() {
     ScreenshotCaptureState state;
     state.sessionState = ScreenshotSessionState::IdlePrepared;
     ScreenshotDisplaySession displaySession;
@@ -568,12 +569,11 @@ void overlayCaptureWarmsNativeSurfaceAfterCaptureDispatch() {
     });
 
     workflow.startCapture();
-    require(runtime.captureAllAsyncCalls == 1 && runtime.warmSurfaceShowCalls == 1 &&
-                runtime.capturedImageShowCalls == 0 && runtime.showOverlayModes.size() == 1 &&
-                runtime.showOverlayModes.constFirst() == ScreenshotOverlayShowMode::WarmSurface,
-            "an overlay capture must warm the native surface after capture is dispatched");
+    require(runtime.captureAllAsyncCalls == 1 && runtime.showOverlayCalls == 0 &&
+                runtime.showOverlayModes.isEmpty(),
+            "an overlay capture must not warm the native surface after capture is dispatched");
     require(runtime.prewarmToolbarSawDispatchedCapture,
-            "surface warmup must overlap a capture that is already in flight");
+            "hidden toolbar preparation must still overlap the dispatched capture");
 
     CapturedDisplayModel snapshot;
     snapshot.stableId = QStringLiteral("primary");
@@ -586,11 +586,11 @@ void overlayCaptureWarmsNativeSurfaceAfterCaptureDispatch() {
     require(runtime.eventSink != nullptr, "capture workflow did not register its event sink");
     runtime.eventSink->handleCaptureFinished(successfulResult(state.sessionId, snapshot));
 
-    require(runtime.capturedImageShowCalls == 1 && runtime.warmSurfaceShowCalls == 1 &&
-                runtime.showOverlayCalls == 2 && capturePresentedCalls == 1 &&
-                runtime.showOverlayModes.size() == 2 &&
+    require(runtime.capturedImageShowCalls == 1 && runtime.warmSurfaceShowCalls == 0 &&
+                runtime.showOverlayCalls == 1 && capturePresentedCalls == 1 &&
+                runtime.showOverlayModes.size() == 1 &&
                 runtime.showOverlayModes.constLast() == ScreenshotOverlayShowMode::CapturedImage,
-            "reveal must still present the captured overlay after the surface is warmed");
+            "reveal must present the captured overlay once without an earlier surface warmup");
 }
 
 void silentCaptureNeverPreparesOrShowsOverlays() {
@@ -901,7 +901,7 @@ int main() {
     capturePresentedRunsAfterCapturedOverlayIsShown();
     capturedOverlayWaitsForImageAndSelectionInEitherOrder();
     overlayCapturePrewarmsToolbarSurfaceAfterCaptureDispatch();
-    overlayCaptureWarmsNativeSurfaceAfterCaptureDispatch();
+    overlayCaptureDoesNotWarmNativeSurfaceAfterCaptureDispatch();
     silentCaptureNeverPreparesOrShowsOverlays();
     displayChangesRefreshWithoutCancelingIdleOrActiveCapture();
     focusedWindowCaptureUsesOneCompoundWorkerTransaction();

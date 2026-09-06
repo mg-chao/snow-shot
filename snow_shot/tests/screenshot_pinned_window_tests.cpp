@@ -33,12 +33,14 @@
 #include <QImage>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPointer>
 #include <QPushButton>
 #include <QRegion>
 #include <QScreen>
+#include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QThread>
 #include <QTimer>
@@ -159,6 +161,26 @@ class CursorPositionRestorer final {
 
   private:
     QPoint m_position;
+};
+
+class PinnedWindowTestApplication final : public QApplication {
+  public:
+    using QApplication::QApplication;
+    QPointer<ScreenshotPinnedWindow> movementProbe;
+    std::function<void(QPoint, QPoint)> afterMovementKey;
+
+    bool notify(QObject* receiver, QEvent* event) override {
+        if (movementProbe == nullptr || receiver != movementProbe ||
+            event->type() != QEvent::KeyPress || !afterMovementKey) {
+            return QApplication::notify(receiver, event);
+        }
+        const QPoint cursorBefore = systemCursorPosition();
+        const QPoint windowBefore = movementProbe->currentNativeGeometry().topLeft();
+        const bool handled = QApplication::notify(receiver, event);
+        afterMovementKey(systemCursorPosition() - cursorBefore,
+                         movementProbe->currentNativeGeometry().topLeft() - windowBefore);
+        return handled;
+    }
 };
 
 QPushButton* buttonNamed(QWidget& window, const QString& accessibleName);
@@ -1742,6 +1764,79 @@ void pinnedConfiguredShortcutUpdatesImmediately(SnowCanvasRuntime&) {
     require(processUntilDeleted(guardedWindow, 2000), "shortcut test pin was not deleted");
 }
 
+void pinnedMovementShortcutsMoveIdleWindow() {
+    QScreen* screen = QGuiApplication::primaryScreen();
+    require(screen != nullptr, "a primary screen is required");
+    QImage background(240, 140, QImage::Format_ARGB32_Premultiplied);
+    background.fill(Qt::white);
+    auto* pinnedWindow =
+        new ScreenshotPinnedWindow(ScreenshotPinnedWindow::RuntimeMode::NoDocument);
+    pinnedWindow->setAttribute(Qt::WA_DontShowOnScreen);
+    QPointer<ScreenshotPinnedWindow> guardedWindow(pinnedWindow);
+    ScreenshotPinnedWindow::Config config;
+    config.nativeGeometry = physicalPinGeometry(*screen, QPoint(120, 120), background.size());
+    config.canvasSourceRect = QRectF(QPointF(), QSizeF(background.size()));
+    config.backgroundImage = background;
+    config.screen = screen;
+    config.automaticTextRecognition = false;
+    require(pinnedWindow->present(config), "keyboard movement pin presentation failed");
+    waitForUi(50);
+    pinnedWindow->activateWindow();
+    auto* canvas = pinnedWindow->findChild<SnowCanvasWidget*>();
+    require(canvas != nullptr, "keyboard movement pin canvas was not found");
+    canvas->setFocus();
+    const QPoint cursorBefore = systemCursorPosition();
+    const struct {
+        Qt::Key key;
+        QPoint delta;
+    } movements[] = {
+        {Qt::Key_W, QPoint(0, -1)},   {Qt::Key_Up, QPoint(0, -1)},   {Qt::Key_S, QPoint(0, 1)},
+        {Qt::Key_Down, QPoint(0, 1)}, {Qt::Key_A, QPoint(-1, 0)},    {Qt::Key_Left, QPoint(-1, 0)},
+        {Qt::Key_D, QPoint(1, 0)},    {Qt::Key_Right, QPoint(1, 0)},
+    };
+    for (const auto& movement : movements) {
+        for (const bool repeat : {false, true}) {
+            const QRect before = pinnedWindow->currentNativeGeometry();
+            sendShortcut(*canvas, movement.key, Qt::NoModifier, repeat);
+            QCoreApplication::processEvents();
+            require(pinnedWindow->currentNativeGeometry() == before.translated(movement.delta),
+                    "movement shortcuts must move an idle pin by one physical pixel, including "
+                    "repeats");
+        }
+    }
+    require(systemCursorPosition() == cursorBefore,
+            "moving an idle pin with the keyboard must not move the cursor");
+
+    const snow_shot::storage::PinToScreenShortcutSettings shortcuts;
+    const QString actionId = QStringLiteral("move_cursor_up");
+    const QStringList previousShortcuts = shortcuts.shortcuts(actionId);
+    require(shortcuts.setShortcuts(actionId, {QStringLiteral("Ctrl+Alt+U")}),
+            "the window movement shortcut could not be configured");
+    const QRect beforeCustomShortcut = pinnedWindow->currentNativeGeometry();
+    sendShortcut(*canvas, Qt::Key_W);
+    require(pinnedWindow->currentNativeGeometry() == beforeCustomShortcut,
+            "a replaced movement shortcut must stop moving the window");
+    sendShortcut(*canvas, Qt::Key_U, Qt::ControlModifier | Qt::AltModifier);
+    require(pinnedWindow->currentNativeGeometry() == beforeCustomShortcut.translated(0, -1),
+            "a configured movement shortcut must immediately move an idle pin");
+    require(shortcuts.setShortcuts(actionId, previousShortcuts),
+            "the window movement shortcuts could not be restored");
+    require(pinnedWindow->persistenceSnapshot().nativeGeometry ==
+                beforeCustomShortcut.translated(0, -1),
+            "the persisted pin geometry must include keyboard movement");
+
+    auto* textInput = new QLineEdit(pinnedWindow);
+    textInput->show();
+    textInput->setFocus();
+    require(textInput->hasFocus(), "movement text-input fixture must have focus");
+    const QRect beforeTextInput = pinnedWindow->currentNativeGeometry();
+    sendShortcut(*textInput, Qt::Key_Left);
+    require(pinnedWindow->currentNativeGeometry() == beforeTextInput,
+            "movement shortcuts must not move a pin while a text field has focus");
+    pinnedWindow->close();
+    require(processUntilDeleted(guardedWindow, 2000), "keyboard movement pin was not deleted");
+}
+
 #if defined(Q_OS_WIN) || defined(_WIN32)
 // Starting a window move posts the system drag command (SC_DRAGMOVE), which
 // would enter USER32's modal move loop as soon as events are pumped. Tests
@@ -1789,12 +1884,20 @@ void pinnedNativeDragAcceptsCursorMovementShortcuts(SnowCanvasRuntime&) {
         hwnd, WM_NCLBUTTONDOWN, HTCAPTION,
         MAKELPARAM(static_cast<WORD>(startingCursor.x()), static_cast<WORD>(startingCursor.y()))));
     discardPostedSystemDrag(hwnd);
+    SendMessageW(hwnd, WM_CAPTURECHANGED, 0, 0);
     static_cast<void>(SendMessageW(hwnd, WM_ENTERSIZEMOVE, 0, 0));
 
     const QPoint cursorBeforeShortcut = systemCursorPosition();
     const QPoint windowPositionBeforeShortcut = pinnedWindow->currentNativeGeometry().topLeft();
     sendShortcut(*pinnedWindow, Qt::Key_W);
     const QPoint cursorAfterShortcuts = systemCursorPosition();
+    // USER32 reacts to cursor movement with WM_MOVING on its next iteration.
+    RECT shortcutProposal = nativeRectForQRect(
+        startingGeometry.translated(cursorAfterShortcuts - startingCursor));
+    require(SendMessageW(hwnd, WM_MOVING, 0, reinterpret_cast<LPARAM>(&shortcutProposal)) == TRUE,
+            "the shortcut's system move proposal was not accepted");
+    SetWindowPos(hwnd, nullptr, shortcutProposal.left, shortcutProposal.top, 0, 0,
+                 SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
     const QPoint windowPositionAfterShortcuts = pinnedWindow->currentNativeGeometry().topLeft();
     const QPoint shortcutCursorDelta = cursorAfterShortcuts - cursorBeforeShortcut;
     const QPoint shortcutWindowDelta = windowPositionAfterShortcuts - windowPositionBeforeShortcut;
@@ -1832,6 +1935,173 @@ void pinnedNativeDragAcceptsCursorMovementShortcuts(SnowCanvasRuntime&) {
             "a pinned window must follow cursor shortcuts before its native drag is released");
     require(windowFollowedPointer,
             "a system-driven pinned-window drag must follow accepted move proposals");
+}
+
+void pinnedSystemMoveLoopAcceptsMovementShortcuts() {
+    QScreen* screen = QGuiApplication::primaryScreen();
+    require(screen != nullptr, "a primary screen is required");
+    const CursorPositionRestorer restoreCursor;
+    QImage background(240, 140, QImage::Format_ARGB32_Premultiplied);
+    background.fill(Qt::white);
+    auto* pinnedWindow =
+        new ScreenshotPinnedWindow(ScreenshotPinnedWindow::RuntimeMode::NoDocument);
+    QPointer<ScreenshotPinnedWindow> guardedWindow(pinnedWindow);
+    ScreenshotPinnedWindow::Config config;
+    config.nativeGeometry = physicalPinGeometry(*screen, QPoint(120, 120), background.size());
+    config.canvasSourceRect = QRectF(QPointF(), QSizeF(background.size()));
+    config.backgroundImage = background;
+    config.screen = screen;
+    config.automaticTextRecognition = false;
+    require(pinnedWindow->present(config), "system move loop pin presentation failed");
+    waitForUi(50);
+    const HWND hwnd = toNativeHwnd(pinnedWindow->winId());
+    const QPoint startingCursor = pinnedWindow->currentNativeGeometry().center();
+    setSystemCursorPosition(startingCursor);
+
+    const snow_shot::storage::PinToScreenShortcutSettings shortcuts;
+    const QString actionId = QStringLiteral("move_cursor_up");
+    const QStringList previousShortcuts = shortcuts.shortcuts(actionId);
+    require(shortcuts.setShortcuts(actionId, {QStringLiteral("W"), QStringLiteral("Up")}),
+            "system move loop custom shortcut could not be configured");
+    struct Movement {
+        UINT key;
+        QPoint delta;
+        bool modified = false;
+    };
+    const std::vector<Movement> movements{
+        {'W', QPoint(0, -1)},    {VK_UP, QPoint(0, -1)},   {'S', QPoint(0, 1)},
+        {VK_DOWN, QPoint(0, 1)}, {'A', QPoint(-1, 0)},     {VK_LEFT, QPoint(-1, 0)},
+        {'D', QPoint(1, 0)},     {VK_RIGHT, QPoint(1, 0)}, {VK_F6, QPoint(0, -1), true},
+        {VK_SPACE, QPoint()},
+    };
+    struct Probe {
+        const std::vector<Movement>* movements;
+        QPoint cursorWindowOffset;
+        size_t next = 0;
+        bool observedMoveLoop = true;
+        bool cursorMoved = true;
+        bool windowMoved = true;
+        size_t deliveredKeys = 0;
+        BYTE keyboardState[256]{};
+    } probe{&movements, startingCursor - pinnedWindow->currentNativeGeometry().topLeft()};
+    auto* testApp = static_cast<PinnedWindowTestApplication*>(QCoreApplication::instance());
+    testApp->movementProbe = pinnedWindow;
+    const auto clearProbe = qScopeGuard([testApp]() {
+        testApp->afterMovementKey = {};
+        testApp->movementProbe = nullptr;
+    });
+    testApp->afterMovementKey = [&probe](QPoint cursorDelta, QPoint) {
+        const QPoint expected = probe.movements->at(probe.next - 1).delta;
+        probe.cursorMoved &= cursorDelta == expected;
+        ++probe.deliveredKeys;
+        if (cursorDelta != expected) {
+            std::cerr << "native drag key " << probe.movements->at(probe.next - 1).key
+                      << ": cursor delta " << cursorDelta.x() << ',' << cursorDelta.y()
+                      << ", expected " << expected.x() << ',' << expected.y() << '\n';
+        }
+    };
+    require(GetKeyboardState(probe.keyboardState) != FALSE,
+            "system move loop keyboard state could not be read");
+    require(SetPropW(hwnd, L"SnowPinnedMoveLoopProbe", &probe) != FALSE,
+            "system move loop probe could not be installed");
+    const UINT_PTR timer =
+        SetTimer(hwnd, 0x53534D50, 100, [](HWND timerWindow, UINT, UINT_PTR timerId, DWORD) {
+            auto* state = static_cast<Probe*>(GetPropW(timerWindow, L"SnowPinnedMoveLoopProbe"));
+            RECT windowRect{};
+            GetWindowRect(timerWindow, &windowRect);
+            const QPoint offset = systemCursorPosition() - QPoint(windowRect.left, windowRect.top);
+            if (state->next > 0) {
+                if (offset != state->cursorWindowOffset) {
+                    std::cerr << "drag step " << state->next << " cursor/window offset "
+                              << offset.x() << ',' << offset.y() << " expected "
+                              << state->cursorWindowOffset.x() << ','
+                              << state->cursorWindowOffset.y() << '\n';
+                }
+                state->windowMoved &= offset == state->cursorWindowOffset;
+            }
+            if (state->next > 0) {
+                SetKeyboardState(state->keyboardState);
+            }
+            if (state->next < state->movements->size()) {
+                GUITHREADINFO info{};
+                info.cbSize = sizeof(info);
+                state->observedMoveLoop &= GetGUIThreadInfo(GetCurrentThreadId(), &info) != FALSE &&
+                                           (info.flags & GUI_INMOVESIZE) != 0;
+                const Movement& movement = state->movements->at(state->next++);
+                if (movement.modified) {
+                    const snow_shot::storage::PinToScreenShortcutSettings settings;
+                    state->cursorMoved &= settings.setShortcuts(QStringLiteral("move_cursor_up"),
+                                                                {QStringLiteral("Ctrl+Alt+F6")});
+                    BYTE modifiedState[256]{};
+                    GetKeyboardState(modifiedState);
+                    modifiedState[VK_CONTROL] = 0x80;
+                    modifiedState[VK_LCONTROL] = 0x80;
+                    modifiedState[VK_MENU] = 0x80;
+                    modifiedState[VK_LMENU] = 0x80;
+                    SetKeyboardState(modifiedState);
+                }
+                const UINT scan = MapVirtualKeyW(movement.key, MAPVK_VK_TO_VSC_EX);
+                const bool extended = movement.key >= VK_LEFT && movement.key <= VK_DOWN;
+                const LPARAM keyData =
+                    1 | (static_cast<LPARAM>(scan & 0xFF) << 16) | (extended ? (1LL << 24) : 0);
+                PostMessageW(timerWindow, WM_KEYDOWN, movement.key, keyData);
+                PostMessageW(timerWindow, WM_KEYDOWN, movement.key, keyData | (1LL << 30));
+                PostMessageW(timerWindow, WM_KEYUP, movement.key,
+                             keyData | (1LL << 31) | (1LL << 30));
+                return;
+            }
+            KillTimer(timerWindow, timerId);
+            INPUT release{};
+            release.type = INPUT_MOUSE;
+            release.mi.dwFlags = MOUSEEVENTF_LEFTUP;
+            SendInput(1, &release, sizeof(release));
+            PostMessageW(timerWindow, WM_LBUTTONUP, 0, 0);
+        });
+    require(timer != 0, "system move loop probe timer could not be installed");
+    const auto removeProbe = qScopeGuard([hwnd, timer]() {
+        KillTimer(hwnd, timer);
+        RemovePropW(hwnd, L"SnowPinnedMoveLoopProbe");
+    });
+    require(WindowFromPoint(POINT{startingCursor.x(), startingCursor.y()}) == hwnd,
+            "system move loop mouse input must target the test pin");
+    INPUT press{};
+    press.type = INPUT_MOUSE;
+    press.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+    require(SendInput(1, &press, sizeof(press)) == 1, "system move loop mouse press failed");
+    // Hold the physical button, but dispatch its caption press explicitly so
+    // native hit testing cannot produce a second drag during the handoff.
+    Sleep(20);
+    MSG mouseMessage{};
+    while (PeekMessageW(&mouseMessage, nullptr, WM_MOUSEFIRST, WM_MOUSELAST, PM_REMOVE) != FALSE) {
+    }
+    while (PeekMessageW(&mouseMessage, nullptr, WM_NCMOUSEMOVE, WM_NCMBUTTONDBLCLK, PM_REMOVE) !=
+           FALSE) {
+    }
+    SendMessageW(
+        hwnd, WM_NCLBUTTONDOWN, HTCAPTION,
+        MAKELPARAM(static_cast<WORD>(startingCursor.x()), static_cast<WORD>(startingCursor.y())));
+    waitForUi(350);
+    KillTimer(hwnd, timer);
+    RemovePropW(hwnd, L"SnowPinnedMoveLoopProbe");
+    testApp->afterMovementKey = {};
+    testApp->movementProbe = nullptr;
+    SetKeyboardState(probe.keyboardState);
+    require(shortcuts.setShortcuts(actionId, previousShortcuts),
+            "system move loop custom shortcuts could not be restored");
+    const auto* drawingAction =
+        pinnedWindow->findChild<QAction*>(QStringLiteral("screenshotPinnedDrawingAction"));
+    const bool drawingInactive = drawingAction != nullptr && !drawingAction->isChecked();
+    pinnedWindow->close();
+    require(processUntilDeleted(guardedWindow, 2000), "system move loop pin was not deleted");
+    require(probe.observedMoveLoop, "the shortcut probe must run inside USER32's real move loop");
+    require(probe.next == movements.size(), "all system move loop shortcuts must be exercised");
+    require(probe.deliveredKeys == 18,
+            "each configured native drag key press and repeat must be delivered exactly once");
+    require(probe.cursorMoved,
+            "native keyboard messages must move the cursor inside USER32's move loop");
+    require(probe.windowMoved,
+            "the dragged window must follow native keyboard movement before mouse release");
+    require(drawingInactive, "unrelated drawing shortcuts must not activate inside a native drag");
 }
 
 void pinnedNativeDragCrossingDpiBoundaryPreservesDestination(SnowCanvasRuntime&) {
@@ -3302,7 +3572,7 @@ void pinnedEditToolbarControlsCanvasHistory(SnowCanvasRuntime&) {
 } // namespace
 
 int main(int argc, char* argv[]) {
-    QApplication app(argc, argv);
+    PinnedWindowTestApplication app(argc, argv);
     QApplication::setQuitOnLastWindowClosed(false);
 
     try {
@@ -3314,6 +3584,10 @@ int main(int argc, char* argv[]) {
         require(sourceRuntime.isValid(), "source runtime creation failed");
         if (app.arguments().contains(QStringLiteral("--pinned-shortcut-only"))) {
             pinnedConfiguredShortcutUpdatesImmediately(sourceRuntime);
+            return 0;
+        }
+        if (app.arguments().contains(QStringLiteral("--movement-shortcut-only"))) {
+            pinnedMovementShortcutsMoveIdleWindow();
             return 0;
         }
         if (app.arguments().contains(QStringLiteral("--toolbar-lifecycle-only"))) {
@@ -3368,6 +3642,10 @@ int main(int argc, char* argv[]) {
             return 0;
         }
 #if defined(Q_OS_WIN) || defined(_WIN32)
+        if (app.arguments().contains(QStringLiteral("--system-move-loop-only"))) {
+            pinnedSystemMoveLoopAcceptsMovementShortcuts();
+            return 0;
+        }
         if (app.arguments().contains(QStringLiteral("--native-drag-shortcut-only"))) {
             pinnedNativeDragAcceptsCursorMovementShortcuts(sourceRuntime);
             return 0;

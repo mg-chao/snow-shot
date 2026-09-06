@@ -2,10 +2,27 @@
 #define SNOW_SHOT_PRESENTATION_SCREENSHOTPINNEDWINDOWNATIVE_H
 
 #include <QRect>
+#include <QKeyCombination>
+#include <QList>
 #include <QWidget>
 #include <Qt>
 
+#include <memory>
+
 namespace screenshot_pinned_window_native {
+class SystemMoveKeyboard final {
+  public:
+    explicit SystemMoveKeyboard(QWidget* window);
+    ~SystemMoveKeyboard();
+    void setKeyCombinations(const QList<QKeyCombination>& combinations);
+    [[nodiscard]] bool start();
+    void stop();
+
+  private:
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
+};
+
 enum class GeometryUpdate {
     PreserveClientPixels,
     DiscardClientPixels,

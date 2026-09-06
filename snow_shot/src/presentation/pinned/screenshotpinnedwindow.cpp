@@ -574,6 +574,7 @@ ScreenshotPinnedWindow::ScreenshotPinnedWindow(RuntimeMode mode, QWidget* parent
     : QWidget(parent),
       m_runtime(SnowCanvasRuntimeConfig{snow_shot::presentation::screenshotCanvasStyleDefaults()}),
       m_shortcutManager(std::make_unique<snow_shot::presentation::WindowShortcutManager>()),
+      m_systemMoveKeyboard(std::make_unique<native::SystemMoveKeyboard>(this)),
       m_physicalCursor(std::make_unique<snow_shot::platform::PhysicalCursor>()), m_exportArtifact(),
       m_nativeGeometryController(std::make_unique<ScreenshotPinnedNativeGeometryController>()) {
     livePinnedWindows().push_back(QPointer<ScreenshotPinnedWindow>(this));
@@ -737,11 +738,12 @@ void ScreenshotPinnedWindow::registerWindowShortcuts() {
     const struct {
         const char* id;
         snow_shot::platform::PhysicalCursorDirection direction;
+        QPoint delta;
     } cursorMovements[] = {
-        {"move_cursor_up", snow_shot::platform::PhysicalCursorDirection::Up},
-        {"move_cursor_down", snow_shot::platform::PhysicalCursorDirection::Down},
-        {"move_cursor_left", snow_shot::platform::PhysicalCursorDirection::Left},
-        {"move_cursor_right", snow_shot::platform::PhysicalCursorDirection::Right},
+        {"move_cursor_up", snow_shot::platform::PhysicalCursorDirection::Up, QPoint(0, -1)},
+        {"move_cursor_down", snow_shot::platform::PhysicalCursorDirection::Down, QPoint(0, 1)},
+        {"move_cursor_left", snow_shot::platform::PhysicalCursorDirection::Left, QPoint(-1, 0)},
+        {"move_cursor_right", snow_shot::platform::PhysicalCursorDirection::Right, QPoint(1, 0)},
     };
     for (const auto& movement : cursorMovements) {
         const QString actionId = QString::fromLatin1(movement.id);
@@ -750,6 +752,9 @@ void ScreenshotPinnedWindow::registerWindowShortcuts() {
         binding.priority = ShortcutManager::StandardPriority::ScreenshotShortcut;
         binding.autoRepeat = true;
         binding.canActivate = [this, localCommandsAllowed](const auto& context) {
+            if (!m_windowDragActive && windowDragEnabled()) {
+                return localCommandsAllowed(context);
+            }
             const bool canvasColorSampling =
                 m_editController != nullptr && m_editController->canvasColorSamplingActive();
             return m_physicalCursor != nullptr && m_physicalCursor->isSupported() &&
@@ -759,7 +764,16 @@ void ScreenshotPinnedWindow::registerWindowShortcuts() {
         binding.canActivateOutsideScope = [this](const auto&) {
             return m_editController != nullptr && m_editController->canvasColorSamplingActive();
         };
-        binding.activate = [this, direction = movement.direction](const auto&) {
+        binding.activate = [this, direction = movement.direction,
+                            delta = movement.delta](const auto&) {
+            if (!m_windowDragActive && windowDragEnabled()) {
+                if (!applyWindowGeometry(currentNativeGeometry().translated(delta),
+                                         GeometryMutation::Move)) {
+                    return false;
+                }
+                schedulePersistence();
+                return true;
+            }
             return moveCursorOnePixel(direction);
         };
         m_pinnedShortcutBindings.insert(actionId,
@@ -806,6 +820,7 @@ void ScreenshotPinnedWindow::registerWindowShortcuts() {
 void ScreenshotPinnedWindow::reloadPinnedWindowShortcuts() {
     using ShortcutManager = snow_shot::presentation::WindowShortcutManager;
     const snow_shot::storage::PinToScreenShortcutSettings settings;
+    QList<QKeyCombination> movementCombinations;
     const struct {
         const char* id;
         const char* actionObjectName;
@@ -825,10 +840,13 @@ void ScreenshotPinnedWindow::reloadPinnedWindowShortcuts() {
     for (const auto& action : actions) {
         const QString actionId = QString::fromLatin1(action.id);
         const QStringList shortcuts = settings.shortcuts(actionId);
+        const auto combinations = ShortcutManager::keyCombinationsFromPortableText(shortcuts);
+        if (action.actionObjectName == nullptr) {
+            movementCombinations.append(combinations);
+        }
         const auto binding = m_pinnedShortcutBindings.constFind(actionId);
         if (binding != m_pinnedShortcutBindings.cend()) {
-            static_cast<void>(m_shortcutManager->setKeyCombinations(
-                binding.value(), ShortcutManager::keyCombinationsFromPortableText(shortcuts)));
+            static_cast<void>(m_shortcutManager->setKeyCombinations(binding.value(), combinations));
         }
         if (action.actionObjectName != nullptr) {
             setActionShortcutDisplay(
@@ -836,6 +854,7 @@ void ScreenshotPinnedWindow::reloadPinnedWindowShortcuts() {
                 shortcutDisplayText(shortcuts));
         }
     }
+    m_systemMoveKeyboard->setKeyCombinations(movementCombinations);
 }
 
 bool ScreenshotPinnedWindow::prewarm(QScreen* screen) {
@@ -1135,9 +1154,17 @@ bool ScreenshotPinnedWindow::nativeEvent(const QByteArray& eventType, void* mess
         };
         updateNativePointerPresence(nativeMessage->message);
 
-        if (m_windowDragActive && (nativeMessage->message == WM_CANCELMODE ||
-                                   (nativeMessage->message == WM_CAPTURECHANGED &&
-                                    reinterpret_cast<HWND>(nativeMessage->lParam) != pinnedHwnd))) {
+        // Qt and USER32 release capture while handing off a pending drag.
+        // WM_EXITSIZEMOVE and mouse release still finish the transaction.
+        const bool pendingSystemMoveHandoff =
+            nativeMessage->message == WM_CAPTURECHANGED && nativeMessage->lParam == 0 &&
+            m_nativeGeometryController != nullptr &&
+            m_nativeGeometryController->phase() ==
+                ScreenshotPinnedNativeGeometryController::Phase::MovePending;
+        if (m_windowDragActive && !pendingSystemMoveHandoff &&
+            (nativeMessage->message == WM_CANCELMODE ||
+             (nativeMessage->message == WM_CAPTURECHANGED &&
+              reinterpret_cast<HWND>(nativeMessage->lParam) != pinnedHwnd))) {
             static_cast<void>(finishNativeGeometryInteraction());
             finishWindowMove();
         }
@@ -4416,6 +4443,9 @@ bool ScreenshotPinnedWindow::applyWindowGeometry(const QRect& nativeGeometry,
     ScreenshotPinnedNativeGeometryController::Origin origin =
         ScreenshotPinnedNativeGeometryController::Origin::Scale;
     switch (mutation) {
+    case GeometryMutation::Move:
+        origin = ScreenshotPinnedNativeGeometryController::Origin::UserMove;
+        break;
     case GeometryMutation::Scale:
         origin = ScreenshotPinnedNativeGeometryController::Origin::Scale;
         break;
@@ -4636,9 +4666,9 @@ bool ScreenshotPinnedWindow::moveCursorOnePixel(
         return true;
     }
 
-    if (m_windowDragActive) {
-        static_cast<void>(updateWindowMove(result.position.value()));
-    } else if (m_editController != nullptr && m_editController->canvasColorSamplingActive()) {
+    // During a native drag, USER32 moves the window in response to the cursor.
+    if (!m_windowDragActive && m_editController != nullptr &&
+        m_editController->canvasColorSamplingActive()) {
         m_editController->updateCanvasColorSamplingAfterCursorMove(result.position.value());
     }
     return true;
@@ -4669,9 +4699,12 @@ bool ScreenshotPinnedWindow::startWindowMove() {
     // would make USER32 apply the destination DPI around the requested
     // top-left once the window body crosses, which native drags never do.
     static_cast<void>(native::activateWindow(winId()));
-    m_windowDragActive = true;
-    setWindowDragCursor(Qt::ClosedHandCursor);
     if (handle->startSystemMove()) {
+        // Qt releases its mouse capture before posting SC_DRAGMOVE. Mark the
+        // drag active after that handoff so WM_CAPTURECHANGED cannot cancel it.
+        m_windowDragActive = true;
+        setWindowDragCursor(Qt::ClosedHandCursor);
+        static_cast<void>(m_systemMoveKeyboard->start());
         return true;
     }
     finishWindowMove();
@@ -4679,49 +4712,8 @@ bool ScreenshotPinnedWindow::startWindowMove() {
     return false;
 }
 
-bool ScreenshotPinnedWindow::updateWindowMove(const QPoint& nativeCursorPosition) {
-    if (!m_windowDragActive || m_nativeGeometryController == nullptr) {
-        return false;
-    }
-    const QRect target = m_nativeGeometryController->updateMove({}, nativeCursorPosition);
-    if (!target.isValid() || target.isEmpty()) {
-        return false;
-    }
-
-#if defined(Q_OS_WIN) || defined(_WIN32)
-    if (native::currentClientGeometry(winId()) == target) {
-        return true;
-    }
-    if (native::applyClientGeometry(winId(), target)) {
-        return true;
-    }
-    const QRect actual = native::currentClientGeometry(winId());
-    // USER32 may apply the destination monitor's per-monitor DPI while this
-    // SetWindowPos call is in flight. In that case the native position is the
-    // requested move position, but the client size is already scaled before
-    // applyClientGeometry checks its exact round-trip. Keep that native result
-    // as the active move target instead of treating the expected DPI resize as
-    // a failed move and restoring the drag-start rectangle.
-    const QPoint positionDelta = actual.topLeft() - target.topLeft();
-    const bool nativeDpiResize = actual.isValid() && !actual.isEmpty() &&
-                                 qAbs(positionDelta.x()) <= 2 && qAbs(positionDelta.y()) <= 2 &&
-                                 actual.size() != target.size();
-    if (nativeDpiResize &&
-        m_nativeGeometryController->adoptDpiTarget(actual, nativeCursorPosition)) {
-        m_preserveScaleForSettledGeometry = false;
-        scheduleNativeScaleAdoption();
-        return true;
-    }
-    static_cast<void>(restoreCommittedNativeGeometry());
-    finishWindowMove();
-    return false;
-#else
-    Q_UNUSED(nativeCursorPosition);
-    return true;
-#endif
-}
-
 void ScreenshotPinnedWindow::finishWindowMove() {
+    m_systemMoveKeyboard->stop();
     const bool wasActive = m_windowDragActive;
     m_windowDragActive = false;
     if (wasActive) {

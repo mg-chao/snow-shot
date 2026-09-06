@@ -385,9 +385,6 @@ void ScreenshotCaptureWorkflow::prepareOverlayPresentation(quint64 sessionId) {
     if (m_context.presentation.updateOverlayState) {
         m_context.presentation.updateOverlayState();
     }
-    m_context.runtime.showOverlayWindows(m_context.displaySession,
-                                         ScreenshotOverlayShowMode::WarmSurface);
-    SNOW_SHOT_CAPTURE_PERF_MILESTONE("presentation.surface_warmed");
 }
 
 void ScreenshotCaptureWorkflow::finishCapturePreparation(const ScreenshotCaptureResult& result) {

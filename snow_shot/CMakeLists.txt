@@ -2168,10 +2168,21 @@ if(SNOW_SHOT_BUILD_TESTS)
         NAME snow-shot-pinned-toolbar-parity-tests
         COMMAND snow-shot-pinned-window-tests --toolbar-parity-only
     )
+    add_test(
+        NAME snow-shot-pinned-movement-shortcut-tests
+        COMMAND snow-shot-pinned-window-tests --movement-shortcut-only
+    )
     if(WIN32)
         add_test(
             NAME snow-shot-pinned-native-drag-shortcut-tests
             COMMAND snow-shot-pinned-window-tests --native-drag-shortcut-only
+        )
+        add_test(
+            NAME snow-shot-pinned-system-move-shortcut-real-mouse-tests
+            COMMAND snow-shot-pinned-window-tests --system-move-loop-only
+        )
+        set_tests_properties(snow-shot-pinned-system-move-shortcut-real-mouse-tests PROPERTIES
+            LABELS "interactive;windows"
         )
         add_test(
             NAME snow-shot-pinned-native-drag-dpi-tests
@@ -2245,10 +2256,12 @@ if(SNOW_SHOT_BUILD_TESTS)
         snow-shot-pinned-group-menu-tests
         snow-shot-pinned-restore-wiring-tests
         snow-shot-pinned-toolbar-parity-tests
+        snow-shot-pinned-movement-shortcut-tests
     )
     if(WIN32)
         list(APPEND _snow_shot_pinned_window_test_names
             snow-shot-pinned-native-drag-shortcut-tests
+            snow-shot-pinned-system-move-shortcut-real-mouse-tests
             snow-shot-pinned-native-drag-dpi-tests
         )
     endif()

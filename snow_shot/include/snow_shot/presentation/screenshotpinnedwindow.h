@@ -39,6 +39,9 @@ namespace snow_shot::platform {
 class PhysicalCursor;
 enum class PhysicalCursorDirection;
 } // namespace snow_shot::platform
+namespace screenshot_pinned_window_native {
+class SystemMoveKeyboard;
+}
 
 class QAction;
 class QActionGroup;
@@ -159,6 +162,7 @@ class ScreenshotPinnedWindow final : public QWidget {
     friend class ScreenshotPinnedEditController;
 
     enum class GeometryMutation {
+        Move,
         Scale,
         ImageTransform,
         Thumbnail,
@@ -271,7 +275,6 @@ class ScreenshotPinnedWindow final : public QWidget {
     bool cursorMovementEnabled() const;
     bool moveCursorOnePixel(snow_shot::platform::PhysicalCursorDirection direction);
     bool startWindowMove();
-    bool updateWindowMove(const QPoint& nativeCursorPosition);
     void finishWindowMove();
     bool windowDragEnabled() const;
     void updateWindowDragCursor(const QPoint& position);
@@ -286,6 +289,7 @@ class ScreenshotPinnedWindow final : public QWidget {
 
     SnowCanvasRuntime m_runtime;
     std::unique_ptr<snow_shot::presentation::WindowShortcutManager> m_shortcutManager;
+    std::unique_ptr<screenshot_pinned_window_native::SystemMoveKeyboard> m_systemMoveKeyboard;
     std::unique_ptr<snow_shot::platform::PhysicalCursor> m_physicalCursor;
     QMap<QString, quint64> m_pinnedShortcutBindings;
     std::shared_ptr<ScreenshotExportArtifact> m_exportArtifact;
