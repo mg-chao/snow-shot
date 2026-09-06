@@ -5,6 +5,7 @@
 #include "snow_shot/presentation/components/pagecontainerwidget.h"
 #include "snow_shot/presentation/components/themedheadericonbutton.h"
 #include "snow_shot/presentation/screenshotclipboardservice.h"
+#include "snow_shot/presentation/screenshotclipboardpolicy.h"
 
 #include "snow_shot/presentation/styles/thememanager.h"
 #include "snow_shot/storage/applicationstorage.h"
@@ -1381,8 +1382,9 @@ void ScreenshotHistoryPageWidget::handleResultImageReady(
         entry->setCopyEnabled(true);
     }
     if (resolution.image.has_value() && !resolution.image->isNull()) {
-        static_cast<void>(
-            ScreenshotClipboardService::publishImage(QApplication::clipboard(), *resolution.image));
+        static_cast<void>(ScreenshotClipboardService::publishImage(
+            QApplication::clipboard(), *resolution.image,
+            ScreenshotClipboardPolicy::formatForScenario(ScreenshotClipboardScenario::Other)));
     }
 }
 

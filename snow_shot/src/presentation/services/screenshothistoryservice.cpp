@@ -103,7 +103,8 @@ snow_shot::storage::CaptureHistoryDraft storageDraft(const ScreenshotHistoryEntr
     draft.canvasHistory = entry.canvasHistory;
     draft.source = entry.source;
     for (const ScreenshotHistoryDisplay& display : entry.displays) {
-        draft.displays.push_back({display.stableId, display.name, display.image});
+        draft.displays.push_back(
+            {display.stableId, display.name, display.image, display.sourceCanvasOrigin});
     }
     draft.resultImage = entry.resultImage;
     draft.preparedResultImage = entry.preparedResultImage;
@@ -127,7 +128,8 @@ placeholderRecord(const snow_shot::storage::CaptureHistoryDraft& draft) {
         record.result = snow_shot::storage::CaptureHistoryResultRecord{resultSize, 0};
     }
     for (const snow_shot::storage::CaptureHistoryDisplayDraft& display : draft.displays) {
-        record.displays.push_back({display.stableId, display.name, display.image.size(), 0});
+        record.displays.push_back(
+            {display.stableId, display.name, display.image.size(), 0, display.sourceCanvasOrigin});
     }
     return record;
 }
@@ -150,7 +152,23 @@ presentationEntry(const snow_shot::storage::CaptureHistoryRecord& record,
     entry.persistent = true;
     for (qsizetype index = 0; index < record.displays.size(); ++index) {
         entry.displays.push_back({record.displays[index].stableId, record.displays[index].name,
-                                  payload.displayImages[index]});
+                                  payload.displayImages[index],
+                                  record.displays[index].sourceCanvasOrigin});
+    }
+    // Early direct-capture sessions stored absolute desktop coordinates instead of canvas ones.
+    const bool directCapture =
+        record.source == snow_shot::storage::CaptureHistorySource::FocusedWindow ||
+        record.source == snow_shot::storage::CaptureHistorySource::CurrentMonitor;
+    if (directCapture &&
+        record.contentKind == snow_shot::storage::CaptureHistoryContentKind::ScreenshotSession &&
+        !record.canvasBounds.topLeft().isNull()) {
+        const QPoint canvasOffset = -record.canvasBounds.topLeft();
+        entry.recordedCanvasBounds.translate(canvasOffset);
+        entry.selection.selection.translate(canvasOffset);
+        for (auto& display : entry.displays) {
+            if (display.sourceCanvasOrigin.has_value())
+                *display.sourceCanvasOrigin += canvasOffset;
+        }
     }
     return entry;
 }
@@ -330,8 +348,13 @@ ScreenshotHistoryService::snapshotCurrent(bool persistent) const {
             if (display.image.isNull()) {
                 return;
             }
-            entry.displays.push_back(
-                ScreenshotHistoryDisplay{display.stableId, display.name, display.image});
+            const QPoint origin =
+                ScreenshotGeometryMapper::displayImageSourceCanvasRect(display).topLeft().toPoint();
+            const QPoint displayOrigin =
+                ScreenshotGeometryMapper::displayCanvasRect(display).topLeft().toPoint();
+            entry.displays.push_back(ScreenshotHistoryDisplay{
+                display.stableId, display.name, display.image,
+                origin != displayOrigin ? std::optional<QPoint>(origin) : std::nullopt});
         });
     if (entry.displays.isEmpty()) {
         return std::nullopt;
@@ -348,7 +371,8 @@ bool ScreenshotHistoryService::navigateToRecord(const QString& recordId) {
     if (recordId.isEmpty() || m_navigationInProgress) {
         return false;
     }
-    reapCompletedWrites();
+    // Other capture controllers publish directly to the shared repository.
+    refreshMetadata();
     const auto target =
         std::find_if(m_entries.cbegin(), m_entries.cend(),
                      [&recordId](const snow_shot::storage::CaptureHistoryRecord& record) {
@@ -382,7 +406,7 @@ bool ScreenshotHistoryService::navigatePrevious() {
     if (m_navigationInProgress) {
         return false;
     }
-    reapCompletedWrites();
+    refreshMetadata();
     if (m_entries.isEmpty()) {
         return false;
     }
@@ -396,7 +420,7 @@ bool ScreenshotHistoryService::navigateNext() {
     if (m_navigationInProgress) {
         return false;
     }
-    reapCompletedWrites();
+    refreshMetadata();
     if (!ensureLiveEndpoint() || m_navigationIndex <= 0) {
         return false;
     }
@@ -510,8 +534,20 @@ bool ScreenshotHistoryService::applyEntry(const ScreenshotHistoryEntry& entry) {
     auto selectionParams = entry.selection;
     const bool imageOnly =
         entry.contentKind == snow_shot::storage::CaptureHistoryContentKind::Image;
-    if (imageOnly)
-        selectionParams.selection.translate(bounds.topLeft());
+    QPoint imageCanvasOffset;
+    if (imageOnly) {
+        if (entry.displays.front().sourceCanvasOrigin.has_value()) {
+            QRect physicalDesktop;
+            m_context.displays.forEachActiveDisplay(
+                [&physicalDesktop](qsizetype, const CapturedDisplayModel& display) {
+                    physicalDesktop = physicalDesktop.united(display.physicalRect);
+                });
+            imageCanvasOffset = bounds.topLeft() - physicalDesktop.topLeft();
+        } else {
+            imageCanvasOffset = bounds.topLeft();
+        }
+        selectionParams.selection.translate(imageCanvasOffset);
+    }
     if (!restoredSelection.applyParams(selectionParams, bounds)) {
         return false;
     }
@@ -563,7 +599,9 @@ bool ScreenshotHistoryService::applyEntry(const ScreenshotHistoryEntry& entry) {
         CapturedDisplayModel& display = m_context.displays.displayAt(current[currentOrder]);
         if (imageOnly) {
             display.image = entry.displays.front().image;
-            display.imageSourceCanvasRect = QRect(bounds.topLeft(), display.image.size());
+            display.imageSourceCanvasRect = QRect(
+                entry.displays.front().sourceCanvasOrigin.value_or(QPoint()) + imageCanvasOffset,
+                display.image.size());
             continue;
         }
         const int savedIndex = matchedSaved[currentOrder];
@@ -574,8 +612,10 @@ bool ScreenshotHistoryService::applyEntry(const ScreenshotHistoryEntry& entry) {
         }
         const QImage& image = entry.displays[savedIndex].image;
         display.image = image;
-        display.imageSourceCanvasRect = QRect(
-            ScreenshotGeometryMapper::displayCanvasRect(display).topLeft().toPoint(), image.size());
+        display.imageSourceCanvasRect =
+            QRect(entry.displays[savedIndex].sourceCanvasOrigin.value_or(
+                      ScreenshotGeometryMapper::displayCanvasRect(display).topLeft().toPoint()),
+                  image.size());
     }
     m_context.selection = restoredSelection;
     m_context.interaction.cancelDrag();

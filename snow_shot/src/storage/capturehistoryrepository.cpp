@@ -115,6 +115,11 @@ QJsonObject recordJson(const StoredRecord& stored) {
             imageJson(display.imageSize, display.encodedBytes, stored.displayFileNames[i]);
         object.insert(QStringLiteral("stable_id"), display.stableId);
         object.insert(QStringLiteral("display_name"), display.name);
+        if (display.sourceCanvasOrigin.has_value()) {
+            object.insert(QStringLiteral("source_canvas_origin"),
+                          QJsonObject{{QStringLiteral("x"), display.sourceCanvasOrigin->x()},
+                                      {QStringLiteral("y"), display.sourceCanvasOrigin->y()}});
+        }
         displays.append(object);
     }
     QJsonObject object{
@@ -235,6 +240,20 @@ bool parseRecord(const QJsonObject& object, StoredRecord* stored) {
         }
         image.stableId = display.value(QStringLiteral("stable_id")).toString();
         image.name = display.value(QStringLiteral("display_name")).toString();
+        const QJsonValue origin = display.value(QStringLiteral("source_canvas_origin"));
+        if (!origin.isUndefined()) {
+            qint64 originX = 0, originY = 0;
+            if (!origin.isObject() ||
+                !integer(origin.toObject().value(QStringLiteral("x")),
+                         std::numeric_limits<int>::min(),
+                         std::numeric_limits<int>::max() - image.imageSize.width() + 1, &originX) ||
+                !integer(
+                    origin.toObject().value(QStringLiteral("y")), std::numeric_limits<int>::min(),
+                    std::numeric_limits<int>::max() - image.imageSize.height() + 1, &originY)) {
+                return false;
+            }
+            image.sourceCanvasOrigin = QPoint(static_cast<int>(originX), static_cast<int>(originY));
+        }
         record.displays.append(image);
         stored->displayFileNames.append(file);
         bytes += image.encodedBytes;
@@ -349,6 +368,13 @@ bool encodeDraft(const CaptureHistoryDraft& draft, qint64 quota, EncodedDraft* r
     }
     for (qsizetype i = 0; i < draft.displays.size(); ++i) {
         const auto& display = draft.displays[i];
+        if (display.sourceCanvasOrigin.has_value() &&
+            (static_cast<qint64>(display.sourceCanvasOrigin->x()) + display.image.width() - 1 >
+                 std::numeric_limits<int>::max() ||
+             static_cast<qint64>(display.sourceCanvasOrigin->y()) + display.image.height() - 1 >
+                 std::numeric_limits<int>::max())) {
+            return false;
+        }
         const QString name = QStringLiteral("display_%1.png").arg(i);
         const qint64 bytes = addImage(display.image.size(), name, [&]() {
             return snow_shot::image_codec::encodePng(display.image);
@@ -356,7 +382,8 @@ bool encodeDraft(const CaptureHistoryDraft& draft, qint64 quota, EncodedDraft* r
         if (bytes == 0)
             return false;
         stored.displayFileNames.append(name);
-        record.displays.append({display.stableId, display.name, display.image.size(), bytes});
+        record.displays.append({display.stableId, display.name, display.image.size(), bytes,
+                                display.sourceCanvasOrigin});
     }
     return record.totalBytes <= quota;
 }

@@ -2,6 +2,7 @@
 #include "captureframeimage.h"
 
 #include <memory>
+#include <utility>
 
 namespace snow_shot::presentation {
 namespace {
@@ -13,50 +14,79 @@ QString nativeError() {
 
 DirectCaptureFrame captureDirectTarget(const DirectCaptureRequest& request) {
     DirectCaptureFrame result;
+    if ((request.target == DirectCaptureTarget::FocusedWindow && request.window == 0) ||
+        (request.target == DirectCaptureTarget::CurrentMonitor && request.monitorName.isEmpty())) {
+        return result;
+    }
+    SnowCaptureDesktopSessionConfig config{};
+    config.capture_retry_count = 1;
+    config.pixel_format = SNOW_CAPTURE_PIXEL_FORMAT_BGRA8;
+    const std::unique_ptr<SnowCaptureDesktopSession,
+                          decltype(&snow_capture_desktop_session_destroy)>
+        session(snow_capture_desktop_session_create(&config), snow_capture_desktop_session_destroy);
+    SnowCaptureScreenshotRequest nativeRequest{};
+    nativeRequest.version = SNOW_CAPTURE_SCREENSHOT_REQUEST_VERSION;
+    nativeRequest.struct_size = sizeof(nativeRequest);
+    nativeRequest.focused_window = request.target == DirectCaptureTarget::FocusedWindow
+                                       ? static_cast<intptr_t>(request.window)
+                                       : 0;
+    const std::unique_ptr<SnowCaptureScreenshotResult,
+                          decltype(&snow_capture_screenshot_result_destroy)>
+        snapshot(session ? snow_capture_desktop_session_capture(session.get(), &nativeRequest)
+                         : nullptr,
+                 snow_capture_screenshot_result_destroy);
+    if (!snapshot) {
+        result.error = nativeError();
+        return result;
+    }
+    const size_t count = snow_capture_screenshot_result_display_count(snapshot.get());
+    for (size_t index = 0; index < count; ++index) {
+        SnowCaptureFrameInfo info{};
+        if (!snow_capture_screenshot_result_display_info(snapshot.get(), index, &info) ||
+            !capture::validFrameInfo(info)) {
+            result.error = nativeError();
+            break;
+        }
+        DirectCaptureDisplay display;
+        display.image = capture::imageFromFrameLease(
+            snow_capture_screenshot_result_display_retain(snapshot.get(), index), info.rgba_bytes,
+            info.rgba_len, info.width, info.height, info.stride_bytes, info.pixel_format,
+            capture::FrameAlphaMode::Opaque);
+        display.physicalBounds =
+            QRect(info.x, info.y, static_cast<int>(info.width), static_cast<int>(info.height));
+        display.stableId = QString::fromUtf8(info.stable_id);
+        display.name = QString::fromUtf8(info.name);
+        if (request.target == DirectCaptureTarget::CurrentMonitor &&
+            display.name == request.monitorName) {
+            result.image = display.image;
+            result.physicalBounds = display.physicalBounds;
+            result.identity = display.stableId;
+            result.backend = info.backend_kind;
+        }
+        if (display.image.isNull())
+            break;
+        result.displays.push_back(std::move(display));
+    }
+    if (result.displays.isEmpty() || static_cast<size_t>(result.displays.size()) != count) {
+        result.image = {};
+        result.displays.clear();
+        return result;
+    }
     if (request.target == DirectCaptureTarget::FocusedWindow) {
-        SnowCaptureWindowSessionConfig config{};
-        config.hwnd = static_cast<intptr_t>(request.window);
-        config.capture_retry_count = 1;
-        config.pixel_format = SNOW_CAPTURE_PIXEL_FORMAT_BGRA8;
-        const std::unique_ptr<SnowCaptureWindowSession,
-                              decltype(&snow_capture_window_session_destroy)>
-            session(snow_capture_window_session_create(&config),
-                    snow_capture_window_session_destroy);
         SnowCaptureWindowFrameInfo info{};
         info.version = SNOW_CAPTURE_WINDOW_FRAME_INFO_VERSION;
         info.struct_size = sizeof(info);
-        if (!session || !snow_capture_window_session_capture(session.get(), &info)) {
+        if (!snow_capture_screenshot_result_focused_window_info(snapshot.get(), &info)) {
             result.error = nativeError();
             return result;
         }
         result.image = capture::imageFromFrameLease(
-            snow_capture_window_session_frame_retain(session.get()), info.rgba_bytes, info.rgba_len,
-            info.width, info.height, info.stride_bytes, info.pixel_format);
+            snow_capture_screenshot_result_focused_window_retain(snapshot.get()), info.rgba_bytes,
+            info.rgba_len, info.width, info.height, info.stride_bytes, info.pixel_format,
+            capture::FrameAlphaMode::Preserve);
         result.physicalBounds =
             QRect(info.x, info.y, static_cast<int>(info.width), static_cast<int>(info.height));
         result.identity = QStringLiteral("window:%1").arg(request.window);
-        result.backend = info.backend_kind;
-    } else {
-        const QByteArray name = request.monitorName.toUtf8();
-        SnowCaptureMonitorSessionConfig config{};
-        config.device_name_utf8 = name.constData();
-        config.capture_retry_count = 1;
-        config.pixel_format = SNOW_CAPTURE_PIXEL_FORMAT_BGRA8;
-        const std::unique_ptr<SnowCaptureMonitorSession,
-                              decltype(&snow_capture_monitor_session_destroy)>
-            session(snow_capture_monitor_session_create(&config),
-                    snow_capture_monitor_session_destroy);
-        SnowCaptureFrameInfo info{};
-        if (!session || !snow_capture_monitor_session_capture(session.get(), &info)) {
-            result.error = nativeError();
-            return result;
-        }
-        result.image = capture::imageFromFrameLease(
-            snow_capture_monitor_session_frame_retain(session.get()), info.rgba_bytes,
-            info.rgba_len, info.width, info.height, info.stride_bytes, info.pixel_format);
-        result.physicalBounds =
-            QRect(info.x, info.y, static_cast<int>(info.width), static_cast<int>(info.height));
-        result.identity = QString::fromUtf8(info.stable_id);
         result.backend = info.backend_kind;
     }
     return result;

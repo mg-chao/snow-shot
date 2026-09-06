@@ -2,6 +2,7 @@
 
 #include "snow_shot/presentation/screenshotdisplaysession.h"
 #include "snow_shot/presentation/screenshotclipboardservice.h"
+#include "snow_shot/presentation/screenshotclipboardpolicy.h"
 #include "snow_shot/presentation/screenshotdefaultstyles.h"
 #include "snow_shot/presentation/screenshotresultcompositor.h"
 
@@ -72,13 +73,6 @@ QImage composeSelectionResultFromRuntime(SnowCanvasRuntime& runtime, const QRect
     SNOW_SHOT_CLIPBOARD_PERF_SCOPE("export.compose_result");
     SNOW_SHOT_PIN_PERF_SCOPE("export.compose_result");
     return ScreenshotResultCompositor::compose(content, style);
-}
-
-ScreenshotClipboardFormatMode clipboardFormatForStyle(const ScreenshotResultStyle& style) {
-    const ScreenshotResultStyle normalized = ScreenshotResultCompositor::normalizedStyle(style);
-    return normalized.cornerRadius == 0 && normalized.shadowWidth == 0
-               ? ScreenshotClipboardFormatMode::CompatibleDib
-               : ScreenshotClipboardFormatMode::DibV5;
 }
 
 ScreenshotPinnedSelectionRequest
@@ -173,8 +167,9 @@ class ScreenshotExportWorker final : public QObject {
         ScreenshotSelectionClipboardResult result;
         result.image = renderSelection(documentSession, selection, style, sources,
                                        ScreenshotExportOutputMode::ClipboardCompatible);
-        result.payload =
-            ScreenshotClipboardService::prepareImage(result.image, clipboardFormatForStyle(style));
+        result.payload = ScreenshotClipboardService::prepareImage(
+            result.image, ScreenshotClipboardPolicy::formatForScenario(
+                              ScreenshotClipboardScenario::OrdinarySelection, style));
         return result;
     }
 

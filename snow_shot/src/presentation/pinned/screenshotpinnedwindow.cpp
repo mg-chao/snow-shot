@@ -25,6 +25,7 @@
 #include "snow_shot/presentation/screenshottoolpalette.h"
 #include "snow_shot/presentation/screenshottoolpalettehost.h"
 #include "snow_shot/presentation/screenshotclipboardservice.h"
+#include "snow_shot/presentation/screenshotclipboardpolicy.h"
 #include "snow_shot/presentation/windowshortcutmanager.h"
 #include "snow_shot/storage/settingsadapters.h"
 
@@ -3641,7 +3642,7 @@ void ScreenshotPinnedWindow::copyCurrentViewport() {
         ScreenshotExportSource::fromPinnedViewport(std::move(request)));
     m_exportArtifact = artifact;
     if (!artifact->requestClipboard(
-            this, ScreenshotClipboardFormatMode::DibV5,
+            this, ScreenshotClipboardPolicy::formatForScenario(ScreenshotClipboardScenario::Other),
             [this, artifact](ScreenshotExportClipboardResult result) mutable {
                 if (m_exportArtifact == artifact && !m_closing) {
                     commitClipboardPayload(std::move(result.payload));
@@ -3714,7 +3715,7 @@ void ScreenshotPinnedWindow::copyOriginalContent() {
         ScreenshotExportSource::fromImage(m_originalImage));
     m_exportArtifact = artifact;
     if (!artifact->requestClipboard(
-            this, ScreenshotClipboardFormatMode::DibV5,
+            this, ScreenshotClipboardPolicy::formatForScenario(ScreenshotClipboardScenario::Other),
             [this, artifact](ScreenshotExportClipboardResult result) mutable {
                 if (m_exportArtifact == artifact && !m_closing) {
                     commitClipboardPayload(std::move(result.payload));

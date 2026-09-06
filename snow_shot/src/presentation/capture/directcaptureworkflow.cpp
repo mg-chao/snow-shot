@@ -21,8 +21,11 @@ void DirectCaptureWorkflow::enqueue(DirectCaptureRequest request) {
     if (m_phase == Phase::Stopped)
         return;
     m_queue.push_back(std::move(request));
-    if (m_phase == Phase::Idle)
-        startNext();
+    const QPointer<DirectCaptureWorkflow> self(this);
+    if (m_ports.captureRequested)
+        m_ports.captureRequested();
+    if (self && self->m_phase == Phase::Idle)
+        self->startNext();
 }
 
 qsizetype DirectCaptureWorkflow::pendingCount() const {
@@ -60,10 +63,7 @@ void DirectCaptureWorkflow::startNext() {
             return;
         }
         self->m_frame = std::move(frame);
-        if (self->m_ports.captured)
-            self->m_ports.captured();
-        if (self)
-            self->saveOrCopy();
+        self->saveOrCopy();
     };
     if (!m_ports.acquire(m_queue.front(), complete))
         complete(DirectCaptureFrame{{}, {}, {}, 0, queueError()});
@@ -113,7 +113,7 @@ void DirectCaptureWorkflow::copy(const QString& path) {
         }
         self->publishHistory();
     };
-    if (!m_ports.copy(m_frame, path, complete))
+    if (!m_ports.copy(m_queue.front(), m_frame, path, complete))
         complete(queueError());
 }
 

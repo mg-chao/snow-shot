@@ -5,6 +5,7 @@
 #include "snow_shot/presentation/directcapturehistory.h"
 #include "snow_shot/presentation/directcaptureworkflow.h"
 #include "snow_shot/presentation/screenshotclipboardservice.h"
+#include "snow_shot/presentation/screenshotclipboardpolicy.h"
 #include "snow_shot/presentation/screenshotimagefileservice.h"
 #include "snow_shot/storage/applicationstorage.h"
 #include "snow_shot/storage/capturehistoryrepository.h"
@@ -57,8 +58,8 @@ class DirectCaptureController::Impl {
                           done(result.path, result.error);
                       });
               },
-              [this](const auto& frame, const auto& path, auto done) {
-                  return copy(frame, path, std::move(done));
+              [this](const auto& request, const auto& frame, const auto& path, auto done) {
+                  return copy(request, frame, path, std::move(done));
               },
               [this](const auto& request, const auto& frame, auto done) {
                   auto* repository = &storage::ApplicationStorage::instance().captureHistory();
@@ -124,8 +125,8 @@ class DirectCaptureController::Impl {
             Qt::QueuedConnection);
     }
 
-    bool copy(const DirectCaptureFrame& frame, const QString& path,
-              DirectCapturePorts::Completion done) {
+    bool copy(const DirectCaptureRequest& request, const DirectCaptureFrame& frame,
+              const QString& path, DirectCapturePorts::Completion done) {
         if (!path.isEmpty()) {
             auto* mime = new QMimeData;
             mime->setUrls({QUrl::fromLocalFile(QFileInfo(path).absoluteFilePath())});
@@ -136,11 +137,14 @@ class DirectCaptureController::Impl {
                 });
             return clipboard.isValid();
         }
+        const auto format = ScreenshotClipboardPolicy::formatForScenario(
+            request.target == DirectCaptureTarget::CurrentMonitor
+                ? ScreenshotClipboardScenario::CurrentMonitor
+                : ScreenshotClipboardScenario::Other);
         return submit<OutputResult>(
-            [frame]() {
+            [frame, format]() {
                 auto payload = std::make_shared<ScreenshotClipboardPayload>(
-                    ScreenshotClipboardService::prepareImage(
-                        frame.image, ScreenshotClipboardFormatMode::CompatibleDib));
+                    ScreenshotClipboardService::prepareImage(frame.image, format));
                 return OutputResult{payload->isValid()
                                         ? QString()
                                         : DirectCaptureController::tr(

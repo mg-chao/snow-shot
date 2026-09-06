@@ -27,6 +27,7 @@ struct Fixture {
     DirectCapturePorts::Completion copied;
     DirectCapturePorts::Completion recorded;
     QVector<DirectCaptureRequest> requests;
+    QVector<DirectCaptureRequest> copyRequests;
     QStringList events;
     QImage output;
     QString copiedPath;
@@ -34,7 +35,7 @@ struct Fixture {
     bool acceptSave = true;
     bool acceptCopy = true;
     bool acceptHistory = true;
-    bool stopOnCaptured = false;
+    bool stopOnCaptureRequested = false;
     bool stopOnReport = false;
     DirectCaptureWorkflow workflow{DirectCapturePorts{
         [this](const DirectCaptureRequest& request, auto done) {
@@ -49,8 +50,9 @@ struct Fixture {
             saved = std::move(done);
             return acceptSave;
         },
-        [this](const auto& result, const auto& path, auto done) {
+        [this](const auto& request, const auto& result, const auto& path, auto done) {
             events << "copy";
+            copyRequests.push_back(request);
             output = result.image;
             copiedPath = path;
             copied = std::move(done);
@@ -69,11 +71,34 @@ struct Fixture {
         },
         [this]() {
             events << "shutter";
-            if (stopOnCaptured)
+            if (stopOnCaptureRequested)
                 workflow.shutdown();
         },
     }};
 };
+
+void shutterPlaysImmediatelyForEveryRequest() {
+    for (auto target : {DirectCaptureTarget::FocusedWindow, DirectCaptureTarget::CurrentMonitor}) {
+        Fixture f;
+        DirectCaptureRequest request;
+        request.target = target;
+        f.workflow.enqueue(request);
+        require(f.events == QStringList({"shutter", "acquire"}),
+                "shutter waited for image acquisition instead of acknowledging the request");
+        f.workflow.enqueue(request);
+        require(f.events == QStringList({"shutter", "acquire", "shutter"}),
+                "queued capture delayed its shutter notification");
+        f.acquired(frame());
+        f.copied({});
+        QCoreApplication::processEvents();
+        f.acquired({});
+        require(f.events.count("shutter") == 2 && f.workflow.pendingCount() == 0,
+                "capture completion or failure repeated the shutter notification");
+        f.workflow.shutdown();
+        f.workflow.enqueue(request);
+        require(f.events.count("shutter") == 2, "stopped workflow played a shutter sound");
+    }
+}
 
 void outputsKeepRawPixelsAndProcessEveryRequest() {
     Fixture f;
@@ -102,9 +127,38 @@ void outputsKeepRawPixelsAndProcessEveryRequest() {
     f.acquired(frame());
     f.copied({});
     require(f.workflow.pendingCount() == 0, "successful queue did not drain");
-    require(f.events == QStringList({"acquire", "shutter", "save", "copy", "history", "acquire",
-                                     "shutter", "copy"}),
+    require(f.events == QStringList({"shutter", "acquire", "shutter", "save", "copy", "history",
+                                     "acquire", "copy"}),
             "output ordering changed");
+}
+
+void queuedCopiesRetainCaptureTargets() {
+    for (bool autoSave : {false, true}) {
+        Fixture f;
+        const DirectCaptureTarget targets[] = {
+            DirectCaptureTarget::FocusedWindow, DirectCaptureTarget::CurrentMonitor,
+            DirectCaptureTarget::FocusedWindow, DirectCaptureTarget::CurrentMonitor};
+        for (auto target : targets) {
+            DirectCaptureRequest request;
+            request.target = target;
+            request.autoSave = autoSave;
+            f.workflow.enqueue(request);
+            request.target = DirectCaptureTarget::FocusedWindow;
+        }
+        for (auto target : targets) {
+            QCoreApplication::processEvents();
+            f.acquired(frame());
+            if (autoSave)
+                f.saved(QStringLiteral("saved.png"), {});
+            require(f.copyRequests.back().target == target &&
+                        f.copyRequests.back().autoSave == autoSave,
+                    "clipboard copy lost the active request's capture target or save setting");
+            require(f.copiedPath.isEmpty(), "automatic saving changed bitmap copy to file copy");
+            f.copied({});
+        }
+        require(f.copyRequests.size() == 4 && f.workflow.pendingCount() == 0,
+                "queued clipboard copies were dropped or left pending");
+    }
 }
 
 void failuresDoNotBlockLaterRequests() {
@@ -230,11 +284,10 @@ void queuedRequestsRetainTargetsAndOutputSettings() {
 void shutdownDuringNotificationsStopsOutputs() {
     {
         Fixture f;
-        f.stopOnCaptured = true;
+        f.stopOnCaptureRequested = true;
         f.workflow.enqueue({});
-        f.acquired(frame());
-        require(f.workflow.pendingCount() == 0 && !f.events.contains("copy"),
-                "capture notification shutdown allowed clipboard output");
+        require(f.workflow.pendingCount() == 0 && f.events == QStringList({"shutter"}),
+                "request notification shutdown allowed acquisition or output");
     }
     for (int stage = 0; stage < 4; ++stage) {
         Fixture f;
@@ -265,7 +318,9 @@ void shutdownDuringNotificationsStopsOutputs() {
 
 int main(int argc, char** argv) {
     QCoreApplication app(argc, argv);
+    shutterPlaysImmediatelyForEveryRequest();
     outputsKeepRawPixelsAndProcessEveryRequest();
+    queuedCopiesRetainCaptureTargets();
     failuresDoNotBlockLaterRequests();
     fileCopyHistoryFailureAndLateCallbacks();
     rejectedOperationsFinishAndDestroyedReceiversIgnoreResults();

@@ -1217,6 +1217,18 @@ if(SNOW_SHOT_BUILD_TESTS)
             -P ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_storage_boundary.cmake
     )
 
+    add_executable(snow-shot-screenshot-clipboard-policy-tests
+        tests/screenshot_clipboard_policy_tests.cpp
+        include/snow_shot/presentation/screenshotclipboardpolicy.h
+        src/presentation/overlay/screenshotselectionshadowrenderer.cpp
+    )
+    target_include_directories(snow-shot-screenshot-clipboard-policy-tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    )
+    target_link_libraries(snow-shot-screenshot-clipboard-policy-tests PRIVATE Qt6::Widgets)
+    add_test(NAME snow-shot-screenshot-clipboard-policy-tests
+             COMMAND snow-shot-screenshot-clipboard-policy-tests)
+
     add_executable(snow-shot-screenshot-result-compositor-tests
         tests/screenshot_result_compositor_tests.cpp
         include/snow_shot/presentation/screenshotclipboardservice.h
@@ -1263,6 +1275,12 @@ if(SNOW_SHOT_BUILD_TESTS)
     endif()
     add_test(NAME snow-shot-screenshot-export-service-tests
              COMMAND snow-shot-screenshot-export-service-tests)
+    set_tests_properties(snow-shot-screenshot-export-service-tests PROPERTIES
+        ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"
+        ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    )
+    snow_shot_import_offscreen_platform(snow-shot-screenshot-export-service-tests)
 
     add_executable(snow-shot-screenshot-result-geometry-tests
         tests/screenshot_result_geometry_tests.cpp
@@ -1665,6 +1683,18 @@ if(SNOW_SHOT_BUILD_TESTS)
     target_link_libraries(snow-shot-direct-capture-frame-tests PRIVATE Qt6::Gui)
     add_test(NAME snow-shot-direct-capture-frame-tests COMMAND snow-shot-direct-capture-frame-tests)
 
+    add_executable(snow-shot-direct-capture-native-tests
+        tests/direct_capture_native_tests.cpp
+        src/presentation/services/screenshotimagefileservice.cpp
+        src/presentation/capture/directcapturenative.cpp)
+    target_include_directories(snow-shot-direct-capture-native-tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/presentation/capture"
+        "${SNOW_SHOT_CAPTURE_CRATES_DIR}/crates/snow-capture-c/include")
+    target_link_libraries(snow-shot-direct-capture-native-tests PRIVATE
+        snow_shot_image_codec Qt6::Gui)
+    add_test(NAME snow-shot-direct-capture-native-tests COMMAND snow-shot-direct-capture-native-tests)
+
     if(WIN32)
         # Explicit opt-in: captures a visible fixture and its actual monitor.
         add_executable(snow-shot-direct-capture-native-smoke
@@ -1680,6 +1710,20 @@ if(SNOW_SHOT_BUILD_TESTS)
             d3d11 dxgi dxguid dwmapi gdi32 ole32 oleaut32 runtimeobject
             user32 userenv winmm windowsapp ws2_32 advapi32 bcrypt psapi)
     endif()
+
+    add_executable(snow-shot-capture-worker-tests
+        tests/screenshot_capture_worker_tests.cpp
+        include/snow_shot/presentation/screenshotcapturecoordinator.h
+        src/presentation/capture/screenshotcapturecoordinator.cpp
+        src/presentation/capture/screenshotcaptureworker.cpp
+        src/presentation/capture/screenshotcapturepolicy.cpp
+    )
+    target_include_directories(snow-shot-capture-worker-tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/presentation/capture"
+        "${SNOW_SHOT_CAPTURE_CRATES_DIR}/crates/snow-capture-c/include")
+    target_link_libraries(snow-shot-capture-worker-tests PRIVATE snow_shot_storage Qt6::Gui)
+    add_test(NAME snow-shot-capture-worker-tests COMMAND snow-shot-capture-worker-tests)
 
     add_executable(snow-shot-capture-workflow-tests
         tests/screenshot_capture_workflow_tests.cpp
@@ -1850,6 +1894,15 @@ if(SNOW_SHOT_BUILD_TESTS)
         COMMAND snow-shot-screenshot-history-tests
     )
     add_test(
+        NAME snow-shot-direct-capture-history-tests
+        COMMAND snow-shot-screenshot-history-tests --direct-capture-only
+    )
+    snow_shot_import_offscreen_platform(snow-shot-screenshot-history-tests)
+    set_tests_properties(snow-shot-direct-capture-history-tests PROPERTIES
+        ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    )
+    add_test(
         NAME snow-shot-screenshot-shortcut-priority-tests
         COMMAND snow-shot-screenshot-history-tests --shortcut-input-only
     )
@@ -1939,6 +1992,11 @@ if(SNOW_SHOT_BUILD_TESTS)
 
     add_executable(snow-shot-screenshot-canvas-renderer-tests
         tests/screenshot_canvas_renderer_tests.cpp
+        include/snow_shot/presentation/screenshothistoryservice.h
+        src/presentation/capture/directcapturehistory.cpp
+        src/presentation/services/screenshothistoryservice.cpp
+        src/presentation/core/screenshotintelligentselectionmodel.cpp
+        src/presentation/core/screenshotinteractionstate.cpp
         include/snow_shot/presentation/screenshotocrtextlayer.h
         include/snow_shot/presentation/screenshotmessageservice.h
         include/snow_shot/presentation/screenshotoverlaywindow.h
@@ -1981,6 +2039,12 @@ if(SNOW_SHOT_BUILD_TESTS)
     add_test(
         NAME snow-shot-screenshot-canvas-renderer-tests
         COMMAND snow-shot-screenshot-canvas-renderer-tests
+    )
+    add_test(NAME snow-shot-direct-capture-history-rendering-tests
+        COMMAND snow-shot-screenshot-canvas-renderer-tests --direct-capture-history-rendering)
+    set_tests_properties(snow-shot-direct-capture-history-rendering-tests PROPERTIES
+        ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
     )
     add_test(
         NAME snow-shot-ocr-canvas-renderer-tests

@@ -45,6 +45,8 @@ struct CaptureHistoryDisplayDraft {
     QString stableId;
     QString name;
     QImage image;
+    // Missing origins follow the matched display; explicit origins anchor captured pixels.
+    std::optional<QPoint> sourceCanvasOrigin;
 };
 
 struct CaptureHistoryResultRecord {
@@ -87,11 +89,13 @@ struct CaptureHistoryDisplayRecord {
     QString name;
     QSize imageSize;
     qint64 encodedBytes = 0;
+    std::optional<QPoint> sourceCanvasOrigin;
 
     friend bool operator==(const CaptureHistoryDisplayRecord& first,
                            const CaptureHistoryDisplayRecord& second) {
         return first.stableId == second.stableId && first.name == second.name &&
-               first.imageSize == second.imageSize && first.encodedBytes == second.encodedBytes;
+               first.imageSize == second.imageSize && first.encodedBytes == second.encodedBytes &&
+               first.sourceCanvasOrigin == second.sourceCanvasOrigin;
     }
 };
 

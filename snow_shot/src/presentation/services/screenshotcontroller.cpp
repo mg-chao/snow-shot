@@ -9,6 +9,7 @@
 #include "snow_shot/presentation/screenshotcanvascolorsampler.h"
 #include "snow_shot/presentation/screenshotcanvascolorsamplerwindow.h"
 #include "snow_shot/presentation/screenshotclipboardservice.h"
+#include "snow_shot/presentation/screenshotclipboardpolicy.h"
 #include "snow_shot/presentation/screenshotclipboardcontent.h"
 #include "snow_shot/presentation/screenshotcolorpickercontroller.h"
 #include "snow_shot/presentation/screenshotdisplayconfigurationobserver.h"
@@ -2806,7 +2807,9 @@ void ScreenshotController::Impl::copySelectionToClipboardWithSource(
                 auto artifact = std::make_shared<ScreenshotExportArtifact>(
                     ScreenshotExportSource::fromScrollingSnapshot(std::move(snapshot)));
                 receiver->m_impl->copyArtifactToClipboard(
-                    std::move(artifact), generation, ScreenshotClipboardFormatMode::CompatibleDib,
+                    std::move(artifact), generation,
+                    ScreenshotClipboardPolicy::formatForScenario(
+                        ScreenshotClipboardScenario::ScrollingCapture),
                     historySource, std::move(historyCandidate), true);
             });
         if (!scheduled) {
@@ -2833,12 +2836,9 @@ void ScreenshotController::Impl::copySelectionToClipboardWithSource(
     if (materializeImage) {
         const ScreenshotResultStyle style{m_selection.cornerRadius(), m_selection.shadowWidth(),
                                           m_selection.shadowColor()};
-        const ScreenshotResultStyle normalizedStyle =
-            ScreenshotResultCompositor::normalizedStyle(style);
         const ScreenshotClipboardFormatMode clipboardFormat =
-            normalizedStyle.cornerRadius == 0 && normalizedStyle.shadowWidth == 0
-                ? ScreenshotClipboardFormatMode::CompatibleDib
-                : ScreenshotClipboardFormatMode::DibV5;
+            ScreenshotClipboardPolicy::formatForScenario(
+                ScreenshotClipboardScenario::OrdinarySelection, style);
         const bool scheduled = m_exportService->requestSelectionResult(
             m_selection.pixelSelection(), style, &owner,
             [receiver, generation = *exportGeneration, copyFileToClipboard, clipboardFormat,
@@ -2867,12 +2867,9 @@ void ScreenshotController::Impl::copySelectionToClipboardWithSource(
     }
     const ScreenshotResultStyle style{m_selection.cornerRadius(), m_selection.shadowWidth(),
                                       m_selection.shadowColor()};
-    const ScreenshotResultStyle normalizedStyle =
-        ScreenshotResultCompositor::normalizedStyle(style);
     const ScreenshotClipboardFormatMode clipboardFormat =
-        normalizedStyle.cornerRadius == 0 && normalizedStyle.shadowWidth == 0
-            ? ScreenshotClipboardFormatMode::CompatibleDib
-            : ScreenshotClipboardFormatMode::DibV5;
+        ScreenshotClipboardPolicy::formatForScenario(ScreenshotClipboardScenario::OrdinarySelection,
+                                                     style);
     const QRect selectionBounds =
         ScreenshotHalfOpenRect::fromRectF(m_geometry.canvasBounds()).toAlignedQRect();
     const std::optional<ScreenshotSelectionParams> savedSelection =
@@ -3190,7 +3187,8 @@ void ScreenshotController::Impl::saveScrollingSnapshotForCopy(
             if (!copyFileToClipboard) {
                 auto payload = std::make_shared<ScreenshotClipboardPayload>(
                     ScreenshotClipboardService::prepare(
-                        source, ScreenshotClipboardFormatMode::CompatibleDib));
+                        source, ScreenshotClipboardPolicy::formatForScenario(
+                                    ScreenshotClipboardScenario::ScrollingCapture)));
                 if (!payload->isValid()) {
                     return ScreenshotExportTaskResult::failure(
                         ScreenshotExportFailureStage::Clipboard,

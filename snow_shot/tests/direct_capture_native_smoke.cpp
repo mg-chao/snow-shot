@@ -79,8 +79,12 @@ int main(int argc, char** argv) {
                                        monitor.backend == SNOW_CAPTURE_BACKEND_DXGI;
         std::cout << "fixture_pixels=" << pixelsValid << " preferred_backends=" << preferredBackends
                   << '\n';
-        const bool valid =
-            pixelsValid && isConcreteBackend(window.backend) && isConcreteBackend(monitor.backend);
+        const bool valid = pixelsValid && isConcreteBackend(window.backend) &&
+                           isConcreteBackend(monitor.backend) &&
+                           window.displays.size() == GetSystemMetrics(SM_CMONITORS) &&
+                           monitor.displays.size() == GetSystemMetrics(SM_CMONITORS);
+        std::cout << "retained_displays: window=" << window.displays.size()
+                  << " monitor=" << monitor.displays.size() << '\n';
         const bool requirePreferred =
             app.arguments().contains(QStringLiteral("--require-preferred-backends"));
         app.exit(valid && (!requirePreferred || preferredBackends) ? 0 : 1);

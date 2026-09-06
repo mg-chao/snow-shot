@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <limits>
 
 namespace storage = snow_shot::storage;
 
@@ -87,6 +88,62 @@ QJsonObject firstRecord(const QString& root) {
         .toArray()
         .first()
         .toObject();
+}
+
+void sourceCanvasOriginsRoundTripAndRejectInvalidCoordinates() {
+    const auto now = QDateTime::currentDateTimeUtc();
+    for (const auto origin :
+         {std::optional<QPoint>{}, std::optional<QPoint>{QPoint(-1920, -200)},
+          std::optional<QPoint>{QPoint(0, 0)}, std::optional<QPoint>{QPoint(1920, 400)}}) {
+        QTemporaryDir temporary;
+        storage::CaptureHistoryRecord published;
+        {
+            auto repository = storage::makeCaptureHistoryRepository(temporary.path());
+            auto draft = draftAt(now);
+            draft.displays.front().sourceCanvasOrigin = origin;
+            const auto result = repository->publish(draft).get();
+            require(result.storage.success, "positioned display publication failed");
+            published = result.record;
+        }
+        auto repository = storage::makeCaptureHistoryRepository(temporary.path());
+        require(repository->records().size() == 1 && repository->records().front() == published &&
+                    published.displays.front().sourceCanvasOrigin == origin &&
+                    repository->load(published).has_value(),
+                "display source origin did not survive a repository restart");
+    }
+
+    QTemporaryDir temporary;
+    {
+        auto repository = storage::makeCaptureHistoryRepository(temporary.path());
+        auto draft = draftAt(now);
+        require(repository->publish(draft).get().storage.success,
+                "source origin validation fixture failed");
+        draft.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        draft.displays.front().sourceCanvasOrigin = QPoint(std::numeric_limits<int>::max(), 0);
+        require(!repository->publish(draft).get().storage.success,
+                "publication accepted an overflowing source rectangle");
+    }
+    const QJsonObject index = readObject(indexPath(temporary.path()));
+    const QJsonValue invalidOrigins[] = {
+        QJsonValue(QJsonValue::Null), QJsonObject{},
+        QJsonObject{{QStringLiteral("x"), 1.5}, {QStringLiteral("y"), 0}},
+        QJsonObject{{QStringLiteral("x"), std::numeric_limits<int>::max()},
+                    {QStringLiteral("y"), 0}},
+        QJsonObject{{QStringLiteral("x"), 0},
+                    {QStringLiteral("y"), std::numeric_limits<int>::max()}}};
+    for (const auto& origin : invalidOrigins) {
+        QJsonObject record = index.value(QStringLiteral("records")).toArray().first().toObject();
+        QJsonArray displays = record.value(QStringLiteral("displays")).toArray();
+        QJsonObject display = displays.first().toObject();
+        display.insert(QStringLiteral("source_canvas_origin"), origin);
+        displays[0] = display;
+        record.insert(QStringLiteral("displays"), displays);
+        QJsonObject invalidIndex = index;
+        invalidIndex.insert(QStringLiteral("records"), QJsonArray{record});
+        writeBytes(indexPath(temporary.path()), QJsonDocument(invalidIndex).toJson());
+        auto repository = storage::makeCaptureHistoryRepository(temporary.path());
+        require(repository->records().isEmpty(), "invalid source origin was accepted on load");
+    }
 }
 
 void publicationAndRecovery() {
@@ -611,6 +668,7 @@ void clearCancelsQueuedPublicationsAndShutdownDrains() {
 
 int main(int argc, char** argv) {
     QCoreApplication application(argc, argv);
+    sourceCanvasOriginsRoundTripAndRejectInvalidCoordinates();
     publicationAndRecovery();
     preparedResultBytesAreCommittedWithoutReplacement();
     quickCaptureSourcesRoundTrip();

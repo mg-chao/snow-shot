@@ -6,6 +6,8 @@
 #include <QObject>
 #include <QPointer>
 
+#include <cstdint>
+
 typedef struct SnowCaptureDesktopSessionImpl SnowCaptureDesktopSession;
 typedef struct SnowCaptureCancellationTokenImpl SnowCaptureCancellationToken;
 
@@ -16,7 +18,8 @@ class ScreenshotCaptureWorker final : public QObject {
     ~ScreenshotCaptureWorker() override;
 
     void prepare(quint64 requestId, const QPointer<ScreenshotCaptureCoordinator>& coordinator);
-    void refreshLayout(quint64 requestId, const QPointer<ScreenshotCaptureCoordinator>& coordinator);
+    void refreshLayout(quint64 requestId,
+                       const QPointer<ScreenshotCaptureCoordinator>& coordinator);
     void capture(const ScreenshotCaptureRequest& request,
                  const QPointer<ScreenshotCaptureCoordinator>& coordinator,
                  SnowCaptureCancellationToken* cancellationToken);
@@ -31,6 +34,7 @@ class ScreenshotCaptureWorker final : public QObject {
                                   ScreenshotCaptureResult result);
 
     SnowCaptureDesktopSession* m_session = nullptr;
+    std::uint8_t m_sessionBackend = 0;
 };
 
 #endif // SNOW_SHOT_PRESENTATION_SCREENSHOTCAPTUREWORKER_H

@@ -6,12 +6,20 @@
 #include <QObject>
 #include <QRect>
 #include <QStringList>
+#include <QVector>
 
 #include <deque>
 #include <functional>
 
 namespace snow_shot::presentation {
 enum class DirectCaptureTarget { FocusedWindow, CurrentMonitor };
+
+struct DirectCaptureDisplay {
+    QImage image;
+    QRect physicalBounds;
+    QString stableId;
+    QString name;
+};
 
 struct DirectCaptureRequest {
     DirectCaptureTarget target = DirectCaptureTarget::CurrentMonitor;
@@ -32,6 +40,7 @@ struct DirectCaptureFrame {
     QString identity;
     quint8 backend = 0;
     QString error;
+    QVector<DirectCaptureDisplay> displays;
 
     [[nodiscard]] bool isValid() const {
         return error.isEmpty() && !image.isNull() && physicalBounds.size() == image.size();
@@ -45,10 +54,12 @@ struct DirectCapturePorts {
     std::function<bool(const DirectCaptureRequest&, const DirectCaptureFrame&,
                        std::function<void(QString, QString)>)>
         save;
-    std::function<bool(const DirectCaptureFrame&, const QString&, Completion)> copy;
+    std::function<bool(const DirectCaptureRequest&, const DirectCaptureFrame&, const QString&,
+                       Completion)>
+        copy;
     std::function<bool(const DirectCaptureRequest&, const DirectCaptureFrame&, Completion)> history;
     std::function<void(const QString&, bool)> report;
-    std::function<void()> captured;
+    std::function<void()> captureRequested;
 };
 
 class DirectCaptureWorkflow final : public QObject {

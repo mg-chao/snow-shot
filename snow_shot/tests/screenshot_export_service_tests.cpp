@@ -199,6 +199,41 @@ void styledClipboardResultRetainsDibV5() {
             "styled clipboard export did not retain rounded-corner transparency");
 }
 
+void selectionClipboardFormatFollowsEffects() {
+    ExportFixture fixture;
+    require(fixture.isValid(), "clipboard export fixture could not initialize the canvas runtime");
+    const QRect selection(12, 8, 37, 29);
+    for (int radius : {0, 8}) {
+        for (int shadow : {0, 6}) {
+            const ScreenshotResultStyle style{radius, shadow, QColor(0, 0, 0, 180)};
+            const QImage image = waitForResult(
+                [&](QObject* receiver, auto callback) {
+                    return fixture.service().requestSelectionClipboard(selection, style, receiver,
+                                                                       std::move(callback));
+                },
+                [&](ScreenshotSelectionClipboardResult result) {
+                    require(result.isValid(), "selection clipboard export has no payload");
+#if defined(Q_OS_WIN) || defined(_WIN32)
+                    require(radius == 0 && shadow == 0
+                                ? ScreenshotClipboardPayloadTestAccess::hasDib(result.payload)
+                                : ScreenshotClipboardPayloadTestAccess::hasDibV5(result.payload),
+                            "selection clipboard format did not follow its effects");
+#endif
+                    return std::move(result.image);
+                });
+            require(image.size() == selection.size() + QSize(shadow * 2, shadow * 2),
+                    "clipboard export changed result dimensions");
+            if (radius != 0 || shadow != 0) {
+                require(image.pixelColor(0, 0).alpha() < 255,
+                        "styled clipboard export lost transparency");
+            } else {
+                require(hasSamePixels(image, fixture.displaySnapshot().copy(selection)),
+                        "plain clipboard export changed capture pixels");
+            }
+        }
+    }
+}
+
 void pinnedSelectionMaterializesCompositedImage() {
     ExportFixture fixture;
     require(fixture.isValid(), "export fixture could not initialize the canvas runtime");
@@ -235,6 +270,23 @@ void pinnedSelectionMaterializesCompositedImage() {
     require(canvas.canvasHistoryState().canUndo,
             "pinned export canvas should commit a drawing before pinning");
 
+    const QImage annotatedCopy = waitForResult(
+        [&](QObject* receiver, auto callback) {
+            return fixture.service().requestSelectionClipboard(selection, {}, receiver,
+                                                               std::move(callback));
+        },
+        [](ScreenshotSelectionClipboardResult result) {
+            require(result.isValid(), "annotated selection did not prepare a clipboard payload");
+#if defined(Q_OS_WIN) || defined(_WIN32)
+            require(ScreenshotClipboardPayloadTestAccess::hasDib(result.payload),
+                    "annotations changed an effect-free selection to DIBV5");
+#endif
+            return std::move(result.image);
+        });
+    require(annotatedCopy.size() == selection.size() &&
+                !hasSamePixels(annotatedCopy, fixture.displaySnapshot().copy(selection)),
+            "clipboard fixture did not export its annotation");
+
     const std::optional<ScreenshotPinnedSelectionRequest> prepared =
         fixture.service().preparePinnedSelection(selection, style);
     require(prepared.has_value() && prepared->isPrepared(),
@@ -266,6 +318,7 @@ void pinnedSelectionMaterializesCompositedImage() {
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
     styledClipboardResultRetainsDibV5();
+    selectionClipboardFormatFollowsEffects();
     pinnedSelectionMaterializesCompositedImage();
     std::cout << "All screenshot export service tests passed\n";
     return EXIT_SUCCESS;

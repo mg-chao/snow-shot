@@ -8,19 +8,28 @@ namespace snow_shot::presentation {
 storage::CaptureHistoryDraft directCaptureHistoryDraft(const DirectCaptureRequest& request,
                                                        const DirectCaptureFrame& frame) {
     storage::CaptureHistoryDraft draft;
-    if (!frame.isValid())
+    if (!frame.isValid() || frame.displays.isEmpty())
         return draft;
-    draft.contentKind = storage::CaptureHistoryContentKind::Image;
     draft.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     draft.createdUtc = request.requestedAt.toUTC();
-    draft.canvasBounds = frame.image.rect();
-    draft.selection.rectangle = frame.image.rect();
     draft.selection.shadowColor = QColor(Qt::black);
-    // The storage format accepts drawing history; this isolated empty document
-    // keeps image records readable without consulting a live screenshot editor.
+    // Direct capture owns a complete snapshot without consulting the live editor.
     SnowCanvasRuntime emptyDocument;
     draft.canvasHistory = emptyDocument.serializeDocumentHistory();
-    draft.displays.push_back({frame.identity, frame.identity, frame.image});
+    for (const auto& display : frame.displays) {
+        if (display.image.isNull() || display.physicalBounds.size() != display.image.size())
+            return {};
+        draft.canvasBounds = draft.canvasBounds.united(display.physicalBounds);
+        draft.displays.push_back(
+            {display.stableId, display.name, display.image, display.physicalBounds.topLeft()});
+    }
+    // The editor uses physical pixel sizes relative to the complete desktop's top-left.
+    const QPoint canvasOffset = -draft.canvasBounds.topLeft();
+    draft.canvasBounds.translate(canvasOffset);
+    draft.selection.rectangle = frame.physicalBounds.translated(canvasOffset);
+    for (auto& display : draft.displays) {
+        *display.sourceCanvasOrigin += canvasOffset;
+    }
     draft.resultImage = frame.image;
     draft.source = request.target == DirectCaptureTarget::FocusedWindow
                        ? storage::CaptureHistorySource::FocusedWindow

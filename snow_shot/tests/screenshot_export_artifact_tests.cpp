@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/screenshotexportartifact.h"
+#include "snow_shot/presentation/screenshotclipboardpolicy.h"
 
 #include "snow_draw_engine_qt/snow_canvas_runtime.h"
 
@@ -14,6 +15,37 @@
 #include <iostream>
 #include <memory>
 #include <stdexcept>
+
+#if defined(Q_OS_WIN) || defined(_WIN32)
+#include <windows.h>
+#endif
+
+struct ScreenshotClipboardPayloadTestAccess {
+    static bool matchesFormat(const ScreenshotClipboardPayload& payload,
+                              ScreenshotClipboardFormatMode expected) {
+#if defined(Q_OS_WIN) || defined(_WIN32)
+        if (payload.m_formatMode != expected || payload.m_nativeHandle == nullptr) {
+            return false;
+        }
+        const auto handle = static_cast<HGLOBAL>(payload.m_nativeHandle);
+        const auto* header = static_cast<const BITMAPINFOHEADER*>(GlobalLock(handle));
+        if (header == nullptr) {
+            return false;
+        }
+        const bool matches = expected == ScreenshotClipboardFormatMode::CompatibleDib
+                                 ? header->biSize == sizeof(BITMAPINFOHEADER) &&
+                                       header->biHeight > 0 && header->biCompression == BI_RGB
+                                 : header->biSize == sizeof(BITMAPV5HEADER) &&
+                                       header->biHeight < 0 &&
+                                       header->biCompression == BI_BITFIELDS;
+        GlobalUnlock(handle);
+        return matches;
+#else
+        Q_UNUSED(expected);
+        return payload.isValid();
+#endif
+    }
+};
 
 namespace {
 void require(bool condition, const char* message) {
@@ -60,6 +92,55 @@ ScreenshotImageRowSource rowSourceFor(const QImage& source, std::function<bool()
         return true;
     };
     return rows;
+}
+
+void clipboardRequestsPreserveScenarioFormat() {
+    using Scenario = ScreenshotClipboardScenario;
+    using Format = ScreenshotClipboardFormatMode;
+    struct Case {
+        Scenario scenario;
+        ScreenshotResultStyle style;
+        Format expected;
+    };
+    const Case cases[] = {
+        {Scenario::OrdinarySelection, {}, Format::CompatibleDib},
+        {Scenario::OrdinarySelection, {8, 0, QColor()}, Format::DibV5},
+        {Scenario::ScrollingCapture, {}, Format::CompatibleDib},
+        {Scenario::CurrentMonitor, {}, Format::CompatibleDib},
+        {Scenario::Other, {}, Format::DibV5},
+    };
+    const QImage image = testImage();
+    for (bool rowBacked : {false, true}) {
+        std::atomic_int materializations = 0;
+        ScreenshotExportArtifact artifact(
+            rowBacked ? ScreenshotExportSource::fromProducer(
+                            [&materializations, image](const ScreenshotExportCancellation&) {
+                                ++materializations;
+                                return image;
+                            },
+                            [image](std::function<bool()> cancellation) {
+                                return rowSourceFor(image, std::move(cancellation));
+                            })
+                      : ScreenshotExportSource::fromImage(image));
+        QObject receiver;
+        int callbacks = 0;
+        for (const auto& test : cases) {
+            require(
+                artifact.requestClipboard(
+                    &receiver,
+                    ScreenshotClipboardPolicy::formatForScenario(test.scenario, test.style),
+                    [&callbacks, expected = test.expected](ScreenshotExportClipboardResult result) {
+                        require(result.succeeded(), "artifact clipboard preparation failed");
+                        require(ScreenshotClipboardPayloadTestAccess::matchesFormat(result.payload,
+                                                                                    expected),
+                                "artifact changed the requested clipboard format or header");
+                        ++callbacks;
+                    }),
+                "artifact clipboard request was rejected");
+        }
+        processUntil([&callbacks]() { return callbacks == 5; });
+        require(materializations == 0, "row-backed clipboard preparation materialized an image");
+    }
 }
 
 void imageRequestsShareOneAsyncLoad() {
@@ -209,6 +290,7 @@ void pinnedViewportSourceRendersExpectedPixels() {
 int main(int argc, char** argv) {
     QCoreApplication application(argc, argv);
     try {
+        clipboardRequestsPreserveScenarioFormat();
         imageRequestsShareOneAsyncLoad();
         canonicalEncodingCoalescesAndPreservesBufferIdentity();
         encodingFailureFansOutOnce();

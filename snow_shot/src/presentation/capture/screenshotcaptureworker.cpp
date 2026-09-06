@@ -113,8 +113,9 @@ void ScreenshotCaptureWorker::capture(const ScreenshotCaptureRequest& request,
 
         SnowCaptureFrameLease* lease =
             snow_capture_screenshot_result_display_retain(nativeResult, index);
-        QImage image = imageFromFrameLease(lease, info.rgba_bytes, info.rgba_len, info.width,
-                                           info.height, info.stride_bytes, info.pixel_format);
+        QImage image = imageFromFrameLease(
+            lease, info.rgba_bytes, info.rgba_len, info.width, info.height, info.stride_bytes,
+            info.pixel_format, snow_shot::presentation::capture::FrameAlphaMode::Opaque);
         if (image.isNull()) {
             valid = false;
             break;
@@ -146,19 +147,27 @@ void ScreenshotCaptureWorker::capture(const ScreenshotCaptureRequest& request,
 }
 
 bool ScreenshotCaptureWorker::ensureSession() {
-    if (m_session != nullptr) {
-        return true;
-    }
-
-    SnowCaptureDesktopSessionConfig config{};
-    config.capture_retry_count = 1;
     const QString apiMode = snow_shot::storage::ScreenshotSettings().apiMode();
     auto requested = snow_shot::presentation::capture::screenshotApiModeFromValue(
         apiMode.toLatin1().constData());
     if (requested == snow_shot::presentation::capture::ScreenshotApiMode::Auto) {
         requested = snow_shot::presentation::capture::resolveAutoScreenshotApiMode();
     }
-    config.capture_backend = snow_shot::presentation::capture::nativeBackendForNormalScreenshot(requested);
+    const auto backend =
+        snow_shot::presentation::capture::nativeBackendForNormalScreenshot(requested);
+    if (m_session != nullptr && m_sessionBackend == backend) {
+        return true;
+    }
+
+    // Native backend policy is fixed at creation, including for prewarmed sessions.
+    if (m_session != nullptr) {
+        snow_capture_desktop_session_destroy(m_session);
+        m_session = nullptr;
+    }
+
+    SnowCaptureDesktopSessionConfig config{};
+    config.capture_retry_count = 1;
+    config.capture_backend = backend;
 #if defined(Q_OS_WIN) || defined(_WIN32)
     config.pixel_format = SNOW_CAPTURE_PIXEL_FORMAT_BGRA8;
 #endif
@@ -167,6 +176,7 @@ bool ScreenshotCaptureWorker::ensureSession() {
         qWarning("Failed to create desktop capture session: %s", snow_capture_last_error_message());
         return false;
     }
+    m_sessionBackend = backend;
     return true;
 }
 

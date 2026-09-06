@@ -6,6 +6,8 @@
 #include <limits>
 
 namespace snow_shot::presentation::capture {
+enum class FrameAlphaMode { Preserve, Opaque };
+
 inline void releaseFrameLease(void* lease) {
     snow_capture_frame_lease_release(static_cast<SnowCaptureFrameLease*>(lease));
 }
@@ -38,7 +40,8 @@ inline bool validFrameInfo(const SnowCaptureFrameInfo& info) {
 
 inline QImage imageFromFrameLease(SnowCaptureFrameLease* lease, const std::uint8_t* rgbaBytes,
                                   std::size_t rgbaLen, std::uint32_t width, std::uint32_t height,
-                                  std::uint32_t strideBytes, std::uint8_t pixelFormat) {
+                                  std::uint32_t strideBytes, std::uint8_t pixelFormat,
+                                  FrameAlphaMode alphaMode) {
     if (lease == nullptr || rgbaBytes == nullptr || rgbaLen == 0 || width == 0 || height == 0 ||
         (pixelFormat != SNOW_CAPTURE_PIXEL_FORMAT_RGBA8 &&
          pixelFormat != SNOW_CAPTURE_PIXEL_FORMAT_BGRA8)) {
@@ -67,11 +70,12 @@ inline QImage imageFromFrameLease(SnowCaptureFrameLease* lease, const std::uint8
         return {};
     }
 
-    // Desktop BGRA frames are already opaque. Tag them as RGB32 so Qt takes the
-    // non-alpha blit without copying; the little-endian packing is still BGRA.
-    const QImage::Format format = pixelFormat == SNOW_CAPTURE_PIXEL_FORMAT_BGRA8
-                                      ? QImage::Format_RGB32
-                                      : QImage::Format_RGBA8888;
+    // Only desktop frames guarantee opaque alpha. Window frames must retain alpha
+    // in the format tag as well as the bytes, including during image conversion.
+    const QImage::Format format =
+        pixelFormat == SNOW_CAPTURE_PIXEL_FORMAT_BGRA8
+            ? (alphaMode == FrameAlphaMode::Opaque ? QImage::Format_RGB32 : QImage::Format_ARGB32)
+            : QImage::Format_RGBA8888;
     QImage image(rgbaBytes, static_cast<int>(width), static_cast<int>(height),
                  static_cast<int>(strideBytes), format, &releaseFrameLease, lease);
     if (image.isNull()) {
