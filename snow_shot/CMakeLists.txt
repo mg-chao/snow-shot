@@ -196,6 +196,9 @@ if(WIN32)
 endif()
 
 # The standalone OCR process owns every OCR dependency. Static release builds
+include(SnowDiagnostics)
+
+# The standalone OCR process owns every OCR dependency. Static release builds
 # link the vcpkg ONNX Runtime closure into the executable itself; the dynamic
 # workspace builds keep loading the staged onnxruntime.dll at runtime.
 set(SNOW_SHOT_OCR_STATIC_ONNXRUNTIME OFF)
@@ -265,6 +268,12 @@ if(SNOW_SHOT_OCR_STATIC_ONNXRUNTIME)
         "SNOW_ONNXRUNTIME_LINK_FILE=${CMAKE_CURRENT_BINARY_DIR}/generated/snow-ocr-process-onnxruntime-$<CONFIG>.rsp")
 endif()
 
+if(WIN32)
+    list(APPEND SNOW_SHOT_OCR_PROCESS_FEATURES crash-diagnostics)
+    list(APPEND SNOW_SHOT_OCR_PROCESS_ENVIRONMENT
+        "SNOW_CRASHPAD_LINK_FILE=${CMAKE_CURRENT_BINARY_DIR}/generated/snow-ocr-crash-$<CONFIG>.rsp"
+        "CARGO_PROFILE_RELEASE_DEBUG=2" "CARGO_PROFILE_RELEASE_FAST_DEBUG=2")
+endif()
 snow_add_rust_executable(snow_ocr_process
     PACKAGE snow-ocr-process
     MANIFEST_DIR "${SNOW_SHOT_CAPTURE_CRATES_DIR}"
@@ -274,6 +283,10 @@ snow_add_rust_executable(snow_ocr_process
     FEATURES ${SNOW_SHOT_OCR_PROCESS_FEATURES}
     ENVIRONMENT ${SNOW_SHOT_OCR_PROCESS_ENVIRONMENT}
 )
+
+if(WIN32)
+    add_dependencies(snow_ocr_process_build snow_ocr_diagnostics_bridge)
+endif()
 
 set(SNOW_SHOT_SNOW_IMAGE_DIR
     "${SNOW_IMAGE_SOURCE_DIR}"
@@ -555,6 +568,7 @@ add_library(snow_shot_storage STATIC ${SNOW_SHOT_STORAGE_SOURCES})
 snow_enable_unity_build(snow_shot_storage)
 target_include_directories(snow_shot_storage PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(snow_shot_storage PUBLIC
+    snow_shot_diagnostics
     snow_shot_image_codec
     Qt6::Core
     Qt6::Gui
@@ -584,6 +598,7 @@ function(snow_shot_add_translations target)
             snow_shot_settings_catalog
             snow_shot_settings_search
             snow_shot_settings
+            snow_shot_diagnostics
         )
     else()
         set(_lupdate_target "${target}_update_translations")
@@ -988,9 +1003,25 @@ if(WIN32)
     )
 endif()
 target_link_libraries(snow_shot PRIVATE
+    snow_shot_crash_bridge
     snow_shot_image_codec
     MINIZIP::minizip-ng
 )
+target_compile_definitions(snow_shot PRIVATE
+    QT_MESSAGELOGCONTEXT
+    SNOW_DIAGNOSTICS_VERSION="${SNOW_SHOT_VERSION}"
+    SNOW_DIAGNOSTICS_REVISION="${SNOW_DIAGNOSTICS_REVISION}"
+    SNOW_DIAGNOSTICS_BUILD="$<CONFIG>")
+if(WIN32)
+    add_custom_command(TARGET snow_shot POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${SNOW_CRASHPAD_HANDLER}"
+            "$<TARGET_FILE_DIR:snow_shot>/crashpad_handler.exe")
+    install(PROGRAMS "${SNOW_CRASHPAD_HANDLER}" DESTINATION bin)
+endif()
+if(MSVC)
+    target_compile_options(snow_shot PRIVATE $<$<CONFIG:Release>:/Z7>)
+    target_link_options(snow_shot PRIVATE $<$<CONFIG:Release>:/DEBUG:FULL>)
+endif()
 
 if(EXISTS "${SNOW_SHOT_CAMERA_SHUTTER_AUDIO_SOURCE}")
     add_custom_command(TARGET snow_shot POST_BUILD
@@ -1069,6 +1100,27 @@ if(SNOW_SHOT_BUILD_TESTS)
     )
 
     enable_testing()
+
+    add_executable(snow-shot-diagnostics-tests tests/diagnostics_tests.cpp)
+    target_link_libraries(snow-shot-diagnostics-tests PRIVATE snow_shot_diagnostics)
+    add_test(NAME snow-shot-diagnostics-tests COMMAND snow-shot-diagnostics-tests)
+    set_tests_properties(snow-shot-diagnostics-tests PROPERTIES LABELS "unit" TIMEOUT 60)
+    if(WIN32)
+        set_tests_properties(snow-shot-diagnostics-tests PROPERTIES
+            ENVIRONMENT "PATH=$<TARGET_FILE_DIR:Qt6::Core>\;$ENV{PATH}")
+        add_executable(snow-shot-diagnostics-crash-tests tests/diagnostics_crash_tests.cpp)
+        snow_add_rust_static_library(snow_diagnostics_test
+            PACKAGE snow-diagnostics-test
+            MANIFEST_DIR "${SNOW_SHOT_CAPTURE_CRATES_DIR}"
+            OUTPUT_NAME snow_diagnostics_test
+            STRIP_MSVC_DIRECTIVES)
+        target_link_libraries(snow-shot-diagnostics-crash-tests PRIVATE snow_diagnostics_test)
+        target_link_libraries(snow-shot-diagnostics-crash-tests PRIVATE snow_shot_diagnostics snow_shot_crash_bridge)
+        target_compile_definitions(snow-shot-diagnostics-crash-tests PRIVATE
+            SNOW_TEST_CRASHPAD_HANDLER="${SNOW_CRASHPAD_HANDLER}")
+        add_test(NAME snow-shot-diagnostics-crash-tests COMMAND snow-shot-diagnostics-crash-tests)
+        set_tests_properties(snow-shot-diagnostics-crash-tests PROPERTIES LABELS "unit;windows" TIMEOUT 180)
+    endif()
 
     snow_shot_offscreen_qpa_environment(_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT)
 
@@ -1263,6 +1315,7 @@ if(SNOW_SHOT_BUILD_TESTS)
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
     )
     target_link_libraries(snow-shot-screenshot-export-service-tests PRIVATE snow_shot_image_codec
+        snow_shot_diagnostics
         Qt6::Widgets
         snow_draw_engine_qt_canvas
     )
@@ -2407,7 +2460,7 @@ if(SNOW_SHOT_BUILD_TESTS)
             "${CMAKE_CURRENT_SOURCE_DIR}/src/image"
         )
         target_link_libraries(snow-shot-clipboard-roundtrip-tests PRIVATE
-            snow_shot_image_codec Qt6::Widgets user32
+            snow_shot_image_codec snow_shot_diagnostics Qt6::Widgets user32
         )
         add_test(NAME snow-shot-clipboard-roundtrip-tests
                  COMMAND snow-shot-clipboard-roundtrip-tests)
@@ -2495,7 +2548,7 @@ if(SNOW_SHOT_BUILD_TESTS)
     target_include_directories(snow-shot-export-coordinator-tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
     )
-    target_link_libraries(snow-shot-export-coordinator-tests PRIVATE snow_shot_image_codec Qt6::Widgets)
+    target_link_libraries(snow-shot-export-coordinator-tests PRIVATE snow_shot_image_codec snow_shot_diagnostics Qt6::Widgets)
     if(WIN32)
         target_link_libraries(snow-shot-export-coordinator-tests PRIVATE user32)
     endif()
@@ -3154,6 +3207,7 @@ if(SNOW_SHOT_BUILD_TESTS)
         "${SNOW_DRAW_ENGINE_SOURCE_DIR}/include"
     )
     target_link_libraries(snow-shot-ocr-recognition-service-tests PRIVATE
+        snow_shot_diagnostics
         snow_draw_engine_qt_canvas
         Qt6::Core
         Qt6::Gui
@@ -3165,6 +3219,10 @@ if(SNOW_SHOT_BUILD_TESTS)
             bcrypt
             ntdll
         )
+        target_compile_definitions(snow-shot-ocr-recognition-service-tests PRIVATE
+            SNOW_TEST_CRASHPAD_HANDLER="${SNOW_CRASHPAD_HANDLER}")
+        add_test(NAME snow-shot-ocr-crash-tests COMMAND snow-shot-ocr-recognition-service-tests --native-crash)
+        set_tests_properties(snow-shot-ocr-crash-tests PROPERTIES TIMEOUT 60 LABELS "unit;windows")
     endif()
     add_test(
         NAME snow-shot-ocr-cpu-recognition-service-tests
@@ -3291,6 +3349,7 @@ if(SNOW_SHOT_BUILD_TESTS)
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
     )
     target_link_libraries(snow-shot-api-client-tests PRIVATE
+        snow_shot_diagnostics
         Qt6::Core
         Qt6::Gui
         Qt6::Network
@@ -3567,6 +3626,7 @@ if(WIN32 AND SNOW_SHOT_BUILD_BENCHMARKS)
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
     )
     target_link_libraries(snow-shot-clipboard-performance-benchmark PRIVATE snow_shot_image_codec
+        snow_shot_diagnostics
         Qt6::Widgets
         snow_draw_engine_qt_canvas
         Psapi

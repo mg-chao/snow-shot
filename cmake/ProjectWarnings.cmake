@@ -43,6 +43,10 @@ function(snow_apply_release_options target)
         message(FATAL_ERROR "snow_apply_release_options target does not exist: ${target}")
     endif()
 
+    if(MSVC AND SNOW_APPS_BUILD_SNOW_SHOT)
+        target_compile_options("${target}" PRIVATE $<$<CONFIG:Release>:/Z7>)
+        target_link_options("${target}" PRIVATE $<$<CONFIG:Release>:/DEBUG:FULL>)
+    endif()
     if(DEFINED SNOW_APPS_ENABLE_RELEASE_OPTIMIZATION AND
        NOT SNOW_APPS_ENABLE_RELEASE_OPTIMIZATION)
         return()

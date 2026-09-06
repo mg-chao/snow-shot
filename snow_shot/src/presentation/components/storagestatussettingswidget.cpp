@@ -10,6 +10,7 @@
 #include <QEvent>
 #include <QFont>
 #include <QLabel>
+#include <QHBoxLayout>
 #include <QPalette>
 #include <QShowEvent>
 #include <QSizePolicy>
@@ -58,8 +59,7 @@ QLabel* createStatusValue(adqt::widgets::AdDescriptions* descriptions, const QSt
     return value;
 }
 
-void addStatusItem(adqt::widgets::AdDescriptions* descriptions, const QString& key,
-                   QLabel* value) {
+void addStatusItem(adqt::widgets::AdDescriptions* descriptions, const QString& key, QLabel* value) {
     adqt::widgets::AdDescriptions::Item item;
     item.key = key;
     item.contentWidget = value;
@@ -68,8 +68,7 @@ void addStatusItem(adqt::widgets::AdDescriptions* descriptions, const QString& k
 } // namespace
 
 StorageStatusSettingsWidget::StorageStatusSettingsWidget(
-    snow_shot::presentation::settings::SettingsRuntimeSession& runtimeSession,
-    QWidget* parent)
+    snow_shot::presentation::settings::SettingsRuntimeSession& runtimeSession, QWidget* parent)
     : SettingsCustomWidget(parent), m_runtimeSession(runtimeSession),
       m_colorScheme(snow_shot::presentation::styles::ThemeManager::instance().themeColorScheme()) {
     auto* layout = new QVBoxLayout(this);
@@ -94,6 +93,9 @@ StorageStatusSettingsWidget::StorageStatusSettingsWidget(
     m_thumbnailsValue = createStatusValue(m_descriptions, QStringLiteral("thumbnails"));
     m_recordingTempValue = createStatusValue(m_descriptions, QStringLiteral("recording-temp"));
     m_otherValue = createStatusValue(m_descriptions, QStringLiteral("other"));
+    m_diagnosticsValue = createStatusValue(m_descriptions, QStringLiteral("diagnostics"));
+    m_logLocationValue = createStatusValue(m_descriptions, QStringLiteral("log-location"));
+    m_logStatusValue = createStatusValue(m_descriptions, QStringLiteral("log-status"));
     m_locationValue = createStatusValue(m_descriptions, QStringLiteral("location"));
     m_modeValue = createStatusValue(m_descriptions, QStringLiteral("mode"));
     m_errorValue = createStatusValue(m_descriptions, QStringLiteral("error"));
@@ -105,18 +107,51 @@ StorageStatusSettingsWidget::StorageStatusSettingsWidget(
     addStatusItem(m_descriptions, QStringLiteral("thumbnails"), m_thumbnailsValue);
     addStatusItem(m_descriptions, QStringLiteral("recordingTemp"), m_recordingTempValue);
     addStatusItem(m_descriptions, QStringLiteral("other"), m_otherValue);
+    addStatusItem(m_descriptions, QStringLiteral("diagnostics"), m_diagnosticsValue);
+    addStatusItem(m_descriptions, QStringLiteral("logLocation"), m_logLocationValue);
+    addStatusItem(m_descriptions, QStringLiteral("logStatus"), m_logStatusValue);
     addStatusItem(m_descriptions, QStringLiteral("location"), m_locationValue);
     addStatusItem(m_descriptions, QStringLiteral("mode"), m_modeValue);
     addStatusItem(m_descriptions, QStringLiteral("error"), m_errorValue);
     layout->addWidget(m_descriptions);
+    auto* actions = new QHBoxLayout();
+    actions->setContentsMargins(0, 0, 0, 0);
+    m_copyLogFeedback = new QLabel(this);
+    m_copyLogFeedback->setObjectName(QStringLiteral("settings-storage-log-copy-feedback"));
+    m_copyLogFeedback->setWordWrap(true);
+    m_copyLogButton = new adqt::widgets::AdButton(this);
+    m_copyLogButton->setObjectName(QStringLiteral("settings-storage-copy-today-log"));
+    m_copyLogButton->setIconRef(adqt::icons::antd::outlined::Copy());
+    m_copyLogButton->setSizeClass(adqt::widgets::AdButton::SizeClass::Small);
+    layout->addWidget(m_copyLogFeedback);
+    actions->addStretch(1);
+    actions->addWidget(m_copyLogButton);
+    layout->addLayout(actions);
+    connect(m_copyLogButton, &QAbstractButton::clicked, this, [this] {
+        m_copyLogOutcome = 0;
+        m_copyLogFeedback->clear();
+        static_cast<void>(m_runtimeSession.triggerAction(
+            snow_shot::presentation::settings::SettingsActionBinding::CopyTodayLog));
+        syncStatus(m_runtimeSession.storageStatus());
+    });
+    connect(&m_runtimeSession,
+            &snow_shot::presentation::settings::SettingsRuntimeSession::actionFinished, this,
+            [this](snow_shot::presentation::settings::SettingsActionBinding action, bool success,
+                   const QString& error) {
+                if (action !=
+                    snow_shot::presentation::settings::SettingsActionBinding::CopyTodayLog)
+                    return;
+                m_copyLogOutcome = success ? 1 : -1;
+                m_copyLogError = error;
+                retranslateUi();
+                syncStatus(m_runtimeSession.storageStatus());
+            });
 
     connect(m_refreshButton, &QAbstractButton::clicked, this,
             [this]() { m_runtimeSession.refreshStorageStatus(); });
     connect(&m_runtimeSession,
-            &snow_shot::presentation::settings::SettingsRuntimeSession::storageStateChanged,
-            this, [this](const snow_shot::storage::StorageStatus& status) {
-                syncStatus(status);
-            });
+            &snow_shot::presentation::settings::SettingsRuntimeSession::storageStateChanged, this,
+            [this](const snow_shot::storage::StorageStatus& status) { syncStatus(status); });
 
     retranslateUi();
     syncStatus(m_runtimeSession.storageStatus());
@@ -126,10 +161,11 @@ StorageStatusSettingsWidget::StorageStatusSettingsWidget(
 void StorageStatusSettingsWidget::applyTheme(
     const snow_shot::presentation::styles::ThemeColorScheme& scheme) {
     m_colorScheme = scheme;
-    const QVector<QLabel*> valueLabels{
-        m_totalValue,      m_historyValue,    m_entryCountValue, m_pinnedValue,
-        m_ocrValue,        m_thumbnailsValue, m_recordingTempValue,
-        m_otherValue,      m_locationValue,   m_modeValue,       m_errorValue};
+    const QVector<QLabel*> valueLabels{m_totalValue,         m_historyValue,   m_entryCountValue,
+                                       m_pinnedValue,        m_ocrValue,       m_thumbnailsValue,
+                                       m_recordingTempValue, m_otherValue,     m_locationValue,
+                                       m_modeValue,          m_errorValue,     m_diagnosticsValue,
+                                       m_logLocationValue,   m_logStatusValue, m_copyLogFeedback};
     for (QLabel* label : valueLabels) {
         QFont font = label->font();
         font.setPixelSize(scheme.metricAlias.fontSize);
@@ -140,15 +176,31 @@ void StorageStatusSettingsWidget::applyTheme(
         label->setPalette(palette);
     }
     QPalette errorPalette = m_errorValue->palette();
-    errorPalette.setColor(QPalette::WindowText,
-                          m_errorValue->property("hasError").toBool()
-                              ? scheme.map.colorError
-                              : scheme.map.colorTextSecondary);
+    errorPalette.setColor(QPalette::WindowText, m_errorValue->property("hasError").toBool()
+                                                    ? scheme.map.colorError
+                                                    : scheme.map.colorTextSecondary);
     m_errorValue->setPalette(errorPalette);
     update();
 }
 
 void StorageStatusSettingsWidget::retranslateUi() {
+    m_copyLogButton->setText(tr("Copy today's log file"));
+    m_copyLogButton->setAccessibleName(tr("Copy today's log file"));
+    m_copyLogFeedback->setText(
+        m_copyLogOutcome > 0   ? tr("Log file copied.")
+        : m_copyLogOutcome < 0 ? tr("Could not copy the log file: %1")
+                                     .arg(QCoreApplication::translate(
+                                         "DiagnosticsService", m_copyLogError.toUtf8().constData()))
+                               : QString());
+    m_descriptions->setItemLabel(m_descriptions->indexOf(QStringLiteral("diagnostics")),
+                                 tr("Logs and crash reports"));
+    m_descriptions->setItemLabel(m_descriptions->indexOf(QStringLiteral("logLocation")),
+                                 tr("Log location"));
+    m_descriptions->setItemLabel(m_descriptions->indexOf(QStringLiteral("logStatus")),
+                                 tr("Diagnostics status"));
+    m_diagnosticsValue->setAccessibleName(tr("Logs and crash reports disk usage"));
+    m_logLocationValue->setAccessibleName(tr("Effective log location"));
+    m_logStatusValue->setAccessibleName(tr("Diagnostics status"));
     m_descriptions->setTitle(tr("App storage usage"));
     m_refreshButton->setText(tr("Refresh"));
     m_refreshButton->setAccessibleName(tr("Refresh storage usage"));
@@ -160,8 +212,7 @@ void StorageStatusSettingsWidget::retranslateUi() {
                                  tr("History entries"));
     m_descriptions->setItemLabel(m_descriptions->indexOf(QStringLiteral("pinned")),
                                  tr("Pinned windows"));
-    m_descriptions->setItemLabel(m_descriptions->indexOf(QStringLiteral("ocr")),
-                                 tr("OCR assets"));
+    m_descriptions->setItemLabel(m_descriptions->indexOf(QStringLiteral("ocr")), tr("OCR assets"));
     m_descriptions->setItemLabel(m_descriptions->indexOf(QStringLiteral("thumbnails")),
                                  tr("Thumbnail cache"));
     m_descriptions->setItemLabel(m_descriptions->indexOf(QStringLiteral("recordingTemp")),
@@ -202,8 +253,7 @@ void StorageStatusSettingsWidget::showEvent(QShowEvent* event) {
     m_runtimeSession.refreshStorageStatusIfStale();
 }
 
-void StorageStatusSettingsWidget::syncStatus(
-    const snow_shot::storage::StorageStatus& status) {
+void StorageStatusSettingsWidget::syncStatus(const snow_shot::storage::StorageStatus& status) {
     const snow_shot::storage::AppStorageUsage& usage = status.appUsage;
     m_totalValue->setText(usage.scanning ? tr("Scanning…") : formattedBytes(usage.totalBytes()));
     m_historyValue->setText(formattedBytes(usage.historyBytes));
@@ -213,12 +263,30 @@ void StorageStatusSettingsWidget::syncStatus(
     m_thumbnailsValue->setText(formattedBytes(usage.thumbnailCacheBytes));
     m_recordingTempValue->setText(formattedBytes(usage.recordingTempBytes));
     m_otherValue->setText(formattedBytes(usage.otherBytes));
+    m_diagnosticsValue->setText(formattedBytes(usage.diagnosticsBytes));
+    m_logLocationValue->setText(
+        status.diagnostics.directory.isEmpty() ? tr("Unavailable") : status.diagnostics.directory);
+    QString diagnosticsState = !status.diagnostics.loggingAvailable ? tr("File logging unavailable")
+                               : status.diagnostics.crashCaptureAvailable
+                                   ? tr("File logging and crash capture active")
+                                   : tr("File logging active; crash capture unavailable");
+    if (!status.diagnostics.fallbackReason.isEmpty())
+        diagnosticsState += u'\n' + QCoreApplication::translate(
+                                        "DiagnosticsService",
+                                        status.diagnostics.fallbackReason.toUtf8().constData());
+    if (!status.diagnostics.lastError.isEmpty())
+        diagnosticsState +=
+            u'\n' + QCoreApplication::translate("DiagnosticsService",
+                                                status.diagnostics.lastError.toUtf8().constData());
+    m_logStatusValue->setText(diagnosticsState);
+    const auto copyState = m_runtimeSession.actionState(
+        snow_shot::presentation::settings::SettingsActionBinding::CopyTodayLog);
+    m_copyLogButton->setEnabled(copyState.enabled && !copyState.busy);
     m_locationValue->setText(status.effectiveDirectory.isEmpty() ? tr("Unavailable")
                                                                  : status.effectiveDirectory);
     m_modeValue->setText(modeText(status.effectiveMode));
-    QString latestError = !status.lastHistoryError.isEmpty()
-                              ? status.lastHistoryError
-                              : status.lastConfigurationError;
+    QString latestError = !status.lastHistoryError.isEmpty() ? status.lastHistoryError
+                                                             : status.lastConfigurationError;
     if (latestError.isEmpty()) {
         latestError = status.fallbackReason;
     }

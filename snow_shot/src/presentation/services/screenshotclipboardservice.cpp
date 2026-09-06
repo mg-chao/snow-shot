@@ -1,4 +1,6 @@
 #include "snow_shot/presentation/screenshotclipboardservice.h"
+#include "snow_shot/diagnostics/diagnostics.h"
+#include <QUuid>
 
 #include "screenshotclipboardperfinstrumentation.h"
 #include "snowimageqtcodec.h"
@@ -11,6 +13,7 @@
 #include <QPointer>
 #include <QThread>
 #include <QTimer>
+#include <QUrl>
 
 #include <algorithm>
 #include <array>
@@ -99,6 +102,18 @@ class ClipboardCommitOperation final : public QObject {
             return;
         }
         m_finished = true;
+        const bool cancelled =
+            !notify || result.failure == ScreenshotClipboardCommitFailure::Cancelled;
+        snow_shot::diagnostics::logEvent(
+            QStringLiteral("snow_shot.clipboard"), QStringLiteral("clipboard.finished"),
+            {{QStringLiteral("operation"), m_operation},
+             {QStringLiteral("duration_ms"), m_elapsed.isValid() ? m_elapsed.elapsed() : 0},
+             {QStringLiteral("count"), result.attempts},
+             {QStringLiteral("code"), static_cast<qint64>(result.nativeError)},
+             {QStringLiteral("outcome"), cancelled            ? QStringLiteral("cancelled")
+                                         : result.succeeded() ? QStringLiteral("succeeded")
+                                                              : QStringLiteral("failed")}},
+            cancelled || result.succeeded() ? QtInfoMsg : QtWarningMsg);
         if (notify && !m_receiver.isNull() && m_completion) {
             m_completion(result);
         }
@@ -112,6 +127,7 @@ class ClipboardCommitOperation final : public QObject {
     Attempt m_attempt;
     ScreenshotClipboardService::CommitCompletion m_completion;
     QElapsedTimer m_elapsed;
+    QString m_operation = QUuid::createUuid().toString(QUuid::Id128);
     int m_attempts = 0;
     bool m_finished = false;
 };
@@ -447,8 +463,11 @@ ScreenshotClipboardService::commitMimeData(QClipboard* clipboard, QObject* recei
 
     auto cancelled = std::make_shared<std::atomic_bool>(false);
     auto holder = std::make_shared<std::unique_ptr<QMimeData>>(mimeData);
+    const QList<QUrl> fileUrls = mimeData->formats() == QStringList{QStringLiteral("text/uri-list")}
+                                     ? mimeData->urls()
+                                     : QList<QUrl>{};
     const QPointer<QClipboard> guardedClipboard(clipboard);
-    auto attempt = [guardedClipboard, holder, publicationId]() {
+    auto attempt = [guardedClipboard, holder, publicationId, fileUrls]() {
         if (publicationId != g_latestPublicationId.load(std::memory_order_acquire)) {
             return ClipboardPublishAttempt{};
         }
@@ -458,6 +477,16 @@ ScreenshotClipboardService::commitMimeData(QClipboard* clipboard, QObject* recei
         }
         if (*holder == nullptr) {
             return ClipboardPublishAttempt{ScreenshotClipboardCommitFailure::InvalidPayload, 0};
+        }
+        if (!fileUrls.isEmpty()) {
+            // Qt owns each attempted MIME object, including failed native publications.
+            auto* attemptMime = new QMimeData();
+            attemptMime->setUrls(fileUrls);
+            guardedClipboard->setMimeData(attemptMime, QClipboard::Clipboard);
+            if (!guardedClipboard->ownsClipboard() && guardedClipboard->mimeData() != attemptMime) {
+                return ClipboardPublishAttempt{ScreenshotClipboardCommitFailure::Busy, 0};
+            }
+            return ClipboardPublishAttempt{};
         }
         guardedClipboard->setMimeData(holder->release(), QClipboard::Clipboard);
         return ClipboardPublishAttempt{};

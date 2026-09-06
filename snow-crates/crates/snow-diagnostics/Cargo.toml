@@ -1,0 +1,8 @@
+[package]
+name = "snow-diagnostics"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[lib]
+path = "src/lib.rs"

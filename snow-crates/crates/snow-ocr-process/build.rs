@@ -13,20 +13,36 @@ use std::fs;
 use std::path::PathBuf;
 
 fn main() {
+    if env::var_os("CARGO_FEATURE_CRASH_DIAGNOSTICS").is_some() {
+        println!("cargo:rerun-if-env-changed=SNOW_CRASHPAD_LINK_FILE");
+        let path = env::var("SNOW_CRASHPAD_LINK_FILE").expect("Crashpad link manifest is required");
+        println!("cargo:rerun-if-changed={path}");
+        for argument in fs::read_to_string(path)
+            .expect("read Crashpad link manifest")
+            .lines()
+        {
+            if !argument.trim().is_empty() {
+                if std::path::Path::new(argument).is_absolute() {
+                    println!("cargo:rerun-if-changed={argument}");
+                }
+                println!("cargo:rustc-link-arg={argument}");
+            }
+        }
+    }
     #[cfg(windows)]
     {
         let mut resource = winres::WindowsResource::new();
         resource
             .set("CompanyName", "Snow Apps")
             .set("FileDescription", "Snow Shot OCR runtime")
-            .set("FileVersion", "1.0.0.0")
+            .set("FileVersion", "1.0.1.0")
             .set("InternalName", "snow-ocr-process")
             .set("LegalCopyright", "Copyright (C) 2025-2026 mg-chao")
-            .set("OriginalFilename", "snow-ocr-process-1.0.0-windows-x64.exe")
+            .set("OriginalFilename", "snow-ocr-process-1.0.1-windows-x64.exe")
             .set("ProductName", "Snow Shot OCR Runtime")
-            .set("ProductVersion", "1.0.0")
-            .set_version_info(winres::VersionInfo::FILEVERSION, 0x0001_0000_0000_0000)
-            .set_version_info(winres::VersionInfo::PRODUCTVERSION, 0x0001_0000_0000_0000);
+            .set("ProductVersion", "1.0.1")
+            .set_version_info(winres::VersionInfo::FILEVERSION, 0x0001_0000_0001_0000)
+            .set_version_info(winres::VersionInfo::PRODUCTVERSION, 0x0001_0000_0001_0000);
         resource
             .compile()
             .expect("failed to compile snow-ocr-process Windows resources");

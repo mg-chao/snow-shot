@@ -21,11 +21,12 @@ struct AppStorageUsage {
     qint64 thumbnailCacheBytes = 0;
     qint64 recordingTempBytes = 0;
     qint64 otherBytes = 0;
+    qint64 diagnosticsBytes = 0;
     bool scanning = false;
 
     [[nodiscard]] qint64 totalBytes() const {
         return historyBytes + pinnedWindowBytes + ocrAssetBytes + thumbnailCacheBytes +
-               recordingTempBytes + otherBytes;
+               recordingTempBytes + otherBytes + diagnosticsBytes;
     }
 
     friend bool operator==(const AppStorageUsage& first, const AppStorageUsage& second) {
@@ -34,7 +35,9 @@ struct AppStorageUsage {
                first.ocrAssetBytes == second.ocrAssetBytes &&
                first.thumbnailCacheBytes == second.thumbnailCacheBytes &&
                first.recordingTempBytes == second.recordingTempBytes &&
-               first.otherBytes == second.otherBytes && first.scanning == second.scanning;
+               first.otherBytes == second.otherBytes &&
+               first.diagnosticsBytes == second.diagnosticsBytes &&
+               first.scanning == second.scanning;
     }
 };
 

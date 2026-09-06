@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/globalshortcutmanager.h"
+#include "snow_shot/diagnostics/diagnostics.h"
 #include "snow_shot/platform/windows/focusedfullscreenwindow.h"
 #include "snow_shot/storage/settingsadapters.h"
 
@@ -750,6 +751,13 @@ class GlobalShortcutManager::Impl {
                 binding.registered = result.registered;
                 binding.failureReason = result.failureReason;
                 binding.nativeErrorCode = result.nativeErrorCode;
+                snow_shot::diagnostics::logEvent(
+                    QStringLiteral("snow_shot.shortcuts"), QStringLiteral("shortcut.registration"),
+                    {{QStringLiteral("operation"), QString::number(registrationId)},
+                     {QStringLiteral("code"), static_cast<qint64>(result.nativeErrorCode)},
+                     {QStringLiteral("outcome"),
+                      result.registered ? QStringLiteral("registered") : QStringLiteral("failed")}},
+                    result.registered ? QtInfoMsg : QtWarningMsg);
                 nextState.bindings.push_back(binding);
 
                 if (result.registered) {

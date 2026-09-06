@@ -8,8 +8,14 @@
 #include "snow_shot/presentation/styles/thememanager.h"
 #include "snow_shot/storage/configurationschema.h"
 #include "snow_shot/storage/settingsadapters.h"
+#include "snow_shot/presentation/screenshotclipboardservice.h"
 
 #include <QJsonArray>
+#include <QApplication>
+#include <QClipboard>
+#include <QMimeData>
+#include <QTimer>
+#include <QUrl>
 
 namespace snow_shot::presentation::settings {
 namespace {
@@ -691,6 +697,10 @@ SettingsActionState BuiltInSettingsBackend::actionState(SettingsActionBinding bi
             status.writeAvailable && !status.historyClearing,
             status.historyClearing,
         };
+    case SettingsActionBinding::CopyTodayLog:
+        return {status.diagnostics.loggingAvailable && !m_copyLogBusy &&
+                    !status.diagnostics.exporting,
+                m_copyLogBusy || status.diagnostics.exporting};
     case SettingsActionBinding::ClearThumbnailCache:
         return {status.appUsage.thumbnailCacheBytes > 0 && !status.cacheClearing &&
                     !status.appUsage.scanning,
@@ -705,6 +715,56 @@ SettingsActionState BuiltInSettingsBackend::actionState(SettingsActionBinding bi
 
 bool BuiltInSettingsBackend::triggerAction(SettingsActionBinding binding) {
     switch (binding) {
+    case SettingsActionBinding::CopyTodayLog: {
+        if (!actionState(binding).enabled)
+            return false;
+        m_copyLogBusy = true;
+        emit synchronized();
+        const auto future =
+            diagnostics::DiagnosticsService::instance().exportDay(QDate::currentDate());
+        const auto publication = ScreenshotClipboardService::reservePublication();
+        auto* poll = new QTimer(this);
+        poll->setInterval(25);
+        connect(poll, &QTimer::timeout, this, [this, poll, future, publication, binding] {
+            if (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready)
+                return;
+            poll->stop();
+            poll->deleteLater();
+            diagnostics::LogExportResult result;
+            try {
+                result = future.get();
+            } catch (...) {
+                result.error = QCoreApplication::translate(
+                    "DiagnosticsService", "The diagnostics writer stopped unexpectedly.");
+            }
+            if (!result.success) {
+                m_copyLogBusy = false;
+                emit synchronized();
+                emit actionFinished(binding, false, result.error);
+                return;
+            }
+            auto* mime = new QMimeData();
+            mime->setUrls({QUrl::fromLocalFile(result.path)});
+            const auto handle = ScreenshotClipboardService::commitMimeData(
+                QApplication::clipboard(), this, mime, publication,
+                [this, path = result.path, binding](ScreenshotClipboardCommitResult committed) {
+                    m_copyLogBusy = false;
+                    if (committed.succeeded())
+                        diagnostics::DiagnosticsService::instance().protectSnapshot(path);
+                    emit synchronized();
+                    emit actionFinished(binding, committed.succeeded(), committed.errorString());
+                });
+            if (!handle.isValid()) {
+                m_copyLogBusy = false;
+                emit synchronized();
+                emit actionFinished(binding, false,
+                                    QCoreApplication::translate("SettingsBackend",
+                                                                "The clipboard is unavailable."));
+            }
+        });
+        poll->start();
+        return true;
+    }
     case SettingsActionBinding::ClearCaptureHistory:
         return storage::ApplicationStorage::instance().requestCaptureHistoryClear();
     case SettingsActionBinding::ClearThumbnailCache:
@@ -716,10 +776,13 @@ bool BuiltInSettingsBackend::triggerAction(SettingsActionBinding binding) {
 }
 
 storage::StorageStatus BuiltInSettingsBackend::storageStatus() const {
-    return storage::ApplicationStorage::instance().status();
+    auto status = storage::ApplicationStorage::instance().status();
+    status.diagnostics.exporting = status.diagnostics.exporting || m_copyLogBusy;
+    return status;
 }
 
 void BuiltInSettingsBackend::refreshStorageStatus() {
+    diagnostics::DiagnosticsService::instance().requestMaintenance();
     storage::ApplicationStorage::instance().requestStorageUsageRefresh();
 }
 

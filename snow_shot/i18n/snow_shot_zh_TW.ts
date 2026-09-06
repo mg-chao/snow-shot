@@ -2,6 +2,102 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="zh_TW" sourcelanguage="en_US">
 <context>
+    <name>DiagnosticsService</name>
+    <message>
+        <location filename="../src/presentation/settings/settingsbackend.cpp" line="737"/>
+        <location filename="../src/diagnostics/diagnostics.cpp" line="861"/>
+        <source>The diagnostics writer stopped unexpectedly.</source>
+        <translation>診斷記錄寫入執行緒意外停止。</translation>
+    </message>
+    <message>
+        <location filename="../src/diagnostics/diagnostics.cpp" line="361"/>
+        <source>The log directory is not writable.</source>
+        <translation>無法寫入記錄目錄。</translation>
+    </message>
+    <message>
+        <location filename="../src/diagnostics/diagnostics.cpp" line="372"/>
+        <source>The log file could not be opened.</source>
+        <translation>無法開啟記錄檔。</translation>
+    </message>
+    <message>
+        <location filename="../src/diagnostics/diagnostics.cpp" line="390"/>
+        <location filename="../src/diagnostics/diagnostics.cpp" line="675"/>
+        <location filename="../src/diagnostics/diagnostics.cpp" line="828"/>
+        <source>Writing the log file failed. Check available disk space.</source>
+        <translation>寫入記錄檔失敗。請檢查可用磁碟空間。</translation>
+    </message>
+    <message>
+        <location filename="../src/diagnostics/diagnostics.cpp" line="628"/>
+        <source>Some expired diagnostics could not be removed.</source>
+        <translation>部分過期診斷檔案無法刪除。</translation>
+    </message>
+    <message>
+        <location filename="../src/diagnostics/diagnostics.cpp" line="649"/>
+        <source>The diagnostics storage limit has been reached.</source>
+        <translation>診斷檔案儲存空間已達上限。</translation>
+    </message>
+    <message>
+        <location filename="../src/diagnostics/diagnostics.cpp" line="693"/>
+        <source>A log file could not be read.</source>
+        <translation>無法讀取記錄檔。</translation>
+    </message>
+    <message>
+        <location filename="../src/diagnostics/diagnostics.cpp" line="717"/>
+        <location filename="../src/diagnostics/diagnostics.cpp" line="740"/>
+        <source>Today&apos;s log exceeds the export limit.</source>
+        <translation>今日記錄超過匯出大小限制。</translation>
+    </message>
+    <message>
+        <location filename="../src/diagnostics/diagnostics.cpp" line="755"/>
+        <source>There is not enough space for a log snapshot.</source>
+        <translation>沒有足夠的空間儲存記錄快照。</translation>
+    </message>
+    <message>
+        <location filename="../src/diagnostics/diagnostics.cpp" line="766"/>
+        <source>The log snapshot directory could not be created.</source>
+        <translation>無法建立記錄快照目錄。</translation>
+    </message>
+    <message>
+        <location filename="../src/diagnostics/diagnostics.cpp" line="776"/>
+        <location filename="../src/diagnostics/diagnostics.cpp" line="783"/>
+        <location filename="../src/diagnostics/diagnostics.cpp" line="1139"/>
+        <location filename="../src/diagnostics/diagnostics.cpp" line="1170"/>
+        <source>The log snapshot could not be saved.</source>
+        <translation>無法儲存記錄快照。</translation>
+    </message>
+    <message>
+        <location filename="../src/diagnostics/diagnostics.cpp" line="909"/>
+        <source>No writable diagnostics directory is available.</source>
+        <translation>沒有可寫入的診斷檔案目錄。</translation>
+    </message>
+    <message>
+        <location filename="../src/diagnostics/diagnostics.cpp" line="915"/>
+        <source>The preferred log directory is unavailable; a fallback is in use.</source>
+        <translation>首選記錄目錄無法使用，目前使用備用目錄。</translation>
+    </message>
+    <message>
+        <location filename="../src/diagnostics/diagnostics.cpp" line="1127"/>
+        <source>Log export is unavailable or already running.</source>
+        <translation>記錄匯出無法使用或正在進行中。</translation>
+    </message>
+    <message>
+        <location filename="../src/diagnostics/crashcollector.cpp" line="62"/>
+        <source>The local crash database could not be initialized.</source>
+        <translation>無法初始化本機當機資料庫。</translation>
+    </message>
+    <message>
+        <location filename="../src/diagnostics/diagnostics.cpp" line="564"/>
+        <location filename="../src/diagnostics/crashcollector.cpp" line="72"/>
+        <source>The crash collector could not be started. Check the application installation.</source>
+        <translation>無法啟動當機收集程式。請檢查應用程式安裝。</translation>
+    </message>
+    <message>
+        <location filename="../src/diagnostics/crashcollector.cpp" line="83"/>
+        <source>Crash capture is unavailable on this platform.</source>
+        <translation>此平台不支援當機擷取。</translation>
+    </message>
+</context>
+<context>
     <name>DirectCaptureController</name>
     <message>
         <location filename="../src/presentation/capture/directcaptureworkflow.cpp" line="12"/>
@@ -351,17 +447,17 @@
 <context>
     <name>ScreenRecordingController</name>
     <message>
-        <location filename="../src/presentation/recording/screenrecordingcontroller.cpp" line="329"/>
+        <location filename="../src/presentation/recording/screenrecordingcontroller.cpp" line="330"/>
         <source>Unable to create the recording directories</source>
         <translation>無法建立錄製目錄</translation>
     </message>
     <message>
-        <location filename="../src/presentation/recording/screenrecordingcontroller.cpp" line="582"/>
+        <location filename="../src/presentation/recording/screenrecordingcontroller.cpp" line="589"/>
         <source>Screen recording</source>
         <translation>螢幕錄製</translation>
     </message>
     <message>
-        <location filename="../src/presentation/recording/screenrecordingcontroller.cpp" line="583"/>
+        <location filename="../src/presentation/recording/screenrecordingcontroller.cpp" line="590"/>
         <source>The recording operation failed</source>
         <translation>錄製作業失敗</translation>
     </message>
@@ -369,37 +465,37 @@
 <context>
     <name>ScreenshotClipboardService</name>
     <message>
-        <location filename="../src/presentation/services/screenshotclipboardservice.cpp" line="262"/>
+        <location filename="../src/presentation/services/screenshotclipboardservice.cpp" line="278"/>
         <source>The clipboard operation was cancelled</source>
         <translation>剪貼簿操作已取消</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotclipboardservice.cpp" line="265"/>
+        <location filename="../src/presentation/services/screenshotclipboardservice.cpp" line="281"/>
         <source>The prepared clipboard image is invalid</source>
         <translation>已準備的剪貼簿影像無效</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotclipboardservice.cpp" line="268"/>
+        <location filename="../src/presentation/services/screenshotclipboardservice.cpp" line="284"/>
         <source>The clipboard is unavailable</source>
         <translation>剪貼簿無法使用</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotclipboardservice.cpp" line="271"/>
+        <location filename="../src/presentation/services/screenshotclipboardservice.cpp" line="287"/>
         <source>The clipboard is busy</source>
         <translation>剪貼簿忙碌中</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotclipboardservice.cpp" line="273"/>
+        <location filename="../src/presentation/services/screenshotclipboardservice.cpp" line="289"/>
         <source>The clipboard could not be cleared</source>
         <translation>無法清除剪貼簿</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotclipboardservice.cpp" line="276"/>
+        <location filename="../src/presentation/services/screenshotclipboardservice.cpp" line="292"/>
         <source>The clipboard did not accept the image</source>
         <translation>剪貼簿未接受該影像</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotclipboardservice.cpp" line="279"/>
+        <location filename="../src/presentation/services/screenshotclipboardservice.cpp" line="295"/>
         <source>The clipboard operation failed</source>
         <translation>剪貼簿操作失敗</translation>
     </message>
@@ -668,21 +764,21 @@
         <translation>無法讀取選取的螢幕截圖</translation>
     </message>
     <message>
-        <location filename="../src/presentation/ocr/screenshotocrrecognitionservice.cpp" line="281"/>
-        <location filename="../src/presentation/ocr/screenshotocrrecognitionservice.cpp" line="330"/>
-        <location filename="../src/presentation/ocr/screenshotocrrecognitionservice.cpp" line="620"/>
-        <location filename="../src/presentation/ocr/screenshotocrrecognitionservice.cpp" line="738"/>
-        <location filename="../src/presentation/ocr/screenshotocrrecognitionservice.cpp" line="746"/>
-        <location filename="../src/presentation/ocr/screenshotocrrecognitionservice.cpp" line="754"/>
-        <location filename="../src/presentation/ocr/screenshotocrrecognitionservice.cpp" line="767"/>
-        <location filename="../src/presentation/ocr/screenshotocrrecognitionservice.cpp" line="774"/>
-        <location filename="../src/presentation/ocr/screenshotocrrecognitionservice.cpp" line="788"/>
-        <location filename="../src/presentation/ocr/screenshotocrrecognitionservice.cpp" line="937"/>
+        <location filename="../src/presentation/ocr/screenshotocrrecognitionservice.cpp" line="283"/>
+        <location filename="../src/presentation/ocr/screenshotocrrecognitionservice.cpp" line="332"/>
+        <location filename="../src/presentation/ocr/screenshotocrrecognitionservice.cpp" line="660"/>
+        <location filename="../src/presentation/ocr/screenshotocrrecognitionservice.cpp" line="778"/>
+        <location filename="../src/presentation/ocr/screenshotocrrecognitionservice.cpp" line="786"/>
+        <location filename="../src/presentation/ocr/screenshotocrrecognitionservice.cpp" line="794"/>
+        <location filename="../src/presentation/ocr/screenshotocrrecognitionservice.cpp" line="807"/>
+        <location filename="../src/presentation/ocr/screenshotocrrecognitionservice.cpp" line="814"/>
+        <location filename="../src/presentation/ocr/screenshotocrrecognitionservice.cpp" line="828"/>
+        <location filename="../src/presentation/ocr/screenshotocrrecognitionservice.cpp" line="992"/>
         <source>Text recognition failed</source>
         <translation>文字辨識失敗</translation>
     </message>
     <message>
-        <location filename="../src/presentation/ocr/screenshotocrrecognitionservice.cpp" line="957"/>
+        <location filename="../src/presentation/ocr/screenshotocrrecognitionservice.cpp" line="1012"/>
         <source>Text recognition components could not be prepared</source>
         <translation>無法準備文字辨識元件</translation>
     </message>
@@ -2365,6 +2461,14 @@
         <location filename="../src/presentation/components/sectionheaderwidget.cpp" line="88"/>
         <source>Reset &quot;%1&quot; to default settings?</source>
         <translation>確定重設&quot;%1&quot;為預設設定嗎？</translation>
+    </message>
+</context>
+<context>
+    <name>SettingsBackend</name>
+    <message>
+        <location filename="../src/presentation/settings/settingsbackend.cpp" line="761"/>
+        <source>The clipboard is unavailable.</source>
+        <translation>剪貼簿無法使用。</translation>
     </message>
 </context>
 <context>
@@ -4486,58 +4590,58 @@ Change the shortcut and try again</source>
 <context>
     <name>SnowShotApiClient</name>
     <message>
-        <location filename="../src/network/snowshotapiclient.cpp" line="257"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="274"/>
         <source>Table recognition response is too large</source>
         <translation>表格辨識回應過大</translation>
     </message>
     <message>
-        <location filename="../src/network/snowshotapiclient.cpp" line="266"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="283"/>
         <source>Table recognition request timed out</source>
         <translation>表格辨識請求逾時</translation>
     </message>
     <message>
-        <location filename="../src/network/snowshotapiclient.cpp" line="280"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="296"/>
         <source>Invalid table recognition response</source>
         <translation>表格辨識回應無效</translation>
     </message>
     <message>
-        <location filename="../src/network/snowshotapiclient.cpp" line="286"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="302"/>
         <source>Table recognition returned no table</source>
         <translation>表格辨識未傳回表格</translation>
     </message>
     <message>
-        <location filename="../src/network/snowshotapiclient.cpp" line="291"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="307"/>
         <source>Table recognition failed</source>
         <translation>表格辨識失敗</translation>
     </message>
     <message>
-        <location filename="../src/network/snowshotapiclient.cpp" line="340"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="358"/>
         <source>Translation service response is too large</source>
         <translation>翻譯服務回應過大</translation>
     </message>
     <message>
-        <location filename="../src/network/snowshotapiclient.cpp" line="346"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="364"/>
         <source>Invalid translation service response</source>
         <translation>無效的翻譯服務回應</translation>
     </message>
     <message>
-        <location filename="../src/network/snowshotapiclient.cpp" line="363"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="382"/>
         <source>No translation services are available</source>
         <translation>沒有可用的翻譯服務</translation>
     </message>
     <message>
-        <location filename="../src/network/snowshotapiclient.cpp" line="473"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="497"/>
         <source>Translation failed</source>
         <translation>翻譯失敗</translation>
     </message>
     <message>
-        <location filename="../src/network/snowshotapiclient.cpp" line="485"/>
-        <location filename="../src/network/snowshotapiclient.cpp" line="520"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="509"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="546"/>
         <source>Invalid translation stream response</source>
         <translation>無效的翻譯串流回應</translation>
     </message>
     <message>
-        <location filename="../src/network/snowshotapiclient.cpp" line="522"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="548"/>
         <source>Translation stream ended unexpectedly</source>
         <translation>翻譯串流意外結束</translation>
     </message>
@@ -4545,158 +4649,216 @@ Change the shortcut and try again</source>
 <context>
     <name>StorageStatusSettingsWidget</name>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="39"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="40"/>
         <source>Application data</source>
         <translation>應用程式資料</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="41"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="42"/>
         <source>Portable</source>
         <translation>可攜模式</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="43"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="44"/>
         <source>Read-only (newer configuration)</source>
         <translation>唯讀（設定版本較新）</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="46"/>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="216"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="47"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="268"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="285"/>
         <source>Unavailable</source>
         <translation>無法使用</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="152"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="187"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="188"/>
+        <source>Copy today&apos;s log file</source>
+        <translation>複製今日記錄檔</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="190"/>
+        <source>Log file copied.</source>
+        <translation>已複製記錄檔。</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="191"/>
+        <source>Could not copy the log file: %1</source>
+        <translation>無法複製記錄檔：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="196"/>
+        <source>Logs and crash reports</source>
+        <translation>記錄與當機報告</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="198"/>
+        <source>Log location</source>
+        <translation>記錄位置</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="200"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="203"/>
+        <source>Diagnostics status</source>
+        <translation>診斷狀態</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="201"/>
+        <source>Logs and crash reports disk usage</source>
+        <translation>記錄與當機報告磁碟用量</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="202"/>
+        <source>Effective log location</source>
+        <translation>實際記錄位置</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="204"/>
         <source>App storage usage</source>
         <translation>應用程式儲存用量</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="153"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="205"/>
         <source>Refresh</source>
         <translation>重新整理</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="154"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="206"/>
         <source>Refresh storage usage</source>
         <translation>重新整理儲存用量</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="156"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="208"/>
         <source>Total app storage</source>
         <translation>應用程式總儲存</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="158"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="210"/>
         <source>Screenshot history</source>
         <translation>截圖歷史</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="160"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="212"/>
         <source>History entries</source>
         <translation>歷史記錄條目</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="162"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="214"/>
         <source>Pinned windows</source>
         <translation>釘選視窗</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="164"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="215"/>
         <source>OCR assets</source>
         <translation>OCR 資源</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="166"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="217"/>
         <source>Thumbnail cache</source>
         <translation>縮圖快取</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="168"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="219"/>
         <source>Recording temporary files</source>
         <translation>螢幕錄製暫存檔案</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="170"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="221"/>
         <source>Other files</source>
         <translation>其他檔案</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="180"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="231"/>
         <source>Pinned windows disk usage</source>
         <translation>釘選視窗磁碟用量</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="181"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="232"/>
         <source>OCR asset disk usage</source>
         <translation>OCR 資源磁碟用量</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="182"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="233"/>
         <source>Thumbnail cache disk usage</source>
         <translation>縮圖快取磁碟用量</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="183"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="234"/>
         <source>Recording temporary disk usage</source>
         <translation>螢幕錄製暫存檔案磁碟用量</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="184"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="235"/>
         <source>Other app data disk usage</source>
         <translation>其他應用程式資料磁碟用量</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="172"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="223"/>
         <source>Storage location</source>
         <translation>儲存位置</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="174"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="225"/>
         <source>Storage mode</source>
         <translation>儲存模式</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="176"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="227"/>
         <source>Latest error</source>
         <translation>最近錯誤</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="177"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="228"/>
         <source>Total app storage usage</source>
         <translation>應用程式總儲存用量</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="178"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="229"/>
         <source>Screenshot history disk usage</source>
         <translation>截圖歷史磁碟用量</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="179"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="230"/>
         <source>History entry count</source>
         <translation>歷史記錄項目數</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="185"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="236"/>
         <source>Effective storage location</source>
         <translation>目前儲存位置</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="186"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="237"/>
         <source>Effective storage mode</source>
         <translation>目前儲存模式</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="187"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="238"/>
         <source>Latest storage error</source>
         <translation>最近的儲存錯誤</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="208"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="258"/>
         <source>Scanning…</source>
         <translation>正在掃描…</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="227"/>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="269"/>
+        <source>File logging unavailable</source>
+        <translation>檔案記錄無法使用</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="271"/>
+        <source>File logging and crash capture active</source>
+        <translation>檔案記錄與當機擷取已啟用</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="272"/>
+        <source>File logging active; crash capture unavailable</source>
+        <translation>檔案記錄已啟用；當機擷取無法使用</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/components/storagestatussettingswidget.cpp" line="295"/>
         <source>None</source>
         <translation>無</translation>
     </message>

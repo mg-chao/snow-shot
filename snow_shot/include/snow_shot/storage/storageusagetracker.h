@@ -22,6 +22,7 @@ struct StorageUsageTrackerOptions {
     QString appDataDirectory;
     QString thumbnailCacheDirectory;
     QString recordingTempDirectory;
+    QStringList diagnosticsDirectories;
     // Entries in the recording-temp directory modified at or after this
     // timestamp belong to the currently running session and are never deleted.
     QDateTime activeFileCutoff;
@@ -79,6 +80,7 @@ class StorageUsageTracker final {
     QString m_appDataDirectory;
     QString m_thumbnailCacheDirectory;
     QString m_recordingTempDirectory;
+    QStringList m_diagnosticsDirectories;
     QDateTime m_activeFileCutoff;
     std::function<qint64()> m_historyBytesProvider;
     std::function<void(const QString&)> m_directoryScanObserved;
