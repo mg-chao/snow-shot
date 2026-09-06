@@ -452,7 +452,8 @@ SettingsItemDefinition windowElementApiItem() {
     return {
         QStringLiteral("screenshot.window-element-api"),
         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Window Element API")),
-        settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Smart frame selection")),
+        settingsText(QT_TRANSLATE_NOOP(
+            "SettingsCatalog", "API used to control obtaining child elements of the window")),
         {settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Child elements"))},
         QStringLiteral("screenshot/window_element_api"),
         payload,

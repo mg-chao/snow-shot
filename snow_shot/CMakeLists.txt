@@ -3568,6 +3568,23 @@ target_compile_definitions(snow_shot PRIVATE
 add_dependencies(snow_shot snow_ocr_process)
 
 if(WIN32 AND SNOW_SHOT_BUILD_BENCHMARKS)
+    add_executable(snow-shot-uia-qt-performance-fixture
+        tests/screenshot_uia_qt_performance_fixture.cpp
+    )
+    target_link_libraries(snow-shot-uia-qt-performance-fixture PRIVATE Qt6::Widgets user32)
+    target_compile_definitions(snow-shot-uia-qt-performance-fixture PRIVATE NOMINMAX)
+
+    add_custom_target(snow-shot-uia-performance-benchmark
+        COMMAND "${CMAKE_COMMAND}" -E env
+            "CARGO_TARGET_DIR=${SNOW_RUST_CARGO_TARGET_DIR}"
+            "${CARGO_EXECUTABLE}" build --locked --release
+            --target x86_64-pc-windows-msvc
+            --package snow-ui-selector --example hit_bench
+        WORKING_DIRECTORY "${SNOW_SHOT_CAPTURE_CRATES_DIR}"
+        USES_TERMINAL
+        VERBATIM
+    )
+
     add_executable(snow-shot-pin-to-screen-performance-benchmark
         tests/screenshot_pin_to_screen_performance_benchmark.cpp
     )
