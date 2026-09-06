@@ -6,6 +6,8 @@
 #include "snow_shot/presentation/settings/applicationpriority.h"
 #include "snow_shot/platform/windows/autostartregistration.h"
 #include "snow_shot/storage/applicationstorage.h"
+#include "snow_shot/diagnostics/diagnostics.h"
+#include "diagnosticsbridge.h"
 #include "snow_shot/storage/settingsadapters.h"
 #include "snow_shot/presentation/capture/screenshotcapturepolicy.h"
 #include "../presentation/capture/screenshotcaptureperfinstrumentation.h"
@@ -20,6 +22,11 @@
 #include <QDebug>
 #include <QRegularExpression>
 #include <QString>
+#include <QDir>
+#include <QStandardPaths>
+#include <QSysInfo>
+
+extern "C" void snow_diagnostics_install_panic_hook(void (*callback)(const unsigned char*, size_t));
 
 int main(int argc, char* argv[]) {
     QCoreApplication::setOrganizationName(QStringLiteral("SnowShot"));
@@ -28,21 +35,50 @@ int main(int argc, char* argv[]) {
     bool e2eCaptureEnabled = false;
     for (int index = 1; index < argc; ++index) {
         const QString argument = QString::fromLocal8Bit(argv[index]);
-        e2eCaptureEnabled = e2eCaptureEnabled ||
-                            argument == QStringLiteral("--e2e-allow-overlay-capture");
+        e2eCaptureEnabled =
+            e2eCaptureEnabled || argument == QStringLiteral("--e2e-allow-overlay-capture");
         constexpr auto e2eInstancePrefix = "--e2e-instance-id=";
         if (argument.startsWith(QString::fromLatin1(e2eInstancePrefix))) {
-            e2eInstanceId = argument.mid(static_cast<int>(
-                std::char_traits<char>::length(e2eInstancePrefix)));
+            e2eInstanceId =
+                argument.mid(static_cast<int>(std::char_traits<char>::length(e2eInstancePrefix)));
         }
     }
-    if (e2eCaptureEnabled &&
-        QRegularExpression(QStringLiteral("^[A-Za-z0-9_-]{1,64}$"))
-            .match(e2eInstanceId)
-            .hasMatch()) {
+    if (e2eCaptureEnabled && QRegularExpression(QStringLiteral("^[A-Za-z0-9_-]{1,64}$"))
+                                 .match(e2eInstanceId)
+                                 .hasMatch()) {
         applicationName += QStringLiteral("-e2e-") + e2eInstanceId;
     }
     QCoreApplication::setApplicationName(applicationName);
+    QCoreApplication::setApplicationVersion(QStringLiteral(SNOW_DIAGNOSTICS_VERSION));
+    auto& diagnostics = snow_shot::diagnostics::DiagnosticsService::instance();
+    struct DiagnosticsLifetime {
+        ~DiagnosticsLifetime() {
+            snow_shot::diagnostics::DiagnosticsService::instance().shutdown();
+        }
+    } diagnosticsLifetime;
+    snow_shot::storage::StorageInitializationOptions storageOptions;
+    storageOptions.resolvedDirectory =
+        std::make_shared<snow_shot::storage::StorageDirectorySelection>(
+            snow_shot::storage::ApplicationStorage::resolveDirectory());
+    snow_shot::diagnostics::DiagnosticsOptions diagnosticsOptions;
+    const auto& selectedStorage = *storageOptions.resolvedDirectory;
+    if (!selectedStorage.effectiveDirectory.isEmpty()) {
+        diagnosticsOptions.directories.append(
+            QDir(selectedStorage.effectiveDirectory).filePath(QStringLiteral("logs")));
+    }
+    diagnosticsOptions.directories.append(
+        QDir(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation))
+            .filePath(QStringLiteral("logs")));
+    diagnosticsOptions.directories.append(
+        QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
+            .filePath(QStringLiteral("SnowShot/%1/logs").arg(applicationName)));
+    diagnosticsOptions.handlerPath =
+        QDir(selectedStorage.executableDirectory).filePath(QStringLiteral("crashpad_handler.exe"));
+    diagnosticsOptions.version = QStringLiteral(SNOW_DIAGNOSTICS_VERSION);
+    diagnosticsOptions.revision = QStringLiteral(SNOW_DIAGNOSTICS_REVISION);
+    diagnosticsOptions.buildConfiguration = QStringLiteral(SNOW_DIAGNOSTICS_BUILD);
+    static_cast<void>(diagnostics.initialize(std::move(diagnosticsOptions)));
+    snow_diagnostics_install_panic_hook(snow_diag_panic);
 
     // Capture overlays embed native window-type children (the floating tool
     // palette) alongside alien, click-through children (selection toolbar,
@@ -52,6 +88,10 @@ int main(int argc, char* argv[]) {
     QCoreApplication::setAttribute(Qt::AA_DontCreateNativeWidgetSiblings);
 
     QApplication app(argc, argv);
+    snow_shot::diagnostics::logEvent(QStringLiteral("snow_shot.app"),
+                                     QStringLiteral("application.platform"),
+                                     {{QStringLiteral("backend"), QGuiApplication::platformName()},
+                                      {QStringLiteral("os"), QSysInfo::kernelVersion()}});
     static_cast<void>(snow_shot::presentation::capture::resolveAutoScreenshotApiMode());
 #if defined(SNOW_SHOT_PIN_PERF_INSTRUMENTATION)
     snow_shot::presentation::pin_perf::configureTrace(
@@ -72,7 +112,13 @@ int main(int argc, char* argv[]) {
         return 2;
     }
 
-    static_cast<void>(snow_shot::storage::ApplicationStorage::instance().initialize());
+    static_cast<void>(
+        snow_shot::storage::ApplicationStorage::instance().initialize(storageOptions));
+    struct StorageLifetime {
+        ~StorageLifetime() {
+            snow_shot::storage::ApplicationStorage::instance().shutdown();
+        }
+    } storageLifetime;
     if (snow_shot::platform::windows::AutoStartRegistration::isSupported()) {
         const bool enabled = snow_shot::storage::SystemSettings().autoStartAtBoot();
         QString error;
@@ -92,11 +138,12 @@ int main(int argc, char* argv[]) {
     adqt::widgets::AdTooltip::installApplicationTooltips();
 
     snow_shot::app::ApplicationController applicationController(app);
-    singleInstance.setLaunchRequestHandler(
-        [&applicationController](const QStringList& arguments) {
-            applicationController.handleLaunchRequest(arguments);
-        });
+    singleInstance.setLaunchRequestHandler([&applicationController](const QStringList& arguments) {
+        applicationController.handleLaunchRequest(arguments);
+    });
     applicationController.start();
+    snow_shot::diagnostics::logEvent(QStringLiteral("snow_shot.app"),
+                                     QStringLiteral("application.ready"));
     if (!QApplication::arguments().contains(QStringLiteral("--autostart")) &&
         QApplication::arguments().contains(QStringLiteral("--show-main-window"))) {
         applicationController.showMainWindow();

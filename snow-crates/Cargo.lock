@@ -2866,14 +2866,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "snow-diagnostics"
+version = "0.1.0"
+
+[[package]]
+name = "snow-diagnostics-test"
+version = "0.1.0"
+dependencies = [
+ "snow-diagnostics",
+]
+
+[[package]]
 name = "snow-ocr-process"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "memmap2",
  "num_cpus",
  "rapid-ocr-rs",
  "serde",
  "serde_json",
+ "snow-diagnostics",
  "windows-sys 0.61.2",
  "winres",
 ]

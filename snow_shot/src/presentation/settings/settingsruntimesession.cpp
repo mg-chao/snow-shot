@@ -34,8 +34,7 @@ QString localShortcutKey(SettingsLocalShortcutScope scope, const QString& shortc
     return QString::number(static_cast<int>(scope)) + QLatin1Char('\x1f') + shortcutId;
 }
 
-bool sameStorageStatus(const storage::StorageStatus& first,
-                       const storage::StorageStatus& second) {
+bool sameStorageStatus(const storage::StorageStatus& first, const storage::StorageStatus& second) {
     return first.requestedDirectory == second.requestedDirectory &&
            first.effectiveDirectory == second.effectiveDirectory &&
            first.fallbackReason == second.fallbackReason &&
@@ -48,13 +47,13 @@ bool sameStorageStatus(const storage::StorageStatus& first,
            first.historyClearing == second.historyClearing &&
            first.cacheClearing == second.cacheClearing &&
            first.lastConfigurationError == second.lastConfigurationError &&
-           first.lastHistoryError == second.lastHistoryError;
+           first.lastHistoryError == second.lastHistoryError &&
+           first.diagnostics == second.diagnostics;
 }
 } // namespace
 
 SettingsRuntimeSession::SettingsRuntimeSession(const SettingsRegistry& registry,
-                                               SettingsBackend& backend,
-                                               QObject* parent)
+                                               SettingsBackend& backend, QObject* parent)
     : QObject(parent), m_registry(registry), m_backend(backend) {
     qRegisterMetaType<SettingsFieldState>();
     qRegisterMetaType<SettingsOptions>();
@@ -63,19 +62,22 @@ SettingsRuntimeSession::SettingsRuntimeSession(const SettingsRegistry& registry,
     qRegisterMetaType<SettingsCommand>();
     qRegisterMetaType<SettingsCommandKind>();
     qRegisterMetaType<storage::ScreenshotToolbarLayout>();
-    connect(&m_backend, &SettingsBackend::synchronized, this, [this]() {
-        refreshAll();
-    }, Qt::QueuedConnection);
-    connect(&m_backend, &SettingsBackend::shortcutStateChanged, this,
-            [this](GlobalShortcutAction action,
-                   const GlobalShortcutRegistrationState&) {
-                if (const auto* descriptor = descriptorForShortcut(action)) {
-                    refreshField(descriptor->id);
-                }
-                // Registration status can change without the shortcut list
-                // changing, so fieldChanged alone is not sufficient here.
-                emit shortcutStateChanged(action, shortcutState(action));
-            }, Qt::QueuedConnection);
+    connect(&m_backend, &SettingsBackend::actionFinished, this,
+            &SettingsRuntimeSession::actionFinished);
+    connect(
+        &m_backend, &SettingsBackend::synchronized, this, [this]() { refreshAll(); },
+        Qt::QueuedConnection);
+    connect(
+        &m_backend, &SettingsBackend::shortcutStateChanged, this,
+        [this](GlobalShortcutAction action, const GlobalShortcutRegistrationState&) {
+            if (const auto* descriptor = descriptorForShortcut(action)) {
+                refreshField(descriptor->id);
+            }
+            // Registration status can change without the shortcut list
+            // changing, so fieldChanged alone is not sufficient here.
+            emit shortcutStateChanged(action, shortcutState(action));
+        },
+        Qt::QueuedConnection);
     refreshAll();
 }
 
@@ -137,7 +139,7 @@ bool SettingsRuntimeSession::submitDraft(const QString& fieldId, const QVariant&
 }
 
 bool SettingsRuntimeSession::submitDraftInternal(const QString& fieldId, const QVariant& value,
-                                                  bool forceWrite) {
+                                                 bool forceWrite) {
     const auto* descriptor = descriptorFor(fieldId);
     if (descriptor == nullptr || isReadOnly(*descriptor)) {
         return false;
@@ -149,8 +151,7 @@ bool SettingsRuntimeSession::submitDraftInternal(const QString& fieldId, const Q
         !next.busy) {
         // A no-op must not cause a storage write or a new revision. Clear a
         // stale presentation error, but leave the accepted value untouched.
-        if (!next.error.isEmpty() || next.phase != SettingsWritePhase::Clean ||
-            next.conflicted) {
+        if (!next.error.isEmpty() || next.phase != SettingsWritePhase::Clean || next.conflicted) {
             next.error.clear();
             next.phase = SettingsWritePhase::Clean;
             next.conflicted = false;
@@ -169,8 +170,7 @@ bool SettingsRuntimeSession::submitDraftInternal(const QString& fieldId, const Q
     // the target in memory even though the previous write failed to persist;
     // keep a real operation generation in that case instead of collapsing it
     // into a no-op because the values happen to match.
-    next.dirty = forceWrite ||
-                 !valuesEqual(*descriptor, next.draftValue, next.acceptedValue);
+    next.dirty = forceWrite || !valuesEqual(*descriptor, next.draftValue, next.acceptedValue);
     next.conflicted = false;
     next.error.clear();
     next.phase = next.dirty ? SettingsWritePhase::Pending : SettingsWritePhase::Clean;
@@ -180,8 +180,7 @@ bool SettingsRuntimeSession::submitDraftInternal(const QString& fieldId, const Q
     // A user edit supersedes an accepted asynchronous reset for this field.
     // Retire that reset generation so its late completion cannot overwrite the
     // newer draft.
-    if (const auto reset = m_pendingResets.constFind(fieldId);
-        reset != m_pendingResets.cend()) {
+    if (const auto reset = m_pendingResets.constFind(fieldId); reset != m_pendingResets.cend()) {
         retireWrite(fieldId, reset.value());
         m_pendingResets.erase(reset);
     }
@@ -219,8 +218,8 @@ bool SettingsRuntimeSession::submitDraftInternal(const QString& fieldId, const Q
 
     const bool accepted = writeValue(*descriptor, value);
     const QVariant current = readValue(*descriptor);
-    const bool pending = accepted && (isPending(*descriptor) ||
-                                      !valuesEqual(*descriptor, current, value));
+    const bool pending =
+        accepted && (isPending(*descriptor) || !valuesEqual(*descriptor, current, value));
     const bool operationFailed = accepted && operationErrorChanged(*descriptor, operation);
     if (!accepted || operationFailed) {
         if (accepted && operationFailed && pending) {
@@ -282,8 +281,7 @@ bool SettingsRuntimeSession::discard(const QString& fieldId) {
         retireWrite(fieldId, pending.value());
         m_pendingWrites.erase(pending);
     }
-    if (const auto reset = m_pendingResets.constFind(fieldId);
-        reset != m_pendingResets.cend()) {
+    if (const auto reset = m_pendingResets.constFind(fieldId); reset != m_pendingResets.cend()) {
         retireWrite(fieldId, reset.value());
         m_pendingResets.erase(reset);
     }
@@ -337,12 +335,10 @@ bool SettingsRuntimeSession::reset(SettingsSectionReset resetGroup) {
             // capture-history policy updates. Do not mistake an older field
             // write that was just retired for reset work still in flight.
             const bool operationPending =
-                descriptor.reset == SettingsSectionReset::HistoryPolicy &&
-                isPending(descriptor);
+                descriptor.reset == SettingsSectionReset::HistoryPolicy && isPending(descriptor);
             next.busy = operationPending;
             next.conflicted = false;
-            next.phase = operationPending ? SettingsWritePhase::Pending
-                                           : SettingsWritePhase::Clean;
+            next.phase = operationPending ? SettingsWritePhase::Pending : SettingsWritePhase::Clean;
             next.error.clear();
             ++next.revision;
             if (operationPending) {
@@ -391,16 +387,15 @@ void SettingsRuntimeSession::refreshField(const QString& fieldId) {
     refreshField(fieldId, std::nullopt);
 }
 
-QString SettingsRuntimeSession::backendError(
-    const SettingsFieldDescriptor& descriptor) const {
+QString SettingsRuntimeSession::backendError(const SettingsFieldDescriptor& descriptor) const {
     const QString fieldFailure = m_backend.fieldError(descriptor.id);
     if (!fieldFailure.isEmpty()) {
         return fieldFailure;
     }
     const storage::StorageStatus status = storageStatus();
-    const bool historyField = descriptor.reset == SettingsSectionReset::HistoryPolicy ||
-                              descriptor.configurationKey.startsWith(
-                                  QStringLiteral("capture_history/"));
+    const bool historyField =
+        descriptor.reset == SettingsSectionReset::HistoryPolicy ||
+        descriptor.configurationKey.startsWith(QStringLiteral("capture_history/"));
     if (historyField && !status.lastHistoryError.isEmpty()) {
         return status.lastHistoryError;
     }
@@ -410,16 +405,16 @@ QString SettingsRuntimeSession::backendError(
     return {};
 }
 
-bool SettingsRuntimeSession::operationErrorChanged(
-    const SettingsFieldDescriptor& descriptor, const PendingWrite& operation) const {
+bool SettingsRuntimeSession::operationErrorChanged(const SettingsFieldDescriptor& descriptor,
+                                                   const PendingWrite& operation) const {
     const QString fieldFailure = m_backend.fieldError(descriptor.id);
     if (!fieldFailure.isEmpty() && fieldFailure != operation.fieldError) {
         return true;
     }
     const storage::StorageStatus status = storageStatus();
-    const bool historyField = descriptor.reset == SettingsSectionReset::HistoryPolicy ||
-                              descriptor.configurationKey.startsWith(
-                                  QStringLiteral("capture_history/"));
+    const bool historyField =
+        descriptor.reset == SettingsSectionReset::HistoryPolicy ||
+        descriptor.configurationKey.startsWith(QStringLiteral("capture_history/"));
     if (historyField) {
         return !status.lastHistoryError.isEmpty() &&
                status.lastHistoryError != operation.historyError;
@@ -429,13 +424,11 @@ bool SettingsRuntimeSession::operationErrorChanged(
 }
 
 bool SettingsRuntimeSession::matchesValue(const SettingsFieldDescriptor& descriptor,
-                                          const QVariant& first,
-                                          const QVariant& second) const {
+                                          const QVariant& first, const QVariant& second) const {
     return valuesEqual(descriptor, first, second);
 }
 
-void SettingsRuntimeSession::retireWrite(const QString& fieldId,
-                                         const PendingWrite& write) {
+void SettingsRuntimeSession::retireWrite(const QString& fieldId, const PendingWrite& write) {
     constexpr int kMaximumRetiredWritesPerField = 8;
     QVector<RetiredWrite>& writes = m_retiredWrites[fieldId];
     for (RetiredWrite& retired : writes) {
@@ -449,8 +442,8 @@ void SettingsRuntimeSession::retireWrite(const QString& fieldId,
     writes.push_back({write.target, write.revision, false});
 }
 
-void SettingsRuntimeSession::forgetRetiredTarget(
-    const SettingsFieldDescriptor& descriptor, const QVariant& target) {
+void SettingsRuntimeSession::forgetRetiredTarget(const SettingsFieldDescriptor& descriptor,
+                                                 const QVariant& target) {
     auto found = m_retiredWrites.find(descriptor.id);
     if (found == m_retiredWrites.end()) {
         return;
@@ -466,9 +459,10 @@ void SettingsRuntimeSession::forgetRetiredTarget(
     }
 }
 
-bool SettingsRuntimeSession::suppressRetiredCompletion(
-    const SettingsFieldDescriptor& descriptor, const QVariant& external,
-    bool backendPending, const PendingWrite* activeWrite) {
+bool SettingsRuntimeSession::suppressRetiredCompletion(const SettingsFieldDescriptor& descriptor,
+                                                       const QVariant& external,
+                                                       bool backendPending,
+                                                       const PendingWrite* activeWrite) {
     auto found = m_retiredWrites.find(descriptor.id);
     if (found == m_retiredWrites.end()) {
         return false;
@@ -520,7 +514,7 @@ bool SettingsRuntimeSession::suppressRetiredCompletion(
 }
 
 void SettingsRuntimeSession::refreshField(const QString& fieldId,
-                                           std::optional<quint64> expectedRevision) {
+                                          std::optional<quint64> expectedRevision) {
     const auto* descriptor = descriptorFor(fieldId);
     if (descriptor == nullptr) {
         return;
@@ -660,8 +654,7 @@ void SettingsRuntimeSession::refreshField(const QString& fieldId,
         const bool historyPolicyPending =
             descriptor->reset == SettingsSectionReset::HistoryPolicy && backendPending;
         next.busy = historyPolicyPending;
-        next.phase = historyPolicyPending ? SettingsWritePhase::Pending
-                                           : SettingsWritePhase::Clean;
+        next.phase = historyPolicyPending ? SettingsWritePhase::Pending : SettingsWritePhase::Clean;
         next.conflicted = false;
         next.error.clear();
     } else if (valuesEqual(*descriptor, external, next.draftValue) && !backendPending &&
@@ -725,8 +718,8 @@ void SettingsRuntimeSession::refreshAll() {
     refreshAuxiliaryInteger(SettingsIntegerBinding::ScreenshotDelaySeconds);
     refreshCommandStates();
     const storage::StorageStatus currentStatus = storageStatus();
-    const bool statusChanged = !m_hasStorageStatus ||
-                               !sameStorageStatus(m_lastStorageStatus, currentStatus);
+    const bool statusChanged =
+        !m_hasStorageStatus || !sameStorageStatus(m_lastStorageStatus, currentStatus);
     m_lastStorageStatus = currentStatus;
     m_hasStorageStatus = true;
     if (statusChanged) {
@@ -753,78 +746,78 @@ void SettingsRuntimeSession::refreshAuxiliaryInteger(SettingsIntegerBinding bind
     emit auxiliaryIntegerChanged(binding, value);
 }
 
-const SettingsFieldDescriptor* SettingsRuntimeSession::descriptorFor(
-    const QString& fieldId) const {
+const SettingsFieldDescriptor* SettingsRuntimeSession::descriptorFor(const QString& fieldId) const {
     return m_registry.field(fieldId);
 }
 
-const SettingsFieldDescriptor* SettingsRuntimeSession::descriptorForSelect(
-    SettingsSelectBinding binding) const {
+const SettingsFieldDescriptor*
+SettingsRuntimeSession::descriptorForSelect(SettingsSelectBinding binding) const {
     return m_registry.fieldForSelect(binding);
 }
 
-const SettingsFieldDescriptor* SettingsRuntimeSession::descriptorForSwitch(
-    SettingsSwitchBinding binding) const {
+const SettingsFieldDescriptor*
+SettingsRuntimeSession::descriptorForSwitch(SettingsSwitchBinding binding) const {
     return m_registry.fieldForSwitch(binding);
 }
 
-const SettingsFieldDescriptor* SettingsRuntimeSession::descriptorForInteger(
-    SettingsIntegerBinding binding) const {
+const SettingsFieldDescriptor*
+SettingsRuntimeSession::descriptorForInteger(SettingsIntegerBinding binding) const {
     return m_registry.fieldForInteger(binding);
 }
 
-const SettingsFieldDescriptor* SettingsRuntimeSession::descriptorForMulti(
-    SettingsMultiSelectBinding binding) const {
+const SettingsFieldDescriptor*
+SettingsRuntimeSession::descriptorForMulti(SettingsMultiSelectBinding binding) const {
     return m_registry.fieldForMultiSelect(binding);
 }
 
-const SettingsFieldDescriptor* SettingsRuntimeSession::descriptorForSlider(
-    SettingsSliderBinding binding) const {
+const SettingsFieldDescriptor*
+SettingsRuntimeSession::descriptorForSlider(SettingsSliderBinding binding) const {
     return m_registry.fieldForSlider(binding);
 }
 
-const SettingsFieldDescriptor* SettingsRuntimeSession::descriptorForColor(
-    SettingsColorBinding binding) const {
+const SettingsFieldDescriptor*
+SettingsRuntimeSession::descriptorForColor(SettingsColorBinding binding) const {
     return m_registry.fieldForColor(binding);
 }
 
-const SettingsFieldDescriptor* SettingsRuntimeSession::descriptorForRadio(
-    SettingsRadioBinding binding) const {
+const SettingsFieldDescriptor*
+SettingsRuntimeSession::descriptorForRadio(SettingsRadioBinding binding) const {
     return m_registry.fieldForRadio(binding);
 }
 
-const SettingsFieldDescriptor* SettingsRuntimeSession::descriptorForFile(
-    SettingsFilePathBinding binding) const {
+const SettingsFieldDescriptor*
+SettingsRuntimeSession::descriptorForFile(SettingsFilePathBinding binding) const {
     return m_registry.fieldForFilePath(binding);
 }
 
-const SettingsFieldDescriptor* SettingsRuntimeSession::descriptorForDirectory(
-    SettingsDirectoryPathBinding binding) const {
+const SettingsFieldDescriptor*
+SettingsRuntimeSession::descriptorForDirectory(SettingsDirectoryPathBinding binding) const {
     return m_registry.fieldForDirectoryPath(binding);
 }
 
-const SettingsFieldDescriptor* SettingsRuntimeSession::descriptorForText(
-    SettingsTextBinding binding) const {
+const SettingsFieldDescriptor*
+SettingsRuntimeSession::descriptorForText(SettingsTextBinding binding) const {
     return m_registry.fieldForText(binding);
 }
 
-const SettingsFieldDescriptor* SettingsRuntimeSession::descriptorForShortcut(
-    GlobalShortcutAction action) const {
+const SettingsFieldDescriptor*
+SettingsRuntimeSession::descriptorForShortcut(GlobalShortcutAction action) const {
     return m_registry.fieldForShortcut(action);
 }
 
-const SettingsFieldDescriptor* SettingsRuntimeSession::descriptorForLocal(
-    SettingsLocalShortcutScope scope, const QString& shortcutId) const {
+const SettingsFieldDescriptor*
+SettingsRuntimeSession::descriptorForLocal(SettingsLocalShortcutScope scope,
+                                           const QString& shortcutId) const {
     return m_registry.fieldForLocalShortcut(scope, shortcutId);
 }
 
-const SettingsFieldDescriptor* SettingsRuntimeSession::descriptorForAction(
-    SettingsActionBinding binding) const {
+const SettingsFieldDescriptor*
+SettingsRuntimeSession::descriptorForAction(SettingsActionBinding binding) const {
     return m_registry.fieldForAction(binding);
 }
 
-const SettingsFieldDescriptor* SettingsRuntimeSession::descriptorForCustom(
-    SettingsCustomRenderer renderer) const {
+const SettingsFieldDescriptor*
+SettingsRuntimeSession::descriptorForCustom(SettingsCustomRenderer renderer) const {
     return m_registry.fieldForCustom(renderer);
 }
 
@@ -858,8 +851,8 @@ QVariant SettingsRuntimeSession::readValue(const SettingsFieldDescriptor& descri
             } else if constexpr (std::is_same_v<Payload, SettingsShortcutActionDefinition>) {
                 return m_backend.shortcutState(payload.shortcutAction).shortcuts;
             } else if constexpr (std::is_same_v<Payload, SettingsLocalShortcutDefinition>) {
-                return stringListVariant(m_backend.localShortcuts(payload.scope,
-                                                                    payload.shortcutId));
+                return stringListVariant(
+                    m_backend.localShortcuts(payload.scope, payload.shortcutId));
             } else if constexpr (std::is_same_v<Payload, SettingsActionDefinition>) {
                 const SettingsActionState state = m_backend.actionState(payload.binding);
                 return QVariantList{state.enabled, state.busy};
@@ -881,7 +874,7 @@ QVariant SettingsRuntimeSession::readValue(const SettingsFieldDescriptor& descri
 }
 
 bool SettingsRuntimeSession::writeValue(const SettingsFieldDescriptor& descriptor,
-                                         const QVariant& value) {
+                                        const QVariant& value) {
     if (descriptor.definition == nullptr) {
         return false;
     }
@@ -958,8 +951,7 @@ bool SettingsRuntimeSession::isPending(const SettingsFieldDescriptor& descriptor
     return false;
 }
 
-QString SettingsRuntimeSession::writeError(
-    const SettingsFieldDescriptor& descriptor) const {
+QString SettingsRuntimeSession::writeError(const SettingsFieldDescriptor& descriptor) const {
     const QString currentError = backendError(descriptor);
     if (!currentError.isEmpty()) {
         return currentError;
@@ -968,8 +960,7 @@ QString SettingsRuntimeSession::writeError(
 }
 
 bool SettingsRuntimeSession::valuesEqual(const SettingsFieldDescriptor& descriptor,
-                                         const QVariant& first,
-                                         const QVariant& second) const {
+                                         const QVariant& first, const QVariant& second) const {
     if (descriptor.definition == nullptr) {
         return first == second;
     }
@@ -1001,22 +992,22 @@ bool SettingsRuntimeSession::isReadOnly(const SettingsFieldDescriptor& descripto
     if (std::holds_alternative<SettingsActionDefinition>(descriptor.definition->payload)) {
         return true;
     }
-    if (const auto* custom =
-            std::get_if<SettingsCustomDefinition>(&descriptor.definition->payload);
+    if (const auto* custom = std::get_if<SettingsCustomDefinition>(&descriptor.definition->payload);
         custom != nullptr && custom->renderer == SettingsCustomRenderer::StorageStatus) {
         return true;
     }
     return false;
 }
 
-SettingsOptions SettingsRuntimeSession::buildOptions(
-    const SettingsFieldDescriptor& descriptor) const {
+SettingsOptions
+SettingsRuntimeSession::buildOptions(const SettingsFieldDescriptor& descriptor) const {
     SettingsOptions result;
     if (descriptor.definition == nullptr) {
         result.error = QStringLiteral("Unknown settings field");
         return result;
     }
-    if (const auto* select = std::get_if<SettingsSelectDefinition>(&descriptor.definition->payload)) {
+    if (const auto* select =
+            std::get_if<SettingsSelectDefinition>(&descriptor.definition->payload)) {
         for (const SettingsOptionDefinition& option : select->options) {
             result.values.push_back({option.value, option.label.translated()});
         }
@@ -1073,8 +1064,7 @@ void SettingsRuntimeSession::refreshCommandStates() {
     }
 }
 
-void SettingsRuntimeSession::updateState(const QString& fieldId,
-                                         const SettingsFieldState& next) {
+void SettingsRuntimeSession::updateState(const QString& fieldId, const SettingsFieldState& next) {
     const auto found = m_states.constFind(fieldId);
     if (found != m_states.cend() && found.value() == next) {
         return;
@@ -1083,10 +1073,10 @@ void SettingsRuntimeSession::updateState(const QString& fieldId,
     emit fieldChanged(fieldId, next);
 }
 
-#define SESSION_DELEGATE_SELECT(name, bindingType, descriptorFn) \
-    QVariant SettingsRuntimeSession::name(bindingType binding) const { \
-        const auto* descriptor = descriptorFn(binding); \
-        return descriptor != nullptr ? state(descriptor->id).draftValue : QVariant(); \
+#define SESSION_DELEGATE_SELECT(name, bindingType, descriptorFn)                                   \
+    QVariant SettingsRuntimeSession::name(bindingType binding) const {                             \
+        const auto* descriptor = descriptorFn(binding);                                            \
+        return descriptor != nullptr ? state(descriptor->id).draftValue : QVariant();              \
     }
 
 SESSION_DELEGATE_SELECT(selectValue, SettingsSelectBinding, descriptorForSelect)
@@ -1097,7 +1087,7 @@ SettingsRuntimeSession::dynamicSelectOptions(SettingsSelectBinding binding) cons
 }
 
 bool SettingsRuntimeSession::applySelectValue(SettingsSelectBinding binding,
-                                               const QVariant& value) {
+                                              const QVariant& value) {
     const auto* descriptor = descriptorForSelect(binding);
     return descriptor != nullptr && submitDraft(descriptor->id, value);
 }
@@ -1183,8 +1173,7 @@ QVariant SettingsRuntimeSession::radioValue(SettingsRadioBinding binding) const 
     return descriptor != nullptr ? state(descriptor->id).draftValue : QVariant();
 }
 
-bool SettingsRuntimeSession::applyRadioValue(SettingsRadioBinding binding,
-                                             const QVariant& value) {
+bool SettingsRuntimeSession::applyRadioValue(SettingsRadioBinding binding, const QVariant& value) {
     const auto* descriptor = descriptorForRadio(binding);
     return descriptor != nullptr && submitDraft(descriptor->id, value);
 }
@@ -1222,7 +1211,8 @@ bool SettingsRuntimeSession::applyTextValue(SettingsTextBinding binding, const Q
 }
 
 storage::ScreenshotToolbarLayout SettingsRuntimeSession::toolbarLayout() const {
-    if (const auto* descriptor = descriptorForCustom(SettingsCustomRenderer::DrawingToolbarEditor)) {
+    if (const auto* descriptor =
+            descriptorForCustom(SettingsCustomRenderer::DrawingToolbarEditor)) {
         const QVariant value = state(descriptor->id).draftValue;
         if (value.canConvert<storage::ScreenshotToolbarLayout>()) {
             return value.value<storage::ScreenshotToolbarLayout>();
@@ -1232,7 +1222,8 @@ storage::ScreenshotToolbarLayout SettingsRuntimeSession::toolbarLayout() const {
 }
 
 bool SettingsRuntimeSession::applyToolbarLayout(const storage::ScreenshotToolbarLayout& layout) {
-    if (const auto* descriptor = descriptorForCustom(SettingsCustomRenderer::DrawingToolbarEditor)) {
+    if (const auto* descriptor =
+            descriptorForCustom(SettingsCustomRenderer::DrawingToolbarEditor)) {
         return submitDraft(descriptor->id, QVariant::fromValue(layout));
     }
     return m_backend.applyToolbarLayout(layout);

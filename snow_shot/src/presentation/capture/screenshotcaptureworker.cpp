@@ -1,4 +1,5 @@
 #include "screenshotcaptureworker.h"
+#include "snow_shot/diagnostics/diagnostics.h"
 #include "captureframeimage.h"
 
 #include "screenshotcaptureperfinstrumentation.h"
@@ -180,6 +181,10 @@ bool ScreenshotCaptureWorker::ensureSession() {
         return false;
     }
     m_sessionBackend = backend;
+    snow_shot::diagnostics::logEvent(
+        QStringLiteral("snow_shot.capture"), QStringLiteral("capture.backend_ready"),
+        {{QStringLiteral("backend"), static_cast<int>(backend)},
+         {QStringLiteral("count"), static_cast<qint64>(config.capture_retry_count)}});
     return true;
 }
 
@@ -223,6 +228,14 @@ void ScreenshotCaptureWorker::postPrepared(
 
 void ScreenshotCaptureWorker::postCaptureResult(
     const QPointer<ScreenshotCaptureCoordinator>& coordinator, ScreenshotCaptureResult result) {
+    snow_shot::diagnostics::logEvent(
+        QStringLiteral("snow_shot.capture"), QStringLiteral("capture.finished"),
+        {{QStringLiteral("operation"), QString::number(result.requestId)},
+         {QStringLiteral("count"), result.displays.size()},
+         {QStringLiteral("outcome"), result.succeeded       ? QStringLiteral("succeeded")
+                                     : coordinator.isNull() ? QStringLiteral("cancelled")
+                                                            : QStringLiteral("failed")}},
+        result.succeeded || coordinator.isNull() ? QtInfoMsg : QtWarningMsg);
     if (coordinator.isNull()) {
         return;
     }

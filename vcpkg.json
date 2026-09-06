@@ -13,6 +13,7 @@
     "snow-shot": {
       "description": "Build the minimal native dependency set required by Snow Shot.",
       "dependencies": [
+        { "name": "crashpad", "platform": "windows" },
         {
           "name": "ffmpeg",
           "default-features": false,

@@ -1,19 +1,19 @@
 {
   "schema": 1,
   "runtime": {
-    "version": "1.0.0",
+    "version": "1.0.1",
     "platform": "windows-x64",
     "archive": {
-      "name": "snow-ocr-runtime-1.0.0-windows-x64.zip",
-      "size": 17315000,
-      "sha256": "3315046a53e1aa959cf78665a9daffb950cea19879093594fcd89861ec1fff04",
-      "url": "https://www.modelscope.cn/models/mgchao/SnowShotOCR/resolve/master/runtime/1.0.0/windows-x64/snow-ocr-runtime-1.0.0-windows-x64.zip"
+      "name": "snow-ocr-runtime-1.0.1-windows-x64.zip",
+      "size": 17231980,
+      "sha256": "4a76344e6ca7231a156b9ca39d3253797938e38e43d0f83fa94ab5f9dfccc503",
+      "url": "https://www.modelscope.cn/models/mgchao/SnowShotOCR/resolve/master/runtime/1.0.1/windows-x64/snow-ocr-runtime-1.0.1-windows-x64.zip"
     },
     "files": [
       {
-        "name": "snow-ocr-process-1.0.0-windows-x64.exe",
-        "size": 19245056,
-        "sha256": "e185896c22f7f3660992bffdd1a51595632e42df4830545fd3a9909c387e7127"
+        "name": "snow-ocr-process-1.0.1-windows-x64.exe",
+        "size": 19039232,
+        "sha256": "e2c4751d89db634cc302528c2e4883e4be59fe0606c579ebb84b48b5e18c2837"
       },
       {
         "name": "DirectML.dll",
@@ -23,7 +23,7 @@
       {
         "name": "runtime-manifest.json",
         "size": 447,
-        "sha256": "6962f7af0c4faf9b29e0a9cd15ae4c8964326bc20ae4b77d1caafab350f7fe9e"
+        "sha256": "0629801bb75c4d6f03141a339b078fbe8d938a80da5e016105a1f606fdc2c306"
       }
     ]
   },

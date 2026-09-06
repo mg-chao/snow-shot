@@ -1,4 +1,7 @@
 #include "snow_shot/presentation/screenrecordingcontroller.h"
+#include "snow_shot/diagnostics/diagnostics.h"
+#include <QUuid>
+#include <QElapsedTimer>
 
 #include "snow_shot/presentation/screenshottoolpalette.h"
 #include "snow_shot/presentation/screenshotimagefileservice.h"
@@ -54,7 +57,7 @@ int validAnimatedImageFrameRate(int frameRate) {
 
 SnowCaptureVideoCodec videoCodec(const QString& encoder) {
     return encoder == QStringLiteral("h265") ? SNOW_CAPTURE_VIDEO_CODEC_H265
-                                              : SNOW_CAPTURE_VIDEO_CODEC_H264;
+                                             : SNOW_CAPTURE_VIDEO_CODEC_H264;
 }
 
 SnowCaptureVideoEncodingPreset videoEncodingPreset(const QString& preset) {
@@ -85,16 +88,14 @@ RecordingExportSettings recordingExportSettings(bool animatedImage, const QSize&
         result.maximumSize =
             snow_shot::presentation::recording::screenRecordingMaximumSizeForClarity(
                 settings.screenRecordingClarity());
-        result.maximumSize =
-            snow_shot::presentation::recording::screenRecordingOrientedMaximumSize(
-                result.maximumSize, captureSize);
+        result.maximumSize = snow_shot::presentation::recording::screenRecordingOrientedMaximumSize(
+            result.maximumSize, captureSize);
         result.targetFps = static_cast<uint32_t>(validRecordingFrameRate(settings.frameRate()));
         return result;
     }
 
-    result.maximumSize =
-        snow_shot::presentation::recording::screenRecordingMaximumSizeForClarity(
-            settings.animatedImageClarity());
+    result.maximumSize = snow_shot::presentation::recording::screenRecordingMaximumSizeForClarity(
+        settings.animatedImageClarity());
     result.maximumSize = snow_shot::presentation::recording::screenRecordingOrientedMaximumSize(
         result.maximumSize, captureSize);
     result.targetFps =
@@ -130,8 +131,8 @@ QStringList defaultRecordingDirectories() {
 
 QStringList recordingDirectories() {
     QStringList directories;
-    const QString configured = QDir::cleanPath(
-        snow_shot::storage::RecordingSettings().videoSaveDirectory().trimmed());
+    const QString configured =
+        QDir::cleanPath(snow_shot::storage::RecordingSettings().videoSaveDirectory().trimmed());
     const QFileInfo configuredInfo(configured);
     if (!configured.isEmpty() && configuredInfo.isDir() && configuredInfo.isWritable()) {
         directories.push_back(configured);
@@ -160,9 +161,8 @@ QString recordingFilePath(const QString& extension) {
     const QString baseName = ScreenshotImageFileService::suggestedBaseName(
         snow_shot::storage::RecordingSettings().videoFilenameFormat());
     const QDir directory(recordingDirectory());
-    const QString normalizedExtension = extension.startsWith(QLatin1Char('.'))
-                                            ? extension
-                                            : QStringLiteral(".%1").arg(extension);
+    const QString normalizedExtension =
+        extension.startsWith(QLatin1Char('.')) ? extension : QStringLiteral(".%1").arg(extension);
     QString path = directory.filePath(baseName + normalizedExtension);
     for (int suffix = 1; QFileInfo::exists(path); ++suffix) {
         path = directory.filePath(
@@ -300,8 +300,7 @@ struct ScreenRecordingController::Impl {
         QObject::connect(palette, &ScreenshotToolPalette::recordingCloseRequested, &owner,
                          [this]() { close(); });
         QObject::connect(palette, &ScreenshotToolPalette::recordingCopyAnimatedImageRequested,
-                         &owner,
-                         [this]() { stop(true, true, false); });
+                         &owner, [this]() { stop(true, true, false); });
         QObject::connect(palette, &ScreenshotToolPalette::recordingCopyVideoRequested, &owner,
                          [this]() { stop(false, true, false); });
     }
@@ -312,6 +311,8 @@ struct ScreenRecordingController::Impl {
             return;
         }
         startScheduled = true;
+        operation = QUuid::createUuid().toString(QUuid::Id128);
+        operationTimer.start();
         QTimer::singleShot(0, &owner, [this]() {
             startScheduled = false;
             if (state != ScreenshotToolPalette::RecordingState::Idle || busy ||
@@ -387,6 +388,7 @@ struct ScreenRecordingController::Impl {
                 }
             }
             durationTimer.start();
+            report(QStringLiteral("recording.started"));
         });
     }
 
@@ -400,6 +402,7 @@ struct ScreenRecordingController::Impl {
             return;
         }
         state = ScreenshotToolPalette::RecordingState::Paused;
+        report(QStringLiteral("recording.paused"));
         durationTimer.stop();
         syncUi();
     }
@@ -414,6 +417,7 @@ struct ScreenRecordingController::Impl {
             return;
         }
         state = ScreenshotToolPalette::RecordingState::Recording;
+        report(QStringLiteral("recording.resumed"));
         durationTimer.start();
         syncUi();
     }
@@ -471,6 +475,8 @@ struct ScreenRecordingController::Impl {
         exportPollTimer.stop();
         const std::pair<bool, QString> result = exportFuture.get();
         const bool ok = result.first;
+        if (ok)
+            report(QStringLiteral("recording.export_finished"));
         const QString& error = result.second;
         if (recordingSession != nullptr) {
             snow_capture_recording_session_destroy(recordingSession);
@@ -541,12 +547,12 @@ struct ScreenRecordingController::Impl {
         }
 #if defined(Q_OS_WIN) || defined(_WIN32)
         if (toolbarExcludedFromCapture) {
-            static_cast<void>(snow_shot::platform::windows::setWindowExcludedFromCapture(
-                toolbarWindow, false));
+            static_cast<void>(
+                snow_shot::platform::windows::setWindowExcludedFromCapture(toolbarWindow, false));
         }
 #endif
-        const bool showToolbar = toolbarHiddenForCapture &&
-                                 (areaWindow == nullptr || areaWindow->isVisible());
+        const bool showToolbar =
+            toolbarHiddenForCapture && (areaWindow == nullptr || areaWindow->isVisible());
         toolbarExcludedFromCapture = false;
         toolbarHiddenForCapture = false;
         if (showToolbar) {
@@ -579,6 +585,7 @@ struct ScreenRecordingController::Impl {
     }
 
     void showError(const QString& message) {
+        report(QStringLiteral("recording.failed"), QtWarningMsg);
         QMessageBox::critical(toolbarWindow, tr("Screen recording"),
                               message.isEmpty() ? tr("The recording operation failed") : message);
     }
@@ -598,6 +605,16 @@ struct ScreenRecordingController::Impl {
     bool microphoneEnabled = false;
     bool systemAudioEnabled = true;
     bool busy = false;
+    void report(const QString& event, QtMsgType level = QtInfoMsg) const {
+        snow_shot::diagnostics::logEvent(QStringLiteral("snow_shot.recording"), event,
+                                         {{QStringLiteral("operation"), operation},
+                                          {QStringLiteral("duration_ms"),
+                                           operationTimer.isValid() ? operationTimer.elapsed() : 0},
+                                          {QStringLiteral("backend"), QStringLiteral("wgc")}},
+                                         level);
+    }
+    QString operation;
+    QElapsedTimer operationTimer;
     bool startScheduled = false;
     bool pendingCopyToClipboard = false;
     bool pendingCloseAfter = false;

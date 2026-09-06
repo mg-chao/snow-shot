@@ -1,6 +1,8 @@
 ﻿[workspace]
 members = [
     "crates/snow-core",
+    "crates/snow-diagnostics",
+    "crates/snow-diagnostics-test",
     "crates/snow-cursor",
     "crates/snow-pipeline",
     "crates/snow-capture",

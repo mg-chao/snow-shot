@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/screenshotscrollingcapturecontroller.h"
+#include "snow_shot/diagnostics/diagnostics.h"
 
 #include "snow_shot/presentation/screenshotdisplaysession.h"
 #include "snow_shot/presentation/screenshotgeometry.h"
@@ -182,9 +183,8 @@ class ScreenshotScrollingCaptureProducer final : public QObject {
         m_active.store(true, std::memory_order_release);
         m_stopRequested.store(false, std::memory_order_release);
         const quint64 streamGeneration = m_generation;
-        m_consumerThread = std::thread([this, streamGeneration]() {
-            consumeStream(streamGeneration);
-        });
+        m_consumerThread =
+            std::thread([this, streamGeneration]() { consumeStream(streamGeneration); });
     }
 
     void reset(quint64 generation) {
@@ -206,9 +206,9 @@ class ScreenshotScrollingCaptureProducer final : public QObject {
         SnowCaptureStreamStats stats{};
         if (m_stream != nullptr && snow_capture_stream_stats(m_stream, &stats) != 0) {
             if (stats.capture_latency_ns != 0) {
-                const auto captureNanos = std::min(
-                    stats.capture_latency_ns,
-                    static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()));
+                const auto captureNanos =
+                    std::min(stats.capture_latency_ns,
+                             static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()));
                 m_cadence.recordCapture(
                     std::chrono::nanoseconds(static_cast<std::int64_t>(captureNanos)));
             }
@@ -332,8 +332,7 @@ class ScreenshotScrollingCaptureProducer final : public QObject {
     void consumeStream(quint64 generation) {
         while (!m_stopRequested.load(std::memory_order_acquire)) {
             SnowCaptureStreamEvent event{};
-            if (m_stream == nullptr ||
-                snow_capture_stream_receive(m_stream, 100, &event) == 0) {
+            if (m_stream == nullptr || snow_capture_stream_receive(m_stream, 100, &event) == 0) {
                 if (m_stopRequested.load(std::memory_order_acquire)) {
                     break;
                 }
@@ -394,8 +393,8 @@ class ScreenshotScrollingCaptureProducer final : public QObject {
         }
         const size_t expected = static_cast<size_t>(m_selection.width()) *
                                 static_cast<size_t>(m_selection.height()) * 4U;
-        const bool valid = info.rgba_bytes != nullptr && info.width ==
-                               static_cast<std::uint32_t>(m_selection.width()) &&
+        const bool valid = info.rgba_bytes != nullptr &&
+                           info.width == static_cast<std::uint32_t>(m_selection.width()) &&
                            info.height == static_cast<std::uint32_t>(m_selection.height()) &&
                            info.stride_bytes == info.width * 4 && info.rgba_len >= expected;
         const bool mailboxHasCapacity = m_mailbox->hasPendingCapacity();
@@ -821,6 +820,9 @@ struct ScreenshotScrollingCaptureController::Impl {
         thumbnailHost = anchorOverlay;
         active = true;
         ++generation;
+        snow_shot::diagnostics::logEvent(
+            QStringLiteral("snow_shot.scrolling"), QStringLiteral("scrolling.started"),
+            {{QStringLiteral("operation"), QString::number(generation)}});
         pendingResultRequestId.reset();
         mailbox->reset(generation);
 
@@ -904,6 +906,11 @@ struct ScreenshotScrollingCaptureController::Impl {
 
     void stop(bool restoreScreenshotPresentation) {
         const bool wasActive = active;
+        if (wasActive) {
+            snow_shot::diagnostics::logEvent(
+                QStringLiteral("snow_shot.scrolling"), QStringLiteral("scrolling.stopped"),
+                {{QStringLiteral("operation"), QString::number(generation)}});
+        }
         active = false;
         ++generation;
         pendingResultRequestId.reset();
@@ -1079,8 +1086,7 @@ struct ScreenshotScrollingCaptureController::Impl {
             return;
         }
         if (result.fatalError) {
-            qWarning("Scrolling capture stream failed: %s",
-                     qUtf8Printable(result.errorMessage));
+            qWarning("Scrolling capture stream failed: %s", qUtf8Printable(result.errorMessage));
             ++generation;
             pendingResultRequestId.reset();
             mailbox->reset(generation);
@@ -1094,8 +1100,8 @@ struct ScreenshotScrollingCaptureController::Impl {
             return;
         }
         if (result.streamPressure) {
-            postCaptureTask([feedbackGeneration = result.generation](
-                                 ScreenshotScrollingCaptureProducer& target) {
+            postCaptureTask([feedbackGeneration =
+                                 result.generation](ScreenshotScrollingCaptureProducer& target) {
                 target.recordStreamPressure(feedbackGeneration);
             });
         }
@@ -1236,13 +1242,14 @@ struct ScreenshotScrollingCaptureController::Impl {
             cachedSnapshotTop == trim.top && cachedSnapshotBottom == trim.bottom) {
             SNOW_SHOT_PIN_PERF_COUNTER("scrolling.snapshot_cache_hit", 1);
             const QPointer<ScreenshotScrollingCaptureController> receiver(&owner);
-            QTimer::singleShot(0, &owner, [receiver, cached = cachedSnapshot,
-                                            callback = std::move(callback)]() mutable {
-                if (!receiver.isNull() && receiver->m_impl != nullptr &&
-                    receiver->m_impl->active) {
-                    callback(std::move(cached));
-                }
-            });
+            QTimer::singleShot(
+                0, &owner,
+                [receiver, cached = cachedSnapshot, callback = std::move(callback)]() mutable {
+                    if (!receiver.isNull() && receiver->m_impl != nullptr &&
+                        receiver->m_impl->active) {
+                        callback(std::move(cached));
+                    }
+                });
             return true;
         }
         const quint64 requestGeneration = generation;

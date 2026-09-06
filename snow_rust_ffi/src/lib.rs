@@ -1,5 +1,10 @@
 #![allow(clippy::missing_safety_doc)]
 
+#[unsafe(no_mangle)]
+pub extern "C" fn snow_diagnostics_install_panic_hook(callback: snow_diagnostics::PanicCallback) {
+    snow_diagnostics::install_panic_hook(callback);
+}
+
 // Public module re-exports keep every C-ABI entry point reachable while Cargo
 // packages the five FFI crates and the Rust runtime into one static archive.
 pub mod capture {

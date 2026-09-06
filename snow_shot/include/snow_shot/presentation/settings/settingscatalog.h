@@ -236,6 +236,7 @@ enum class SettingsActionBinding {
     ClearCaptureHistory,
     ClearThumbnailCache,
     ClearRecordingTemp,
+    CopyTodayLog,
 };
 
 enum class SettingsActionAccent {
