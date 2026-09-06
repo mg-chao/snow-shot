@@ -124,6 +124,7 @@ class CaptureRuntime final : public ScreenshotCaptureRuntimePort {
     }
     void hideOverlayWindowsImmediately(const ScreenshotDisplaySession&) override {
         ++hideOverlayImmediatelyCalls;
+        operations.push_back(QStringLiteral("hide-overlays-immediately"));
     }
     void hideOverlayWindows(const ScreenshotDisplaySession&) override {
         ++hideOverlayCalls;
@@ -135,6 +136,7 @@ class CaptureRuntime final : public ScreenshotCaptureRuntimePort {
 
     [[nodiscard]] bool clearDocumentPreservingViewports() override {
         ++clearDocumentCalls;
+        operations.push_back(QStringLiteral("clear-document"));
         return true;
     }
     [[nodiscard]] bool resetCanvasRuntime() override {
@@ -173,6 +175,7 @@ class CaptureRuntime final : public ScreenshotCaptureRuntimePort {
     bool failCaptureSynchronously = false;
     bool seedActiveDisplayOnPrepare = false;
     ScreenshotCaptureRequest lastCaptureRequest;
+    QVector<QString> operations;
 };
 
 ScreenshotCaptureResult successfulResult(quint64 requestId, const CapturedDisplayModel& snapshot) {
@@ -319,6 +322,29 @@ void endingScreenshotReprewarmsOverlaySurfaces() {
             "canceling a capture must stop active capture-scoped features before cleanup");
     require(state.sessionState == ScreenshotSessionState::IdlePrepared,
             "canceling a capture must return the workflow to its prepared idle state");
+}
+
+void cancelConcealsOverlayBeforeClearingVisibleFrame() {
+    ScreenshotCaptureState state;
+    state.sessionState = ScreenshotSessionState::Editing;
+    state.captureInProgress = true;
+    ScreenshotDisplaySession displaySession;
+    ScreenshotGeometryMapper geometry;
+    ScreenshotInteractionState interaction;
+    interaction.beginCapture();
+    ScreenshotSelectionModel selection;
+    ScreenshotIntelligentSelectionModel intelligentSelection;
+    CaptureRuntime runtime;
+
+    auto workflow = makeWorkflow(state, displaySession, geometry, interaction, selection,
+                                 intelligentSelection, runtime);
+    workflow.cancelCapture();
+
+    const qsizetype concealIndex =
+        runtime.operations.indexOf(QStringLiteral("hide-overlays-immediately"));
+    const qsizetype clearIndex = runtime.operations.indexOf(QStringLiteral("clear-document"));
+    require(concealIndex >= 0 && clearIndex >= 0 && concealIndex < clearIndex,
+            "canceling a capture must conceal the overlay before clearing its visible frame");
 }
 
 void exportCancellationDefersExpensiveCleanup() {
@@ -834,6 +860,7 @@ int main() {
     captureRestoresSelectionEffectsAfterReset();
     idlePrewarmDoesNotInitializeSelector();
     endingScreenshotReprewarmsOverlaySurfaces();
+    cancelConcealsOverlayBeforeClearingVisibleFrame();
     exportCancellationDefersExpensiveCleanup();
     captureOverlapsSelectorInitialization();
     synchronousCaptureFailureDoesNotRestartSelectorRefresh();
