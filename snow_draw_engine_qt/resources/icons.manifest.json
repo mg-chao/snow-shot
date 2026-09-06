@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "pack": "snow-draw-engine-qt",
+  "cppNamespace": "snow::draw_engine::icons",
+  "headerInclude": "icons/draw_engine_icons.h",
+  "source": "snow_draw_engine_qt project-owned static SVG assets",
+  "entries": [
+    {
+      "variant": "cursor",
+      "symbol": "CornerRadius",
+      "name": "corner-radius",
+      "source": "cursors/corner-radius.svg",
+      "colorModel": "fullColor",
+      "fit": "contain"
+    },
+    {
+      "variant": "toolbar",
+      "symbol": "SerialDecrease",
+      "name": "serial-decrease",
+      "source": "icons/serial-decrease.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "toolbar",
+      "symbol": "SerialIncrease",
+      "name": "serial-increase",
+      "source": "icons/serial-increase.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "toolbar",
+      "symbol": "SerialTextFields",
+      "name": "serial-text-fields",
+      "source": "icons/serial-text-fields.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    }
+  ]
+}

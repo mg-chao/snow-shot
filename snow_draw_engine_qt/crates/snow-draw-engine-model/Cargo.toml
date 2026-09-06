@@ -1,0 +1,12 @@
+[package]
+name = "snow-draw-engine-model"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+snow-draw-engine-core = { path = "../snow-draw-engine-core" }
+snow-draw-engine-document = { path = "../snow-draw-engine-document" }
+
+[lib]
+path = "src/lib.rs"

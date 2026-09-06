@@ -1,0 +1,28 @@
+Checks: >
+  -*,
+  clang-analyzer-*,
+  -clang-analyzer-optin.performance.Padding,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-exception-escape,
+  -bugprone-implicit-widening-of-multiplication-result,
+  performance-*,
+  portability-*,
+  readability-container-*,
+  readability-delete-null-pointer,
+  readability-duplicate-include,
+  readability-inconsistent-declaration-parameter-name,
+  readability-misleading-indentation,
+  readability-misplaced-array-index,
+  readability-redundant-*,
+  readability-static-accessed-through-instance,
+  readability-static-definition-in-anonymous-namespace,
+  readability-string-compare,
+  readability-uniqueptr-delete-release,
+  readability-use-anyofallof
+WarningsAsErrors: '*'
+HeaderFilterRegex: '^(?!.*[\\/](?:build[^\\/]*|target|CMakeFiles|vcpkg_installed|generated)[\\/]).*'
+SystemHeaders: false
+FormatStyle: file
+CheckOptions:
+  performance-unnecessary-value-param.AllowedTypes: 'std::stop_token'

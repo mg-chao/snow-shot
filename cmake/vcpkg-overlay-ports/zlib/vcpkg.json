@@ -1,0 +1,17 @@
+{
+  "name": "zlib",
+  "version": "2.3.3",
+  "description": "zlib-compatible zlib-ng build for snow-shot workspaces",
+  "homepage": "https://github.com/zlib-ng/zlib-ng",
+  "license": "Zlib",
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    }
+  ]
+}

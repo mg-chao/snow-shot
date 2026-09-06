@@ -1,0 +1,13 @@
+BasedOnStyle: Google
+Language: Cpp
+Standard: Latest
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+ColumnLimit: 100
+DerivePointerAlignment: false
+PointerAlignment: Left
+SortIncludes: Never
+IncludeBlocks: Preserve
+FixNamespaceComments: true
+ReflowComments: true

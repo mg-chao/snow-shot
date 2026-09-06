@@ -1,0 +1,337 @@
+#include "presentation/recording/screenrecordinggeometry.h"
+#include "snow_shot/presentation/screenshotgeometry.h"
+
+#include <QGuiApplication>
+#include <QRect>
+#include <QScreen>
+#include <QtMath>
+
+#include <cstdlib>
+#include <iostream>
+
+namespace recording = snow_shot::presentation::recording;
+
+namespace {
+void require(bool condition, const char* message) {
+    if (!condition) {
+        std::cerr << message << '\n';
+        std::exit(1);
+    }
+}
+
+void recordingFrameStaysOutsideTheSelection(qreal scale) {
+    const QRectF selection(300.4, 200.8, 641.2, 359.6);
+    const recording::ScreenRecordingAreaFrameGeometry geometry =
+        recording::screenRecordingAreaFrameGeometry(selection, scale);
+
+    require(QRectF(geometry.windowGeometry).contains(selection),
+            "recording frame window should contain the complete selection");
+    const QRectF displayedSelection =
+        geometry.selectionRect.translated(geometry.windowGeometry.topLeft());
+    require(displayedSelection == selection,
+            "recording frame interior should exactly match the screenshot selection");
+    const QRectF displayedFrame = geometry.frameRect.translated(geometry.windowGeometry.topLeft());
+    require(geometry.windowGeometry.contains(displayedFrame.toAlignedRect()),
+            "recording border should expand only outside the screenshot selection");
+    const qreal frameInset = geometry.borderWidth + geometry.paddingWidth;
+    require(qAbs(selection.left() - displayedFrame.left() - frameInset) < 0.0001,
+            "recording frame should leave the requested left padding");
+    require(qAbs(selection.top() - displayedFrame.top() - frameInset) < 0.0001,
+            "recording frame should leave the requested top padding");
+    require(qAbs(displayedFrame.left() + displayedFrame.width() - selection.left() -
+                 selection.width() - frameInset) < 0.0001,
+            "recording frame should leave the requested right padding");
+    require(qAbs(displayedFrame.top() + displayedFrame.height() - selection.top() -
+                 selection.height() - frameInset) < 0.0001,
+            "recording frame should leave the requested bottom padding");
+    require(qAbs(geometry.borderWidth * scale - 2.0) < 0.0001,
+            "recording border should remain two physical pixels on every side");
+    require(qAbs(geometry.paddingWidth * scale - 1.0) < 0.0001,
+            "recording frame padding should remain one physical pixel on every side");
+}
+
+void physicalSelectionMapsToItsLogicalSubregion() {
+    QScreen* screen = QGuiApplication::primaryScreen();
+    require(screen != nullptr, "geometry test requires a primary screen");
+
+    const QRect logicalBounds = screen->geometry();
+    const QRect physicalBounds = ScreenshotGeometryMapper::physicalRectForScreen(*screen);
+    const QRect physicalSelection(physicalBounds.left() + physicalBounds.width() / 4,
+                                  physicalBounds.top() + physicalBounds.height() / 5,
+                                  physicalBounds.width() / 2, physicalBounds.height() / 3);
+    const QRectF mappedF =
+        ScreenshotGeometryMapper::logicalRectFForPhysicalRect(physicalSelection, screen);
+    const QRect mapped =
+        ScreenshotGeometryMapper::logicalRectForPhysicalRect(physicalSelection, screen);
+    const double scaleX =
+        static_cast<double>(logicalBounds.width()) / static_cast<double>(physicalBounds.width());
+    const double scaleY =
+        static_cast<double>(logicalBounds.height()) / static_cast<double>(physicalBounds.height());
+    const int expectedLeft =
+        logicalBounds.left() +
+        qFloor(static_cast<double>(physicalSelection.left() - physicalBounds.left()) * scaleX);
+    const int expectedTop =
+        logicalBounds.top() +
+        qFloor(static_cast<double>(physicalSelection.top() - physicalBounds.top()) * scaleY);
+    const int expectedRight =
+        logicalBounds.left() +
+        qCeil(static_cast<double>(physicalSelection.left() + physicalSelection.width() -
+                                  physicalBounds.left()) *
+              scaleX);
+    const int expectedBottom =
+        logicalBounds.top() +
+        qCeil(static_cast<double>(physicalSelection.top() + physicalSelection.height() -
+                                  physicalBounds.top()) *
+              scaleY);
+    const QRect expectedAligned(expectedLeft, expectedTop, expectedRight - expectedLeft,
+                                expectedBottom - expectedTop);
+    require(mapped == expectedAligned,
+            "physical screenshot selection should map to the matching logical subregion");
+    const QRectF expectedF(
+        QPointF(logicalBounds.left() +
+                    static_cast<double>(physicalSelection.left() - physicalBounds.left()) * scaleX,
+                logicalBounds.top() +
+                    static_cast<double>(physicalSelection.top() - physicalBounds.top()) * scaleY),
+        QPointF(logicalBounds.left() +
+                    static_cast<double>(physicalSelection.left() + physicalSelection.width() -
+                                        physicalBounds.left()) *
+                        scaleX,
+                logicalBounds.top() +
+                    static_cast<double>(physicalSelection.top() + physicalSelection.height() -
+                                        physicalBounds.top()) *
+                        scaleY));
+    require(qAbs(mappedF.left() - expectedF.left()) < 0.0001 &&
+                qAbs(mappedF.top() - expectedF.top()) < 0.0001 &&
+                qAbs(mappedF.right() - expectedF.right()) < 0.0001 &&
+                qAbs(mappedF.bottom() - expectedF.bottom()) < 0.0001,
+            "physical selection mapping should preserve fractional high-DPI edges");
+    require(mapped != logicalBounds,
+            "partial physical selection must not expand to the entire screen");
+}
+
+void toolbarUsesBottomRightThenTopRight() {
+    const QRect bounds(0, 0, 1920, 1080);
+    const QRect toolbarRect(12, 8, 520, 48);
+    const ScreenshotToolbarPlacementGeometry toolbarPlacement{
+        toolbarRect, {}, toolbarRect};
+    const QRect upperRegion(500, 200, 700, 400);
+    const ScreenshotAnchoredToolbarPlacement bottomRightPlacement =
+        ScreenshotGeometryMapper::anchoredToolbarPlacement(
+            QPoint(upperRegion.left() + upperRegion.width(),
+                   upperRegion.top() + upperRegion.height()),
+            QPoint(upperRegion.left() + upperRegion.width(), upperRegion.top()),
+            toolbarPlacement, toolbarPlacement, bounds, 4);
+    const QRect bottomRightToolbar = toolbarRect.translated(bottomRightPlacement.contentPosition);
+    require(!bottomRightPlacement.usesTopRightPlacement,
+            "toolbar should prefer the recording region bottom-right corner");
+    require(bottomRightToolbar.right() == upperRegion.left() + upperRegion.width(),
+            "bottom-right placement should use the recording region right anchor");
+    require(bottomRightToolbar.top() == upperRegion.top() + upperRegion.height() + 5,
+            "toolbar should keep the requested gap below the recording region");
+
+    const QRect lowerRegion(500, 930, 700, 120);
+    const ScreenshotAnchoredToolbarPlacement topRightPlacement =
+        ScreenshotGeometryMapper::anchoredToolbarPlacement(
+            QPoint(lowerRegion.left() + lowerRegion.width(),
+                   lowerRegion.top() + lowerRegion.height()),
+            QPoint(lowerRegion.left() + lowerRegion.width(), lowerRegion.top()),
+            toolbarPlacement, toolbarPlacement, bounds, 4);
+    const QRect topRightToolbar = toolbarRect.translated(topRightPlacement.contentPosition);
+    require(topRightPlacement.usesTopRightPlacement,
+            "toolbar should use top-right when bottom-right lacks vertical space");
+    require(topRightToolbar.right() == lowerRegion.left() + lowerRegion.width(),
+            "top-right placement should keep the recording region right anchor");
+    require(topRightToolbar.bottom() < lowerRegion.top(),
+            "top-right placement should remain above the recording region");
+}
+
+void toolbarRemainsInsideTheAvailableScreen() {
+    const QRect bounds(0, 0, 800, 600);
+    const QRect toolbarRect(10, 6, 1000, 48);
+    const ScreenshotToolbarPlacementGeometry toolbarPlacement{
+        toolbarRect, {}, toolbarRect};
+    const QRect region(5, 570, 100, 20);
+    const ScreenshotAnchoredToolbarPlacement placement =
+        ScreenshotGeometryMapper::anchoredToolbarPlacement(
+            QPoint(region.left() + region.width(), region.top() + region.height()),
+            QPoint(region.left() + region.width(), region.top()), toolbarPlacement,
+            toolbarPlacement, bounds, 4);
+    const QRect toolbar = toolbarRect.translated(placement.contentPosition);
+
+    require(toolbar.left() == bounds.left() && toolbar.top() >= bounds.top(),
+            "oversized toolbar placement should clamp to the screen origin");
+    require(toolbar.bottom() <= bounds.bottom(),
+            "toolbar placement should clamp vertically to the screen");
+}
+
+void toolbarAnchorsTheMainRowAndUsesTheVisibleSecondaryRow() {
+    const QRect bounds(0, 0, 1000, 800);
+    const ScreenshotToolbarPlacementGeometry bottom{
+        QRect(100, 0, 200, 40),
+        QRect(180, 44, 120, 20),
+        QRect(100, 0, 200, 64),
+    };
+    const ScreenshotToolbarPlacementGeometry top{
+        QRect(100, 60, 200, 40),
+        QRect(180, 16, 120, 40),
+        QRect(100, 16, 200, 84),
+    };
+    const ScreenshotAnchoredToolbarPlacement placement =
+        ScreenshotGeometryMapper::anchoredToolbarPlacement(
+            QPoint(500, 200), QPoint(500, 500), bottom, top, bounds, 4);
+    require(!placement.usesTopRightPlacement,
+            "visible bottom content should remain at the bottom-right anchor");
+
+    const QRect main = bottom.mainToolbarContentRect.translated(placement.contentPosition);
+    const QRect secondary = bottom.secondaryToolbarContentRect.translated(placement.contentPosition);
+    require(main.right() == 500 && main.top() == 205,
+            "bottom placement should anchor the main row's top-right corner");
+    require(secondary.right() == 500 && secondary.top() == 249 &&
+                secondary.top() - main.bottom() - 1 == 4,
+            "bottom placement should right-align and space the active secondary row");
+
+    const ScreenshotToolbarPlacementGeometry crampedBottom{
+        bottom.mainToolbarContentRect,
+        bottom.secondaryToolbarContentRect,
+        QRect(100, 0, 200, 700),
+    };
+    const ScreenshotAnchoredToolbarPlacement topPlacement =
+        ScreenshotGeometryMapper::anchoredToolbarPlacement(
+            QPoint(500, 750), QPoint(500, 500), crampedBottom, top, bounds, 4);
+    require(topPlacement.usesTopRightPlacement,
+            "placement should fall back to the top-right anchor when bottom content does not fit");
+    const QRect topMain = top.mainToolbarContentRect.translated(topPlacement.contentPosition);
+    const QRect topSecondary =
+        top.secondaryToolbarContentRect.translated(topPlacement.contentPosition);
+    require(topMain.right() == 500 && topMain.bottom() == 495,
+            "top placement should anchor the main row's bottom-right corner");
+    require(topSecondary.right() == 500 &&
+                topMain.top() - topSecondary.bottom() - 1 == 4,
+            "top placement should right-align and space the active secondary row");
+}
+
+void encoderCompatibilityNeverShrinksTheSelection() {
+    const QRect bounds(0, 0, 1920, 1080);
+    const QRect oddSelection(100, 80, 641, 359);
+    const QRect expanded = recording::screenRecordingCompatibleCaptureRegion(oddSelection, bounds);
+    require(expanded.contains(oddSelection),
+            "encoder-compatible capture region should retain every selected pixel");
+    require(expanded.width() == 642 && expanded.height() == 360,
+            "odd capture dimensions should expand to the next even dimensions");
+    require(expanded.topLeft() == oddSelection.topLeft(),
+            "capture expansion should prefer the right and bottom edges");
+
+    const QRect edgeSelection(1279, 721, 641, 359);
+    const QRect edgeExpanded =
+        recording::screenRecordingCompatibleCaptureRegion(edgeSelection, bounds);
+    require(edgeExpanded.contains(edgeSelection),
+            "screen-edge capture expansion should retain every selected pixel");
+    require(edgeExpanded.right() == bounds.right() && edgeExpanded.bottom() == bounds.bottom(),
+            "screen-edge capture expansion should stay within physical bounds");
+    require(edgeExpanded.width() == 642 && edgeExpanded.height() == 360,
+            "screen-edge capture dimensions should remain encoder compatible");
+}
+
+void recordingBorderStaysOutsideTheEncoderPaddingForSelection(const QRect& selection,
+                                                              const QRect& bounds) {
+    const QRect captureRegion =
+        recording::screenRecordingCompatibleCaptureRegion(selection, bounds);
+    const recording::ScreenRecordingAreaFrameGeometry geometry =
+        recording::screenRecordingAreaFrameGeometry(QRectF(selection), 1.0);
+    const QRectF displayedFrame = geometry.frameRect.translated(geometry.windowGeometry.topLeft());
+    const qreal minimumClearance = geometry.borderWidth - 0.0001;
+    const qreal captureRight = captureRegion.left() + captureRegion.width();
+    const qreal captureBottom = captureRegion.top() + captureRegion.height();
+    const qreal frameRight = displayedFrame.left() + displayedFrame.width();
+    const qreal frameBottom = displayedFrame.top() + displayedFrame.height();
+
+    require(captureRegion.left() - displayedFrame.left() >= minimumClearance,
+            "left recording border should remain outside the encoder padding");
+    require(captureRegion.top() - displayedFrame.top() >= minimumClearance,
+            "top recording border should remain outside the encoder padding");
+    require(frameRight - captureRight >= minimumClearance,
+            "right recording border should remain outside the encoder padding");
+    require(frameBottom - captureBottom >= minimumClearance,
+            "bottom recording border should remain outside the encoder padding");
+}
+
+void recordingBorderStaysOutsideTheEncoderPadding() {
+    const QRect bounds(0, 0, 1920, 1080);
+    recordingBorderStaysOutsideTheEncoderPaddingForSelection(QRect(100, 80, 641, 359), bounds);
+    recordingBorderStaysOutsideTheEncoderPaddingForSelection(QRect(1279, 721, 641, 359), bounds);
+}
+
+void recordingBorderSidesMeetAtEveryPaddedCorner() {
+    const auto geometry =
+        recording::screenRecordingAreaFrameGeometry(QRectF(100, 80, 641, 359), 1.0);
+    const auto border = recording::screenRecordingAreaBorderGeometry(
+        geometry.frameRect, geometry.selectionRect, geometry.paddingWidth);
+
+    require(qAbs(border.left.top() - geometry.frameRect.top()) < 0.0001 &&
+                qAbs(border.left.bottom() - geometry.frameRect.bottom()) < 0.0001 &&
+                qAbs(border.right.top() - geometry.frameRect.top()) < 0.0001 &&
+                qAbs(border.right.bottom() - geometry.frameRect.bottom()) < 0.0001,
+            "vertical recording border sides should span the complete frame height");
+    require(border.top.intersects(border.left),
+            "top and left recording border sides should meet across the padded corner");
+    require(border.top.intersects(border.right),
+            "top and right recording border sides should meet across the padded corner");
+    require(border.bottom.intersects(border.left),
+            "bottom and left recording border sides should meet across the padded corner");
+    require(border.bottom.intersects(border.right),
+            "bottom and right recording border sides should meet across the padded corner");
+}
+
+void claritySettingsMapToMaximumOutputSizes() {
+    require(recording::screenRecordingMaximumSizeForClarity(QStringLiteral("4k")) ==
+                QSize(3840, 2160),
+            "4K clarity should cap output at 3840x2160");
+    require(recording::screenRecordingMaximumSizeForClarity(QStringLiteral("2k")) ==
+                QSize(2560, 1440),
+            "2K clarity should cap output at 2560x1440");
+    require(recording::screenRecordingMaximumSizeForClarity(QStringLiteral("1080p")) ==
+                QSize(1920, 1080),
+            "1080p clarity should cap output at 1920x1080");
+    require(recording::screenRecordingMaximumSizeForClarity(QStringLiteral("720p")) ==
+                QSize(1280, 720),
+            "720p clarity should cap output at 1280x720");
+    require(recording::screenRecordingMaximumSizeForClarity(QStringLiteral("480p")) ==
+                QSize(854, 480),
+            "480p clarity should use an encoder-compatible 16:9 size");
+    require(recording::screenRecordingMaximumSizeForClarity(QStringLiteral("invalid")) ==
+                QSize(1920, 1080),
+            "invalid clarity should use the persisted setting's 1080p default");
+}
+
+void clarityBoundsFollowCaptureOrientation() {
+    require(recording::screenRecordingOrientedMaximumSize(QSize(1920, 1080), QSize(1080, 1920)) ==
+                QSize(1080, 1920),
+            "portrait captures should transpose landscape clarity bounds");
+    require(recording::screenRecordingOrientedMaximumSize(QSize(1920, 1080), QSize(1920, 1080)) ==
+                QSize(1920, 1080),
+            "landscape captures should retain landscape clarity bounds");
+    require(recording::screenRecordingOrientedMaximumSize(QSize(1080, 1920), QSize(1920, 1080)) ==
+                QSize(1920, 1080),
+            "landscape captures should transpose portrait bounds");
+    require(recording::screenRecordingOrientedMaximumSize(QSize(1920, 1080), QSize(1000, 1000)) ==
+                QSize(1920, 1080),
+            "square captures should retain the configured orientation");
+}
+} // namespace
+
+int main(int argc, char** argv) {
+    QGuiApplication application(argc, argv);
+    physicalSelectionMapsToItsLogicalSubregion();
+    recordingFrameStaysOutsideTheSelection(1.0);
+    recordingFrameStaysOutsideTheSelection(1.5);
+    recordingFrameStaysOutsideTheSelection(2.0);
+    toolbarUsesBottomRightThenTopRight();
+    toolbarRemainsInsideTheAvailableScreen();
+    toolbarAnchorsTheMainRowAndUsesTheVisibleSecondaryRow();
+    encoderCompatibilityNeverShrinksTheSelection();
+    recordingBorderStaysOutsideTheEncoderPadding();
+    recordingBorderSidesMeetAtEveryPaddedCorner();
+    claritySettingsMapToMaximumOutputSizes();
+    clarityBoundsFollowCaptureOrientation();
+    return 0;
+}

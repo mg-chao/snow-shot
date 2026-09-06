@@ -1,0 +1,15 @@
+[package]
+name = "snow-draw-engine-scene"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+snow-draw-engine-core = { path = "../snow-draw-engine-core" }
+snow-draw-engine-document = { path = "../snow-draw-engine-document" }
+snow-draw-engine-display = { path = "../snow-draw-engine-display" }
+snow-draw-engine-editor = { path = "../snow-draw-engine-editor" }
+snow-draw-engine-model = { path = "../snow-draw-engine-model" }
+
+[lib]
+path = "src/lib.rs"

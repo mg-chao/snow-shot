@@ -1,0 +1,33 @@
+[package]
+name = "snow-ui-selector"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+
+[lib]
+name = "snow_ui_selector"
+path = "src/lib.rs"
+
+[dependencies]
+crossbeam-channel = { workspace = true }
+rstar = { workspace = true }
+windows = { workspace = true, features = [
+    "Win32_UI_Accessibility",
+    "Win32_UI_HiDpi",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Com",
+    "Win32_System_Ole",
+    "Win32_System_Variant",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+] }
+
+[dev-dependencies]
+windows = { workspace = true, features = [
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_LibraryLoader",
+] }
+
+[[example]]
+name = "overlay"
+path = "examples/overlay.rs"

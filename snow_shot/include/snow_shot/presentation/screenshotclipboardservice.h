@@ -1,0 +1,115 @@
+#ifndef SNOW_SHOT_PRESENTATION_SCREENSHOTCLIPBOARDSERVICE_H
+#define SNOW_SHOT_PRESENTATION_SCREENSHOTCLIPBOARDSERVICE_H
+
+#include "snow_shot/presentation/screenshotimagerowsource.h"
+
+#include <QByteArray>
+#include <QImage>
+#include <QString>
+
+#include <QtGlobal>
+
+#include <atomic>
+#include <functional>
+#include <memory>
+#include <utility>
+
+class QClipboard;
+class QMimeData;
+class QObject;
+struct ScreenshotClipboardPayloadTestAccess;
+
+class ScreenshotClipboardPayload final {
+  public:
+    ScreenshotClipboardPayload() = default;
+    ~ScreenshotClipboardPayload();
+
+    ScreenshotClipboardPayload(const ScreenshotClipboardPayload&) = delete;
+    ScreenshotClipboardPayload& operator=(const ScreenshotClipboardPayload&) = delete;
+    ScreenshotClipboardPayload(ScreenshotClipboardPayload&& other) noexcept;
+    ScreenshotClipboardPayload& operator=(ScreenshotClipboardPayload&& other) noexcept;
+
+    [[nodiscard]] bool isValid() const;
+    [[nodiscard]] const QByteArray& pngBytes() const {
+        return m_pngBytes;
+    }
+
+  private:
+    friend class ScreenshotClipboardService;
+    friend struct ScreenshotClipboardPayloadTestAccess;
+
+    void reset() noexcept;
+
+#if defined(Q_OS_WIN) || defined(_WIN32)
+    void* m_dibHandle = nullptr;
+    void* m_pngHandle = nullptr;
+#endif
+    QByteArray m_pngBytes;
+};
+
+enum class ScreenshotClipboardCommitFailure {
+    None,
+    Cancelled,
+    InvalidPayload,
+    ClipboardUnavailable,
+    Busy,
+    ClearFailed,
+    PublishFailed,
+};
+
+struct ScreenshotClipboardCommitResult final {
+    ScreenshotClipboardCommitFailure failure = ScreenshotClipboardCommitFailure::None;
+    quint32 nativeError = 0;
+    int attempts = 0;
+
+    [[nodiscard]] bool succeeded() const {
+        return failure == ScreenshotClipboardCommitFailure::None;
+    }
+    [[nodiscard]] QString errorString() const;
+};
+
+class ScreenshotClipboardCommitHandle final {
+  public:
+    ScreenshotClipboardCommitHandle() = default;
+
+    void cancel() const;
+    [[nodiscard]] bool isValid() const;
+    [[nodiscard]] bool isCancellationRequested() const;
+
+  private:
+    friend class ScreenshotClipboardService;
+    explicit ScreenshotClipboardCommitHandle(std::shared_ptr<std::atomic_bool> cancelled);
+    std::shared_ptr<std::atomic_bool> m_cancelled;
+};
+
+class ScreenshotClipboardService final {
+  public:
+    using PublicationId = quint64;
+    using CommitCompletion = std::function<void(ScreenshotClipboardCommitResult)>;
+
+    [[nodiscard]] static PublicationId reservePublication();
+
+    // A supplied PNG must encode the same sRGB pixels as the source. Export artifacts
+    // pass their cached canonical bytes here; preparation never decodes that PNG.
+    [[nodiscard]] static ScreenshotClipboardPayload prepare(const ScreenshotImageRowSource& source,
+                                                            const QByteArray& canonicalPng = {});
+    [[nodiscard]] static ScreenshotClipboardPayload
+    prepareImage(const QImage& image, const QByteArray& canonicalPng = {});
+    [[nodiscard]] static ScreenshotClipboardCommitHandle commit(QClipboard* clipboard,
+                                                                QObject* receiver,
+                                                                ScreenshotClipboardPayload payload,
+                                                                CommitCompletion completion);
+    [[nodiscard]] static ScreenshotClipboardCommitHandle
+    commit(QClipboard* clipboard, QObject* receiver, ScreenshotClipboardPayload payload,
+           PublicationId publicationId, CommitCompletion completion);
+    [[nodiscard]] static ScreenshotClipboardCommitHandle
+    commitMimeData(QClipboard* clipboard, QObject* receiver, QMimeData* mimeData,
+                   CommitCompletion completion);
+    [[nodiscard]] static ScreenshotClipboardCommitHandle
+    commitMimeData(QClipboard* clipboard, QObject* receiver, QMimeData* mimeData,
+                   PublicationId publicationId, CommitCompletion completion);
+    [[nodiscard]] static bool publish(QClipboard* clipboard, ScreenshotClipboardPayload payload);
+    [[nodiscard]] static bool publishImage(QClipboard* clipboard, const QImage& image);
+};
+
+#endif // SNOW_SHOT_PRESENTATION_SCREENSHOTCLIPBOARDSERVICE_H

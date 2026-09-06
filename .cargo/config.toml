@@ -1,0 +1,3 @@
+[build]
+target-dir = "build/cargo"
+rustflags = ["-Dwarnings"]

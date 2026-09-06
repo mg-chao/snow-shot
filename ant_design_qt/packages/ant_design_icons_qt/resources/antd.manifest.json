@@ -1,0 +1,6641 @@
+{
+  "schemaVersion": 1,
+  "pack": "antd",
+  "cppNamespace": "adqt::icons::antd",
+  "exportMacro": "ADQT_ICONS_EXPORT",
+  "source": "ant-design/ant-design-icons pinned by upstream.lock.json",
+  "entries": [
+    {
+      "variant": "outlined",
+      "symbol": "AccountBook",
+      "name": "account-book",
+      "source": "templates/outlined/account-book.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Aim",
+      "name": "aim",
+      "source": "templates/outlined/aim.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Alert",
+      "name": "alert",
+      "source": "templates/outlined/alert.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Alibaba",
+      "name": "alibaba",
+      "source": "templates/outlined/alibaba.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "AlignCenter",
+      "name": "align-center",
+      "source": "templates/outlined/align-center.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "AlignLeft",
+      "name": "align-left",
+      "source": "templates/outlined/align-left.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "AlignRight",
+      "name": "align-right",
+      "source": "templates/outlined/align-right.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "AlipayCircle",
+      "name": "alipay-circle",
+      "source": "templates/outlined/alipay-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Alipay",
+      "name": "alipay",
+      "source": "templates/outlined/alipay.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Aliwangwang",
+      "name": "aliwangwang",
+      "source": "templates/outlined/aliwangwang.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Aliyun",
+      "name": "aliyun",
+      "source": "templates/outlined/aliyun.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Amazon",
+      "name": "amazon",
+      "source": "templates/outlined/amazon.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Android",
+      "name": "android",
+      "source": "templates/outlined/android.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "AntCloud",
+      "name": "ant-cloud",
+      "source": "templates/outlined/ant-cloud.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "AntDesign",
+      "name": "ant-design",
+      "source": "templates/outlined/ant-design.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Apartment",
+      "name": "apartment",
+      "source": "templates/outlined/apartment.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Api",
+      "name": "api",
+      "source": "templates/outlined/api.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Apple",
+      "name": "apple",
+      "source": "templates/outlined/apple.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "AppstoreAdd",
+      "name": "appstore-add",
+      "source": "templates/outlined/appstore-add.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Appstore",
+      "name": "appstore",
+      "source": "templates/outlined/appstore.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "AreaChart",
+      "name": "area-chart",
+      "source": "templates/outlined/area-chart.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ArrowDown",
+      "name": "arrow-down",
+      "source": "templates/outlined/arrow-down.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ArrowLeft",
+      "name": "arrow-left",
+      "source": "templates/outlined/arrow-left.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ArrowRight",
+      "name": "arrow-right",
+      "source": "templates/outlined/arrow-right.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ArrowUp",
+      "name": "arrow-up",
+      "source": "templates/outlined/arrow-up.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ArrowsAlt",
+      "name": "arrows-alt",
+      "source": "templates/outlined/arrows-alt.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "AudioMuted",
+      "name": "audio-muted",
+      "source": "templates/outlined/audio-muted.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Audio",
+      "name": "audio",
+      "source": "templates/outlined/audio.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Audit",
+      "name": "audit",
+      "source": "templates/outlined/audit.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Backward",
+      "name": "backward",
+      "source": "templates/outlined/backward.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Baidu",
+      "name": "baidu",
+      "source": "templates/outlined/baidu.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Bank",
+      "name": "bank",
+      "source": "templates/outlined/bank.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "BarChart",
+      "name": "bar-chart",
+      "source": "templates/outlined/bar-chart.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Barcode",
+      "name": "barcode",
+      "source": "templates/outlined/barcode.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Bars",
+      "name": "bars",
+      "source": "templates/outlined/bars.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "BehanceSquare",
+      "name": "behance-square",
+      "source": "templates/outlined/behance-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Behance",
+      "name": "behance",
+      "source": "templates/outlined/behance.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Bell",
+      "name": "bell",
+      "source": "templates/outlined/bell.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "BgColors",
+      "name": "bg-colors",
+      "source": "templates/outlined/bg-colors.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Bilibili",
+      "name": "bilibili",
+      "source": "templates/outlined/bilibili.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Block",
+      "name": "block",
+      "source": "templates/outlined/block.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Bold",
+      "name": "bold",
+      "source": "templates/outlined/bold.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Book",
+      "name": "book",
+      "source": "templates/outlined/book.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "BorderBottom",
+      "name": "border-bottom",
+      "source": "templates/outlined/border-bottom.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "BorderHorizontal",
+      "name": "border-horizontal",
+      "source": "templates/outlined/border-horizontal.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "BorderInner",
+      "name": "border-inner",
+      "source": "templates/outlined/border-inner.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "BorderLeft",
+      "name": "border-left",
+      "source": "templates/outlined/border-left.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "BorderOuter",
+      "name": "border-outer",
+      "source": "templates/outlined/border-outer.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "BorderRight",
+      "name": "border-right",
+      "source": "templates/outlined/border-right.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "BorderTop",
+      "name": "border-top",
+      "source": "templates/outlined/border-top.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "BorderVerticle",
+      "name": "border-verticle",
+      "source": "templates/outlined/border-verticle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Border",
+      "name": "border",
+      "source": "templates/outlined/border.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "BorderlessTable",
+      "name": "borderless-table",
+      "source": "templates/outlined/borderless-table.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "BoxPlot",
+      "name": "box-plot",
+      "source": "templates/outlined/box-plot.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Branches",
+      "name": "branches",
+      "source": "templates/outlined/branches.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Bug",
+      "name": "bug",
+      "source": "templates/outlined/bug.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Build",
+      "name": "build",
+      "source": "templates/outlined/build.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Bulb",
+      "name": "bulb",
+      "source": "templates/outlined/bulb.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Calculator",
+      "name": "calculator",
+      "source": "templates/outlined/calculator.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Calendar",
+      "name": "calendar",
+      "source": "templates/outlined/calendar.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Camera",
+      "name": "camera",
+      "source": "templates/outlined/camera.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Car",
+      "name": "car",
+      "source": "templates/outlined/car.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "CaretDown",
+      "name": "caret-down",
+      "source": "templates/outlined/caret-down.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "CaretLeft",
+      "name": "caret-left",
+      "source": "templates/outlined/caret-left.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "CaretRight",
+      "name": "caret-right",
+      "source": "templates/outlined/caret-right.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "CaretUp",
+      "name": "caret-up",
+      "source": "templates/outlined/caret-up.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "CarryOut",
+      "name": "carry-out",
+      "source": "templates/outlined/carry-out.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "CheckCircle",
+      "name": "check-circle",
+      "source": "templates/outlined/check-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "CheckSquare",
+      "name": "check-square",
+      "source": "templates/outlined/check-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Check",
+      "name": "check",
+      "source": "templates/outlined/check.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Chrome",
+      "name": "chrome",
+      "source": "templates/outlined/chrome.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "CiCircle",
+      "name": "ci-circle",
+      "source": "templates/outlined/ci-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Ci",
+      "name": "ci",
+      "source": "templates/outlined/ci.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Clear",
+      "name": "clear",
+      "source": "templates/outlined/clear.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ClockCircle",
+      "name": "clock-circle",
+      "source": "templates/outlined/clock-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "CloseCircle",
+      "name": "close-circle",
+      "source": "templates/outlined/close-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "CloseSquare",
+      "name": "close-square",
+      "source": "templates/outlined/close-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Close",
+      "name": "close",
+      "source": "templates/outlined/close.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "CloudDownload",
+      "name": "cloud-download",
+      "source": "templates/outlined/cloud-download.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "CloudServer",
+      "name": "cloud-server",
+      "source": "templates/outlined/cloud-server.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "CloudSync",
+      "name": "cloud-sync",
+      "source": "templates/outlined/cloud-sync.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "CloudUpload",
+      "name": "cloud-upload",
+      "source": "templates/outlined/cloud-upload.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Cloud",
+      "name": "cloud",
+      "source": "templates/outlined/cloud.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Cluster",
+      "name": "cluster",
+      "source": "templates/outlined/cluster.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "CodeSandbox",
+      "name": "code-sandbox",
+      "source": "templates/outlined/code-sandbox.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Code",
+      "name": "code",
+      "source": "templates/outlined/code.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "CodepenCircle",
+      "name": "codepen-circle",
+      "source": "templates/outlined/codepen-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Codepen",
+      "name": "codepen",
+      "source": "templates/outlined/codepen.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Coffee",
+      "name": "coffee",
+      "source": "templates/outlined/coffee.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Comment",
+      "name": "comment",
+      "source": "templates/outlined/comment.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Compass",
+      "name": "compass",
+      "source": "templates/outlined/compass.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Compress",
+      "name": "compress",
+      "source": "templates/outlined/compress.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ConsoleSql",
+      "name": "console-sql",
+      "source": "templates/outlined/console-sql.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Contacts",
+      "name": "contacts",
+      "source": "templates/outlined/contacts.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Container",
+      "name": "container",
+      "source": "templates/outlined/container.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Control",
+      "name": "control",
+      "source": "templates/outlined/control.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Copy",
+      "name": "copy",
+      "source": "templates/outlined/copy.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "CopyrightCircle",
+      "name": "copyright-circle",
+      "source": "templates/outlined/copyright-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Copyright",
+      "name": "copyright",
+      "source": "templates/outlined/copyright.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "CreditCard",
+      "name": "credit-card",
+      "source": "templates/outlined/credit-card.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Crown",
+      "name": "crown",
+      "source": "templates/outlined/crown.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "CustomerService",
+      "name": "customer-service",
+      "source": "templates/outlined/customer-service.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Dash",
+      "name": "dash",
+      "source": "templates/outlined/dash.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Dashboard",
+      "name": "dashboard",
+      "source": "templates/outlined/dashboard.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Database",
+      "name": "database",
+      "source": "templates/outlined/database.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "DeleteColumn",
+      "name": "delete-column",
+      "source": "templates/outlined/delete-column.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "DeleteRow",
+      "name": "delete-row",
+      "source": "templates/outlined/delete-row.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "IconDelete",
+      "name": "delete",
+      "source": "templates/outlined/delete.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "DeliveredProcedure",
+      "name": "delivered-procedure",
+      "source": "templates/outlined/delivered-procedure.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "DeploymentUnit",
+      "name": "deployment-unit",
+      "source": "templates/outlined/deployment-unit.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Desktop",
+      "name": "desktop",
+      "source": "templates/outlined/desktop.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Diff",
+      "name": "diff",
+      "source": "templates/outlined/diff.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Dingding",
+      "name": "dingding",
+      "source": "templates/outlined/dingding.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Dingtalk",
+      "name": "dingtalk",
+      "source": "templates/outlined/dingtalk.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Disconnect",
+      "name": "disconnect",
+      "source": "templates/outlined/disconnect.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Discord",
+      "name": "discord",
+      "source": "templates/outlined/discord.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Dislike",
+      "name": "dislike",
+      "source": "templates/outlined/dislike.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Docker",
+      "name": "docker",
+      "source": "templates/outlined/docker.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "DollarCircle",
+      "name": "dollar-circle",
+      "source": "templates/outlined/dollar-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Dollar",
+      "name": "dollar",
+      "source": "templates/outlined/dollar.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "DotChart",
+      "name": "dot-chart",
+      "source": "templates/outlined/dot-chart.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "DotNet",
+      "name": "dot-net",
+      "source": "templates/outlined/dot-net.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "DoubleLeft",
+      "name": "double-left",
+      "source": "templates/outlined/double-left.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "DoubleRight",
+      "name": "double-right",
+      "source": "templates/outlined/double-right.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "DownCircle",
+      "name": "down-circle",
+      "source": "templates/outlined/down-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "DownSquare",
+      "name": "down-square",
+      "source": "templates/outlined/down-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Down",
+      "name": "down",
+      "source": "templates/outlined/down.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Download",
+      "name": "download",
+      "source": "templates/outlined/download.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Drag",
+      "name": "drag",
+      "source": "templates/outlined/drag.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "DribbbleSquare",
+      "name": "dribbble-square",
+      "source": "templates/outlined/dribbble-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Dribbble",
+      "name": "dribbble",
+      "source": "templates/outlined/dribbble.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Dropbox",
+      "name": "dropbox",
+      "source": "templates/outlined/dropbox.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Edit",
+      "name": "edit",
+      "source": "templates/outlined/edit.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Ellipsis",
+      "name": "ellipsis",
+      "source": "templates/outlined/ellipsis.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Enter",
+      "name": "enter",
+      "source": "templates/outlined/enter.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Environment",
+      "name": "environment",
+      "source": "templates/outlined/environment.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "EuroCircle",
+      "name": "euro-circle",
+      "source": "templates/outlined/euro-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Euro",
+      "name": "euro",
+      "source": "templates/outlined/euro.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Exception",
+      "name": "exception",
+      "source": "templates/outlined/exception.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ExclamationCircle",
+      "name": "exclamation-circle",
+      "source": "templates/outlined/exclamation-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Exclamation",
+      "name": "exclamation",
+      "source": "templates/outlined/exclamation.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ExpandAlt",
+      "name": "expand-alt",
+      "source": "templates/outlined/expand-alt.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Expand",
+      "name": "expand",
+      "source": "templates/outlined/expand.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Experiment",
+      "name": "experiment",
+      "source": "templates/outlined/experiment.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Export",
+      "name": "export",
+      "source": "templates/outlined/export.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "EyeInvisible",
+      "name": "eye-invisible",
+      "source": "templates/outlined/eye-invisible.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Eye",
+      "name": "eye",
+      "source": "templates/outlined/eye.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Facebook",
+      "name": "facebook",
+      "source": "templates/outlined/facebook.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Fall",
+      "name": "fall",
+      "source": "templates/outlined/fall.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FastBackward",
+      "name": "fast-backward",
+      "source": "templates/outlined/fast-backward.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FastForward",
+      "name": "fast-forward",
+      "source": "templates/outlined/fast-forward.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FieldBinary",
+      "name": "field-binary",
+      "source": "templates/outlined/field-binary.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FieldNumber",
+      "name": "field-number",
+      "source": "templates/outlined/field-number.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FieldString",
+      "name": "field-string",
+      "source": "templates/outlined/field-string.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FieldTime",
+      "name": "field-time",
+      "source": "templates/outlined/field-time.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FileAdd",
+      "name": "file-add",
+      "source": "templates/outlined/file-add.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FileDone",
+      "name": "file-done",
+      "source": "templates/outlined/file-done.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FileExcel",
+      "name": "file-excel",
+      "source": "templates/outlined/file-excel.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FileExclamation",
+      "name": "file-exclamation",
+      "source": "templates/outlined/file-exclamation.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FileGif",
+      "name": "file-gif",
+      "source": "templates/outlined/file-gif.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FileImage",
+      "name": "file-image",
+      "source": "templates/outlined/file-image.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FileJpg",
+      "name": "file-jpg",
+      "source": "templates/outlined/file-jpg.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FileMarkdown",
+      "name": "file-markdown",
+      "source": "templates/outlined/file-markdown.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FilePdf",
+      "name": "file-pdf",
+      "source": "templates/outlined/file-pdf.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FilePpt",
+      "name": "file-ppt",
+      "source": "templates/outlined/file-ppt.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FileProtect",
+      "name": "file-protect",
+      "source": "templates/outlined/file-protect.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FileSearch",
+      "name": "file-search",
+      "source": "templates/outlined/file-search.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FileSync",
+      "name": "file-sync",
+      "source": "templates/outlined/file-sync.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FileText",
+      "name": "file-text",
+      "source": "templates/outlined/file-text.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FileUnknown",
+      "name": "file-unknown",
+      "source": "templates/outlined/file-unknown.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FileWord",
+      "name": "file-word",
+      "source": "templates/outlined/file-word.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FileZip",
+      "name": "file-zip",
+      "source": "templates/outlined/file-zip.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "File",
+      "name": "file",
+      "source": "templates/outlined/file.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Filter",
+      "name": "filter",
+      "source": "templates/outlined/filter.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Fire",
+      "name": "fire",
+      "source": "templates/outlined/fire.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Flag",
+      "name": "flag",
+      "source": "templates/outlined/flag.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FolderAdd",
+      "name": "folder-add",
+      "source": "templates/outlined/folder-add.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FolderOpen",
+      "name": "folder-open",
+      "source": "templates/outlined/folder-open.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FolderView",
+      "name": "folder-view",
+      "source": "templates/outlined/folder-view.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Folder",
+      "name": "folder",
+      "source": "templates/outlined/folder.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FontColors",
+      "name": "font-colors",
+      "source": "templates/outlined/font-colors.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FontSize",
+      "name": "font-size",
+      "source": "templates/outlined/font-size.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Fork",
+      "name": "fork",
+      "source": "templates/outlined/fork.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Form",
+      "name": "form",
+      "source": "templates/outlined/form.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FormatPainter",
+      "name": "format-painter",
+      "source": "templates/outlined/format-painter.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Forward",
+      "name": "forward",
+      "source": "templates/outlined/forward.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Frown",
+      "name": "frown",
+      "source": "templates/outlined/frown.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FullscreenExit",
+      "name": "fullscreen-exit",
+      "source": "templates/outlined/fullscreen-exit.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Fullscreen",
+      "name": "fullscreen",
+      "source": "templates/outlined/fullscreen.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Function",
+      "name": "function",
+      "source": "templates/outlined/function.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FundProjectionScreen",
+      "name": "fund-projection-screen",
+      "source": "templates/outlined/fund-projection-screen.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FundView",
+      "name": "fund-view",
+      "source": "templates/outlined/fund-view.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Fund",
+      "name": "fund",
+      "source": "templates/outlined/fund.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FunnelPlot",
+      "name": "funnel-plot",
+      "source": "templates/outlined/funnel-plot.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Gateway",
+      "name": "gateway",
+      "source": "templates/outlined/gateway.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Gif",
+      "name": "gif",
+      "source": "templates/outlined/gif.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Gift",
+      "name": "gift",
+      "source": "templates/outlined/gift.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Github",
+      "name": "github",
+      "source": "templates/outlined/github.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Gitlab",
+      "name": "gitlab",
+      "source": "templates/outlined/gitlab.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Global",
+      "name": "global",
+      "source": "templates/outlined/global.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Gold",
+      "name": "gold",
+      "source": "templates/outlined/gold.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "GooglePlus",
+      "name": "google-plus",
+      "source": "templates/outlined/google-plus.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Google",
+      "name": "google",
+      "source": "templates/outlined/google.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Group",
+      "name": "group",
+      "source": "templates/outlined/group.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "HarmonyOS",
+      "name": "harmony-o-s",
+      "source": "templates/outlined/harmony-o-s.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Hdd",
+      "name": "hdd",
+      "source": "templates/outlined/hdd.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Heart",
+      "name": "heart",
+      "source": "templates/outlined/heart.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "HeatMap",
+      "name": "heat-map",
+      "source": "templates/outlined/heat-map.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Highlight",
+      "name": "highlight",
+      "source": "templates/outlined/highlight.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "History",
+      "name": "history",
+      "source": "templates/outlined/history.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Holder",
+      "name": "holder",
+      "source": "templates/outlined/holder.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Home",
+      "name": "home",
+      "source": "templates/outlined/home.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Hourglass",
+      "name": "hourglass",
+      "source": "templates/outlined/hourglass.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Html5",
+      "name": "html5",
+      "source": "templates/outlined/html5.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Idcard",
+      "name": "idcard",
+      "source": "templates/outlined/idcard.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Ie",
+      "name": "ie",
+      "source": "templates/outlined/ie.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Import",
+      "name": "import",
+      "source": "templates/outlined/import.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Inbox",
+      "name": "inbox",
+      "source": "templates/outlined/inbox.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "InfoCircle",
+      "name": "info-circle",
+      "source": "templates/outlined/info-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Info",
+      "name": "info",
+      "source": "templates/outlined/info.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "InsertRowAbove",
+      "name": "insert-row-above",
+      "source": "templates/outlined/insert-row-above.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "InsertRowBelow",
+      "name": "insert-row-below",
+      "source": "templates/outlined/insert-row-below.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "InsertRowLeft",
+      "name": "insert-row-left",
+      "source": "templates/outlined/insert-row-left.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "InsertRowRight",
+      "name": "insert-row-right",
+      "source": "templates/outlined/insert-row-right.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Instagram",
+      "name": "instagram",
+      "source": "templates/outlined/instagram.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Insurance",
+      "name": "insurance",
+      "source": "templates/outlined/insurance.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Interaction",
+      "name": "interaction",
+      "source": "templates/outlined/interaction.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "IssuesClose",
+      "name": "issues-close",
+      "source": "templates/outlined/issues-close.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Italic",
+      "name": "italic",
+      "source": "templates/outlined/italic.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "JavaScript",
+      "name": "java-script",
+      "source": "templates/outlined/java-script.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Java",
+      "name": "java",
+      "source": "templates/outlined/java.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Key",
+      "name": "key",
+      "source": "templates/outlined/key.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Kubernetes",
+      "name": "kubernetes",
+      "source": "templates/outlined/kubernetes.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Laptop",
+      "name": "laptop",
+      "source": "templates/outlined/laptop.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Layout",
+      "name": "layout",
+      "source": "templates/outlined/layout.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "LeftCircle",
+      "name": "left-circle",
+      "source": "templates/outlined/left-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "LeftSquare",
+      "name": "left-square",
+      "source": "templates/outlined/left-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Left",
+      "name": "left",
+      "source": "templates/outlined/left.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Like",
+      "name": "like",
+      "source": "templates/outlined/like.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "LineChart",
+      "name": "line-chart",
+      "source": "templates/outlined/line-chart.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "LineHeight",
+      "name": "line-height",
+      "source": "templates/outlined/line-height.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Line",
+      "name": "line",
+      "source": "templates/outlined/line.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Link",
+      "name": "link",
+      "source": "templates/outlined/link.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Linkedin",
+      "name": "linkedin",
+      "source": "templates/outlined/linkedin.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Linux",
+      "name": "linux",
+      "source": "templates/outlined/linux.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Loading3Quarters",
+      "name": "loading-3-quarters",
+      "source": "templates/outlined/loading-3-quarters.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Loading",
+      "name": "loading",
+      "source": "templates/outlined/loading.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Lock",
+      "name": "lock",
+      "source": "templates/outlined/lock.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Login",
+      "name": "login",
+      "source": "templates/outlined/login.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Logout",
+      "name": "logout",
+      "source": "templates/outlined/logout.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "MacCommand",
+      "name": "mac-command",
+      "source": "templates/outlined/mac-command.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Mail",
+      "name": "mail",
+      "source": "templates/outlined/mail.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Man",
+      "name": "man",
+      "source": "templates/outlined/man.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "MedicineBox",
+      "name": "medicine-box",
+      "source": "templates/outlined/medicine-box.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "MediumWorkmark",
+      "name": "medium-workmark",
+      "source": "templates/outlined/medium-workmark.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Medium",
+      "name": "medium",
+      "source": "templates/outlined/medium.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Meh",
+      "name": "meh",
+      "source": "templates/outlined/meh.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "MenuFold",
+      "name": "menu-fold",
+      "source": "templates/outlined/menu-fold.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "MenuUnfold",
+      "name": "menu-unfold",
+      "source": "templates/outlined/menu-unfold.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Menu",
+      "name": "menu",
+      "source": "templates/outlined/menu.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "MergeCells",
+      "name": "merge-cells",
+      "source": "templates/outlined/merge-cells.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Merge",
+      "name": "merge",
+      "source": "templates/outlined/merge.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Message",
+      "name": "message",
+      "source": "templates/outlined/message.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "MinusCircle",
+      "name": "minus-circle",
+      "source": "templates/outlined/minus-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "MinusSquare",
+      "name": "minus-square",
+      "source": "templates/outlined/minus-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Minus",
+      "name": "minus",
+      "source": "templates/outlined/minus.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Mobile",
+      "name": "mobile",
+      "source": "templates/outlined/mobile.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "MoneyCollect",
+      "name": "money-collect",
+      "source": "templates/outlined/money-collect.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Monitor",
+      "name": "monitor",
+      "source": "templates/outlined/monitor.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Moon",
+      "name": "moon",
+      "source": "templates/outlined/moon.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "More",
+      "name": "more",
+      "source": "templates/outlined/more.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Muted",
+      "name": "muted",
+      "source": "templates/outlined/muted.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "NodeCollapse",
+      "name": "node-collapse",
+      "source": "templates/outlined/node-collapse.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "NodeExpand",
+      "name": "node-expand",
+      "source": "templates/outlined/node-expand.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "NodeIndex",
+      "name": "node-index",
+      "source": "templates/outlined/node-index.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Notification",
+      "name": "notification",
+      "source": "templates/outlined/notification.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Number",
+      "name": "number",
+      "source": "templates/outlined/number.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "OneToOne",
+      "name": "one-to-one",
+      "source": "templates/outlined/one-to-one.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "OpenAI",
+      "name": "open-a-i",
+      "source": "templates/outlined/open-a-i.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "OrderedList",
+      "name": "ordered-list",
+      "source": "templates/outlined/ordered-list.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "PaperClip",
+      "name": "paper-clip",
+      "source": "templates/outlined/paper-clip.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Partition",
+      "name": "partition",
+      "source": "templates/outlined/partition.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "PauseCircle",
+      "name": "pause-circle",
+      "source": "templates/outlined/pause-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Pause",
+      "name": "pause",
+      "source": "templates/outlined/pause.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "PayCircle",
+      "name": "pay-circle",
+      "source": "templates/outlined/pay-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Percentage",
+      "name": "percentage",
+      "source": "templates/outlined/percentage.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Phone",
+      "name": "phone",
+      "source": "templates/outlined/phone.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "PicCenter",
+      "name": "pic-center",
+      "source": "templates/outlined/pic-center.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "PicLeft",
+      "name": "pic-left",
+      "source": "templates/outlined/pic-left.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "PicRight",
+      "name": "pic-right",
+      "source": "templates/outlined/pic-right.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Picture",
+      "name": "picture",
+      "source": "templates/outlined/picture.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "PieChart",
+      "name": "pie-chart",
+      "source": "templates/outlined/pie-chart.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Pinterest",
+      "name": "pinterest",
+      "source": "templates/outlined/pinterest.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "PlayCircle",
+      "name": "play-circle",
+      "source": "templates/outlined/play-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "PlaySquare",
+      "name": "play-square",
+      "source": "templates/outlined/play-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "PlusCircle",
+      "name": "plus-circle",
+      "source": "templates/outlined/plus-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "PlusSquare",
+      "name": "plus-square",
+      "source": "templates/outlined/plus-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Plus",
+      "name": "plus",
+      "source": "templates/outlined/plus.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "PoundCircle",
+      "name": "pound-circle",
+      "source": "templates/outlined/pound-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Pound",
+      "name": "pound",
+      "source": "templates/outlined/pound.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Poweroff",
+      "name": "poweroff",
+      "source": "templates/outlined/poweroff.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Printer",
+      "name": "printer",
+      "source": "templates/outlined/printer.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Product",
+      "name": "product",
+      "source": "templates/outlined/product.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Profile",
+      "name": "profile",
+      "source": "templates/outlined/profile.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Project",
+      "name": "project",
+      "source": "templates/outlined/project.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "PropertySafety",
+      "name": "property-safety",
+      "source": "templates/outlined/property-safety.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "PullRequest",
+      "name": "pull-request",
+      "source": "templates/outlined/pull-request.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Pushpin",
+      "name": "pushpin",
+      "source": "templates/outlined/pushpin.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Python",
+      "name": "python",
+      "source": "templates/outlined/python.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Qq",
+      "name": "qq",
+      "source": "templates/outlined/qq.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Qrcode",
+      "name": "qrcode",
+      "source": "templates/outlined/qrcode.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "QuestionCircle",
+      "name": "question-circle",
+      "source": "templates/outlined/question-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Question",
+      "name": "question",
+      "source": "templates/outlined/question.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "RadarChart",
+      "name": "radar-chart",
+      "source": "templates/outlined/radar-chart.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "RadiusBottomleft",
+      "name": "radius-bottomleft",
+      "source": "templates/outlined/radius-bottomleft.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "RadiusBottomright",
+      "name": "radius-bottomright",
+      "source": "templates/outlined/radius-bottomright.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "RadiusSetting",
+      "name": "radius-setting",
+      "source": "templates/outlined/radius-setting.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "RadiusUpleft",
+      "name": "radius-upleft",
+      "source": "templates/outlined/radius-upleft.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "RadiusUpright",
+      "name": "radius-upright",
+      "source": "templates/outlined/radius-upright.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Read",
+      "name": "read",
+      "source": "templates/outlined/read.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Reconciliation",
+      "name": "reconciliation",
+      "source": "templates/outlined/reconciliation.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "RedEnvelope",
+      "name": "red-envelope",
+      "source": "templates/outlined/red-envelope.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Reddit",
+      "name": "reddit",
+      "source": "templates/outlined/reddit.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Redo",
+      "name": "redo",
+      "source": "templates/outlined/redo.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Reload",
+      "name": "reload",
+      "source": "templates/outlined/reload.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Rest",
+      "name": "rest",
+      "source": "templates/outlined/rest.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Retweet",
+      "name": "retweet",
+      "source": "templates/outlined/retweet.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "RightCircle",
+      "name": "right-circle",
+      "source": "templates/outlined/right-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "RightSquare",
+      "name": "right-square",
+      "source": "templates/outlined/right-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Right",
+      "name": "right",
+      "source": "templates/outlined/right.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Rise",
+      "name": "rise",
+      "source": "templates/outlined/rise.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Robot",
+      "name": "robot",
+      "source": "templates/outlined/robot.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Rocket",
+      "name": "rocket",
+      "source": "templates/outlined/rocket.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Rollback",
+      "name": "rollback",
+      "source": "templates/outlined/rollback.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "RotateLeft",
+      "name": "rotate-left",
+      "source": "templates/outlined/rotate-left.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "RotateRight",
+      "name": "rotate-right",
+      "source": "templates/outlined/rotate-right.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Ruby",
+      "name": "ruby",
+      "source": "templates/outlined/ruby.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "SafetyCertificate",
+      "name": "safety-certificate",
+      "source": "templates/outlined/safety-certificate.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Safety",
+      "name": "safety",
+      "source": "templates/outlined/safety.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Save",
+      "name": "save",
+      "source": "templates/outlined/save.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Scan",
+      "name": "scan",
+      "source": "templates/outlined/scan.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Schedule",
+      "name": "schedule",
+      "source": "templates/outlined/schedule.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Scissor",
+      "name": "scissor",
+      "source": "templates/outlined/scissor.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Search",
+      "name": "search",
+      "source": "templates/outlined/search.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "SecurityScan",
+      "name": "security-scan",
+      "source": "templates/outlined/security-scan.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Select",
+      "name": "select",
+      "source": "templates/outlined/select.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Send",
+      "name": "send",
+      "source": "templates/outlined/send.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Setting",
+      "name": "setting",
+      "source": "templates/outlined/setting.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Shake",
+      "name": "shake",
+      "source": "templates/outlined/shake.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ShareAlt",
+      "name": "share-alt",
+      "source": "templates/outlined/share-alt.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Shop",
+      "name": "shop",
+      "source": "templates/outlined/shop.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ShoppingCart",
+      "name": "shopping-cart",
+      "source": "templates/outlined/shopping-cart.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Shopping",
+      "name": "shopping",
+      "source": "templates/outlined/shopping.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Shrink",
+      "name": "shrink",
+      "source": "templates/outlined/shrink.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Signature",
+      "name": "signature",
+      "source": "templates/outlined/signature.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Sisternode",
+      "name": "sisternode",
+      "source": "templates/outlined/sisternode.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Sketch",
+      "name": "sketch",
+      "source": "templates/outlined/sketch.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Skin",
+      "name": "skin",
+      "source": "templates/outlined/skin.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Skype",
+      "name": "skype",
+      "source": "templates/outlined/skype.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "SlackSquare",
+      "name": "slack-square",
+      "source": "templates/outlined/slack-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Slack",
+      "name": "slack",
+      "source": "templates/outlined/slack.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Sliders",
+      "name": "sliders",
+      "source": "templates/outlined/sliders.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "SmallDash",
+      "name": "small-dash",
+      "source": "templates/outlined/small-dash.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Smile",
+      "name": "smile",
+      "source": "templates/outlined/smile.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Snippets",
+      "name": "snippets",
+      "source": "templates/outlined/snippets.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Solution",
+      "name": "solution",
+      "source": "templates/outlined/solution.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "SortAscending",
+      "name": "sort-ascending",
+      "source": "templates/outlined/sort-ascending.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "SortDescending",
+      "name": "sort-descending",
+      "source": "templates/outlined/sort-descending.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Sound",
+      "name": "sound",
+      "source": "templates/outlined/sound.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "SplitCells",
+      "name": "split-cells",
+      "source": "templates/outlined/split-cells.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Spotify",
+      "name": "spotify",
+      "source": "templates/outlined/spotify.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Star",
+      "name": "star",
+      "source": "templates/outlined/star.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "StepBackward",
+      "name": "step-backward",
+      "source": "templates/outlined/step-backward.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "StepForward",
+      "name": "step-forward",
+      "source": "templates/outlined/step-forward.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Stock",
+      "name": "stock",
+      "source": "templates/outlined/stock.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Stop",
+      "name": "stop",
+      "source": "templates/outlined/stop.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Strikethrough",
+      "name": "strikethrough",
+      "source": "templates/outlined/strikethrough.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Subnode",
+      "name": "subnode",
+      "source": "templates/outlined/subnode.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Sun",
+      "name": "sun",
+      "source": "templates/outlined/sun.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "SwapLeft",
+      "name": "swap-left",
+      "source": "templates/outlined/swap-left.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "SwapRight",
+      "name": "swap-right",
+      "source": "templates/outlined/swap-right.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Swap",
+      "name": "swap",
+      "source": "templates/outlined/swap.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Switcher",
+      "name": "switcher",
+      "source": "templates/outlined/switcher.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Sync",
+      "name": "sync",
+      "source": "templates/outlined/sync.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Table",
+      "name": "table",
+      "source": "templates/outlined/table.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Tablet",
+      "name": "tablet",
+      "source": "templates/outlined/tablet.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Tag",
+      "name": "tag",
+      "source": "templates/outlined/tag.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Tags",
+      "name": "tags",
+      "source": "templates/outlined/tags.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "TaobaoCircle",
+      "name": "taobao-circle",
+      "source": "templates/outlined/taobao-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Taobao",
+      "name": "taobao",
+      "source": "templates/outlined/taobao.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Team",
+      "name": "team",
+      "source": "templates/outlined/team.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Thunderbolt",
+      "name": "thunderbolt",
+      "source": "templates/outlined/thunderbolt.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "TikTok",
+      "name": "tik-tok",
+      "source": "templates/outlined/tik-tok.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ToTop",
+      "name": "to-top",
+      "source": "templates/outlined/to-top.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Tool",
+      "name": "tool",
+      "source": "templates/outlined/tool.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "TrademarkCircle",
+      "name": "trademark-circle",
+      "source": "templates/outlined/trademark-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Trademark",
+      "name": "trademark",
+      "source": "templates/outlined/trademark.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Transaction",
+      "name": "transaction",
+      "source": "templates/outlined/transaction.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Translation",
+      "name": "translation",
+      "source": "templates/outlined/translation.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Trophy",
+      "name": "trophy",
+      "source": "templates/outlined/trophy.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Truck",
+      "name": "truck",
+      "source": "templates/outlined/truck.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Twitch",
+      "name": "twitch",
+      "source": "templates/outlined/twitch.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Twitter",
+      "name": "twitter",
+      "source": "templates/outlined/twitter.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Underline",
+      "name": "underline",
+      "source": "templates/outlined/underline.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Undo",
+      "name": "undo",
+      "source": "templates/outlined/undo.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Ungroup",
+      "name": "ungroup",
+      "source": "templates/outlined/ungroup.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Unlock",
+      "name": "unlock",
+      "source": "templates/outlined/unlock.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "UnorderedList",
+      "name": "unordered-list",
+      "source": "templates/outlined/unordered-list.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "UpCircle",
+      "name": "up-circle",
+      "source": "templates/outlined/up-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "UpSquare",
+      "name": "up-square",
+      "source": "templates/outlined/up-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Up",
+      "name": "up",
+      "source": "templates/outlined/up.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Upload",
+      "name": "upload",
+      "source": "templates/outlined/upload.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Usb",
+      "name": "usb",
+      "source": "templates/outlined/usb.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "UserAdd",
+      "name": "user-add",
+      "source": "templates/outlined/user-add.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "UserDelete",
+      "name": "user-delete",
+      "source": "templates/outlined/user-delete.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "UserSwitch",
+      "name": "user-switch",
+      "source": "templates/outlined/user-switch.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "User",
+      "name": "user",
+      "source": "templates/outlined/user.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "UsergroupAdd",
+      "name": "usergroup-add",
+      "source": "templates/outlined/usergroup-add.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "UsergroupDelete",
+      "name": "usergroup-delete",
+      "source": "templates/outlined/usergroup-delete.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Verified",
+      "name": "verified",
+      "source": "templates/outlined/verified.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "VerticalAlignBottom",
+      "name": "vertical-align-bottom",
+      "source": "templates/outlined/vertical-align-bottom.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "VerticalAlignMiddle",
+      "name": "vertical-align-middle",
+      "source": "templates/outlined/vertical-align-middle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "VerticalAlignTop",
+      "name": "vertical-align-top",
+      "source": "templates/outlined/vertical-align-top.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "VerticalLeft",
+      "name": "vertical-left",
+      "source": "templates/outlined/vertical-left.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "VerticalRight",
+      "name": "vertical-right",
+      "source": "templates/outlined/vertical-right.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "VideoCameraAdd",
+      "name": "video-camera-add",
+      "source": "templates/outlined/video-camera-add.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "VideoCamera",
+      "name": "video-camera",
+      "source": "templates/outlined/video-camera.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Wallet",
+      "name": "wallet",
+      "source": "templates/outlined/wallet.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Warning",
+      "name": "warning",
+      "source": "templates/outlined/warning.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "WechatWork",
+      "name": "wechat-work",
+      "source": "templates/outlined/wechat-work.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Wechat",
+      "name": "wechat",
+      "source": "templates/outlined/wechat.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "WeiboCircle",
+      "name": "weibo-circle",
+      "source": "templates/outlined/weibo-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "WeiboSquare",
+      "name": "weibo-square",
+      "source": "templates/outlined/weibo-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Weibo",
+      "name": "weibo",
+      "source": "templates/outlined/weibo.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "WhatsApp",
+      "name": "whats-app",
+      "source": "templates/outlined/whats-app.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Wifi",
+      "name": "wifi",
+      "source": "templates/outlined/wifi.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Windows",
+      "name": "windows",
+      "source": "templates/outlined/windows.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Woman",
+      "name": "woman",
+      "source": "templates/outlined/woman.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "X",
+      "name": "x",
+      "source": "templates/outlined/x.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Yahoo",
+      "name": "yahoo",
+      "source": "templates/outlined/yahoo.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Youtube",
+      "name": "youtube",
+      "source": "templates/outlined/youtube.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Yuque",
+      "name": "yuque",
+      "source": "templates/outlined/yuque.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Zhihu",
+      "name": "zhihu",
+      "source": "templates/outlined/zhihu.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ZoomIn",
+      "name": "zoom-in",
+      "source": "templates/outlined/zoom-in.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ZoomOut",
+      "name": "zoom-out",
+      "source": "templates/outlined/zoom-out.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "AccountBook",
+      "name": "account-book",
+      "source": "templates/filled/account-book.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Alert",
+      "name": "alert",
+      "source": "templates/filled/alert.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "AlipayCircle",
+      "name": "alipay-circle",
+      "source": "templates/filled/alipay-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "AlipaySquare",
+      "name": "alipay-square",
+      "source": "templates/filled/alipay-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Aliwangwang",
+      "name": "aliwangwang",
+      "source": "templates/filled/aliwangwang.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "AmazonCircle",
+      "name": "amazon-circle",
+      "source": "templates/filled/amazon-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "AmazonSquare",
+      "name": "amazon-square",
+      "source": "templates/filled/amazon-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Android",
+      "name": "android",
+      "source": "templates/filled/android.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Api",
+      "name": "api",
+      "source": "templates/filled/api.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Apple",
+      "name": "apple",
+      "source": "templates/filled/apple.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Appstore",
+      "name": "appstore",
+      "source": "templates/filled/appstore.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Audio",
+      "name": "audio",
+      "source": "templates/filled/audio.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Backward",
+      "name": "backward",
+      "source": "templates/filled/backward.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Bank",
+      "name": "bank",
+      "source": "templates/filled/bank.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "BehanceCircle",
+      "name": "behance-circle",
+      "source": "templates/filled/behance-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "BehanceSquare",
+      "name": "behance-square",
+      "source": "templates/filled/behance-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Bell",
+      "name": "bell",
+      "source": "templates/filled/bell.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Bilibili",
+      "name": "bilibili",
+      "source": "templates/filled/bilibili.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Book",
+      "name": "book",
+      "source": "templates/filled/book.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "BoxPlot",
+      "name": "box-plot",
+      "source": "templates/filled/box-plot.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Bug",
+      "name": "bug",
+      "source": "templates/filled/bug.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Build",
+      "name": "build",
+      "source": "templates/filled/build.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Bulb",
+      "name": "bulb",
+      "source": "templates/filled/bulb.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Calculator",
+      "name": "calculator",
+      "source": "templates/filled/calculator.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Calendar",
+      "name": "calendar",
+      "source": "templates/filled/calendar.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Camera",
+      "name": "camera",
+      "source": "templates/filled/camera.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Car",
+      "name": "car",
+      "source": "templates/filled/car.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "CaretDown",
+      "name": "caret-down",
+      "source": "templates/filled/caret-down.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "CaretLeft",
+      "name": "caret-left",
+      "source": "templates/filled/caret-left.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "CaretRight",
+      "name": "caret-right",
+      "source": "templates/filled/caret-right.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "CaretUp",
+      "name": "caret-up",
+      "source": "templates/filled/caret-up.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "CarryOut",
+      "name": "carry-out",
+      "source": "templates/filled/carry-out.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "CheckCircle",
+      "name": "check-circle",
+      "source": "templates/filled/check-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "CheckSquare",
+      "name": "check-square",
+      "source": "templates/filled/check-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Chrome",
+      "name": "chrome",
+      "source": "templates/filled/chrome.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "CiCircle",
+      "name": "ci-circle",
+      "source": "templates/filled/ci-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "ClockCircle",
+      "name": "clock-circle",
+      "source": "templates/filled/clock-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "CloseCircle",
+      "name": "close-circle",
+      "source": "templates/filled/close-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "CloseSquare",
+      "name": "close-square",
+      "source": "templates/filled/close-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Cloud",
+      "name": "cloud",
+      "source": "templates/filled/cloud.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "CodeSandboxCircle",
+      "name": "code-sandbox-circle",
+      "source": "templates/filled/code-sandbox-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "CodeSandboxSquare",
+      "name": "code-sandbox-square",
+      "source": "templates/filled/code-sandbox-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Code",
+      "name": "code",
+      "source": "templates/filled/code.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "CodepenCircle",
+      "name": "codepen-circle",
+      "source": "templates/filled/codepen-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "CodepenSquare",
+      "name": "codepen-square",
+      "source": "templates/filled/codepen-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Compass",
+      "name": "compass",
+      "source": "templates/filled/compass.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Contacts",
+      "name": "contacts",
+      "source": "templates/filled/contacts.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Container",
+      "name": "container",
+      "source": "templates/filled/container.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Control",
+      "name": "control",
+      "source": "templates/filled/control.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Copy",
+      "name": "copy",
+      "source": "templates/filled/copy.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "CopyrightCircle",
+      "name": "copyright-circle",
+      "source": "templates/filled/copyright-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "CreditCard",
+      "name": "credit-card",
+      "source": "templates/filled/credit-card.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Crown",
+      "name": "crown",
+      "source": "templates/filled/crown.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "CustomerService",
+      "name": "customer-service",
+      "source": "templates/filled/customer-service.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Dashboard",
+      "name": "dashboard",
+      "source": "templates/filled/dashboard.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Database",
+      "name": "database",
+      "source": "templates/filled/database.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "IconDelete",
+      "name": "delete",
+      "source": "templates/filled/delete.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Diff",
+      "name": "diff",
+      "source": "templates/filled/diff.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "DingtalkCircle",
+      "name": "dingtalk-circle",
+      "source": "templates/filled/dingtalk-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "DingtalkSquare",
+      "name": "dingtalk-square",
+      "source": "templates/filled/dingtalk-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Discord",
+      "name": "discord",
+      "source": "templates/filled/discord.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Dislike",
+      "name": "dislike",
+      "source": "templates/filled/dislike.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "DollarCircle",
+      "name": "dollar-circle",
+      "source": "templates/filled/dollar-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "DownCircle",
+      "name": "down-circle",
+      "source": "templates/filled/down-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "DownSquare",
+      "name": "down-square",
+      "source": "templates/filled/down-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "DribbbleCircle",
+      "name": "dribbble-circle",
+      "source": "templates/filled/dribbble-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "DribbbleSquare",
+      "name": "dribbble-square",
+      "source": "templates/filled/dribbble-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "DropboxCircle",
+      "name": "dropbox-circle",
+      "source": "templates/filled/dropbox-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "DropboxSquare",
+      "name": "dropbox-square",
+      "source": "templates/filled/dropbox-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Edit",
+      "name": "edit",
+      "source": "templates/filled/edit.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Environment",
+      "name": "environment",
+      "source": "templates/filled/environment.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "EuroCircle",
+      "name": "euro-circle",
+      "source": "templates/filled/euro-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "ExclamationCircle",
+      "name": "exclamation-circle",
+      "source": "templates/filled/exclamation-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Experiment",
+      "name": "experiment",
+      "source": "templates/filled/experiment.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "EyeInvisible",
+      "name": "eye-invisible",
+      "source": "templates/filled/eye-invisible.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Eye",
+      "name": "eye",
+      "source": "templates/filled/eye.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Facebook",
+      "name": "facebook",
+      "source": "templates/filled/facebook.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "FastBackward",
+      "name": "fast-backward",
+      "source": "templates/filled/fast-backward.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "FastForward",
+      "name": "fast-forward",
+      "source": "templates/filled/fast-forward.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "FileAdd",
+      "name": "file-add",
+      "source": "templates/filled/file-add.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "FileExcel",
+      "name": "file-excel",
+      "source": "templates/filled/file-excel.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "FileExclamation",
+      "name": "file-exclamation",
+      "source": "templates/filled/file-exclamation.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "FileImage",
+      "name": "file-image",
+      "source": "templates/filled/file-image.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "FileMarkdown",
+      "name": "file-markdown",
+      "source": "templates/filled/file-markdown.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "FilePdf",
+      "name": "file-pdf",
+      "source": "templates/filled/file-pdf.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "FilePpt",
+      "name": "file-ppt",
+      "source": "templates/filled/file-ppt.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "FileText",
+      "name": "file-text",
+      "source": "templates/filled/file-text.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "FileUnknown",
+      "name": "file-unknown",
+      "source": "templates/filled/file-unknown.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "FileWord",
+      "name": "file-word",
+      "source": "templates/filled/file-word.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "FileZip",
+      "name": "file-zip",
+      "source": "templates/filled/file-zip.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "File",
+      "name": "file",
+      "source": "templates/filled/file.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Filter",
+      "name": "filter",
+      "source": "templates/filled/filter.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Fire",
+      "name": "fire",
+      "source": "templates/filled/fire.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Flag",
+      "name": "flag",
+      "source": "templates/filled/flag.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "FolderAdd",
+      "name": "folder-add",
+      "source": "templates/filled/folder-add.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "FolderOpen",
+      "name": "folder-open",
+      "source": "templates/filled/folder-open.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Folder",
+      "name": "folder",
+      "source": "templates/filled/folder.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "FormatPainter",
+      "name": "format-painter",
+      "source": "templates/filled/format-painter.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Forward",
+      "name": "forward",
+      "source": "templates/filled/forward.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Frown",
+      "name": "frown",
+      "source": "templates/filled/frown.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Fund",
+      "name": "fund",
+      "source": "templates/filled/fund.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "FunnelPlot",
+      "name": "funnel-plot",
+      "source": "templates/filled/funnel-plot.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Gift",
+      "name": "gift",
+      "source": "templates/filled/gift.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Github",
+      "name": "github",
+      "source": "templates/filled/github.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Gitlab",
+      "name": "gitlab",
+      "source": "templates/filled/gitlab.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Gold",
+      "name": "gold",
+      "source": "templates/filled/gold.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Golden",
+      "name": "golden",
+      "source": "templates/filled/golden.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "GoogleCircle",
+      "name": "google-circle",
+      "source": "templates/filled/google-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "GooglePlusCircle",
+      "name": "google-plus-circle",
+      "source": "templates/filled/google-plus-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "GooglePlusSquare",
+      "name": "google-plus-square",
+      "source": "templates/filled/google-plus-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "GoogleSquare",
+      "name": "google-square",
+      "source": "templates/filled/google-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Hdd",
+      "name": "hdd",
+      "source": "templates/filled/hdd.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Heart",
+      "name": "heart",
+      "source": "templates/filled/heart.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Highlight",
+      "name": "highlight",
+      "source": "templates/filled/highlight.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Home",
+      "name": "home",
+      "source": "templates/filled/home.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Hourglass",
+      "name": "hourglass",
+      "source": "templates/filled/hourglass.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Html5",
+      "name": "html5",
+      "source": "templates/filled/html5.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Idcard",
+      "name": "idcard",
+      "source": "templates/filled/idcard.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "IeCircle",
+      "name": "ie-circle",
+      "source": "templates/filled/ie-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "IeSquare",
+      "name": "ie-square",
+      "source": "templates/filled/ie-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "InfoCircle",
+      "name": "info-circle",
+      "source": "templates/filled/info-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Instagram",
+      "name": "instagram",
+      "source": "templates/filled/instagram.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Insurance",
+      "name": "insurance",
+      "source": "templates/filled/insurance.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Interaction",
+      "name": "interaction",
+      "source": "templates/filled/interaction.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Layout",
+      "name": "layout",
+      "source": "templates/filled/layout.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "LeftCircle",
+      "name": "left-circle",
+      "source": "templates/filled/left-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "LeftSquare",
+      "name": "left-square",
+      "source": "templates/filled/left-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Like",
+      "name": "like",
+      "source": "templates/filled/like.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Linkedin",
+      "name": "linkedin",
+      "source": "templates/filled/linkedin.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Lock",
+      "name": "lock",
+      "source": "templates/filled/lock.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "MacCommand",
+      "name": "mac-command",
+      "source": "templates/filled/mac-command.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Mail",
+      "name": "mail",
+      "source": "templates/filled/mail.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "MedicineBox",
+      "name": "medicine-box",
+      "source": "templates/filled/medicine-box.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "MediumCircle",
+      "name": "medium-circle",
+      "source": "templates/filled/medium-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "MediumSquare",
+      "name": "medium-square",
+      "source": "templates/filled/medium-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Meh",
+      "name": "meh",
+      "source": "templates/filled/meh.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Merge",
+      "name": "merge",
+      "source": "templates/filled/merge.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Message",
+      "name": "message",
+      "source": "templates/filled/message.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "MinusCircle",
+      "name": "minus-circle",
+      "source": "templates/filled/minus-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "MinusSquare",
+      "name": "minus-square",
+      "source": "templates/filled/minus-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Mobile",
+      "name": "mobile",
+      "source": "templates/filled/mobile.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "MoneyCollect",
+      "name": "money-collect",
+      "source": "templates/filled/money-collect.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Moon",
+      "name": "moon",
+      "source": "templates/filled/moon.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Muted",
+      "name": "muted",
+      "source": "templates/filled/muted.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Notification",
+      "name": "notification",
+      "source": "templates/filled/notification.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "OpenAI",
+      "name": "open-a-i",
+      "source": "templates/filled/open-a-i.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "PauseCircle",
+      "name": "pause-circle",
+      "source": "templates/filled/pause-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "PayCircle",
+      "name": "pay-circle",
+      "source": "templates/filled/pay-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Phone",
+      "name": "phone",
+      "source": "templates/filled/phone.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Picture",
+      "name": "picture",
+      "source": "templates/filled/picture.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "PieChart",
+      "name": "pie-chart",
+      "source": "templates/filled/pie-chart.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Pinterest",
+      "name": "pinterest",
+      "source": "templates/filled/pinterest.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "PlayCircle",
+      "name": "play-circle",
+      "source": "templates/filled/play-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "PlaySquare",
+      "name": "play-square",
+      "source": "templates/filled/play-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "PlusCircle",
+      "name": "plus-circle",
+      "source": "templates/filled/plus-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "PlusSquare",
+      "name": "plus-square",
+      "source": "templates/filled/plus-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "PoundCircle",
+      "name": "pound-circle",
+      "source": "templates/filled/pound-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Printer",
+      "name": "printer",
+      "source": "templates/filled/printer.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Product",
+      "name": "product",
+      "source": "templates/filled/product.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Profile",
+      "name": "profile",
+      "source": "templates/filled/profile.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Project",
+      "name": "project",
+      "source": "templates/filled/project.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "PropertySafety",
+      "name": "property-safety",
+      "source": "templates/filled/property-safety.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Pushpin",
+      "name": "pushpin",
+      "source": "templates/filled/pushpin.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "QqCircle",
+      "name": "qq-circle",
+      "source": "templates/filled/qq-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "QqSquare",
+      "name": "qq-square",
+      "source": "templates/filled/qq-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "QuestionCircle",
+      "name": "question-circle",
+      "source": "templates/filled/question-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Read",
+      "name": "read",
+      "source": "templates/filled/read.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Reconciliation",
+      "name": "reconciliation",
+      "source": "templates/filled/reconciliation.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "RedEnvelope",
+      "name": "red-envelope",
+      "source": "templates/filled/red-envelope.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "RedditCircle",
+      "name": "reddit-circle",
+      "source": "templates/filled/reddit-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "RedditSquare",
+      "name": "reddit-square",
+      "source": "templates/filled/reddit-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Rest",
+      "name": "rest",
+      "source": "templates/filled/rest.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "RightCircle",
+      "name": "right-circle",
+      "source": "templates/filled/right-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "RightSquare",
+      "name": "right-square",
+      "source": "templates/filled/right-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Robot",
+      "name": "robot",
+      "source": "templates/filled/robot.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Rocket",
+      "name": "rocket",
+      "source": "templates/filled/rocket.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "SafetyCertificate",
+      "name": "safety-certificate",
+      "source": "templates/filled/safety-certificate.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Save",
+      "name": "save",
+      "source": "templates/filled/save.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Schedule",
+      "name": "schedule",
+      "source": "templates/filled/schedule.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "SecurityScan",
+      "name": "security-scan",
+      "source": "templates/filled/security-scan.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Setting",
+      "name": "setting",
+      "source": "templates/filled/setting.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Shop",
+      "name": "shop",
+      "source": "templates/filled/shop.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Shopping",
+      "name": "shopping",
+      "source": "templates/filled/shopping.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Signal",
+      "name": "signal",
+      "source": "templates/filled/signal.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Signature",
+      "name": "signature",
+      "source": "templates/filled/signature.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "SketchCircle",
+      "name": "sketch-circle",
+      "source": "templates/filled/sketch-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "SketchSquare",
+      "name": "sketch-square",
+      "source": "templates/filled/sketch-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Skin",
+      "name": "skin",
+      "source": "templates/filled/skin.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Skype",
+      "name": "skype",
+      "source": "templates/filled/skype.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "SlackCircle",
+      "name": "slack-circle",
+      "source": "templates/filled/slack-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "SlackSquare",
+      "name": "slack-square",
+      "source": "templates/filled/slack-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Sliders",
+      "name": "sliders",
+      "source": "templates/filled/sliders.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Smile",
+      "name": "smile",
+      "source": "templates/filled/smile.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Snippets",
+      "name": "snippets",
+      "source": "templates/filled/snippets.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Sound",
+      "name": "sound",
+      "source": "templates/filled/sound.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Spotify",
+      "name": "spotify",
+      "source": "templates/filled/spotify.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Star",
+      "name": "star",
+      "source": "templates/filled/star.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "StepBackward",
+      "name": "step-backward",
+      "source": "templates/filled/step-backward.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "StepForward",
+      "name": "step-forward",
+      "source": "templates/filled/step-forward.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Stop",
+      "name": "stop",
+      "source": "templates/filled/stop.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Sun",
+      "name": "sun",
+      "source": "templates/filled/sun.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Switcher",
+      "name": "switcher",
+      "source": "templates/filled/switcher.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Tablet",
+      "name": "tablet",
+      "source": "templates/filled/tablet.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Tag",
+      "name": "tag",
+      "source": "templates/filled/tag.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Tags",
+      "name": "tags",
+      "source": "templates/filled/tags.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "TaobaoCircle",
+      "name": "taobao-circle",
+      "source": "templates/filled/taobao-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "TaobaoSquare",
+      "name": "taobao-square",
+      "source": "templates/filled/taobao-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Thunderbolt",
+      "name": "thunderbolt",
+      "source": "templates/filled/thunderbolt.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "TikTok",
+      "name": "tik-tok",
+      "source": "templates/filled/tik-tok.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Tool",
+      "name": "tool",
+      "source": "templates/filled/tool.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "TrademarkCircle",
+      "name": "trademark-circle",
+      "source": "templates/filled/trademark-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Trophy",
+      "name": "trophy",
+      "source": "templates/filled/trophy.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Truck",
+      "name": "truck",
+      "source": "templates/filled/truck.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Twitch",
+      "name": "twitch",
+      "source": "templates/filled/twitch.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "TwitterCircle",
+      "name": "twitter-circle",
+      "source": "templates/filled/twitter-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "TwitterSquare",
+      "name": "twitter-square",
+      "source": "templates/filled/twitter-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Unlock",
+      "name": "unlock",
+      "source": "templates/filled/unlock.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "UpCircle",
+      "name": "up-circle",
+      "source": "templates/filled/up-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "UpSquare",
+      "name": "up-square",
+      "source": "templates/filled/up-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Usb",
+      "name": "usb",
+      "source": "templates/filled/usb.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "VideoCamera",
+      "name": "video-camera",
+      "source": "templates/filled/video-camera.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Wallet",
+      "name": "wallet",
+      "source": "templates/filled/wallet.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Warning",
+      "name": "warning",
+      "source": "templates/filled/warning.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "WechatWork",
+      "name": "wechat-work",
+      "source": "templates/filled/wechat-work.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Wechat",
+      "name": "wechat",
+      "source": "templates/filled/wechat.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "WeiboCircle",
+      "name": "weibo-circle",
+      "source": "templates/filled/weibo-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "WeiboSquare",
+      "name": "weibo-square",
+      "source": "templates/filled/weibo-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Windows",
+      "name": "windows",
+      "source": "templates/filled/windows.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "X",
+      "name": "x",
+      "source": "templates/filled/x.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Yahoo",
+      "name": "yahoo",
+      "source": "templates/filled/yahoo.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Youtube",
+      "name": "youtube",
+      "source": "templates/filled/youtube.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "Yuque",
+      "name": "yuque",
+      "source": "templates/filled/yuque.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "ZhihuCircle",
+      "name": "zhihu-circle",
+      "source": "templates/filled/zhihu-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "filled",
+      "symbol": "ZhihuSquare",
+      "name": "zhihu-square",
+      "source": "templates/filled/zhihu-square.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "AccountBook",
+      "name": "account-book",
+      "source": "templates/twotone/account-book.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Alert",
+      "name": "alert",
+      "source": "templates/twotone/alert.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Api",
+      "name": "api",
+      "source": "templates/twotone/api.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Appstore",
+      "name": "appstore",
+      "source": "templates/twotone/appstore.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Audio",
+      "name": "audio",
+      "source": "templates/twotone/audio.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Bank",
+      "name": "bank",
+      "source": "templates/twotone/bank.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Bell",
+      "name": "bell",
+      "source": "templates/twotone/bell.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Book",
+      "name": "book",
+      "source": "templates/twotone/book.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "BoxPlot",
+      "name": "box-plot",
+      "source": "templates/twotone/box-plot.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Bug",
+      "name": "bug",
+      "source": "templates/twotone/bug.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Build",
+      "name": "build",
+      "source": "templates/twotone/build.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Bulb",
+      "name": "bulb",
+      "source": "templates/twotone/bulb.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Calculator",
+      "name": "calculator",
+      "source": "templates/twotone/calculator.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Calendar",
+      "name": "calendar",
+      "source": "templates/twotone/calendar.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Camera",
+      "name": "camera",
+      "source": "templates/twotone/camera.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Car",
+      "name": "car",
+      "source": "templates/twotone/car.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "CarryOut",
+      "name": "carry-out",
+      "source": "templates/twotone/carry-out.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "CheckCircle",
+      "name": "check-circle",
+      "source": "templates/twotone/check-circle.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "CheckSquare",
+      "name": "check-square",
+      "source": "templates/twotone/check-square.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "CiCircle",
+      "name": "ci-circle",
+      "source": "templates/twotone/ci-circle.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Ci",
+      "name": "ci",
+      "source": "templates/twotone/ci.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "ClockCircle",
+      "name": "clock-circle",
+      "source": "templates/twotone/clock-circle.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "CloseCircle",
+      "name": "close-circle",
+      "source": "templates/twotone/close-circle.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "CloseSquare",
+      "name": "close-square",
+      "source": "templates/twotone/close-square.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Cloud",
+      "name": "cloud",
+      "source": "templates/twotone/cloud.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Code",
+      "name": "code",
+      "source": "templates/twotone/code.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Compass",
+      "name": "compass",
+      "source": "templates/twotone/compass.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Contacts",
+      "name": "contacts",
+      "source": "templates/twotone/contacts.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Container",
+      "name": "container",
+      "source": "templates/twotone/container.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Control",
+      "name": "control",
+      "source": "templates/twotone/control.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Copy",
+      "name": "copy",
+      "source": "templates/twotone/copy.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "CopyrightCircle",
+      "name": "copyright-circle",
+      "source": "templates/twotone/copyright-circle.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Copyright",
+      "name": "copyright",
+      "source": "templates/twotone/copyright.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "CreditCard",
+      "name": "credit-card",
+      "source": "templates/twotone/credit-card.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Crown",
+      "name": "crown",
+      "source": "templates/twotone/crown.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "CustomerService",
+      "name": "customer-service",
+      "source": "templates/twotone/customer-service.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Dashboard",
+      "name": "dashboard",
+      "source": "templates/twotone/dashboard.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Database",
+      "name": "database",
+      "source": "templates/twotone/database.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "IconDelete",
+      "name": "delete",
+      "source": "templates/twotone/delete.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Diff",
+      "name": "diff",
+      "source": "templates/twotone/diff.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Dislike",
+      "name": "dislike",
+      "source": "templates/twotone/dislike.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "DollarCircle",
+      "name": "dollar-circle",
+      "source": "templates/twotone/dollar-circle.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Dollar",
+      "name": "dollar",
+      "source": "templates/twotone/dollar.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "DownCircle",
+      "name": "down-circle",
+      "source": "templates/twotone/down-circle.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "DownSquare",
+      "name": "down-square",
+      "source": "templates/twotone/down-square.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Edit",
+      "name": "edit",
+      "source": "templates/twotone/edit.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Environment",
+      "name": "environment",
+      "source": "templates/twotone/environment.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "EuroCircle",
+      "name": "euro-circle",
+      "source": "templates/twotone/euro-circle.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Euro",
+      "name": "euro",
+      "source": "templates/twotone/euro.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "ExclamationCircle",
+      "name": "exclamation-circle",
+      "source": "templates/twotone/exclamation-circle.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Experiment",
+      "name": "experiment",
+      "source": "templates/twotone/experiment.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "EyeInvisible",
+      "name": "eye-invisible",
+      "source": "templates/twotone/eye-invisible.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Eye",
+      "name": "eye",
+      "source": "templates/twotone/eye.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "FileAdd",
+      "name": "file-add",
+      "source": "templates/twotone/file-add.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "FileExcel",
+      "name": "file-excel",
+      "source": "templates/twotone/file-excel.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "FileExclamation",
+      "name": "file-exclamation",
+      "source": "templates/twotone/file-exclamation.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "FileImage",
+      "name": "file-image",
+      "source": "templates/twotone/file-image.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "FileMarkdown",
+      "name": "file-markdown",
+      "source": "templates/twotone/file-markdown.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "FilePdf",
+      "name": "file-pdf",
+      "source": "templates/twotone/file-pdf.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "FilePpt",
+      "name": "file-ppt",
+      "source": "templates/twotone/file-ppt.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "FileText",
+      "name": "file-text",
+      "source": "templates/twotone/file-text.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "FileUnknown",
+      "name": "file-unknown",
+      "source": "templates/twotone/file-unknown.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "FileWord",
+      "name": "file-word",
+      "source": "templates/twotone/file-word.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "FileZip",
+      "name": "file-zip",
+      "source": "templates/twotone/file-zip.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "File",
+      "name": "file",
+      "source": "templates/twotone/file.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Filter",
+      "name": "filter",
+      "source": "templates/twotone/filter.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Fire",
+      "name": "fire",
+      "source": "templates/twotone/fire.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Flag",
+      "name": "flag",
+      "source": "templates/twotone/flag.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "FolderAdd",
+      "name": "folder-add",
+      "source": "templates/twotone/folder-add.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "FolderOpen",
+      "name": "folder-open",
+      "source": "templates/twotone/folder-open.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Folder",
+      "name": "folder",
+      "source": "templates/twotone/folder.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Frown",
+      "name": "frown",
+      "source": "templates/twotone/frown.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Fund",
+      "name": "fund",
+      "source": "templates/twotone/fund.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "FunnelPlot",
+      "name": "funnel-plot",
+      "source": "templates/twotone/funnel-plot.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Gift",
+      "name": "gift",
+      "source": "templates/twotone/gift.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Gold",
+      "name": "gold",
+      "source": "templates/twotone/gold.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Hdd",
+      "name": "hdd",
+      "source": "templates/twotone/hdd.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Heart",
+      "name": "heart",
+      "source": "templates/twotone/heart.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Highlight",
+      "name": "highlight",
+      "source": "templates/twotone/highlight.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Home",
+      "name": "home",
+      "source": "templates/twotone/home.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Hourglass",
+      "name": "hourglass",
+      "source": "templates/twotone/hourglass.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Html5",
+      "name": "html5",
+      "source": "templates/twotone/html5.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Idcard",
+      "name": "idcard",
+      "source": "templates/twotone/idcard.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "InfoCircle",
+      "name": "info-circle",
+      "source": "templates/twotone/info-circle.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Insurance",
+      "name": "insurance",
+      "source": "templates/twotone/insurance.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Interaction",
+      "name": "interaction",
+      "source": "templates/twotone/interaction.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Layout",
+      "name": "layout",
+      "source": "templates/twotone/layout.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "LeftCircle",
+      "name": "left-circle",
+      "source": "templates/twotone/left-circle.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "LeftSquare",
+      "name": "left-square",
+      "source": "templates/twotone/left-square.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Like",
+      "name": "like",
+      "source": "templates/twotone/like.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Lock",
+      "name": "lock",
+      "source": "templates/twotone/lock.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Mail",
+      "name": "mail",
+      "source": "templates/twotone/mail.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "MedicineBox",
+      "name": "medicine-box",
+      "source": "templates/twotone/medicine-box.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Meh",
+      "name": "meh",
+      "source": "templates/twotone/meh.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Message",
+      "name": "message",
+      "source": "templates/twotone/message.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "MinusCircle",
+      "name": "minus-circle",
+      "source": "templates/twotone/minus-circle.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "MinusSquare",
+      "name": "minus-square",
+      "source": "templates/twotone/minus-square.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Mobile",
+      "name": "mobile",
+      "source": "templates/twotone/mobile.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "MoneyCollect",
+      "name": "money-collect",
+      "source": "templates/twotone/money-collect.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Notification",
+      "name": "notification",
+      "source": "templates/twotone/notification.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "PauseCircle",
+      "name": "pause-circle",
+      "source": "templates/twotone/pause-circle.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Phone",
+      "name": "phone",
+      "source": "templates/twotone/phone.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Picture",
+      "name": "picture",
+      "source": "templates/twotone/picture.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "PieChart",
+      "name": "pie-chart",
+      "source": "templates/twotone/pie-chart.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "PlayCircle",
+      "name": "play-circle",
+      "source": "templates/twotone/play-circle.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "PlaySquare",
+      "name": "play-square",
+      "source": "templates/twotone/play-square.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "PlusCircle",
+      "name": "plus-circle",
+      "source": "templates/twotone/plus-circle.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "PlusSquare",
+      "name": "plus-square",
+      "source": "templates/twotone/plus-square.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "PoundCircle",
+      "name": "pound-circle",
+      "source": "templates/twotone/pound-circle.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Printer",
+      "name": "printer",
+      "source": "templates/twotone/printer.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Profile",
+      "name": "profile",
+      "source": "templates/twotone/profile.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Project",
+      "name": "project",
+      "source": "templates/twotone/project.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "PropertySafety",
+      "name": "property-safety",
+      "source": "templates/twotone/property-safety.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Pushpin",
+      "name": "pushpin",
+      "source": "templates/twotone/pushpin.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "QuestionCircle",
+      "name": "question-circle",
+      "source": "templates/twotone/question-circle.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Reconciliation",
+      "name": "reconciliation",
+      "source": "templates/twotone/reconciliation.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "RedEnvelope",
+      "name": "red-envelope",
+      "source": "templates/twotone/red-envelope.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Rest",
+      "name": "rest",
+      "source": "templates/twotone/rest.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "RightCircle",
+      "name": "right-circle",
+      "source": "templates/twotone/right-circle.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "RightSquare",
+      "name": "right-square",
+      "source": "templates/twotone/right-square.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Rocket",
+      "name": "rocket",
+      "source": "templates/twotone/rocket.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "SafetyCertificate",
+      "name": "safety-certificate",
+      "source": "templates/twotone/safety-certificate.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Save",
+      "name": "save",
+      "source": "templates/twotone/save.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Schedule",
+      "name": "schedule",
+      "source": "templates/twotone/schedule.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "SecurityScan",
+      "name": "security-scan",
+      "source": "templates/twotone/security-scan.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Setting",
+      "name": "setting",
+      "source": "templates/twotone/setting.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Shop",
+      "name": "shop",
+      "source": "templates/twotone/shop.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Shopping",
+      "name": "shopping",
+      "source": "templates/twotone/shopping.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Skin",
+      "name": "skin",
+      "source": "templates/twotone/skin.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Sliders",
+      "name": "sliders",
+      "source": "templates/twotone/sliders.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Smile",
+      "name": "smile",
+      "source": "templates/twotone/smile.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Snippets",
+      "name": "snippets",
+      "source": "templates/twotone/snippets.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Sound",
+      "name": "sound",
+      "source": "templates/twotone/sound.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Star",
+      "name": "star",
+      "source": "templates/twotone/star.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Stop",
+      "name": "stop",
+      "source": "templates/twotone/stop.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Switcher",
+      "name": "switcher",
+      "source": "templates/twotone/switcher.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Tablet",
+      "name": "tablet",
+      "source": "templates/twotone/tablet.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Tag",
+      "name": "tag",
+      "source": "templates/twotone/tag.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Tags",
+      "name": "tags",
+      "source": "templates/twotone/tags.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Thunderbolt",
+      "name": "thunderbolt",
+      "source": "templates/twotone/thunderbolt.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Tool",
+      "name": "tool",
+      "source": "templates/twotone/tool.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "TrademarkCircle",
+      "name": "trademark-circle",
+      "source": "templates/twotone/trademark-circle.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Trophy",
+      "name": "trophy",
+      "source": "templates/twotone/trophy.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Unlock",
+      "name": "unlock",
+      "source": "templates/twotone/unlock.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "UpCircle",
+      "name": "up-circle",
+      "source": "templates/twotone/up-circle.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "UpSquare",
+      "name": "up-square",
+      "source": "templates/twotone/up-square.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Usb",
+      "name": "usb",
+      "source": "templates/twotone/usb.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "VideoCamera",
+      "name": "video-camera",
+      "source": "templates/twotone/video-camera.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Wallet",
+      "name": "wallet",
+      "source": "templates/twotone/wallet.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "Warning",
+      "name": "warning",
+      "source": "templates/twotone/warning.svg",
+      "colorModel": "twoTone",
+      "fit": "contain"
+    }
+  ]
+}

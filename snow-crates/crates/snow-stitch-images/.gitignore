@@ -1,0 +1,6 @@
+/target
+/artifacts
+*.trace.json
+test-images
+test-imgs
+test-frames

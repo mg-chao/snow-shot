@@ -1,0 +1,629 @@
+{
+  "schemaVersion": 1,
+  "pack": "snow-shot",
+  "cppNamespace": "snow_shot::presentation::icons::custom",
+  "headerInclude": "snow_shot/presentation/components/icons/snowshoticons.h",
+  "source": "Snow Shot project-owned static SVG assets",
+  "entries": [
+    {
+      "variant": "app",
+      "symbol": "ApplicationIcon",
+      "name": "application-icon",
+      "source": "app-icon.svg",
+      "colorModel": "fullColor",
+      "fit": "contain",
+      "allowEmbeddedDataImages": true
+    },
+    {
+      "variant": "brand",
+      "symbol": "SnowShotLogo",
+      "name": "snow-shot-logo",
+      "source": "../src/presentation/components/icons/resources/snow-shot-logo.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Angle",
+      "name": "angle",
+      "source": "../src/presentation/components/icons/resources/angle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ArrowTypeCurved",
+      "name": "arrow-type-curved",
+      "source": "../src/presentation/components/icons/resources/arrow-type-curved.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ArrowTypeElbow",
+      "name": "arrow-type-elbow",
+      "source": "../src/presentation/components/icons/resources/arrow-type-elbow.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ArrowTypeStraight",
+      "name": "arrow-type-straight",
+      "source": "../src/presentation/components/icons/resources/arrow-type-straight.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ArrowheadBar",
+      "name": "arrowhead-bar",
+      "source": "../src/presentation/components/icons/resources/arrowhead-bar.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ArrowheadCircle",
+      "name": "arrowhead-circle",
+      "source": "../src/presentation/components/icons/resources/arrowhead-circle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ArrowheadCircleOutline",
+      "name": "arrowhead-circle-outline",
+      "source": "../src/presentation/components/icons/resources/arrowhead-circle-outline.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ArrowheadCrowfootMany",
+      "name": "arrowhead-crowfoot-many",
+      "source": "../src/presentation/components/icons/resources/arrowhead-crowfoot-many.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ArrowheadCrowfootOne",
+      "name": "arrowhead-crowfoot-one",
+      "source": "../src/presentation/components/icons/resources/arrowhead-crowfoot-one.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ArrowheadCrowfootOneOrMany",
+      "name": "arrowhead-crowfoot-one-or-many",
+      "source": "../src/presentation/components/icons/resources/arrowhead-crowfoot-one-or-many.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ArrowheadDiamond",
+      "name": "arrowhead-diamond",
+      "source": "../src/presentation/components/icons/resources/arrowhead-diamond.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ArrowheadDiamondOutline",
+      "name": "arrowhead-diamond-outline",
+      "source": "../src/presentation/components/icons/resources/arrowhead-diamond-outline.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ArrowheadDot",
+      "name": "arrowhead-dot",
+      "source": "../src/presentation/components/icons/resources/arrowhead-dot.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ArrowheadNone",
+      "name": "arrowhead-none",
+      "source": "../src/presentation/components/icons/resources/arrowhead-none.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ArrowheadStandard",
+      "name": "arrowhead-standard",
+      "source": "../src/presentation/components/icons/resources/arrowhead-standard.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ArrowheadTriangle",
+      "name": "arrowhead-triangle",
+      "source": "../src/presentation/components/icons/resources/arrowhead-triangle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ArrowheadTriangleOutline",
+      "name": "arrowhead-triangle-outline",
+      "source": "../src/presentation/components/icons/resources/arrowhead-triangle-outline.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Blur",
+      "name": "blur",
+      "source": "../src/presentation/components/icons/resources/blur.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ColorPicker",
+      "name": "color-picker",
+      "source": "../src/presentation/components/icons/resources/color-picker.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Disabled",
+      "name": "disabled",
+      "source": "../src/presentation/components/icons/resources/disabled.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Duplicate",
+      "name": "duplicate",
+      "source": "../src/presentation/components/icons/resources/duplicate.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Exit",
+      "name": "exit",
+      "source": "../src/presentation/components/icons/resources/exit.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FillSolid",
+      "name": "fill-solid",
+      "source": "../src/presentation/components/icons/resources/fill-solid.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FlipVertical",
+      "name": "flip-vertical",
+      "source": "../src/presentation/components/icons/resources/flip-vertical.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FontSizeLarge",
+      "name": "font-size-large",
+      "source": "../src/presentation/components/icons/resources/font-size-large.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FontSizeMedium",
+      "name": "font-size-medium",
+      "source": "../src/presentation/components/icons/resources/font-size-medium.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FontSizeSmall",
+      "name": "font-size-small",
+      "source": "../src/presentation/components/icons/resources/font-size-small.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "FontSizeVeryLarge",
+      "name": "font-size-very-large",
+      "source": "../src/presentation/components/icons/resources/font-size-very-large.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Group",
+      "name": "group",
+      "source": "../src/presentation/components/icons/resources/group.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Keyboard",
+      "name": "keyboard",
+      "source": "../src/presentation/components/icons/resources/keyboard.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "OcrTranslate",
+      "name": "ocr-translate",
+      "source": "../src/presentation/components/icons/resources/ocr-translate.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Opacity",
+      "name": "opacity",
+      "source": "../src/presentation/components/icons/resources/opacity.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "PinToScreen",
+      "name": "pin-to-screen",
+      "source": "../src/presentation/components/icons/resources/pin-to-screen.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "RecordScreen",
+      "name": "record-screen",
+      "source": "../src/presentation/components/icons/resources/record-screen.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "RecordingFolder",
+      "name": "recording-folder",
+      "source": "../src/presentation/components/icons/resources/recording-folder.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "RecordingMicrophone",
+      "name": "recording-microphone",
+      "source": "../src/presentation/components/icons/resources/recording-microphone.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "RecordingResume",
+      "name": "recording-resume",
+      "source": "../src/presentation/components/icons/resources/recording-resume.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "RecordingStart",
+      "name": "recording-start",
+      "source": "../src/presentation/components/icons/resources/recording-start.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "RecordingStop",
+      "name": "recording-stop",
+      "source": "../src/presentation/components/icons/resources/recording-stop.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Save",
+      "name": "save",
+      "source": "../src/presentation/components/icons/resources/save.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ScanQrcode",
+      "name": "scan-qrcode",
+      "source": "../src/presentation/components/icons/resources/scan-qrcode.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ScreenshotCopy",
+      "name": "screenshot-copy",
+      "source": "../src/presentation/components/icons/resources/screenshot-copy.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ScreenshotDelay",
+      "name": "screenshot-delay",
+      "source": "../src/presentation/components/icons/resources/screenshot-delay.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ScreenshotFocusedWindow",
+      "name": "screenshot-focused-window",
+      "source": "../src/presentation/components/icons/resources/screenshot-focused-window.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ScreenshotFullScreen",
+      "name": "screenshot-full-screen",
+      "source": "../src/presentation/components/icons/resources/screenshot-full-screen.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ScrollingHorizontal",
+      "name": "scrolling-horizontal",
+      "source": "../src/presentation/components/icons/resources/scrolling-horizontal.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ScrollingScreenshot",
+      "name": "scrolling-screenshot",
+      "source": "../src/presentation/components/icons/resources/scrolling-screenshot.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ScrollingVertical",
+      "name": "scrolling-vertical",
+      "source": "../src/presentation/components/icons/resources/scrolling-vertical.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "SelectionLockAspect",
+      "name": "selection-lock-aspect",
+      "source": "../src/presentation/components/icons/resources/selection-lock-aspect.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "SelectionRadius",
+      "name": "selection-radius",
+      "source": "../src/presentation/components/icons/resources/selection-radius.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "SelectionShadow",
+      "name": "selection-shadow",
+      "source": "../src/presentation/components/icons/resources/selection-shadow.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ShapeDiamond",
+      "name": "shape-diamond",
+      "source": "../src/presentation/components/icons/resources/shape-diamond.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ShapeEllipse",
+      "name": "shape-ellipse",
+      "source": "../src/presentation/components/icons/resources/shape-ellipse.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ShapeRectangle",
+      "name": "shape-rectangle",
+      "source": "../src/presentation/components/icons/resources/shape-rectangle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "TableRecognition",
+      "name": "table-recognition",
+      "source": "../src/presentation/components/icons/resources/table-recognition.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "TextRecognition",
+      "name": "text-recognition",
+      "source": "../src/presentation/components/icons/resources/text-recognition.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ToolArrow",
+      "name": "tool-arrow",
+      "source": "../src/presentation/components/icons/resources/tool-arrow.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ToolEraser",
+      "name": "tool-eraser",
+      "source": "../src/presentation/components/icons/resources/tool-eraser.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ToolFilter",
+      "name": "tool-filter",
+      "source": "../src/presentation/components/icons/resources/tool-filter.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ToolFreeDraw",
+      "name": "tool-free-draw",
+      "source": "../src/presentation/components/icons/resources/tool-free-draw.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ToolHighlight",
+      "name": "tool-highlight",
+      "source": "../src/presentation/components/icons/resources/tool-highlight.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ToolLine",
+      "name": "tool-line",
+      "source": "../src/presentation/components/icons/resources/tool-line.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ToolMove",
+      "name": "tool-move",
+      "source": "../src/presentation/components/icons/resources/tool-move.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ToolRecognizeText",
+      "name": "tool-recognize-text",
+      "source": "../src/presentation/components/icons/resources/tool-recognize-text.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ToolRectangle",
+      "name": "tool-rectangle",
+      "source": "../src/presentation/components/icons/resources/tool-rectangle.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ToolSelect",
+      "name": "tool-select",
+      "source": "../src/presentation/components/icons/resources/tool-select.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ToolSerialNumber",
+      "name": "tool-serial-number",
+      "source": "../src/presentation/components/icons/resources/tool-serial-number.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ToolSpotlight",
+      "name": "tool-spotlight",
+      "source": "../src/presentation/components/icons/resources/tool-spotlight.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ToolText",
+      "name": "tool-text",
+      "source": "../src/presentation/components/icons/resources/tool-text.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "ToolWatermark",
+      "name": "tool-watermark",
+      "source": "../src/presentation/components/icons/resources/tool-watermark.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Trash",
+      "name": "trash",
+      "source": "../src/presentation/components/icons/resources/trash.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "WatermarkGap",
+      "name": "watermark-gap",
+      "source": "../src/presentation/components/icons/resources/watermark-gap.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "WheelMouse",
+      "name": "wheel-mouse",
+      "source": "../src/presentation/components/icons/resources/wheel-mouse.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "Window",
+      "name": "window",
+      "source": "../src/presentation/components/icons/resources/window.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "twotone",
+      "symbol": "ScreenshotFeature",
+      "name": "screenshot-feature",
+      "source": "../src/presentation/components/icons/resources/screenshot-feature.svg",
+      "colorModel": "twoTone",
+      "fit": "contain",
+      "defaultColors": {
+        "secondary": "#9254DE"
+      }
+    }
+  ]
+}

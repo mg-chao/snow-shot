@@ -1,0 +1,12 @@
+cmake_minimum_required(VERSION 3.25)
+project(snow_image_package_consumer LANGUAGES CXX)
+
+find_package(snow_image 3 CONFIG REQUIRED)
+
+add_executable(snow_image_consumer_static main.cpp)
+target_link_libraries(snow_image_consumer_static PRIVATE snow_image::snow_image_static)
+target_compile_features(snow_image_consumer_static PRIVATE cxx_std_20)
+
+add_executable(snow_image_consumer_shared main.cpp)
+target_link_libraries(snow_image_consumer_shared PRIVATE snow_image::snow_image_shared)
+target_compile_features(snow_image_consumer_shared PRIVATE cxx_std_20)

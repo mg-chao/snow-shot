@@ -1,0 +1,95 @@
+# Local agent state
+/.agents/
+/.codex/
+.zcode
+
+# Rust build output
+**/target/
+
+# Qt, qmake, and CMake build trees
+**/.codex-build/
+**/build/
+**/build-*/
+**/build_*/
+/build/
+/.tools/
+**/cmake-build-*/
+**/CMakeFiles/
+**/CMakeCache.txt
+**/cmake_install.cmake
+**/CTestTestfile.cmake
+**/Testing/Temporary/
+**/compile_commands.json
+**/.qmake.cache
+**/.qmake.stash
+**/Makefile
+**/Makefile.*
+
+# Qt generated sources
+**/.moc/
+**/.obj/
+**/.pch/
+**/.rcc/
+**/.uic/
+**/moc_*.cpp
+**/moc_predefs.h
+**/qrc_*.cpp
+**/ui_*.h
+**/*.moc
+**/object_script.*
+
+# Native binaries and intermediates
+*.o
+*.obj
+*.a
+*.lib
+*.dll
+*.so
+*.so.*
+*.dylib
+*.exe
+*.pdb
+*.ilk
+*.idb
+*.exp
+
+# IDE and OS metadata
+.idea/
+.vscode/
+.vs/
+*.pro.user
+*.pro.user.*
+*.qbs.user
+*.qtc_clang/
+*.qtc_clangd/
+*.suo
+*.user
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs and temporary files
+*.log
+*.tmp
+*.stackdump
+*.autosave
+*~
+**/__pycache__/
+*.py[cod]
+baseline-build-codex
+baseline-codex
+
+# Locally downloaded OCR runtime and model assets.
+/snow-crates/crates/snow-ocr-c/assets/onnxruntime/
+/snow-crates/crates/snow-ocr-c/assets/ppocrv6-small/*.onnx
+/snow-crates/crates/snow-ocr-c/assets/ppocrv6-small/*.txt
+
+# Build
+**/artifacts/
+**/vcpkg_installed/
+
+# Artifacts written by the export-pipeline audio noise check test
+snow-crates/crates/snow-recording-export/tests/output/
+
+# Artifacts written by the capture crackle check test
+snow-crates/crates/snow-audio-recorder/tests/output/
