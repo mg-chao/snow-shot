@@ -211,6 +211,7 @@ class ScreenshotPinnedWindow final : public QWidget {
     void ensureRecognitionProviders();
     void deactivateRecognition();
     void updateRecognitionToolbarState();
+    [[nodiscard]] bool recognitionModeAvailable(int mode) const;
     void activateTextTranslation();
     void handleTextEditingRequested();
     void handleTextTranslationRequested();

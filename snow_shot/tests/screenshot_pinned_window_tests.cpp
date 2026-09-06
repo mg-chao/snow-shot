@@ -6,6 +6,7 @@
 #include "snow_shot/presentation/screenshotocrpresentation.h"
 #include "snow_shot/presentation/screenshotocrrecognitionservice.h"
 #include "snow_shot/presentation/screenshotqrrecognitionservice.h"
+#include "snow_shot/presentation/screenshotrecognitionsessioncontroller.h"
 #include "snow_shot/presentation/screenshotrecognitionwindow.h"
 #include "snow_shot/presentation/screenshotselectionexportuiservices.h"
 #include "snow_shot/presentation/screenshottoolpalette.h"
@@ -27,6 +28,7 @@
 #include <QClipboard>
 #include <QCoreApplication>
 #include <QCursor>
+#include <QDataStream>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QEnterEvent>
@@ -41,6 +43,7 @@
 #include <QLineF>
 #include <QLineEdit>
 #include <QMouseEvent>
+#include <QMimeData>
 #include <QPainter>
 #include <QPointer>
 #include <QPushButton>
@@ -48,6 +51,7 @@
 #include <QScreen>
 #include <QScopeGuard>
 #include <QTemporaryDir>
+#include <QTableView>
 #include <QThread>
 #include <QTimer>
 #include <QTextBrowser>
@@ -462,12 +466,24 @@ hiddenPinnedWindowExcept(std::initializer_list<ScreenshotPinnedWindow*> excluded
     return nullptr;
 }
 
-void pinnedSelectionRendersCachedOcrInCanvasCoordinates() {
+ScreenshotPinnedWindow* onlyVisiblePinnedWindow() {
+    ScreenshotPinnedWindow* visibleWindow = nullptr;
+    for (ScreenshotPinnedWindow* candidate : topLevelPinnedWindows()) {
+        if (candidate->isVisible()) {
+            require(visibleWindow == nullptr, "only the current test pin should be visible");
+            visibleWindow = candidate;
+        }
+    }
+    return visibleWindow;
+}
+
+void pinnedSelectionRendersCachedOcrInCanvasCoordinates(bool restoreFromStorage = false,
+                                                        bool includeOtherResults = false) {
     QScreen* screen = QGuiApplication::primaryScreen();
     require(screen != nullptr, "a primary screen is required");
 
     IdleOcrRecognition recognition;
-    ScreenshotSelectionExportUiServices services(&recognition);
+    auto services = std::make_unique<ScreenshotSelectionExportUiServices>(&recognition);
     const QString text = QStringLiteral("Cached screenshot text");
     for (const int padding : {0, 12}) {
         for (const QPoint& origin : {QPoint(), QPoint(640, 360), QPoint(-640, -360)}) {
@@ -490,6 +506,7 @@ void pinnedSelectionRendersCachedOcrInCanvasCoordinates() {
             presentation->selection = request.selection;
             ScreenshotOcrLine line;
             line.text = text;
+            line.confidence = 0.93;
             const QRectF textRect(QPointF(origin) + QPointF(40, 60), QSizeF(240, 32));
             line.quad = QPolygonF({textRect.topLeft(), textRect.topRight(), textRect.bottomRight(),
                                    textRect.bottomLeft()});
@@ -499,6 +516,13 @@ void pinnedSelectionRendersCachedOcrInCanvasCoordinates() {
             ScreenshotOcrRecognitionResult result;
             result.presentation = presentation;
             request.recognitionResults.text = result;
+            if (includeOtherResults) {
+                SnowShotTableResult table;
+                table.html = QStringLiteral("<table><tr><td>Saved table</td></tr></table>");
+                request.recognitionResults.table = table;
+                request.recognitionResults.qr =
+                    ScreenshotQrRecognitionResult{{QStringLiteral("Saved barcode")}, {}};
+            }
 
             QImage content(request.selection.size(), QImage::Format_ARGB32_Premultiplied);
             content.fill(QColor(42, 84, 126));
@@ -507,11 +531,11 @@ void pinnedSelectionRendersCachedOcrInCanvasCoordinates() {
                 ScreenshotExportSource::fromImage(image));
             bool completed = false;
             bool succeeded = false;
-            require(services.presentPinnedArtifact(request, std::move(artifact),
-                                                   [&completed, &succeeded](bool success, QImage) {
-                                                       completed = true;
-                                                       succeeded = success;
-                                                   }),
+            require(services->presentPinnedArtifact(request, std::move(artifact),
+                                                    [&completed, &succeeded](bool success, QImage) {
+                                                        completed = true;
+                                                        succeeded = success;
+                                                    }),
                     "a screenshot with cached OCR should be pinnable");
             QElapsedTimer elapsed;
             elapsed.start();
@@ -520,19 +544,17 @@ void pinnedSelectionRendersCachedOcrInCanvasCoordinates() {
                 QThread::msleep(1);
             }
             require(completed && succeeded, "the cached OCR pin should finish loading");
-            QPointer<ScreenshotPinnedWindow> window;
-            for (ScreenshotPinnedWindow* candidate : topLevelPinnedWindows()) {
-                if (candidate->isVisible()) {
-                    require(window == nullptr, "only the current test pin should be visible");
-                    window = candidate;
-                }
-            }
+            QPointer<ScreenshotPinnedWindow> window(onlyVisiblePinnedWindow());
             require(window != nullptr, "the cached OCR pin should be visible");
-            const auto closeWindow = qScopeGuard([&window]() {
+            const QString persistenceId = window->persistenceId();
+            const auto closeWindow = qScopeGuard([&window, persistenceId]() {
                 if (window != nullptr) {
                     window->close();
                     static_cast<void>(processUntilDeleted(window, 2000));
                 }
+                static_cast<void>(
+                    snow_shot::storage::ApplicationStorage::instance().pinnedWindows().remove(
+                        persistenceId));
             });
             QAction* action =
                 pinnedMenuActionNamed(*window, QStringLiteral("screenshotPinnedOcrAction"));
@@ -541,8 +563,86 @@ void pinnedSelectionRendersCachedOcrInCanvasCoordinates() {
             action->trigger();
             QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
 
+            if (restoreFromStorage) {
+                const auto record = window->persistenceSnapshot();
+                require(!record.recognitionResults.isEmpty(),
+                        "the pinned snapshot should serialize its cached recognition results");
+                QDataStream payload(record.recognitionResults);
+                QString savedKey;
+                quint8 hasText = 0, hasTable = 0, hasQr = 0;
+                QString savedError;
+                QRect savedSelection;
+                qint64 savedLineCount = 0;
+                payload >> savedKey >> hasText >> hasTable >> hasQr >> savedError >>
+                    savedSelection >> savedLineCount;
+                require(payload.status() == QDataStream::Ok &&
+                            savedKey == request.recognitionResults.key && hasText == 1 &&
+                            savedSelection == presentation->selection &&
+                            savedLineCount == presentation->lines.size(),
+                        "persisted OCR must keep the existing 64-bit line-count format");
+                window->close();
+                require(processUntilDeleted(window, 2000), "the original OCR pin should close");
+                services.reset();
+
+                auto& storage = snow_shot::storage::ApplicationStorage::instance();
+                const QString directory = storage.configurationDirectory();
+                require(storage.pinnedWindows().upsert(record).success &&
+                            storage.pinnedWindows().flush().success,
+                        "the pinned screenshot and OCR should be saved to disk");
+                storage.shutdown();
+                const snow_shot::storage::StorageInitializationOptions options{
+                    QDir(directory).absoluteFilePath(QStringLiteral("../bin")), directory, 0};
+                require(storage.initialize(options).success,
+                        "pinned storage should reopen after a restart");
+                const auto loaded = storage.pinnedWindows().loadRecord(record.id);
+                require(loaded.has_value() &&
+                            loaded->recognitionResults == record.recognitionResults,
+                        "reopened storage should preserve the serialized OCR bytes");
+
+                services = std::make_unique<ScreenshotSelectionExportUiServices>(&recognition);
+                services->restorePersistedWindows();
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+                window = onlyVisiblePinnedWindow();
+                require(window != nullptr, "the saved OCR pin should be recreated after restart");
+                action =
+                    pinnedMenuActionNamed(*window, QStringLiteral("screenshotPinnedOcrAction"));
+                require(action != nullptr && action->isEnabled(),
+                        "the restored pin should offer text recognition results");
+                action->trigger();
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+
+                auto* session = window->findChild<ScreenshotRecognitionSessionController*>();
+                require(session != nullptr, "the restored pin should have a recognition session");
+                const auto cached = session->cachedRecognitionResults();
+                require(cached.text.has_value() && cached.text->presentation != nullptr &&
+                            cached.text->presentation->lines.size() == presentation->lines.size(),
+                        "restoring saved OCR must retain every recognized line");
+                require(cached.text->presentation->selection == presentation->selection &&
+                            cached.text->presentation->lines.front().text == line.text &&
+                            cached.text->presentation->lines.front().quad == line.quad &&
+                            window->persistenceSnapshot().recognitionResults ==
+                                record.recognitionResults,
+                        "restoring saved OCR must preserve its text and canvas coordinates");
+                if (includeOtherResults) {
+                    require(cached.table.has_value() &&
+                                cached.table->html == request.recognitionResults.table->html &&
+                                cached.qr.has_value() &&
+                                cached.qr->contents == request.recognitionResults.qr->contents,
+                            "restoring OCR must preserve subsequent table and barcode results");
+                }
+            }
+
             auto* recognitionContent = window->findChild<ScreenshotRecognitionWindow*>(
                 QStringLiteral("screenshotPinnedRecognitionContent"));
+            if (recognitionContent == nullptr || !recognitionContent->isVisible()) {
+                auto* session = window->findChild<ScreenshotRecognitionSessionController*>();
+                std::cerr << "origin=" << origin.x() << ',' << origin.y() << " padding=" << padding
+                          << " restored=" << restoreFromStorage << " action=" << action->isEnabled()
+                          << '/' << action->isChecked()
+                          << " target=" << (session != nullptr && session->hasTarget())
+                          << " cached=" << (session != nullptr && session->hasTextResult())
+                          << " active=" << (session != nullptr && session->active()) << '\n';
+            }
             require(recognitionContent != nullptr && recognitionContent->isVisible(),
                     "showing cached OCR should display the embedded recognition surface");
             auto* textLayer = recognitionContent->findChild<QGraphicsView*>(
@@ -592,6 +692,282 @@ void pinnedSelectionRendersCachedOcrInCanvasCoordinates() {
                     "pinning must preserve the source screenshot's cached OCR coordinates");
             window->close();
             require(processUntilDeleted(window, 2000), "the cached OCR pin should close");
+        }
+    }
+}
+
+ScreenshotPinnedWindow::Config cachedOcrPinConfig(ScreenshotOcrRecognitionPort* recognition,
+                                                  int shadowWidth = 0) {
+    QScreen* screen = QGuiApplication::primaryScreen();
+    require(screen != nullptr, "a primary screen is required");
+    QImage image(320, 180, QImage::Format_ARGB32_Premultiplied);
+    image.fill(QColor(42, 84, 126));
+    ScreenshotPinnedWindow::Config config;
+    config.canvasSourceRect = QRectF(640, 360, 320, 180);
+    config.imageSource = ScreenshotImageSource::fromImage(image, config.canvasSourceRect);
+    config.contentCanvasRect = config.canvasSourceRect;
+    config.surfaceCanvasRect =
+        config.canvasSourceRect.adjusted(-shadowWidth, -shadowWidth, shadowWidth, shadowWidth);
+    config.resultStyle.shadowWidth = shadowWidth;
+    config.fullResolutionScaleBasis = config.surfaceCanvasRect.size().toSize();
+    config.nativeGeometry =
+        physicalPinGeometry(*screen, QPoint(40, 40), config.fullResolutionScaleBasis);
+    config.screen = screen;
+    config.recognition = recognition;
+    config.automaticTextRecognition = false;
+    auto presentation = std::make_shared<ScreenshotOcrPresentation>();
+    presentation->selection = config.canvasSourceRect.toRect();
+    ScreenshotOcrLine line;
+    line.text = QStringLiteral("Saved OCR");
+    line.confidence = 0.95;
+    const QRectF textRect(680, 405, 180, 30);
+    line.quad = QPolygonF(
+        {textRect.topLeft(), textRect.topRight(), textRect.bottomRight(), textRect.bottomLeft()});
+    presentation->lines.push_back(line);
+    presentation->prepareForRendering();
+    config.recognitionResults.key = QStringLiteral("cached-ocr-audit");
+    config.recognitionResults.text = ScreenshotOcrRecognitionResult{presentation, {}, {}, {}};
+    return config;
+}
+
+void pinnedSnapshotRetainsRecognitionBeforeDeferredSetup() {
+    IdleOcrRecognition recognition;
+    const auto config = cachedOcrPinConfig(&recognition);
+    QPointer<ScreenshotPinnedWindow> window(new ScreenshotPinnedWindow());
+    const auto cleanup = qScopeGuard([&]() {
+        if (window != nullptr) {
+            window->close();
+            static_cast<void>(processUntilDeleted(window, 2000));
+        }
+    });
+    require(window->present(config), "the early snapshot pin should present");
+    auto* session = window->findChild<ScreenshotRecognitionSessionController*>();
+    require(session != nullptr && !session->hasTarget(),
+            "the snapshot fixture should precede deferred recognition setup");
+    const QByteArray earlyResults = window->persistenceSnapshot().recognitionResults;
+    require(!earlyResults.isEmpty(),
+            "a snapshot before deferred setup must retain the supplied OCR results");
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    require(session->hasTarget() &&
+                window->persistenceSnapshot().recognitionResults == earlyResults,
+            "recognition setup must not change the persisted OCR payload");
+    session->invalidate();
+    require(window->persistenceSnapshot().recognitionResults.isEmpty(),
+            "invalidating initialized recognition must not revive the original cached result");
+}
+
+void restoredInvalidOcrDoesNotSuppressRecognition() {
+    for (const bool trailingBytes : {false, true}) {
+        IdleOcrRecognition recognition;
+        auto config = cachedOcrPinConfig(&recognition);
+        const auto presentation = config.recognitionResults.text->presentation;
+        QDataStream stream(&config.persistedRecognitionResults, QIODevice::WriteOnly);
+        stream << config.recognitionResults.key << quint8(1) << quint8(0) << quint8(0)
+               << (trailingBytes ? QString() : QStringLiteral("Recognition failed"))
+               << presentation->selection << qint64(trailingBytes ? 0 : 1);
+        const auto& line = presentation->lines.front();
+        stream << line.text << line.confidence << line.quad << quint8(0);
+        config.recognitionResults = {};
+        config.restorePersistentState = true;
+        config.automaticTextRecognition = true;
+        QPointer<ScreenshotPinnedWindow> window(new ScreenshotPinnedWindow());
+        const auto cleanup = qScopeGuard([&]() {
+            if (window != nullptr) {
+                window->close();
+                static_cast<void>(processUntilDeleted(window, 2000));
+            }
+        });
+        require(window->present(config), "the invalid OCR fixture should present");
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        auto* session = window->findChild<ScreenshotRecognitionSessionController*>();
+        require(session != nullptr && !session->hasTextResult(),
+                trailingBytes ? "an OCR payload with trailing data must not become an empty result"
+                              : "a persisted OCR error must not become a successful cached result");
+        QElapsedTimer elapsed;
+        elapsed.start();
+        while (recognition.requests == 0 && elapsed.elapsed() < 2000) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+        }
+        require(recognition.requests == 1,
+                "failed or malformed saved OCR must allow automatic recognition to retry");
+    }
+}
+
+void cachedPinnedOcrAvailableWithoutRecognitionProvider() {
+    auto config = cachedOcrPinConfig(nullptr);
+    SnowShotTableResult table;
+    table.html = QStringLiteral("<table><tr><td>Saved table</td></tr></table>");
+    config.recognitionResults.table = table;
+    config.recognitionResults.qr =
+        ScreenshotQrRecognitionResult{{QStringLiteral("Saved barcode")}, {}};
+    QPointer<ScreenshotPinnedWindow> window(new ScreenshotPinnedWindow());
+    const auto cleanup = qScopeGuard([&]() {
+        if (window != nullptr) {
+            window->close();
+            static_cast<void>(processUntilDeleted(window, 2000));
+        }
+    });
+    require(window->present(config), "the provider-free cached pin should present");
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    QAction* action = pinnedMenuActionNamed(*window, QStringLiteral("screenshotPinnedOcrAction"));
+    require(action != nullptr && action->isEnabled(),
+            "cached text must remain available without a recognition provider");
+    action->trigger();
+    auto* content = window->findChild<ScreenshotRecognitionWindow*>(
+        QStringLiteral("screenshotPinnedRecognitionContent"));
+    auto* session = window->findChild<ScreenshotRecognitionSessionController*>();
+    require(session != nullptr, "cached recognition should create a session");
+    auto mimeData = session->recognitionClipboardMimeData();
+    require(content != nullptr && content->isVisible() && mimeData != nullptr &&
+                mimeData->text() == QStringLiteral("Saved OCR"),
+            "cached text must render and copy without a recognition provider");
+    auto* controller = window->findChild<ScreenshotPinnedEditController*>();
+    auto* toolbarWindow = controller != nullptr ? controller->toolbarWindow() : nullptr;
+    auto* toolbar = toolbarWindow != nullptr ? toolbarWindow->palette() : nullptr;
+    require(toolbar != nullptr, "cached recognition should create the editing toolbar");
+    auto* ocrButton = toolbarButtonNamed(*toolbar, QStringLiteral("Text recognition"));
+    auto* tableQrButton = toolbar->findChild<QWidget*>(QStringLiteral("screenshotTableQrButton"));
+    require(ocrButton != nullptr && ocrButton->isEnabled() && tableQrButton != nullptr &&
+                tableQrButton->isEnabled(),
+            "cached text, table and barcode controls must be enabled without providers");
+    require(QMetaObject::invokeMethod(toolbar, "tableRequested", Qt::DirectConnection),
+            "the table toolbar action should activate");
+    auto* tableView = content->findChild<QTableView*>();
+    mimeData = session->recognitionClipboardMimeData();
+    require(tableView != nullptr && tableView->isVisible() &&
+                tableView->model()->index(0, 0).data().toString() ==
+                    QStringLiteral("Saved table") &&
+                mimeData != nullptr && mimeData->text() == QStringLiteral("Saved table"),
+            "cached tables must display and copy without a provider");
+    require(QMetaObject::invokeMethod(toolbar, "qrRequested", Qt::DirectConnection),
+            "the barcode toolbar action should activate");
+    auto* browser = content->findChild<QTextBrowser*>(QStringLiteral("screenshotQrContents"));
+    mimeData = session->recognitionClipboardMimeData();
+    require(browser != nullptr && browser->isVisible() &&
+                browser->toPlainText() == QStringLiteral("Saved barcode") && mimeData != nullptr &&
+                mimeData->text() == QStringLiteral("Saved barcode"),
+            "cached barcodes must display and copy without a provider");
+    session->invalidate();
+    require(!action->isEnabled() && !ocrButton->isEnabled() && !tableQrButton->isEnabled(),
+            "invalidated results must not leave provider-free recognition controls enabled");
+}
+
+void pinnedTransformResetPersistsWithoutResize() {
+    auto config = cachedOcrPinConfig(nullptr);
+    snow_shot::storage::PinnedWindowRecord lastWritten;
+    int writeCount = 0;
+    config.persistenceWriter = [&](const snow_shot::storage::PinnedWindowRecord& record) {
+        lastWritten = record;
+        ++writeCount;
+    };
+    QPointer<ScreenshotPinnedWindow> window(new ScreenshotPinnedWindow());
+    const auto cleanup = qScopeGuard([&]() {
+        if (window != nullptr) {
+            window->close();
+            static_cast<void>(processUntilDeleted(window, 2000));
+        }
+    });
+    require(window->present(config), "the transform reset fixture should present");
+    waitForUi(400);
+    auto* menu = window->findChild<adqt::widgets::AdContextMenu*>(
+        QStringLiteral("screenshotPinnedProcessImageMenu"));
+    require(menu != nullptr && menu->actions().size() == 6,
+            "the transform reset fixture should expose its image actions");
+    for (const int operation : {2, 0}) {
+        const QRect geometry = window->currentNativeGeometry();
+        menu->actions().at(operation)->trigger();
+        if (operation == 0) {
+            menu->actions().at(operation)->trigger();
+        }
+        waitForUi(400);
+        require(!lastWritten.imageTransform.isIdentity() && lastWritten.nativeGeometry == geometry,
+                "the flip or half-turn must persist without changing the window size");
+        const int previousWrites = writeCount;
+        menu->actions().back()->trigger();
+        QElapsedTimer elapsed;
+        elapsed.start();
+        while (writeCount == previousWrites && elapsed.elapsed() < 2000) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+            QThread::msleep(1);
+        }
+        require(writeCount > previousWrites && lastWritten.imageTransform.isIdentity() &&
+                    lastWritten.quarterTurns == 0 && lastWritten.nativeGeometry == geometry &&
+                    !lastWritten.recognitionResults.isEmpty(),
+                "resetting a flip or half-turn must persist the reset and retain OCR");
+    }
+}
+
+void transformedPinnedOcrTracksCanvasViewport() {
+    for (const int shadowWidth : {0, 12}) {
+        IdleOcrRecognition recognition;
+        auto config = cachedOcrPinConfig(&recognition, shadowWidth);
+        QPointer<ScreenshotPinnedWindow> window(new ScreenshotPinnedWindow());
+        const auto cleanup = qScopeGuard([&]() {
+            if (window != nullptr) {
+                window->close();
+                static_cast<void>(processUntilDeleted(window, 2000));
+            }
+        });
+        require(window->present(config), "the transformed OCR fixture should present");
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        QAction* action =
+            pinnedMenuActionNamed(*window, QStringLiteral("screenshotPinnedOcrAction"));
+        action->trigger();
+        const auto verifyAlignment = [&]() {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+            auto* canvas = window->findChild<SnowCanvasWidget*>();
+            auto* content = window->findChild<ScreenshotRecognitionWindow*>();
+            auto* layer =
+                content != nullptr
+                    ? content->findChild<QGraphicsView*>(QStringLiteral("snowShotOcrTextLayer"))
+                    : nullptr;
+            if (canvas == nullptr || layer == nullptr || layer->scene()->items().size() != 1) {
+                auto* session = window->findChild<ScreenshotRecognitionSessionController*>();
+                std::cerr << "shadow=" << shadowWidth
+                          << " turns=" << window->persistenceSnapshot().quarterTurns
+                          << " restored=" << config.restorePersistentState
+                          << " action=" << action->isEnabled() << '/' << action->isChecked()
+                          << " target=" << (session != nullptr && session->hasTarget())
+                          << " cached=" << (session != nullptr && session->hasTextResult())
+                          << " active=" << (session != nullptr && session->active()) << '\n';
+            }
+            require(canvas != nullptr && layer != nullptr && layer->scene()->items().size() == 1,
+                    "the transformed pin should retain its OCR text layer");
+            const auto record = window->persistenceSnapshot();
+            const QPointF sourcePoint = config.recognitionResults.text->presentation->lines.front()
+                                            .quad.boundingRect()
+                                            .center();
+            const QPointF transformedPoint =
+                record.contentCanvasRect.topLeft() +
+                record.imageTransform.map(sourcePoint - config.canvasSourceRect.topLeft());
+            const QPointF expected = canvas->canvasToViewTransform().map(transformedPoint);
+            auto* item = layer->scene()->items().front();
+            const QPointF actual =
+                layer->viewportTransform().map(item->sceneBoundingRect().center());
+            require(item->isVisible() && QLineF(actual, expected).length() < 3.0,
+                    "OCR text must follow the image viewport after transforms and restoration");
+        };
+        verifyAlignment();
+        for (int rotation = 0; rotation < 4; ++rotation) {
+            auto* menu = window->findChild<adqt::widgets::AdContextMenu*>(
+                QStringLiteral("screenshotPinnedProcessImageMenu"));
+            require(menu != nullptr, "the image transform menu should exist");
+            menu->actions().front()->trigger();
+            verifyAlignment();
+            const auto record = window->persistenceSnapshot();
+            window->close();
+            require(processUntilDeleted(window, 2000), "the transformed pin should close");
+            config.restorePersistentState = true;
+            config.nativeGeometry = record.nativeGeometry;
+            config.persistedImageTransform = record.imageTransform;
+            config.persistedQuarterTurns = record.quarterTurns;
+            config.persistedRecognitionResults = record.recognitionResults;
+            window = new ScreenshotPinnedWindow();
+            require(window->present(config), "the transformed pin should restore");
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+            action = pinnedMenuActionNamed(*window, QStringLiteral("screenshotPinnedOcrAction"));
+            action->trigger();
+            verifyAlignment();
         }
     }
 }
@@ -3094,6 +3470,12 @@ class IsolatedPinnedStorage final {
     QTemporaryDir m_temporary;
 };
 
+void restoredPinnedSelectionRendersCachedOcrAfterStorageRestart() {
+    IsolatedPinnedStorage storage;
+    pinnedSelectionRendersCachedOcrInCanvasCoordinates(true);
+    pinnedSelectionRendersCachedOcrInCanvasCoordinates(true, true);
+}
+
 // Describes a pinned window that was saved on a monitor whose recorded DPI
 // is `savedDpiFactor` times the current DPI. The recorded DPI and percent are
 // informational; the native geometry is what that percent produced in the
@@ -3648,6 +4030,27 @@ int main(int argc, char* argv[]) {
             pinnedSelectionRendersCachedOcrInCanvasCoordinates();
             return 0;
         }
+        if (app.arguments().contains(QStringLiteral("--restored-ocr-only"))) {
+            restoredPinnedSelectionRendersCachedOcrAfterStorageRestart();
+            return 0;
+        }
+        if (app.arguments().contains(QStringLiteral("--early-ocr-snapshot-only"))) {
+            pinnedSnapshotRetainsRecognitionBeforeDeferredSetup();
+            return 0;
+        }
+        if (app.arguments().contains(QStringLiteral("--invalid-ocr-restore-only"))) {
+            restoredInvalidOcrDoesNotSuppressRecognition();
+            return 0;
+        }
+        if (app.arguments().contains(QStringLiteral("--cached-ocr-provider-only"))) {
+            cachedPinnedOcrAvailableWithoutRecognitionProvider();
+            return 0;
+        }
+        if (app.arguments().contains(QStringLiteral("--transformed-ocr-only"))) {
+            pinnedTransformResetPersistsWithoutResize();
+            transformedPinnedOcrTracksCanvasViewport();
+            return 0;
+        }
         if (app.arguments().contains(QStringLiteral("--lazy-recognition-only"))) {
             pinnedRecognitionAvailableThroughLazyProvider();
             return 0;
@@ -3714,6 +4117,12 @@ int main(int argc, char* argv[]) {
         pinnedCopyIncludesSourceCanvasDrawing();
         pinnedQrResultCopiesWithKeyboardShortcut();
         pinnedSelectionRendersCachedOcrInCanvasCoordinates();
+        restoredPinnedSelectionRendersCachedOcrAfterStorageRestart();
+        pinnedSnapshotRetainsRecognitionBeforeDeferredSetup();
+        restoredInvalidOcrDoesNotSuppressRecognition();
+        cachedPinnedOcrAvailableWithoutRecognitionProvider();
+        transformedPinnedOcrTracksCanvasViewport();
+        pinnedTransformResetPersistsWithoutResize();
         groupedPinnedWindowSignalConnectionsDoNotAssert();
         groupMenuActionsExposeIconsAndCleanupState();
         pinnedRecognitionAvailableThroughLazyProvider();
