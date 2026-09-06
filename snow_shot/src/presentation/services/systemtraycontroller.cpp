@@ -537,6 +537,13 @@ void SystemTrayController::hide() {
     m_impl->trayIcon->hide();
 }
 
+void SystemTrayController::showCaptureMessage(const QString& message, bool warning) {
+    if (!m_impl->enabled)
+        return;
+    m_impl->trayIcon->showMessage(tr("Capture"), message,
+                                  warning ? QSystemTrayIcon::Warning : QSystemTrayIcon::Critical);
+}
+
 void SystemTrayController::setEnabled(bool enabled) {
     if (m_impl->enabled == enabled) {
         return;

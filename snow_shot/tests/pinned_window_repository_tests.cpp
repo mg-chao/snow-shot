@@ -56,7 +56,7 @@ storage::PinnedWindowRecord recordWithId(const QString& id, const QImage& image)
 }
 
 QString payloadFilePath(const QString& root, const QString& id) {
-    return QDir(root).filePath(QStringLiteral("pinned_windows_v3/pins/%1/source.png").arg(id));
+    return QDir(root).filePath(QStringLiteral("pinned_windows/pins/%1/source.png").arg(id));
 }
 
 QByteArray pngBytes(const QImage& image, int compression) {
@@ -153,9 +153,6 @@ void committedPayloadsAreServedFromDisk() {
                     lazy->canvasSession == record.canvasSession &&
                     lazy->recognitionResults == record.recognitionResults,
                 "the committed payload fields changed on round-trip");
-        const QVector<storage::PinnedWindowRecord> all = repository.records();
-        require(all.size() == 1 && all.front().image.cacheKey() != image.cacheKey(),
-                "records() still serves the committed payload from memory");
     }
     // The lazy form produced by a committing session must reload in a fresh
     // repository instance exactly like the manifest-loaded form.

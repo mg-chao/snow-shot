@@ -57,9 +57,9 @@ class ScreenshotOcrRecognitionPort : public QObject {
     virtual ~ScreenshotOcrRecognitionPort() = default;
     virtual RequestToken recognize(ScreenshotOcrRequest request, QObject* receiver,
                                    Completion completion) = 0;
-    // Optional render-only operation. The default keeps lightweight test and
-    // alternate implementations source-compatible; the production service
-    // performs this Qt-side image work off the caller thread.
+    // Optional render-only operation. The default is a no-op so test doubles
+    // only need to implement recognition; the production service performs this
+    // Qt-side image work off the caller thread.
     virtual RequestToken render(ScreenshotOcrRequest request, QObject* receiver,
                                 Completion completion) {
         Q_UNUSED(request);
@@ -82,7 +82,9 @@ class ScreenshotOcrRecognitionPort : public QObject {
     virtual bool reprioritize(RequestToken token, ScreenshotOcrRequestPriority priority) = 0;
     // Implementations that manage disk-backed components report whether the
     // complete runtime and model set is ready before a request is queued.
-    virtual bool modelFilesReady() const { return true; }
+    virtual bool modelFilesReady() const {
+        return true;
+    }
     virtual ScreenshotOcrAssetStatus assetStatus() const {
         return {ScreenshotOcrAssetPhase::ReadyCached};
     }
@@ -109,10 +111,10 @@ class ScreenshotOcrRecognitionService final : public ScreenshotOcrRecognitionPor
     };
 
     explicit ScreenshotOcrRecognitionService(QObject* parent = nullptr);
-    explicit ScreenshotOcrRecognitionService(const Options& options,
-                                             ScreenshotOcrBackendPreference backendPreference =
-                                                 ScreenshotOcrBackendPreference::Cpu,
-                                             QObject* parent = nullptr);
+    explicit ScreenshotOcrRecognitionService(
+        const Options& options,
+        ScreenshotOcrBackendPreference backendPreference = ScreenshotOcrBackendPreference::Cpu,
+        QObject* parent = nullptr);
     ~ScreenshotOcrRecognitionService() override;
 
     RequestToken recognize(ScreenshotOcrRequest request, QObject* receiver,

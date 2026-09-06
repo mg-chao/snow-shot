@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/screenshothistoryservice.h"
+#include "snow_shot/presentation/directcapturehistory.h"
 #include "snowimageqtcodec.h"
 
 #include "snow_shot/presentation/screenshotcapturestate.h"
@@ -123,6 +124,259 @@ void requireCanvasHistoryPayload(const QByteArray& payload) {
                 object.value(QStringLiteral("document")).isObject() &&
                 object.value(QStringLiteral("history")).isObject(),
             "canvas history payload contains screenshot-local editor state");
+}
+
+void directImagesPersistWithoutTouchingTheEditor(
+    const QString& root, snow_shot::presentation::DirectCaptureTarget target,
+    const QRect& physicalBounds, bool legacy = false) {
+    using namespace snow_shot::presentation;
+    DirectCaptureRequest request;
+    request.target = target;
+    request.requestedAt = QDateTime::currentDateTimeUtc();
+    QImage image = solidImage(physicalBounds.size(), qRgb(24, 50, 70));
+    image.setPixel(5, 5, qRgb(210, 90, 30));
+    DirectCaptureFrame frame{image, physicalBounds, QStringLiteral("target:123"), 2, {}};
+    frame.canonicalPng = snow_shot::image_codec::encodePng(image);
+    frame.displays.push_back({image, physicalBounds, frame.identity, frame.identity});
+    QString id;
+    {
+        auto repository = storage::makeCaptureHistoryRepository(root);
+        auto draft = directCaptureHistoryDraft(request, frame);
+        require(draft.preparedResultImage.has_value() &&
+                    draft.preparedResultImage->bytes().constData() ==
+                        frame.canonicalPng.constData(),
+                "direct capture history did not reuse the clipboard PNG");
+        // Preserve coverage for image-only records written before desktop retention was restored.
+        draft.contentKind = storage::CaptureHistoryContentKind::Image;
+        draft.canvasBounds = physicalBounds;
+        draft.selection.rectangle = physicalBounds;
+        draft.displays.front().sourceCanvasOrigin = physicalBounds.topLeft();
+        require(draft.displays.size() == 1 && draft.displays.front().image == image &&
+                    draft.resultImage == image &&
+                    draft.selection.rectangle == frame.physicalBounds &&
+                    draft.selection.cornerRadius == 0 && draft.selection.shadowWidth == 0,
+                "direct history did not store exactly the raw target");
+        requireCanvasHistoryPayload(draft.canvasHistory);
+        if (legacy) {
+            draft.canvasBounds = image.rect();
+            draft.selection.rectangle = image.rect();
+            draft.displays.front().sourceCanvasOrigin.reset();
+        }
+        const auto result = repository->publish(std::move(draft)).get();
+        require(result.storage.success, "direct history publication failed");
+        id = result.record.id;
+    }
+    auto repository = storage::makeCaptureHistoryRepository(root);
+    const auto records = repository->records();
+    require(records.size() == 1 &&
+                records.front().contentKind == storage::CaptureHistoryContentKind::Image &&
+                records.front().source == (target == DirectCaptureTarget::FocusedWindow
+                                               ? storage::CaptureHistorySource::FocusedWindow
+                                               : storage::CaptureHistorySource::CurrentMonitor),
+            "direct history metadata did not survive restart");
+    const auto restoredImage = repository->loadResultImage(records.front());
+    require(restoredImage.has_value() && restoredImage->convertToFormat(QImage::Format_ARGB32) ==
+                                             image.convertToFormat(QImage::Format_ARGB32),
+            "direct history pixels did not survive restart");
+    ScreenshotDisplaySession displays;
+    const QImage liveImage = solidImage(QSize(200, 120), qRgb(100, 120, 140));
+    displays.appendDisplay(display(QStringLiteral("A"), QStringLiteral("Left"),
+                                   QRect(-100, -50, 100, 180), liveImage));
+    displays.appendDisplay(
+        display(QStringLiteral("B"), QStringLiteral("Right"), QRect(0, -50, 100, 180), liveImage));
+    displays.displayAt(1).logicalRect = QRect(0, -40, 80, 144);
+    SnowCanvasRuntime runtime;
+    ScreenshotSelectionModel selection;
+    selection.setSelectionRect(QRectF(-90, 20, 30, 40));
+    const QRect liveSelection = selection.pixelSelection();
+    ScreenshotInteractionState interaction;
+    interaction.confirmSelection();
+    ScreenshotIntelligentSelectionModel intelligent;
+    ScreenshotHistoryService history({displays, runtime, selection, interaction, intelligent},
+                                     *repository);
+    require(history.navigateToRecord(id), "direct image history could not be opened");
+    // A publication during the asynchronous load must not invalidate its target index.
+    request.requestedAt = request.requestedAt.addSecs(1);
+    request.target = DirectCaptureTarget::CurrentMonitor;
+    require(repository->publish(directCaptureHistoryDraft(request, frame)).get().storage.success,
+            "second direct capture failed to publish");
+    history.refreshMetadata();
+    waitForNavigation(history, "direct image navigation timed out");
+    const QRect expectedBounds = legacy ? QRect(QPoint(-100, -50), image.size()) : physicalBounds;
+    require(selection.pixelSelection() == expectedBounds, "direct image selection was misplaced");
+    for (int i = 0; i < 2; ++i) {
+        require(displays.displayAt(i).image.convertToFormat(QImage::Format_ARGB32) ==
+                        image.convertToFormat(QImage::Format_ARGB32) &&
+                    displays.displayAt(i).imageSourceCanvasRect == expectedBounds,
+                "direct image pixels and selection use different canvas origins");
+    }
+    const QRect editedSelection = expectedBounds.adjusted(3, 3, -3, -3);
+    selection.setSelectionRect(editedSelection);
+    interaction.confirmSelection();
+    auto edited = takeSnapshot(history.snapshotCurrent(true), "direct history could not be edited");
+    const QString editedId = edited.id;
+    history.commit(std::move(edited));
+    history.drainPendingWrites();
+    require(history.returnToCurrentScreenshot(),
+            "direct image history lost the live editor endpoint");
+    require(selection.pixelSelection() == liveSelection && displays.displayAt(0).image == liveImage,
+            "direct image history changed the live editor");
+    require(history.navigateToRecord(editedId), "edited direct history could not be reopened");
+    waitForNavigation(history, "edited direct image navigation timed out");
+    require(selection.pixelSelection() == editedSelection,
+            "edited direct history lost the selection");
+    for (int i = 0; i < 2; ++i) {
+        require(displays.displayAt(i).imageSourceCanvasRect == expectedBounds,
+                "saving an edited direct capture lost its image origin");
+    }
+    const auto& restoredDisplay = displays.displayAt(0);
+    const QImage rendered =
+        runtime.renderToImage(editedSelection, editedSelection.size(),
+                              {{restoredDisplay.image, restoredDisplay.imageSourceCanvasRect}});
+    require(rendered.convertToFormat(QImage::Format_ARGB32) ==
+                image.copy(QRect(QPoint(3, 3), editedSelection.size()))
+                    .convertToFormat(QImage::Format_ARGB32),
+            "edited direct capture exported pixels from the wrong region");
+}
+
+void directCaptureHistoryPreservesSelectionRegions(const QString& root) {
+    using snow_shot::presentation::DirectCaptureTarget;
+    directImagesPersistWithoutTouchingTheEditor(QDir(root).filePath(QStringLiteral("window")),
+                                                DirectCaptureTarget::FocusedWindow,
+                                                QRect(-60, -25, 137, 91));
+    directImagesPersistWithoutTouchingTheEditor(QDir(root).filePath(QStringLiteral("left-monitor")),
+                                                DirectCaptureTarget::CurrentMonitor,
+                                                QRect(-100, -50, 100, 180));
+    directImagesPersistWithoutTouchingTheEditor(
+        QDir(root).filePath(QStringLiteral("right-monitor")), DirectCaptureTarget::CurrentMonitor,
+        QRect(0, -50, 100, 180));
+    directImagesPersistWithoutTouchingTheEditor(QDir(root).filePath(QStringLiteral("legacy")),
+                                                DirectCaptureTarget::FocusedWindow,
+                                                QRect(-1500, -300, 137, 91), true);
+}
+
+void explicitHistoryEditSeesExternalPublications(const QString& root) {
+    using namespace snow_shot::presentation;
+    auto repository = storage::makeCaptureHistoryRepository(root);
+    ScreenshotDisplaySession displays;
+    displays.appendDisplay(display(QStringLiteral("A"), QStringLiteral("Display A"),
+                                   QRect(0, 0, 200, 120),
+                                   solidImage(QSize(200, 120), qRgb(10, 20, 30))));
+    SnowCanvasRuntime runtime;
+    ScreenshotSelectionModel selection;
+    ScreenshotInteractionState interaction;
+    interaction.enterOverlayVisible(false);
+    ScreenshotIntelligentSelectionModel intelligent;
+    ScreenshotHistoryService history({displays, runtime, selection, interaction, intelligent},
+                                     *repository);
+    DirectCaptureRequest request;
+    request.requestedAt = QDateTime::currentDateTimeUtc();
+    DirectCaptureFrame frame{solidImage(QSize(80, 60), qRgb(40, 50, 60)),
+                             QRect(20, 30, 80, 60),
+                             QStringLiteral("A"),
+                             2,
+                             {}};
+    const QImage desktop = solidImage(QSize(200, 120), qRgb(40, 50, 60));
+    frame.displays.push_back({desktop, desktop.rect(), frame.identity, frame.identity});
+    const auto published = repository->publish(directCaptureHistoryDraft(request, frame)).get();
+    require(published.storage.success, "external history publication failed");
+    require(history.navigateToRecord(published.record.id),
+            "Edit ignored a direct capture published after the editor was constructed");
+    waitForNavigation(history, "external history edit timed out");
+    require(selection.pixelSelection() == frame.physicalBounds &&
+                displays.displayAt(0).image.convertToFormat(QImage::Format_ARGB32) ==
+                    desktop.convertToFormat(QImage::Format_ARGB32),
+            "Edit did not load the externally published capture");
+}
+
+void directCaptureRetainsTheWholeDesktop(const QString& root) {
+    using namespace snow_shot::presentation;
+    const QVector<DirectCaptureDisplay> capturedDisplays{
+        {solidImage(QSize(100, 120), qRgb(110, 20, 30)), QRect(-100, -20, 100, 120),
+         QStringLiteral("A"), QStringLiteral("Left")},
+        {solidImage(QSize(160, 100), qRgb(20, 120, 30)), QRect(0, 0, 160, 100), QStringLiteral("B"),
+         QStringLiteral("Right")}};
+    for (const auto target :
+         {DirectCaptureTarget::FocusedWindow, DirectCaptureTarget::CurrentMonitor}) {
+        const QString directory = QDir(root).filePath(QString::number(static_cast<int>(target)));
+        DirectCaptureRequest request;
+        request.target = target;
+        request.requestedAt = QDateTime::currentDateTimeUtc();
+        DirectCaptureFrame frame;
+        frame.displays = capturedDisplays;
+        frame.image = target == DirectCaptureTarget::FocusedWindow
+                          ? solidImage(QSize(80, 60), qRgb(40, 50, 160))
+                          : capturedDisplays.back().image;
+        if (target == DirectCaptureTarget::FocusedWindow) {
+            frame.image.setPixel(0, 0, qRgba(10, 20, 30, 0));
+            frame.image.setPixel(1, 0, qRgba(40, 50, 60, 64));
+            frame.image.setPixel(2, 0, qRgba(70, 80, 90, 128));
+        }
+        frame.physicalBounds = target == DirectCaptureTarget::FocusedWindow
+                                   ? QRect(-30, 10, 80, 60)
+                                   : capturedDisplays.back().physicalBounds;
+        frame.identity = QStringLiteral("target");
+        QString id;
+        {
+            auto repository = storage::makeCaptureHistoryRepository(directory);
+            auto draft = directCaptureHistoryDraft(request, frame);
+            require(draft.contentKind == storage::CaptureHistoryContentKind::ScreenshotSession &&
+                        draft.canvasBounds == QRect(0, 0, 260, 120) &&
+                        draft.selection.rectangle == frame.physicalBounds.translated(100, 20) &&
+                        draft.displays.size() == capturedDisplays.size(),
+                    "direct capture did not persist a complete desktop selection session");
+            const auto published = repository->publish(draft).get();
+            require(published.storage.success, "complete direct history publication failed");
+            id = published.record.id;
+        }
+        auto repository = storage::makeCaptureHistoryRepository(directory);
+        const auto record = repository->records().front();
+        const auto result = repository->loadResultImage(record);
+        require(result && result->convertToFormat(QImage::Format_ARGB32) ==
+                              frame.image.convertToFormat(QImage::Format_ARGB32),
+                "direct history lost the separate window or monitor result image");
+        ScreenshotDisplaySession displays;
+        for (const auto& captured : capturedDisplays) {
+            displays.appendDisplay(display(captured.stableId, captured.name,
+                                           captured.physicalBounds,
+                                           solidImage(captured.image.size(), qRgb(0, 0, 0))));
+        }
+        ScreenshotGeometryMapper geometry;
+        geometry.rebuild(displays);
+        displays.displayAt(1).logicalRect = QRect(0, 0, 128, 80);
+        SnowCanvasRuntime runtime;
+        ScreenshotSelectionModel selection;
+        ScreenshotInteractionState interaction;
+        interaction.enterOverlayVisible(false);
+        ScreenshotIntelligentSelectionModel intelligent;
+        ScreenshotHistoryService history({displays, runtime, selection, interaction, intelligent},
+                                         *repository);
+        require(history.navigateToRecord(id), "complete direct history could not be edited");
+        waitForNavigation(history, "complete direct history edit timed out");
+        require(
+            selection.pixelSelection() ==
+                geometry.canvasRectForPhysicalRect(displays, frame.physicalBounds).toAlignedRect(),
+            "complete direct history restored the wrong target selection");
+        for (qsizetype index = 0; index < capturedDisplays.size(); ++index) {
+            require(displays.displayAt(index).image.convertToFormat(QImage::Format_ARGB32) ==
+                            capturedDisplays[index].image.convertToFormat(QImage::Format_ARGB32) &&
+                        displays.displayAt(index).imageSourceCanvasRect ==
+                            displays.displayAt(index).canvasRect,
+                    "editing direct history lost a display image or its position");
+        }
+        selection.setSelectionRect(displays.displayAt(0).canvasRect);
+        const auto expanded = takeSnapshot(history.snapshotCurrent(true),
+                                           "could not expand direct history onto another display");
+        require(expanded.displays.size() == 2 &&
+                    expanded.selection.selection == displays.displayAt(0).canvasRect,
+                "direct history could not be edited beyond the original capture target");
+    }
+    DirectCaptureRequest request;
+    DirectCaptureFrame incomplete;
+    incomplete.image = capturedDisplays.front().image;
+    incomplete.physicalBounds = capturedDisplays.front().physicalBounds;
+    require(directCaptureHistoryDraft(request, incomplete).id.isEmpty(),
+            "direct history accepted a capture without its desktop images");
 }
 
 void navigationMatchesDisplaysAndRestoresLiveEndpoint(const QString& root) {
@@ -478,6 +732,7 @@ void expiredCurrentEntryCanReturnToConfirmedLiveSelection(const QString& root) {
 }
 
 void multipleValidEntriesCanBeTraversed(const QString& root) {
+    QDateTime clock = QDateTime::currentDateTimeUtc();
     ScreenshotDisplaySession displays;
     displays.appendDisplay(display(QStringLiteral("only"), QStringLiteral("Only"),
                                    QRect(0, 0, 64, 64),
@@ -489,7 +744,7 @@ void multipleValidEntriesCanBeTraversed(const QString& root) {
     interaction.enterOverlayVisible(false);
     ScreenshotIntelligentSelectionModel intelligent;
     ScreenshotHistoryService history({displays, runtime, selection, interaction, intelligent, {}},
-                                     root);
+                                     root, [&clock]() { return clock; });
 
     const QRgb olderPixel = displays.displayAt(0).image.pixel(0, 0);
     auto older =
@@ -499,6 +754,7 @@ void multipleValidEntriesCanBeTraversed(const QString& root) {
 
     displays.displayAt(0).image = solidImage(QSize(64, 64), qRgba(0, 255, 0, 255));
     const QRgb newerPixel = displays.displayAt(0).image.pixel(0, 0);
+    clock = clock.addSecs(1);
     selection.setSelectionRect(QRectF(2, 2, 30, 30));
     auto newer =
         takeSnapshot(history.snapshotCurrent(true), "failed to snapshot newer traversal entry");
@@ -1887,6 +2143,15 @@ int main(int argc, char** argv) {
     };
     require(storage::ApplicationStorage::instance().initialize(storageOptions).success,
             "failed to initialize isolated shortcut settings");
+    if (QCoreApplication::arguments().contains(QStringLiteral("--direct-capture-only"))) {
+        directCaptureRetainsTheWholeDesktop(
+            QDir(temporary.path()).filePath(QStringLiteral("desktop")));
+        explicitHistoryEditSeesExternalPublications(
+            QDir(temporary.path()).filePath(QStringLiteral("external")));
+        directCaptureHistoryPreservesSelectionRegions(temporary.path());
+        storage::ApplicationStorage::instance().shutdown();
+        return 0;
+    }
     if (QCoreApplication::arguments().contains(
             QStringLiteral("--intelligent-selection-target-shortcut-only"))) {
         configuredSelectionShortcutsRouteTabHistoryAndColorActions(true);
@@ -1911,6 +2176,11 @@ int main(int argc, char** argv) {
     }
     navigationMatchesDisplaysAndRestoresLiveEndpoint(
         QDir(temporary.path()).filePath(QStringLiteral("navigation")));
+    directCaptureRetainsTheWholeDesktop(QDir(temporary.path()).filePath(QStringLiteral("desktop")));
+    explicitHistoryEditSeesExternalPublications(
+        QDir(temporary.path()).filePath(QStringLiteral("external")));
+    directCaptureHistoryPreservesSelectionRegions(
+        QDir(temporary.path()).filePath(QStringLiteral("direct-images")));
     navigationSharesCanvasCreationStyles(
         QDir(temporary.path()).filePath(QStringLiteral("creation-styles")));
     fullSessionEntriesRemainReadable(

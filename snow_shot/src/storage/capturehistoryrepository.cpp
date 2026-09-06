@@ -115,6 +115,11 @@ QJsonObject recordJson(const StoredRecord& stored) {
             imageJson(display.imageSize, display.encodedBytes, stored.displayFileNames[i]);
         object.insert(QStringLiteral("stable_id"), display.stableId);
         object.insert(QStringLiteral("display_name"), display.name);
+        if (display.sourceCanvasOrigin.has_value()) {
+            object.insert(QStringLiteral("source_canvas_origin"),
+                          QJsonObject{{QStringLiteral("x"), display.sourceCanvasOrigin->x()},
+                                      {QStringLiteral("y"), display.sourceCanvasOrigin->y()}});
+        }
         displays.append(object);
     }
     QJsonObject object{
@@ -135,6 +140,9 @@ QJsonObject recordJson(const StoredRecord& stored) {
         object.insert(QStringLiteral("result"),
                       imageJson(record.result->imageSize, record.result->encodedBytes,
                                 *stored.resultFileName));
+    }
+    if (record.contentKind == CaptureHistoryContentKind::Image) {
+        object.insert(QStringLiteral("content_kind"), QStringLiteral("image"));
     }
     return object;
 }
@@ -158,6 +166,12 @@ bool parseImage(const QJsonObject& object, const QString& file, QSize* size, qin
 
 bool parseRecord(const QJsonObject& object, StoredRecord* stored) {
     auto& record = stored->record;
+    const QJsonValue contentKind = object.value(QStringLiteral("content_kind"));
+    if (!contentKind.isUndefined()) {
+        if (contentKind.toString() != QStringLiteral("image"))
+            return false;
+        record.contentKind = CaptureHistoryContentKind::Image;
+    }
     record.id = object.value(QStringLiteral("id")).toString();
     const QString date = object.value(QStringLiteral("created_utc")).toString();
     record.createdUtc = QDateTime::fromString(date, Qt::ISODateWithMs);
@@ -226,11 +240,27 @@ bool parseRecord(const QJsonObject& object, StoredRecord* stored) {
         }
         image.stableId = display.value(QStringLiteral("stable_id")).toString();
         image.name = display.value(QStringLiteral("display_name")).toString();
+        const QJsonValue origin = display.value(QStringLiteral("source_canvas_origin"));
+        if (!origin.isUndefined()) {
+            qint64 originX = 0, originY = 0;
+            if (!origin.isObject() ||
+                !integer(origin.toObject().value(QStringLiteral("x")),
+                         std::numeric_limits<int>::min(),
+                         std::numeric_limits<int>::max() - image.imageSize.width() + 1, &originX) ||
+                !integer(
+                    origin.toObject().value(QStringLiteral("y")), std::numeric_limits<int>::min(),
+                    std::numeric_limits<int>::max() - image.imageSize.height() + 1, &originY)) {
+                return false;
+            }
+            image.sourceCanvasOrigin = QPoint(static_cast<int>(originX), static_cast<int>(originY));
+        }
         record.displays.append(image);
         stored->displayFileNames.append(file);
         bytes += image.encodedBytes;
     }
-    return record.totalBytes == bytes;
+    return record.totalBytes == bytes &&
+           (record.contentKind != CaptureHistoryContentKind::Image ||
+            (record.displays.size() == 1 && record.result.has_value()));
 }
 
 QByteArray indexBytes(const Snapshot& snapshot) {
@@ -282,6 +312,9 @@ QImage decodeImage(const QString& path) {
 }
 
 bool encodeDraft(const CaptureHistoryDraft& draft, qint64 quota, EncodedDraft* result) {
+    if (draft.contentKind == CaptureHistoryContentKind::Image &&
+        (draft.displays.size() != 1 || (!draft.resultImage && !draft.preparedResultImage)))
+        return false;
     if (!validUuid(draft.id) || !draft.createdUtc.isValid() ||
         draft.createdUtc.timeSpec() != Qt::UTC || draft.canvasBounds.isEmpty() ||
         draft.selection.rectangle.isEmpty() || !draft.selection.shadowColor.isValid() ||
@@ -293,6 +326,7 @@ bool encodeDraft(const CaptureHistoryDraft& draft, qint64 quota, EncodedDraft* r
     }
     auto& stored = result->stored;
     auto& record = stored.record;
+    record.contentKind = draft.contentKind;
     record.id = draft.id;
     record.createdUtc = draft.createdUtc;
     record.canvasBounds = draft.canvasBounds;
@@ -334,6 +368,13 @@ bool encodeDraft(const CaptureHistoryDraft& draft, qint64 quota, EncodedDraft* r
     }
     for (qsizetype i = 0; i < draft.displays.size(); ++i) {
         const auto& display = draft.displays[i];
+        if (display.sourceCanvasOrigin.has_value() &&
+            (static_cast<qint64>(display.sourceCanvasOrigin->x()) + display.image.width() - 1 >
+                 std::numeric_limits<int>::max() ||
+             static_cast<qint64>(display.sourceCanvasOrigin->y()) + display.image.height() - 1 >
+                 std::numeric_limits<int>::max())) {
+            return false;
+        }
         const QString name = QStringLiteral("display_%1.png").arg(i);
         const qint64 bytes = addImage(display.image.size(), name, [&]() {
             return snow_shot::image_codec::encodePng(display.image);
@@ -341,7 +382,8 @@ bool encodeDraft(const CaptureHistoryDraft& draft, qint64 quota, EncodedDraft* r
         if (bytes == 0)
             return false;
         stored.displayFileNames.append(name);
-        record.displays.append({display.stableId, display.name, display.image.size(), bytes});
+        record.displays.append({display.stableId, display.name, display.image.size(), bytes,
+                                display.sourceCanvasOrigin});
     }
     return record.totalBytes <= quota;
 }
@@ -488,6 +530,27 @@ class CaptureHistoryRepositoryImpl final : public CaptureHistoryRepository {
             return std::nullopt;
         return readImage(record, QDir(recordPath(record.id)).filePath(*stored->resultFileName),
                          record.result->imageSize);
+    }
+
+    std::optional<PreparedPngImage>
+    loadResultPng(const CaptureHistoryRecord& record) const override {
+        const auto stored = find(record);
+        if (!stored || !record.result)
+            return std::nullopt;
+        observe(CaptureHistoryOperation::PayloadRead);
+        const QString path = QDir(recordPath(record.id)).filePath(*stored->resultFileName);
+        QFile file(path);
+        if (!containedPath(m_root, path) || !file.open(QIODevice::ReadOnly) ||
+            file.size() != record.result->encodedBytes) {
+            readFailed(record);
+            return std::nullopt;
+        }
+        auto png = PreparedPngImage::fromBytes(record.result->imageSize, file.readAll());
+        if (file.error() != QFileDevice::NoError || !png.has_value()) {
+            readFailed(record);
+            return std::nullopt;
+        }
+        return png;
     }
 
     void reportReadFailure(const CaptureHistoryRecord& record, const QString& reason) override {
@@ -818,20 +881,13 @@ class CaptureHistoryRepositoryImpl final : public CaptureHistoryRepository {
     }
 
     StorageResult clearNow() {
-        // Only explicit clear discovers/removes unmanaged legacy and crash leftovers.
+        // Only explicit clear walks the history tree for unmanaged leftovers.
         bool success = true;
-        for (const QString& path :
-             {m_root,
-              QDir(m_configurationDirectory).filePath(QStringLiteral("capture_history_records")),
-              QDir(m_configurationDirectory)
-                  .filePath(QStringLiteral("capture_history_quarantine"))}) {
-            if (QFileInfo::exists(path) && (!containedPath(m_configurationDirectory, path) ||
-                                            !QDir(path).removeRecursively())) {
-                success = false;
-            }
+        if (QFileInfo::exists(m_root) && (!containedPath(m_configurationDirectory, m_root) ||
+                                          !QDir(m_root).removeRecursively())) {
+            success = false;
         }
         if (!success) {
-            // Keep the old index state when possible; missing files fail on actual reads.
             return fail(QStringLiteral("Unable to clear all managed capture-history data"));
         }
         if (!commit({}))

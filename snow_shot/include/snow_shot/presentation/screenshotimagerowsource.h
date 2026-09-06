@@ -8,6 +8,7 @@
 
 struct ScreenshotImageRowSource final {
     QSize size;
+    // Rows contain straight-alpha RGBA8888 pixels in sRGB, ordered top to bottom.
     std::function<bool(int firstRow, int rowCount, qsizetype destinationStride, uchar* destination,
                        qsizetype destinationSize)>
         readRows;

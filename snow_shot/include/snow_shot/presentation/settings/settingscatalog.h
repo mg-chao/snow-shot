@@ -70,6 +70,7 @@ enum class SettingsSelectBinding {
     Language,
     ApplicationPriority,
     Proxy,
+    ScreenshotApiMode,
     ScreenshotToolbarSize,
     ColorPickerDisplayMode,
     ScreenshotOcrAction,
@@ -190,8 +191,7 @@ enum class SettingsDirectoryPathBinding {
 };
 
 struct SettingsDirectoryPathDefinition {
-    SettingsDirectoryPathBinding binding =
-        SettingsDirectoryPathBinding::ScreenshotImageDirectory;
+    SettingsDirectoryPathBinding binding = SettingsDirectoryPathBinding::ScreenshotImageDirectory;
     TranslatableText buttonText;
     TranslatableText dialogTitle;
 };
@@ -295,13 +295,13 @@ struct TrayCommandManifest {
     QHash<int, SettingsShortcutAdjustment> shortcutAdjustments;
 
     [[nodiscard]] QString shortcutActionTitle(GlobalShortcutAction action,
-                                               int screenshotDelaySeconds = 3) const;
+                                              int screenshotDelaySeconds = 3) const;
 };
 
 using SettingsItemPayload =
     std::variant<SettingsSelectDefinition, SettingsSwitchDefinition, SettingsIntegerDefinition,
-                 SettingsMultiSelectDefinition, SettingsSliderDefinition,
-                 SettingsColorDefinition, SettingsRadioDefinition, SettingsFilePathDefinition,
+                 SettingsMultiSelectDefinition, SettingsSliderDefinition, SettingsColorDefinition,
+                 SettingsRadioDefinition, SettingsFilePathDefinition,
                  SettingsDirectoryPathDefinition, SettingsTextDefinition,
                  SettingsShortcutActionDefinition, SettingsLocalShortcutDefinition,
                  SettingsActionDefinition, SettingsCustomDefinition>;
@@ -401,8 +401,7 @@ class SettingsCatalog final {
   public:
     SettingsCatalog() = default;
     SettingsCatalog(QVector<SettingsPageDefinition> pages,
-                    QVector<SettingsNavigationNode> navigation,
-                    SettingsLocation defaultLocation);
+                    QVector<SettingsNavigationNode> navigation, SettingsLocation defaultLocation);
 
     [[nodiscard]] const QVector<SettingsPageDefinition>& pages() const;
     [[nodiscard]] const QVector<SettingsNavigationNode>& navigation() const;
@@ -412,10 +411,9 @@ class SettingsCatalog final {
     [[nodiscard]] const SettingsSectionDefinition* section(const QString& pageId,
                                                            const QString& sectionId) const;
     [[nodiscard]] const SettingsItemDefinition* item(const SettingsLocation& location) const;
-    [[nodiscard]] const SettingsItemDefinition*
-    itemForShortcut(GlobalShortcutAction action) const;
+    [[nodiscard]] const SettingsItemDefinition* itemForShortcut(GlobalShortcutAction action) const;
     [[nodiscard]] QString shortcutActionTitle(GlobalShortcutAction action,
-                                               int screenshotDelaySeconds = 3) const;
+                                              int screenshotDelaySeconds = 3) const;
     [[nodiscard]] std::optional<SettingsCommand>
     commandForShortcut(GlobalShortcutAction action) const;
     [[nodiscard]] QVector<SettingsTrayMenuGroupDefinition> trayMenuGroups() const;

@@ -4,6 +4,7 @@
 #include "snow_shot/presentation/screenshotclipboardservice.h"
 #include "snow_shot/presentation/screenshotexportcoordinator.h"
 #include "snow_shot/presentation/screenshotimagerowsource.h"
+#include "snow_shot/presentation/screenshotimagefileservice.h"
 #include "snow_shot/presentation/screenshotresultcompositor.h"
 #include "snow_shot/storage/preparedpngimage.h"
 
@@ -70,7 +71,6 @@ class ScreenshotExportSource final {
     fromProducer(ImageProducer producer, RowSourceFactory rowSourceFactory = {});
 
     [[nodiscard]] bool isValid() const;
-    [[nodiscard]] bool hasDirectRowSource() const;
 
   private:
     ImageLoader m_imageLoader;
@@ -94,13 +94,15 @@ class ScreenshotExportArtifact final : public QObject {
 
     [[nodiscard]] bool requestImage(QObject* receiver, ImageCallback callback);
     [[nodiscard]] bool requestCanonicalPng(QObject* receiver, EncodingCallback callback);
-    [[nodiscard]] bool requestClipboard(QObject* receiver, ScreenshotClipboardFormatMode formatMode,
-                                        ClipboardCallback callback);
+    [[nodiscard]] bool requestClipboard(QObject* receiver, ClipboardCallback callback);
+    [[nodiscard]] bool requestAutomaticSave(QObject* receiver, QStringList directories,
+                                            ScreenshotImageFileFormat format,
+                                            QString filenameFormat,
+                                            ScreenshotExportCoordinator::Completion callback);
     void cancel();
 
     [[nodiscard]] bool isValid() const;
     [[nodiscard]] bool isCancelled() const;
-    [[nodiscard]] bool hasDirectRowSource() const;
 
   private:
     struct Impl;
@@ -111,6 +113,8 @@ class ScreenshotExportArtifact final : public QObject {
     void startCanonicalPng();
     void startCanonicalPngFromImage(QImage image);
     void completeCanonicalPng(ScreenshotExportEncodingResult result);
+    [[nodiscard]] bool prepareClipboard(QObject* receiver, QByteArray canonicalPng,
+                                        ClipboardCallback callback);
 };
 
 #endif // SNOW_SHOT_PRESENTATION_SCREENSHOTEXPORTARTIFACT_H

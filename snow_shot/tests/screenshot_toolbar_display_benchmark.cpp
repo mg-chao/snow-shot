@@ -97,7 +97,7 @@ namespace toolbar_perf = snow_shot::presentation::toolbar_perf;
 
 namespace {
 
-constexpr int kReportSchemaVersion = 2;
+constexpr int kReportSchemaVersion = 1;
 constexpr const char* kOwnerObjectName = "toolbarDisplayOwner";
 
 qint64 nowNs() {

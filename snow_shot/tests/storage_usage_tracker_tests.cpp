@@ -92,13 +92,11 @@ trackerOptions(const TrackerDirs& dirs, storage::StorageUsageTrackerOptions::Cal
 
 void scanCategorizesAppOwnedLocations() {
     TrackerDirs dirs;
+    writeBytes(QDir(dirs.appData).filePath(QStringLiteral("capture_history/index.json")), 40);
     writeBytes(
-        QDir(dirs.appData).filePath(QStringLiteral("capture_history_records/rec1/manifest.json")),
-        100);
-    writeBytes(
-        QDir(dirs.appData).filePath(QStringLiteral("capture_history_quarantine/q1/payload.bin")),
-        50);
-    writeBytes(QDir(dirs.appData).filePath(QStringLiteral("pinned_windows_v3/index.json")), 25);
+        QDir(dirs.appData).filePath(QStringLiteral("capture_history/records/rec1/display.png")),
+        60);
+    writeBytes(QDir(dirs.appData).filePath(QStringLiteral("pinned_windows/index.json")), 25);
     writeBytes(QDir(dirs.appData).filePath(QStringLiteral("assets/ocr/model.onnx")), 200);
     writeBytes(QDir(dirs.appData).filePath(QStringLiteral("config.json")), 10);
     writeBytes(QDir(dirs.appData).filePath(QStringLiteral("stray.log")), 5);
@@ -112,20 +110,20 @@ void scanCategorizesAppOwnedLocations() {
         tracker.drain();
         const storage::AppStorageUsage usage = tracker.usage();
         require(!usage.scanning, "a drained tracker must not report scanning");
-        require(usage.historyBytes == 150, "history bytes must cover records and quarantine");
+        require(usage.historyBytes == 100, "history bytes must cover the history tree");
         require(usage.pinnedWindowBytes == 25, "pinned window bytes must match payload");
         require(usage.ocrAssetBytes == 200, "ocr asset bytes must match payload");
         require(usage.thumbnailCacheBytes == 30, "thumbnail cache bytes must match payload");
         require(usage.recordingTempBytes == 40, "recording temp bytes must match payload");
         require(usage.otherBytes == 15, "other bytes must cover config and stray files");
-        require(usage.totalBytes() == 460, "total bytes must be the sum of all categories");
+        require(usage.totalBytes() == 410, "total bytes must be the sum of all categories");
     }
 
     std::lock_guard<std::mutex> lock(recorder.mutex);
     require(recorder.usages.size() >= 2,
             "a scan must publish a scanning snapshot and a final snapshot");
     require(recorder.usages.front().scanning, "the first published snapshot must be scanning");
-    require(!recorder.usages.back().scanning && recorder.usages.back().totalBytes() == 460,
+    require(!recorder.usages.back().scanning && recorder.usages.back().totalBytes() == 410,
             "the last published snapshot must carry the final usage");
 }
 
@@ -208,14 +206,8 @@ void refreshRequestsAreCoalesced() {
 void historyBytesProviderReplacesDirectoryWalk() {
     TrackerDirs dirs;
     writeBytes(
-        QDir(dirs.appData).filePath(QStringLiteral("capture_history_records/rec1/manifest.json")),
-        100);
-    writeBytes(
-        QDir(dirs.appData).filePath(QStringLiteral("capture_history_quarantine/q1/payload.bin")),
-        50);
-    writeBytes(QDir(dirs.appData).filePath(QStringLiteral("config.json")), 10);
-    writeBytes(
         QDir(dirs.appData).filePath(QStringLiteral("capture_history/records/id/display.png")), 80);
+    writeBytes(QDir(dirs.appData).filePath(QStringLiteral("config.json")), 10);
 
     std::atomic<int> providerCalls{0};
     storage::StorageUsageTrackerOptions options = trackerOptions(dirs, {});

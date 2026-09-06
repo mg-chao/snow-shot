@@ -390,6 +390,50 @@ ScreenshotImageFileSaveResult ScreenshotImageFileService::saveAutomatically(
     return {{}, lastError};
 }
 
+ScreenshotImageFileSaveResult ScreenshotImageFileService::saveAutomatically(
+    const snow_shot::storage::PreparedPngImage& png, const QStringList& candidateDirectories,
+    const QString& filenameFormat, const QDateTime& timestamp) {
+    if (!png.isValid()) {
+        return {{}, QStringLiteral("The screenshot image is empty")};
+    }
+
+    const QString baseName = suggestedBaseName(filenameFormat, timestamp);
+    if (baseName.isEmpty() || baseName.contains(QLatin1Char('/')) ||
+        baseName.contains(QLatin1Char('\\'))) {
+        return {{}, QStringLiteral("The screenshot filename format is invalid")};
+    }
+
+    QString lastError = QStringLiteral("No automatic screenshot folder is available");
+    for (const QString& candidate : candidateDirectories) {
+        const QString trimmedCandidate = candidate.trimmed();
+        if (trimmedCandidate.isEmpty()) {
+            continue;
+        }
+        const QString directory = QDir::cleanPath(trimmedCandidate);
+        if (!QDir().mkpath(directory)) {
+            lastError =
+                QStringLiteral("The screenshot folder could not be created: %1").arg(directory);
+            continue;
+        }
+
+        const QString path = collisionSafePath(directory, baseName, QStringLiteral("png"));
+        const ScreenshotImageFileSaveResult result =
+            writeAtomically(path, [&png](QIODevice* device, QString* error) {
+                const QByteArray& bytes = png.bytes();
+                if (device->write(bytes) != bytes.size()) {
+                    *error = device->errorString();
+                    return false;
+                }
+                return true;
+            });
+        if (result.succeeded()) {
+            return result;
+        }
+        lastError = result.error;
+    }
+    return {{}, lastError};
+}
+
 bool ScreenshotImageFileService::publishFileToClipboard(QClipboard* clipboard,
                                                         const QString& path) {
     if (clipboard == nullptr || path.isEmpty() || !QFileInfo::exists(path)) {

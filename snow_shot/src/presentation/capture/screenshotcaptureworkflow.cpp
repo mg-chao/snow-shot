@@ -65,15 +65,13 @@ void ScreenshotCaptureWorkflow::prewarmResources() {
     initializeIdleResources(0);
 }
 
-void ScreenshotCaptureWorkflow::startCapture(ScreenshotCapturePresentationMode presentationMode,
-                                             quintptr focusedWindowHandle) {
+void ScreenshotCaptureWorkflow::startCapture() {
     if (m_deferredExportCleanup) {
         completeDeferredExportCleanup();
     }
     bool reusePriorCleanup = false;
     const bool coldStart = m_state.sessionState == ScreenshotSessionState::IdleCold;
-    SNOW_SHOT_CAPTURE_PERF_BEGIN(
-        presentationMode == ScreenshotCapturePresentationMode::Silent ? "silent" : "overlay", 0, 0);
+    SNOW_SHOT_CAPTURE_PERF_BEGIN("overlay", 0, 0);
     SNOW_SHOT_CAPTURE_PERF_MILESTONE("workflow.start");
     SNOW_SHOT_CAPTURE_PERF_COUNTER("workflow.cold_start", coldStart ? 1 : 0);
     if (m_state.sessionState != ScreenshotSessionState::IdleCold &&
@@ -85,8 +83,6 @@ void ScreenshotCaptureWorkflow::startCapture(ScreenshotCapturePresentationMode p
         m_context.runtime.ensureCaptureWorker();
     }
     const quint64 sessionId = ++m_state.sessionId;
-    m_presentationMode = presentationMode;
-    m_focusedWindowHandle = focusedWindowHandle;
     m_state.restoreOriginalScreenColors = m_context.restoreOriginalScreenColors();
     m_state.sessionState = ScreenshotSessionState::Capturing;
     m_state.captureInProgress = true;
@@ -123,7 +119,6 @@ void ScreenshotCaptureWorkflow::cancelCapture() {
     ++m_state.sessionId;
     m_state.sessionState = ScreenshotSessionState::Releasing;
     m_state.captureInProgress = false;
-    m_focusedWindowHandle = 0;
     m_refreshAfterCapture = false;
     resetCaptureModels();
     resetCanvasRuntimeState();
@@ -148,7 +143,6 @@ void ScreenshotCaptureWorkflow::cancelCaptureForExport() {
     ++m_state.sessionId;
     m_state.sessionState = ScreenshotSessionState::Releasing;
     m_state.captureInProgress = false;
-    m_focusedWindowHandle = 0;
     m_refreshAfterCapture = false;
     resetCaptureModels();
     finishCaptureSession(true);
@@ -319,15 +313,6 @@ void ScreenshotCaptureWorkflow::beginCapturePreparation(quint64 sessionId) {
     if (!m_context.runtime.captureWorkerCreated()) {
         m_context.runtime.ensureCaptureWorker();
     }
-    if (m_presentationMode == ScreenshotCapturePresentationMode::Silent) {
-        if (m_context.refreshCanvasCreationStyles) {
-            m_context.refreshCanvasCreationStyles();
-        }
-        m_context.runtime.captureAsync(
-            ScreenshotCaptureRequest{sessionId, m_state.layoutDirty, m_focusedWindowHandle,
-                                     m_state.restoreOriginalScreenColors});
-        return;
-    }
     const bool preCapturePrepared =
         m_context.runtime.preparePreCaptureOverlayWindows(m_context.displaySession);
     if (m_context.refreshCanvasCreationStyles) {
@@ -338,7 +323,6 @@ void ScreenshotCaptureWorkflow::beginCapturePreparation(quint64 sessionId) {
     // once. The capture worker can initialize lazy GPU resources while the
     // UI thread prepares selector and presentation state.
     m_context.runtime.captureAsync(ScreenshotCaptureRequest{sessionId, m_state.layoutDirty,
-                                                            m_focusedWindowHandle,
                                                             m_state.restoreOriginalScreenColors});
     SNOW_SHOT_CAPTURE_PERF_MILESTONE("capture.async_dispatched");
     if (sessionId != m_state.sessionId || !m_state.captureInProgress) {
@@ -397,17 +381,13 @@ void ScreenshotCaptureWorkflow::finishCapturePreparation(const ScreenshotCapture
     if (sessionId != m_state.sessionId || !m_state.captureInProgress) {
         return;
     }
-    if (!result.succeeded || result.displays.isEmpty() ||
-        (m_focusedWindowHandle != 0 && !result.focusedWindow.has_value())) {
+    if (!result.succeeded || result.displays.isEmpty()) {
         if (!result.errorMessage.isEmpty()) {
             qWarning("Screenshot capture failed: %s", qPrintable(result.errorMessage));
         }
         cancelCapture();
         return;
     }
-
-    m_context.focusedWindowCaptured(result.focusedWindow);
-    m_focusedWindowHandle = 0;
 
     const bool presentationPrepared = capturePresentationPrepared(sessionId);
     m_context.geometry.clear();
@@ -426,17 +406,6 @@ void ScreenshotCaptureWorkflow::finishCapturePreparation(const ScreenshotCapture
     }
 
     m_state.captureInProgress = false;
-    if (m_presentationMode == ScreenshotCapturePresentationMode::Silent) {
-        m_state.sessionState = ScreenshotSessionState::OverlayVisible;
-        m_capturedPresentationSessionId = sessionId;
-        if (m_context.presentation.capturePresented) {
-            m_context.presentation.capturePresented();
-        }
-        if (refreshAfterCapture) {
-            scheduleLayoutRefresh(m_layoutChangeSerial);
-        }
-        return;
-    }
     if (!presentationPrepared || m_context.interaction.inactive()) {
         m_state.sessionState = ScreenshotSessionState::OverlayVisible;
         enterOverlaySelectionModeAtCursor();

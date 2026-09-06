@@ -3,6 +3,7 @@
 
 #include "snow_shot/presentation/styles/themecolorscheme.h"
 #include "snow_shot/storage/capturehistorytypes.h"
+#include "snow_shot/presentation/screenshotclipboardservice.h"
 
 #include <QDate>
 #include <QHash>
@@ -25,7 +26,7 @@ Q_DECLARE_METATYPE(QVector<ScreenshotHistoryAssetResolution>)
 
 struct ScreenshotHistoryResultResolution {
     QString recordId;
-    std::optional<QImage> image;
+    std::shared_ptr<ScreenshotClipboardPayload> payload;
 };
 Q_DECLARE_METATYPE(ScreenshotHistoryResultResolution)
 

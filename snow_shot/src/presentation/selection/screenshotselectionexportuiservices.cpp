@@ -200,7 +200,7 @@ class ScreenshotPinnedWindowPool final : public QObject {
         }
     }
 
-    ScreenshotPinnedWindow* acquire(ScreenshotPinnedWindow::RuntimeMode mode, QScreen* screen) {
+    ScreenshotPinnedWindow* acquire(QScreen* screen) {
         if (screen != nullptr) {
             m_targetScreen = screen;
         }
@@ -222,7 +222,7 @@ class ScreenshotPinnedWindowPool final : public QObject {
                 value.start();
                 return value;
             }();
-            window = new ScreenshotPinnedWindow(mode);
+            window = new ScreenshotPinnedWindow();
             if (window != nullptr && window->prewarm(resolvedTargetScreen())) {
                 SNOW_SHOT_PIN_PERF_COUNTER("shell.construction_ns", timer.nsecsElapsed());
             } else {
@@ -256,7 +256,7 @@ class ScreenshotPinnedWindowPool final : public QObject {
             m_spare = nullptr;
         }
 
-        auto* spare = new ScreenshotPinnedWindow(ScreenshotPinnedWindow::RuntimeMode::NoDocument);
+        auto* spare = new ScreenshotPinnedWindow();
         if (spare == nullptr || !spare->prewarm(targetScreen)) {
             if (spare != nullptr) {
                 spare->deleteLater();
@@ -386,30 +386,6 @@ class ScreenshotPendingPinCoordinator final : public QObject {
         };
     }
 
-    void completeSelection(const QString& persistenceId, bool success, QImage image) {
-        auto transaction = m_transactions.find(persistenceId);
-        if (transaction == m_transactions.end()) {
-            return;
-        }
-        if (transaction->removed) {
-            finish(persistenceId);
-            return;
-        }
-        const QPointer<ScreenshotPinnedWindow> window = transaction->window;
-        if (success && !image.isNull()) {
-            transaction->image = image;
-            if (transaction->artifact == nullptr) {
-                transaction->artifact = std::make_shared<ScreenshotExportArtifact>(
-                    ScreenshotExportSource::fromImage(image));
-            }
-            if (!window.isNull()) {
-                static_cast<void>(window->publishMaterializedImage(std::move(image)));
-            }
-        } else if (!window.isNull()) {
-            static_cast<void>(window->publishMaterializedImage({}));
-        }
-    }
-
     void completeFirstFrame(const QString& persistenceId, bool success) {
         auto transaction = m_transactions.find(persistenceId);
         if (transaction == m_transactions.end()) {
@@ -531,8 +507,7 @@ bool presentPinnedWindowAndSynchronize(ScreenshotPinnedWindowPool* pool,
                                        ScreenshotPinnedWindow* window,
                                        const ScreenshotPinnedWindow::Config& config,
                                        const std::function<void()>& showMainWindowRequested,
-                                       std::function<void(bool, QImage)> completion = {},
-                                       bool pending = false) {
+                                       std::function<void(bool, QImage)> completion = {}) {
     if (window == nullptr) {
         return false;
     }
@@ -553,9 +528,7 @@ bool presentPinnedWindowAndSynchronize(ScreenshotPinnedWindowPool* pool,
             guardedPool->schedulePrewarm(guardedScreen.data());
         }
     };
-    const bool presented = pending
-                               ? window->presentPending(config, std::move(synchronizedCompletion))
-                               : window->present(config, std::move(synchronizedCompletion));
+    const bool presented = window->present(config, std::move(synchronizedCompletion));
     if (!presented) {
         window->deleteLater();
         if (guardedPool != nullptr) {
@@ -670,10 +643,7 @@ bool ScreenshotSelectionExportUiServices::presentPinnedArtifact(
         return false;
     }
 
-    auto* pinnedWindow =
-        m_windowPool != nullptr
-            ? m_windowPool->acquire(ScreenshotPinnedWindow::RuntimeMode::NoDocument, request.screen)
-            : nullptr;
+    auto* pinnedWindow = m_windowPool != nullptr ? m_windowPool->acquire(request.screen) : nullptr;
     ScreenshotPinnedWindow::Config config;
     config.nativeGeometry = request.geometry.nativeGeometry;
     config.canvasSourceRect = request.surfaceCanvasRect;
@@ -753,10 +723,7 @@ bool ScreenshotSelectionExportUiServices::presentPinnedImageArtifact(
         return false;
     }
 
-    auto* pinnedWindow =
-        m_windowPool != nullptr
-            ? m_windowPool->acquire(ScreenshotPinnedWindow::RuntimeMode::NoDocument, screen)
-            : nullptr;
+    auto* pinnedWindow = m_windowPool != nullptr ? m_windowPool->acquire(screen) : nullptr;
     ScreenshotPinnedWindow::Config config;
     config.nativeGeometry = nativeGeometry;
     config.canvasSourceRect = QRectF(QPointF(0.0, 0.0), QSizeF(fullResolutionScaleBasis));
@@ -852,10 +819,7 @@ bool ScreenshotSelectionExportUiServices::presentPinnedImage(
             std::make_shared<ScreenshotExportArtifact>(ScreenshotExportSource::fromImage(image));
     }
 
-    auto* pinnedWindow =
-        m_windowPool != nullptr
-            ? m_windowPool->acquire(ScreenshotPinnedWindow::RuntimeMode::NoDocument, screen)
-            : nullptr;
+    auto* pinnedWindow = m_windowPool != nullptr ? m_windowPool->acquire(screen) : nullptr;
     ScreenshotPinnedWindow::Config config;
     config.nativeGeometry = nativeGeometry;
     config.canvasSourceRect = QRectF(QPointF(0.0, 0.0), QSizeF(imageSize));
@@ -1010,13 +974,10 @@ void ScreenshotSelectionExportUiServices::restorePersistedWindows() {
                 config.originalClipboardContent.localFilePath = record.originalFilePath;
             }
         }
-        auto* window = m_windowPool != nullptr
-                           ? m_windowPool->acquire(ScreenshotPinnedWindow::RuntimeMode::NoDocument,
-                                                   targetScreen)
-                           : nullptr;
+        auto* window = m_windowPool != nullptr ? m_windowPool->acquire(targetScreen) : nullptr;
         if (window == nullptr ||
             !presentPinnedWindowAndSynchronize(m_windowPool.get(), window, config,
-                                               m_showMainWindowRequested, {}, false)) {
+                                               m_showMainWindowRequested)) {
             if (window != nullptr) {
                 window->deleteLater();
             }

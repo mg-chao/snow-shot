@@ -31,8 +31,6 @@ class ScreenshotController : public QObject {
     void captureAndRecognizeText();
     void captureAndTranslateText();
     void captureAndCopySelection();
-    void captureCurrentMonitor();
-    void captureFocusedWindow();
     void captureAndStartScreenRecording();
     void startOrStopScreenRecordingAndCopy();
     void editHistoryRecord(const QString& recordId);

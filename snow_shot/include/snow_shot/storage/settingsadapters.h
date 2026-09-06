@@ -8,7 +8,6 @@
 #include <QVector>
 #include <QMetaType>
 
-
 namespace snow_shot::storage {
 struct ScreenshotToolbarLayout {
     QVector<QStringList> positions;
@@ -77,6 +76,8 @@ class ScreenshotSettings final {
   public:
     [[nodiscard]] bool restoreOriginalScreenColors() const;
     bool setRestoreOriginalScreenColors(bool enabled) const;
+    [[nodiscard]] QString apiMode() const;
+    bool setApiMode(const QString& mode) const;
     [[nodiscard]] int delaySeconds() const;
     bool setDelaySeconds(int seconds) const;
     [[nodiscard]] QString autoExecuteAfterTextRecognition() const;
@@ -111,7 +112,7 @@ class ScreenshotShortcutSettings final {
   public:
     [[nodiscard]] static bool isReservedShortcut(const QString& shortcut);
     [[nodiscard]] static bool isReservedShortcutAllowed(const QString& actionId,
-                                                         const QString& shortcut);
+                                                        const QString& shortcut);
 
     [[nodiscard]] QStringList moveTool() const;
     bool setMoveTool(const QStringList& shortcuts) const;

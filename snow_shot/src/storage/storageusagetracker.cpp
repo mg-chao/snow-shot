@@ -17,9 +17,8 @@ namespace {
 // Keep in sync with the directory names used by the owning repositories and
 // services: capturehistoryrepository.cpp, pinnedwindowrepository.cpp, and the
 // OCR asset cache root (configurationDirectory()/assets).
-constexpr auto kHistoryDirectoryName = "capture_history_records";
-constexpr auto kQuarantineDirectoryName = "capture_history_quarantine";
-constexpr auto kPinnedWindowDirectoryName = "pinned_windows_v3";
+constexpr auto kHistoryDirectoryName = "capture_history";
+constexpr auto kPinnedWindowDirectoryName = "pinned_windows";
 constexpr auto kAssetDirectoryName = "assets";
 constexpr auto kThumbnailSuffix = "png";
 
@@ -186,9 +185,7 @@ AppStorageUsage StorageUsageTracker::scanNow() {
             continue;
         }
         const QString name = entry.fileName();
-        const bool history = name == QLatin1String(kHistoryDirectoryName) ||
-                             name == QLatin1String(kQuarantineDirectoryName) ||
-                             name == QStringLiteral("capture_history");
+        const bool history = name == QLatin1String(kHistoryDirectoryName);
         if (history && historyProvided) {
             continue;
         }

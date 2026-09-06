@@ -94,8 +94,17 @@ void builtInCatalogIsCompleteAndValid() {
             }
         }
     }
-    require(sectionCount == 28 && itemCount == 112,
-            "catalog must contain the expected twenty-eight sections and one hundred twelve items");
+    require(
+        sectionCount == 28 && itemCount == 113,
+        "catalog must contain the expected twenty-eight sections and one hundred thirteen items");
+    const auto* apiMode =
+        catalog.item({QStringLiteral("system-settings"), QStringLiteral("screenshot-capture"),
+                      QStringLiteral("screenshot.api-mode")});
+    require(apiMode != nullptr &&
+                apiMode->configurationKey == QStringLiteral("screenshot/api_mode") &&
+                std::get<settings::SettingsSelectDefinition>(apiMode->payload).binding ==
+                    settings::SettingsSelectBinding::ScreenshotApiMode,
+            "capture API and color restoration must share the system screenshot section");
     const auto* colorRestoration =
         catalog.item({QStringLiteral("system-settings"), QStringLiteral("screenshot-capture"),
                       QStringLiteral("screenshot.restore-original-screen-colors")});
@@ -117,19 +126,18 @@ void builtInCatalogIsCompleteAndValid() {
                 std::get<settings::SettingsSwitchDefinition>(smartSelection->payload).binding ==
                     settings::SettingsSwitchBinding::SmartSelection,
             "Function settings must expose the persisted Smart selection switch");
-    require(functionPage->sections.size() == 6 &&
-                functionPage->sections.at(0).id == QStringLiteral("screenshot-settings") &&
-                functionPage->sections.at(1).id == QStringLiteral("pin-to-screen-settings") &&
-                functionPage->sections.at(2).id == QStringLiteral("drawing-settings") &&
-                functionPage->sections.at(3).id ==
-                    QStringLiteral("screen-recording-settings") &&
-                functionPage->sections.at(4).id == QStringLiteral("tray-settings") &&
-                functionPage->sections.at(5).id == QStringLiteral("global-hotkeys"),
-            "Function settings must order Pin to screen, Drawing, and Tray around existing sections");
-    const auto* encodingPreset =
-        catalog.item({QStringLiteral("function-settings"),
-                      QStringLiteral("screen-recording-settings"),
-                      QStringLiteral("screen-recording.encoding-preset")});
+    require(
+        functionPage->sections.size() == 6 &&
+            functionPage->sections.at(0).id == QStringLiteral("screenshot-settings") &&
+            functionPage->sections.at(1).id == QStringLiteral("pin-to-screen-settings") &&
+            functionPage->sections.at(2).id == QStringLiteral("drawing-settings") &&
+            functionPage->sections.at(3).id == QStringLiteral("screen-recording-settings") &&
+            functionPage->sections.at(4).id == QStringLiteral("tray-settings") &&
+            functionPage->sections.at(5).id == QStringLiteral("global-hotkeys"),
+        "Function settings must order Pin to screen, Drawing, and Tray around existing sections");
+    const auto* encodingPreset = catalog.item({QStringLiteral("function-settings"),
+                                               QStringLiteral("screen-recording-settings"),
+                                               QStringLiteral("screen-recording.encoding-preset")});
     require(encodingPreset != nullptr,
             "Function settings must expose the video encoding preset selector");
     const auto& encodingPresetOptions =
@@ -147,63 +155,57 @@ void builtInCatalogIsCompleteAndValid() {
                 encodingPresetOptions.at(4).label.translated() ==
                     QStringLiteral("Maximum compression"),
             "encoding preset labels must be localized independently of their persisted values");
-    require(catalog.item({QStringLiteral("function-settings"),
+    require(
+        catalog.item({QStringLiteral("function-settings"), QStringLiteral("pin-to-screen-settings"),
+                      QStringLiteral("pin-to-screen.mouse-wheel-zoom-mode")}) != nullptr &&
+            catalog.item({QStringLiteral("function-settings"),
                           QStringLiteral("pin-to-screen-settings"),
-                          QStringLiteral("pin-to-screen.mouse-wheel-zoom-mode")}) != nullptr &&
-                catalog.item({QStringLiteral("function-settings"),
-                              QStringLiteral("pin-to-screen-settings"),
-                              QStringLiteral("pin-to-screen.automatic-text-recognition")}) !=
-                    nullptr &&
-                catalog.item({QStringLiteral("function-settings"),
-                              QStringLiteral("pin-to-screen-settings"),
-                              QStringLiteral("pin-to-screen.auto-resize-window")}) != nullptr &&
-                catalog.item({QStringLiteral("function-settings"),
-                              QStringLiteral("drawing-settings"),
-                              QStringLiteral("drawing.quick-selection-disabled-tools")}) !=
-                    nullptr &&
-                catalog.item({QStringLiteral("function-settings"),
-                              QStringLiteral("tray-settings"),
-                              QStringLiteral("tray.left-click-action")}) != nullptr &&
-                catalog.item({QStringLiteral("function-settings"),
-                              QStringLiteral("tray-settings"),
-                              QStringLiteral("tray.menu-options")}) != nullptr,
-            "Function settings must own the moved Pin to screen, Drawing, and Tray controls");
+                          QStringLiteral("pin-to-screen.automatic-text-recognition")}) != nullptr &&
+            catalog.item({QStringLiteral("function-settings"),
+                          QStringLiteral("pin-to-screen-settings"),
+                          QStringLiteral("pin-to-screen.auto-resize-window")}) != nullptr &&
+            catalog.item({QStringLiteral("function-settings"), QStringLiteral("drawing-settings"),
+                          QStringLiteral("drawing.quick-selection-disabled-tools")}) != nullptr &&
+            catalog.item({QStringLiteral("function-settings"), QStringLiteral("tray-settings"),
+                          QStringLiteral("tray.left-click-action")}) != nullptr &&
+            catalog.item({QStringLiteral("function-settings"), QStringLiteral("tray-settings"),
+                          QStringLiteral("tray.menu-options")}) != nullptr,
+        "Function settings must own the moved Pin to screen, Drawing, and Tray controls");
 
     const auto* storagePage = catalog.page(QStringLiteral("storage-and-privacy"));
-    const auto* imageFormat = catalog.item(
-        {QStringLiteral("storage-and-privacy"), QStringLiteral("screenshots"),
-         QStringLiteral("screenshot-output.image-format")});
-    const auto* imageDirectory = catalog.item(
-        {QStringLiteral("storage-and-privacy"), QStringLiteral("screenshots"),
-         QStringLiteral("screenshot-output.image-save-directory")});
+    const auto* imageFormat =
+        catalog.item({QStringLiteral("storage-and-privacy"), QStringLiteral("screenshots"),
+                      QStringLiteral("screenshot-output.image-format")});
+    const auto* imageDirectory =
+        catalog.item({QStringLiteral("storage-and-privacy"), QStringLiteral("screenshots"),
+                      QStringLiteral("screenshot-output.image-save-directory")});
     const auto* videoFilename = catalog.item(
         {QStringLiteral("storage-and-privacy"), QStringLiteral("screen-recording-output"),
          QStringLiteral("screen-recording-output.video-filename-format")});
-    require(storagePage != nullptr && storagePage->sections.size() == 4 &&
-                storagePage->sections.at(0).id == QStringLiteral("screenshots") &&
-                storagePage->sections.at(1).id == QStringLiteral("screen-recording-output") &&
-                storagePage->sections.at(2).id == QStringLiteral("history") &&
-                storagePage->sections.at(2).title.source != nullptr &&
-                QString::fromLatin1(storagePage->sections.at(2).title.source) ==
-                    QStringLiteral("Screenshot history") &&
-                storagePage->sections.at(3).id == QStringLiteral("storage-status") &&
-                imageFormat != nullptr && imageDirectory != nullptr && videoFilename != nullptr &&
-                std::get<settings::SettingsSelectDefinition>(imageFormat->payload).options.size() ==
-                    5 &&
-                std::get<settings::SettingsDirectoryPathDefinition>(imageDirectory->payload)
-                        .binding ==
-                    settings::SettingsDirectoryPathBinding::ScreenshotImageDirectory &&
-                std::get<settings::SettingsTextDefinition>(videoFilename->payload).binding ==
-                    settings::SettingsTextBinding::ScreenRecordingVideoFilenameFormat,
-            "Storage and privacy must expose ordered screenshot and recording output settings");
+    require(
+        storagePage != nullptr && storagePage->sections.size() == 4 &&
+            storagePage->sections.at(0).id == QStringLiteral("screenshots") &&
+            storagePage->sections.at(1).id == QStringLiteral("screen-recording-output") &&
+            storagePage->sections.at(2).id == QStringLiteral("history") &&
+            storagePage->sections.at(2).title.source != nullptr &&
+            QString::fromLatin1(storagePage->sections.at(2).title.source) ==
+                QStringLiteral("Screenshot history") &&
+            storagePage->sections.at(3).id == QStringLiteral("storage-status") &&
+            imageFormat != nullptr && imageDirectory != nullptr && videoFilename != nullptr &&
+            std::get<settings::SettingsSelectDefinition>(imageFormat->payload).options.size() ==
+                5 &&
+            std::get<settings::SettingsDirectoryPathDefinition>(imageDirectory->payload).binding ==
+                settings::SettingsDirectoryPathBinding::ScreenshotImageDirectory &&
+            std::get<settings::SettingsTextDefinition>(videoFilename->payload).binding ==
+                settings::SettingsTextBinding::ScreenRecordingVideoFilenameFormat,
+        "Storage and privacy must expose ordered screenshot and recording output settings");
 
     const auto* systemPage = catalog.page(QStringLiteral("system-settings"));
-    const auto* proxy = catalog.item({QStringLiteral("system-settings"),
-                                      QStringLiteral("network"),
+    const auto* proxy = catalog.item({QStringLiteral("system-settings"), QStringLiteral("network"),
                                       QStringLiteral("network.proxy")});
-    const auto* proxySelect =
-        proxy != nullptr ? std::get_if<settings::SettingsSelectDefinition>(&proxy->payload)
-                         : nullptr;
+    const auto* proxySelect = proxy != nullptr
+                                  ? std::get_if<settings::SettingsSelectDefinition>(&proxy->payload)
+                                  : nullptr;
     require(
         systemPage != nullptr && systemPage->sections.size() == 5 &&
             systemPage->sections.at(0).id == QStringLiteral("system-general") &&
@@ -239,8 +241,8 @@ void builtInCatalogIsCompleteAndValid() {
         catalog.section(QStringLiteral("hotkey-settings"), QStringLiteral("screenshot-shortcuts"));
     const auto* otherShortcutSection =
         catalog.section(QStringLiteral("hotkey-settings"), QStringLiteral("other-shortcuts"));
-    const auto* pinToScreenShortcuts = catalog.section(
-        QStringLiteral("hotkey-settings"), QStringLiteral("pin-to-screen-shortcuts"));
+    const auto* pinToScreenShortcuts = catalog.section(QStringLiteral("hotkey-settings"),
+                                                       QStringLiteral("pin-to-screen-shortcuts"));
     const auto* hotkeyPage = catalog.page(QStringLiteral("hotkey-settings"));
     const bool everyHotkeySectionUsesTwoColumns =
         hotkeyPage != nullptr &&
@@ -273,10 +275,8 @@ void builtInCatalogIsCompleteAndValid() {
         {14, "screenshot-shortcut.scrolling_screenshot",
          "screenshot_shortcuts/scrolling_screenshot"},
         {15, "screenshot-shortcut.save_as_file", "screenshot_shortcuts/save_as_file"},
-        {16, "screenshot-shortcut.cancel_screenshot",
-         "screenshot_shortcuts/cancel_screenshot"},
-        {17, "screenshot-shortcut.copy_to_clipboard",
-         "screenshot_shortcuts/copy_to_clipboard"},
+        {16, "screenshot-shortcut.cancel_screenshot", "screenshot_shortcuts/cancel_screenshot"},
+        {17, "screenshot-shortcut.copy_to_clipboard", "screenshot_shortcuts/copy_to_clipboard"},
     };
     bool newScreenshotShortcutContractsMatch = screenshotShortcuts != nullptr;
     for (const ScreenshotShortcutContract& contract : newScreenshotShortcutContracts) {
@@ -287,76 +287,69 @@ void builtInCatalogIsCompleteAndValid() {
             screenshotShortcuts->items.at(contract.index).configurationKey ==
                 QString::fromLatin1(contract.configurationKey);
     }
-    require(hotkeyPage != nullptr && hotkeyPage->sections.size() == 4 &&
-                everyHotkeySectionUsesTwoColumns &&
-                screenshotShortcuts != nullptr && screenshotShortcuts->items.size() == 18 &&
-                screenshotShortcuts->itemLayout ==
-                    settings::SettingsSectionItemLayout::TwoColumnGrid &&
-                screenshotShortcuts->items.constFirst().id ==
-                    QStringLiteral("screenshot-shortcut.move_tool") &&
-                screenshotShortcuts->items.at(1).configurationKey ==
-                    QStringLiteral("screenshot_shortcuts/move_cursor_up") &&
-                screenshotShortcuts->items.at(5).title.translated() ==
-                    QStringLiteral("Move entire selection") &&
-                screenshotShortcuts->items.at(6).title.translated() ==
-                    QStringLiteral("Keep selection width and height consistent") &&
-                screenshotShortcuts->items.at(7).title.translated() ==
-                    QStringLiteral("Select window/window sub-element") &&
-                screenshotShortcuts->items.at(8).title.translated() ==
-                    QStringLiteral("Previous screenshot history") &&
-                screenshotShortcuts->items.at(9).title.translated() ==
-                    QStringLiteral("Next screenshot history") &&
-                screenshotShortcuts->items.at(10).title.translated() ==
-                    QStringLiteral("Select previously selected area") &&
-                screenshotShortcuts->items.at(11).title.translated() ==
-                    QStringLiteral("Copy color") &&
-                screenshotShortcuts->items.at(12).title.translated() ==
-                    QStringLiteral("Pin to screen") &&
-                screenshotShortcuts->items.at(13).title.translated() ==
-                    QStringLiteral("Video recording") &&
-                screenshotShortcuts->items.at(14).title.translated() ==
-                    QStringLiteral("Scrolling screenshot") &&
-                screenshotShortcuts->items.at(15).title.translated() ==
-                    QStringLiteral("Save as file") &&
-                screenshotShortcuts->items.at(16).title.translated() ==
-                    QStringLiteral("Cancel screenshot") &&
-                screenshotShortcuts->items.at(17).title.translated() ==
-                    QStringLiteral("Copy to clipboard") &&
-                newScreenshotShortcutContractsMatch &&
-                std::get<settings::SettingsLocalShortcutDefinition>(
-                    screenshotShortcuts->items.constFirst().payload)
-                        .scope == settings::SettingsLocalShortcutScope::Screenshot &&
-                drawingShortcuts != nullptr && drawingShortcuts->items.size() == 10 &&
-                drawingShortcuts->itemLayout ==
-                    settings::SettingsSectionItemLayout::TwoColumnGrid &&
-                pinToScreenShortcuts != nullptr && pinToScreenShortcuts->items.size() == 11 &&
-                pinToScreenShortcuts->itemLayout ==
-                    settings::SettingsSectionItemLayout::TwoColumnGrid &&
-                pinToScreenShortcuts->title.translated() == QStringLiteral("Pin to screen") &&
-                pinToScreenShortcuts->reset ==
-                    settings::SettingsSectionReset::PinToScreenShortcuts &&
-                pinToScreenShortcuts->items.constFirst().id ==
-                    QStringLiteral("pin-to-screen-shortcut.copy_to_clipboard") &&
-                pinToScreenShortcuts->items.at(2).configurationKey ==
-                    QStringLiteral("pin_to_screen_shortcuts/save_as_file") &&
-                pinToScreenShortcuts->items.at(3).configurationKey ==
-                    QStringLiteral(
-                        "pin_to_screen_shortcuts/show_text_recognition_results") &&
-                std::get<settings::SettingsLocalShortcutDefinition>(
-                    pinToScreenShortcuts->items.constFirst().payload)
-                        .scope == settings::SettingsLocalShortcutScope::PinToScreen &&
-                otherShortcutSection != nullptr && otherShortcutSection->items.size() == 6 &&
-                otherShortcutSection->itemLayout ==
-                    settings::SettingsSectionItemLayout::TwoColumnGrid &&
-                otherShortcutSection->title.translated() == QStringLiteral("Other") &&
-                otherShortcutSection->items.at(4).id ==
-                    QStringLiteral("screenshot-shortcut.undo") &&
-                otherShortcutSection->items.at(5).id ==
-                    QStringLiteral("screenshot-shortcut.redo") &&
-                drawingShortcuts->items.constFirst().id ==
-                    QStringLiteral("drawing-shortcut.select") &&
-                drawingShortcuts->items.at(1).id == QStringLiteral("drawing-shortcut.shape"),
-            "Hotkey settings must expose Screenshot before Drawing with stable local shortcuts");
+    require(
+        hotkeyPage != nullptr && hotkeyPage->sections.size() == 4 &&
+            everyHotkeySectionUsesTwoColumns && screenshotShortcuts != nullptr &&
+            screenshotShortcuts->items.size() == 18 &&
+            screenshotShortcuts->itemLayout == settings::SettingsSectionItemLayout::TwoColumnGrid &&
+            screenshotShortcuts->items.constFirst().id ==
+                QStringLiteral("screenshot-shortcut.move_tool") &&
+            screenshotShortcuts->items.at(1).configurationKey ==
+                QStringLiteral("screenshot_shortcuts/move_cursor_up") &&
+            screenshotShortcuts->items.at(5).title.translated() ==
+                QStringLiteral("Move entire selection") &&
+            screenshotShortcuts->items.at(6).title.translated() ==
+                QStringLiteral("Keep selection width and height consistent") &&
+            screenshotShortcuts->items.at(7).title.translated() ==
+                QStringLiteral("Select window/window sub-element") &&
+            screenshotShortcuts->items.at(8).title.translated() ==
+                QStringLiteral("Previous screenshot history") &&
+            screenshotShortcuts->items.at(9).title.translated() ==
+                QStringLiteral("Next screenshot history") &&
+            screenshotShortcuts->items.at(10).title.translated() ==
+                QStringLiteral("Select previously selected area") &&
+            screenshotShortcuts->items.at(11).title.translated() == QStringLiteral("Copy color") &&
+            screenshotShortcuts->items.at(12).title.translated() ==
+                QStringLiteral("Pin to screen") &&
+            screenshotShortcuts->items.at(13).title.translated() ==
+                QStringLiteral("Video recording") &&
+            screenshotShortcuts->items.at(14).title.translated() ==
+                QStringLiteral("Scrolling screenshot") &&
+            screenshotShortcuts->items.at(15).title.translated() ==
+                QStringLiteral("Save as file") &&
+            screenshotShortcuts->items.at(16).title.translated() ==
+                QStringLiteral("Cancel screenshot") &&
+            screenshotShortcuts->items.at(17).title.translated() ==
+                QStringLiteral("Copy to clipboard") &&
+            newScreenshotShortcutContractsMatch &&
+            std::get<settings::SettingsLocalShortcutDefinition>(
+                screenshotShortcuts->items.constFirst().payload)
+                    .scope == settings::SettingsLocalShortcutScope::Screenshot &&
+            drawingShortcuts != nullptr && drawingShortcuts->items.size() == 10 &&
+            drawingShortcuts->itemLayout == settings::SettingsSectionItemLayout::TwoColumnGrid &&
+            pinToScreenShortcuts != nullptr && pinToScreenShortcuts->items.size() == 11 &&
+            pinToScreenShortcuts->itemLayout ==
+                settings::SettingsSectionItemLayout::TwoColumnGrid &&
+            pinToScreenShortcuts->title.translated() == QStringLiteral("Pin to screen") &&
+            pinToScreenShortcuts->reset == settings::SettingsSectionReset::PinToScreenShortcuts &&
+            pinToScreenShortcuts->items.constFirst().id ==
+                QStringLiteral("pin-to-screen-shortcut.copy_to_clipboard") &&
+            pinToScreenShortcuts->items.at(2).configurationKey ==
+                QStringLiteral("pin_to_screen_shortcuts/save_as_file") &&
+            pinToScreenShortcuts->items.at(3).configurationKey ==
+                QStringLiteral("pin_to_screen_shortcuts/show_text_recognition_results") &&
+            std::get<settings::SettingsLocalShortcutDefinition>(
+                pinToScreenShortcuts->items.constFirst().payload)
+                    .scope == settings::SettingsLocalShortcutScope::PinToScreen &&
+            otherShortcutSection != nullptr && otherShortcutSection->items.size() == 6 &&
+            otherShortcutSection->itemLayout ==
+                settings::SettingsSectionItemLayout::TwoColumnGrid &&
+            otherShortcutSection->title.translated() == QStringLiteral("Other") &&
+            otherShortcutSection->items.at(4).id == QStringLiteral("screenshot-shortcut.undo") &&
+            otherShortcutSection->items.at(5).id == QStringLiteral("screenshot-shortcut.redo") &&
+            drawingShortcuts->items.constFirst().id == QStringLiteral("drawing-shortcut.select") &&
+            drawingShortcuts->items.at(1).id == QStringLiteral("drawing-shortcut.shape"),
+        "Hotkey settings must expose Screenshot before Drawing with stable local shortcuts");
 
     const auto* interfacePage = catalog.page(QStringLiteral("interface-settings"));
     require(interfacePage != nullptr && interfacePage->sections.size() == 6 &&
@@ -376,32 +369,29 @@ void builtInCatalogIsCompleteAndValid() {
     const auto* trayIcon =
         catalog.item({QStringLiteral("interface-settings"), QStringLiteral("tray"),
                       QStringLiteral("interface.tray.icon")});
-    require(toolbarSize != nullptr && toolbarEditor != nullptr && trayIcon != nullptr &&
-                catalog.item({QStringLiteral("interface-settings"), QStringLiteral("drawing"),
-                              QStringLiteral("drawing.quick-selection-disabled-tools")}) ==
-                    nullptr &&
-                catalog.item({QStringLiteral("interface-settings"),
-                              QStringLiteral("pin-to-screen"),
-                              QStringLiteral("pin-to-screen.mouse-wheel-zoom-mode")}) ==
-                    nullptr &&
-                catalog.item({QStringLiteral("interface-settings"), QStringLiteral("tray"),
-                              QStringLiteral("tray.left-click-action")}) == nullptr &&
-                toolbarSize->configurationKey == QStringLiteral("screenshot_ui/toolbar_size") &&
-                toolbarEditor->configurationKey == QStringLiteral("screenshot_toolbar/layout") &&
-                toolbarSection.title.translated() == QStringLiteral("Toolbar") &&
-                toolbarSection.searchDescription.translated() ==
-                    QStringLiteral("Configure the screenshot, pinned, and recording toolbars") &&
-                toolbarEditor->title.translated() == QStringLiteral("Drawing toolbar settings") &&
-                toolbarEditor->description.translated() ==
-                    QStringLiteral("Drag drawing tools to reorder them or stack them in the same "
-                                   "toolbar position.") &&
-                toolbarEditor->aliases.size() == 2 &&
-                toolbarEditor->aliases.at(0).translated() == QStringLiteral("Tool positions") &&
-                toolbarEditor->aliases.at(1).translated() ==
-                    QStringLiteral("Stack drawing tools") &&
-                trayIcon->configurationKey == QStringLiteral("tray/icon") &&
-                std::get<settings::SettingsRadioDefinition>(trayIcon->payload).options.size() == 6,
-            "new Interface settings controls must retain their schema contracts");
+    require(
+        toolbarSize != nullptr && toolbarEditor != nullptr && trayIcon != nullptr &&
+            catalog.item({QStringLiteral("interface-settings"), QStringLiteral("drawing"),
+                          QStringLiteral("drawing.quick-selection-disabled-tools")}) == nullptr &&
+            catalog.item({QStringLiteral("interface-settings"), QStringLiteral("pin-to-screen"),
+                          QStringLiteral("pin-to-screen.mouse-wheel-zoom-mode")}) == nullptr &&
+            catalog.item({QStringLiteral("interface-settings"), QStringLiteral("tray"),
+                          QStringLiteral("tray.left-click-action")}) == nullptr &&
+            toolbarSize->configurationKey == QStringLiteral("screenshot_ui/toolbar_size") &&
+            toolbarEditor->configurationKey == QStringLiteral("screenshot_toolbar/layout") &&
+            toolbarSection.title.translated() == QStringLiteral("Toolbar") &&
+            toolbarSection.searchDescription.translated() ==
+                QStringLiteral("Configure the screenshot, pinned, and recording toolbars") &&
+            toolbarEditor->title.translated() == QStringLiteral("Drawing toolbar settings") &&
+            toolbarEditor->description.translated() ==
+                QStringLiteral("Drag drawing tools to reorder them or stack them in the same "
+                               "toolbar position.") &&
+            toolbarEditor->aliases.size() == 2 &&
+            toolbarEditor->aliases.at(0).translated() == QStringLiteral("Tool positions") &&
+            toolbarEditor->aliases.at(1).translated() == QStringLiteral("Stack drawing tools") &&
+            trayIcon->configurationKey == QStringLiteral("tray/icon") &&
+            std::get<settings::SettingsRadioDefinition>(trayIcon->payload).options.size() == 6,
+        "new Interface settings controls must retain their schema contracts");
 
     const auto* retention =
         storage::ConfigurationSchema::entry(QStringLiteral("capture_history/retention_days"));
@@ -521,8 +511,7 @@ void quickFunctionShortcutsHaveStableContracts() {
     }
     const auto* trayMenuSchema =
         storage::ConfigurationSchema::entry(QStringLiteral("tray/menu_options"));
-    require(trayGroups.size() == 4 &&
-                trayGroups.at(0).id == QStringLiteral("screenshot") &&
+    require(trayGroups.size() == 4 && trayGroups.at(0).id == QStringLiteral("screenshot") &&
                 trayGroups.at(0).options.size() == 8 &&
                 trayGroups.at(1).id == QStringLiteral("screen-recording") &&
                 trayGroups.at(1).options.size() == 2 &&
@@ -535,8 +524,7 @@ void quickFunctionShortcutsHaveStableContracts() {
                     settings::SettingsTrayMenuOptionKind::WindowGrouping &&
                 trayOptionIds.at(13) == QStringLiteral("tray.disable-shortcut-functions") &&
                 trayOptionIds.at(14) == QStringLiteral("tray.show-main-window") &&
-                trayOptionIds.at(15) == QStringLiteral("tray.exit") &&
-                trayMenuSchema != nullptr &&
+                trayOptionIds.at(15) == QStringLiteral("tray.exit") && trayMenuSchema != nullptr &&
                 trayMenuSchema->allowedStringValues == trayOptionIds,
             "tray menu options must derive all quick-function groups and append system commands");
 
@@ -576,8 +564,7 @@ void quickFunctionShortcutsHaveStableContracts() {
                     snow_shot::presentation::icons::custom::outlined::OcrTranslate() &&
                 screenshotSection != nullptr && screenshotSection->items.size() >= 5 &&
                 screenshotSection->items.at(3).id == QStringLiteral("quick.screenshot-ocr") &&
-                screenshotSection->items.at(4).id ==
-                    QStringLiteral("quick.screenshot-translation"),
+                screenshotSection->items.at(4).id == QStringLiteral("quick.screenshot-translation"),
             "Text translation must appear directly after Text recognition with its toolbar icon");
 
     const auto* recordingSection =
@@ -604,8 +591,7 @@ void quickFunctionShortcutsHaveStableContracts() {
         catalog.section(QStringLiteral("quick-functions"), QStringLiteral("other"));
     require(otherShortcuts != nullptr && otherShortcuts->items.size() == 2 &&
                 otherShortcuts->items.at(0).id == QStringLiteral("quick.open-capture-history") &&
-                otherShortcuts->items.at(1).id ==
-                    QStringLiteral("quick.pin-clipboard-content"),
+                otherShortcuts->items.at(1).id == QStringLiteral("quick.pin-clipboard-content"),
             "Other quick actions must only expose history and clipboard pinning");
     const auto shortcutPayload = [](const settings::SettingsItemDefinition* item) {
         return item != nullptr
@@ -676,21 +662,20 @@ void compactTrayManifestMatchesRegistryCatalog() {
         }
     }
 
-    for (const presentation::GlobalShortcutAction action : {
-             presentation::GlobalShortcutAction::Screenshot,
-             presentation::GlobalShortcutAction::ScreenshotDelay,
-             presentation::GlobalShortcutAction::ScreenshotFixed,
-             presentation::GlobalShortcutAction::ScreenshotOcr,
-             presentation::GlobalShortcutAction::ScreenshotTranslation,
-             presentation::GlobalShortcutAction::ScreenshotCopy,
-             presentation::GlobalShortcutAction::ScreenshotFullScreen,
-             presentation::GlobalShortcutAction::ScreenshotFocusedWindow,
-             presentation::GlobalShortcutAction::ScreenRecord,
-             presentation::GlobalShortcutAction::ScreenRecordCopy,
-             presentation::GlobalShortcutAction::OpenCaptureHistory,
-             presentation::GlobalShortcutAction::PinClipboardContent}) {
-        require(compact.shortcutActionTitle(action, 0) ==
-                    catalog.shortcutActionTitle(action, 0) &&
+    for (const presentation::GlobalShortcutAction action :
+         {presentation::GlobalShortcutAction::Screenshot,
+          presentation::GlobalShortcutAction::ScreenshotDelay,
+          presentation::GlobalShortcutAction::ScreenshotFixed,
+          presentation::GlobalShortcutAction::ScreenshotOcr,
+          presentation::GlobalShortcutAction::ScreenshotTranslation,
+          presentation::GlobalShortcutAction::ScreenshotCopy,
+          presentation::GlobalShortcutAction::ScreenshotFullScreen,
+          presentation::GlobalShortcutAction::ScreenshotFocusedWindow,
+          presentation::GlobalShortcutAction::ScreenRecord,
+          presentation::GlobalShortcutAction::ScreenRecordCopy,
+          presentation::GlobalShortcutAction::OpenCaptureHistory,
+          presentation::GlobalShortcutAction::PinClipboardContent}) {
+        require(compact.shortcutActionTitle(action, 0) == catalog.shortcutActionTitle(action, 0) &&
                     compact.shortcutActionTitle(action, 99) ==
                         catalog.shortcutActionTitle(action, 99),
                 "compact tray titles must match catalog titles and clamp runtime values");
@@ -769,8 +754,8 @@ void invalidCatalogReportsAllConformanceErrors() {
 
 void searchIndexIsGeneratedAndRanked() {
     settings::SettingsSearchIndex index(settings::builtInSettingsRegistry());
-    require(index.entries().size() == 147 && index.search(QString()).size() == 147,
-            "search must generate all one hundred forty-seven catalog nodes in catalog order");
+    require(index.entries().size() == 148 && index.search(QString()).size() == 148,
+            "search must generate all one hundred forty-eight catalog nodes in catalog order");
 
     int pages = 0;
     int sections = 0;
@@ -797,7 +782,7 @@ void searchIndexIsGeneratedAndRanked() {
             break;
         }
     }
-    require(pages == 7 && sections == 28 && items == 112,
+    require(pages == 7 && sections == 28 && items == 113,
             "search node counts must match catalog page, section, and item counts");
 
     const auto theme = index.search(QStringLiteral("theme"));
@@ -889,10 +874,11 @@ void addingCatalogNodesAutomaticallyExpandsSearch() {
                                              builtIn.defaultLocation());
     require(expanded.validationErrors().isEmpty(),
             "a normal additional catalog page must validate without consumer changes");
-    const auto registry = settings::SettingsRegistry::fromCatalog(
-        expanded, QStringLiteral("search-substring"));
+    const auto registry =
+        settings::SettingsRegistry::fromCatalog(expanded, QStringLiteral("search-substring"));
     settings::SettingsSearchIndex index(registry);
-    require(index.entries().size() == 150,
+    settings::SettingsSearchIndex builtInIndex(settings::builtInSettingsRegistry());
+    require(index.entries().size() == builtInIndex.entries().size() + 3,
             "adding one page, section, and item must automatically add three search entries");
     require(index.search(QStringLiteral("extra item")).constFirst().location ==
                 settings::SettingsLocation{QStringLiteral("extra-page"),
@@ -906,14 +892,20 @@ void searchIndexPreservesInteriorSubstringMatches() {
     QVector<settings::SettingsPageDefinition> pages = builtIn.pages();
     settings::SettingsTextDefinition textDefinition;
     textDefinition.binding = settings::SettingsTextBinding::ScreenshotManualFilenameFormat;
-    pages.push_back({
-        QStringLiteral("substring-page"), QStringLiteral("/substring"), text("Substring Page"),
-        text("Substring search fixture"),
-        {{QStringLiteral("substring-section"), text("Substring"), text("Substring"),
-          settings::SettingsSectionReset::None,
-          {{QStringLiteral("substring.item"), text("Restore format"),
-            text("A value containing the search token in the middle"), {},
-            QStringLiteral("screenshot/manual_save_filename_format"), textDefinition}}}}});
+    pages.push_back({QStringLiteral("substring-page"),
+                     QStringLiteral("/substring"),
+                     text("Substring Page"),
+                     text("Substring search fixture"),
+                     {{QStringLiteral("substring-section"),
+                       text("Substring"),
+                       text("Substring"),
+                       settings::SettingsSectionReset::None,
+                       {{QStringLiteral("substring.item"),
+                         text("Restore format"),
+                         text("A value containing the search token in the middle"),
+                         {},
+                         QStringLiteral("screenshot/manual_save_filename_format"),
+                         textDefinition}}}}});
     QVector<settings::SettingsNavigationNode> navigation = builtIn.navigation();
     navigation.push_back(settings::SettingsNavigationPageDefinition{
         QStringLiteral("nav.substring-page"), QStringLiteral("substring-page"),
@@ -922,8 +914,8 @@ void searchIndexPreservesInteriorSubstringMatches() {
                                              builtIn.defaultLocation());
     require(expanded.validationErrors().isEmpty(),
             "substring search fixture must satisfy catalog validation");
-    const auto registry = settings::SettingsRegistry::fromCatalog(
-        expanded, QStringLiteral("search-extra"));
+    const auto registry =
+        settings::SettingsRegistry::fromCatalog(expanded, QStringLiteral("search-extra"));
     settings::SettingsSearchIndex index(registry);
     const auto result = index.search(QStringLiteral("store"));
     require(std::any_of(result.cbegin(), result.cend(),
@@ -932,8 +924,8 @@ void searchIndexPreservesInteriorSubstringMatches() {
                         }),
             "indexed search must retain interior substring matches that are not prefixes");
     const auto punctuationResult = index.search(QStringLiteral("idd"));
-    const bool descriptionMatch = std::any_of(
-        punctuationResult.cbegin(), punctuationResult.cend(), [](const auto& entry) {
+    const bool descriptionMatch =
+        std::any_of(punctuationResult.cbegin(), punctuationResult.cend(), [](const auto& entry) {
             return entry.location.itemId == QStringLiteral("substring.item");
         });
     require(descriptionMatch,
@@ -946,8 +938,9 @@ void sectionIdsMayRepeatAcrossPages() {
     pages[2].sections[0].id = pages[0].sections[0].id;
     const settings::SettingsCatalog expanded(std::move(pages), builtIn.navigation(),
                                              builtIn.defaultLocation());
-    require(!expanded.validationErrors().join(u'\n').contains(QStringLiteral("duplicate section id")),
-            "section IDs must be scoped to their containing page");
+    require(
+        !expanded.validationErrors().join(u'\n').contains(QStringLiteral("duplicate section id")),
+        "section IDs must be scoped to their containing page");
 }
 
 void catalogRejectsReservedIndexDelimiters() {
@@ -963,8 +956,8 @@ void catalogRejectsReservedIndexDelimiters() {
 
 bool descriptorBelongsTo(const settings::SettingsRegistry& registry,
                          const settings::SettingsFieldDescriptor& descriptor) {
-    const auto* item = registry.catalog().item(
-        {descriptor.pageId, descriptor.sectionId, descriptor.id});
+    const auto* item =
+        registry.catalog().item({descriptor.pageId, descriptor.sectionId, descriptor.id});
     return item != nullptr && descriptor.definition == item;
 }
 
@@ -1016,16 +1009,15 @@ void registryCompilesOwnedIndexesAndProviderPlans() {
                     "switch bindings must resolve through the registry index");
             break;
         case settings::SettingsFieldKind::Integer:
-            require(registry.fieldForInteger(
-                        std::get<settings::SettingsIntegerDefinition>(descriptor.definition->payload)
-                            .binding) == &descriptor,
+            require(registry.fieldForInteger(std::get<settings::SettingsIntegerDefinition>(
+                                                 descriptor.definition->payload)
+                                                 .binding) == &descriptor,
                     "integer bindings must resolve through the registry index");
             break;
         case settings::SettingsFieldKind::MultiSelect:
-            require(registry.fieldForMultiSelect(
-                        std::get<settings::SettingsMultiSelectDefinition>(
-                            descriptor.definition->payload)
-                            .binding) == &descriptor,
+            require(registry.fieldForMultiSelect(std::get<settings::SettingsMultiSelectDefinition>(
+                                                     descriptor.definition->payload)
+                                                     .binding) == &descriptor,
                     "multi-select bindings must resolve through the registry index");
             break;
         case settings::SettingsFieldKind::Slider:
@@ -1047,17 +1039,17 @@ void registryCompilesOwnedIndexesAndProviderPlans() {
                     "radio bindings must resolve through the registry index");
             break;
         case settings::SettingsFieldKind::FilePath:
-            require(registry.fieldForFilePath(
-                        std::get<settings::SettingsFilePathDefinition>(descriptor.definition->payload)
-                            .binding) == &descriptor,
+            require(registry.fieldForFilePath(std::get<settings::SettingsFilePathDefinition>(
+                                                  descriptor.definition->payload)
+                                                  .binding) == &descriptor,
                     "file path bindings must resolve through the registry index");
             break;
         case settings::SettingsFieldKind::DirectoryPath:
-            require(registry.fieldForDirectoryPath(
-                        std::get<settings::SettingsDirectoryPathDefinition>(
-                            descriptor.definition->payload)
-                            .binding) == &descriptor,
-                    "directory path bindings must resolve through the registry index");
+            require(
+                registry.fieldForDirectoryPath(std::get<settings::SettingsDirectoryPathDefinition>(
+                                                   descriptor.definition->payload)
+                                                   .binding) == &descriptor,
+                "directory path bindings must resolve through the registry index");
             break;
         case settings::SettingsFieldKind::Text:
             require(registry.fieldForText(
@@ -1073,8 +1065,8 @@ void registryCompilesOwnedIndexesAndProviderPlans() {
             break;
         }
         case settings::SettingsFieldKind::LocalShortcut: {
-            const auto& payload = std::get<settings::SettingsLocalShortcutDefinition>(
-                descriptor.definition->payload);
+            const auto& payload =
+                std::get<settings::SettingsLocalShortcutDefinition>(descriptor.definition->payload);
             require(registry.fieldForLocalShortcut(payload.scope, payload.shortcutId) ==
                         &descriptor,
                     "local shortcut bindings must resolve through the registry index");
@@ -1129,8 +1121,7 @@ void registryCompilesOwnedIndexesAndProviderPlans() {
                         sectionPlan.sectionIndex < page->sections.size(),
                     "section plans must contain valid catalog section indexes");
             const auto& section = page->sections.at(sectionPlan.sectionIndex);
-            require(sectionPlan.sectionIndex == sectionPlanIndex &&
-                        sectionPlan.id == section.id &&
+            require(sectionPlan.sectionIndex == sectionPlanIndex && sectionPlan.id == section.id &&
                         sectionPlan.reset == section.reset &&
                         sectionPlan.itemLayout == section.itemLayout &&
                         sectionPlan.fieldIndexes.size() == section.items.size(),
@@ -1157,8 +1148,7 @@ void registryCopiesAndMovesRebaseDescriptorPointers() {
     settings::SettingsRegistry moveAssigned;
     moveAssigned = std::move(assigned);
 
-    const QVector<const settings::SettingsRegistry*> registries{
-        &original, &moved, &moveAssigned};
+    const QVector<const settings::SettingsRegistry*> registries{&original, &moved, &moveAssigned};
     for (const settings::SettingsRegistry* registry : registries) {
         require(registry->isValid() && registry->fields().size() == original.fields().size(),
                 "copied and moved registries must preserve compiled contents");
@@ -1176,15 +1166,14 @@ void registryReportsDuplicatesDeterministically() {
     duplicateItem.id = QStringLiteral("duplicate-theme");
     pages[0].sections[0].items.push_back(duplicateItem);
     const settings::SettingsCatalog duplicateCatalog(std::move(pages), builtIn.navigation(),
-                                                      builtIn.defaultLocation());
+                                                     builtIn.defaultLocation());
     const settings::SettingsRegistry duplicateRegistry =
         settings::SettingsRegistry::fromCatalog(duplicateCatalog, QStringLiteral("test"));
     const QString errors = duplicateRegistry.validationErrors().join(u'\n');
     require(errors.contains(QStringLiteral("duplicate settings persistence key")) &&
                 errors.contains(QStringLiteral("duplicate shortcut action")) &&
-                duplicateRegistry.fieldForShortcut(
-                    presentation::GlobalShortcutAction::Screenshot)->id ==
-                    QStringLiteral("quick.screenshot"),
+                duplicateRegistry.fieldForShortcut(presentation::GlobalShortcutAction::Screenshot)
+                        ->id == QStringLiteral("quick.screenshot"),
             "duplicate indexes must report diagnostics while preserving first-entry lookup");
 
     settings::SettingsRegistryBuilder builder;
@@ -1200,8 +1189,7 @@ void registryReportsDuplicatesDeterministically() {
 
 void emptyRegistryBuilderIsExplicitlyInvalid() {
     const settings::SettingsRegistryBuilder builder;
-    const QString expected =
-        QStringLiteral("settings registry requires at least one provider");
+    const QString expected = QStringLiteral("settings registry requires at least one provider");
     require(builder.validationErrors() == QStringList{expected},
             "an empty registry builder must expose one deterministic validation error");
     const settings::SettingsRegistry registry = builder.build();

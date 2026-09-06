@@ -26,14 +26,14 @@
 
 namespace snow_shot::storage {
 namespace {
-constexpr int kFormatVersion = 3;
+constexpr int kFormatVersion = 1;
 constexpr auto kDefaultGroupId = "default";
 constexpr auto kDefaultGroupName = "Default";
 constexpr int kMaximumRecords = 128;
 constexpr int kMaximumGroups = PinnedWindowRepository::maximumGroupCount();
 constexpr qint64 kMaximumImageBytes = 256LL * 1024LL * 1024LL;
 constexpr qint64 kMaximumPayloadBytes = 32LL * 1024LL * 1024LL;
-constexpr auto kDirectoryName = "pinned_windows_v3";
+constexpr auto kDirectoryName = "pinned_windows";
 constexpr auto kManifestName = "index.json";
 
 QString sourceKindToString(PinnedWindowSourceKind kind) {
@@ -951,36 +951,6 @@ PinnedWindowRepository::~PinnedWindowRepository() {
     }
 }
 
-QVector<PinnedWindowRecord> PinnedWindowRepository::records() const {
-    QVector<PinnedWindowRecord> result;
-    if (m_impl == nullptr) {
-        return result;
-    }
-    QVector<StoredRecord> storedRecords;
-    {
-        std::lock_guard locker(m_impl->mutex);
-        storedRecords.reserve(m_impl->records.size());
-        for (const auto& stored : m_impl->records) {
-            storedRecords.push_back(stored);
-        }
-    }
-    result.reserve(storedRecords.size());
-    for (StoredRecord& stored : storedRecords) {
-        if (!stored.payloads.isEmpty() &&
-            !loadPayloads(m_impl->root, stored.payloads, &stored.record)) {
-            continue;
-        }
-        result.push_back(std::move(stored.record));
-    }
-    std::sort(result.begin(), result.end(), [](const auto& first, const auto& second) {
-        if (first.updatedUtc == second.updatedUtc) {
-            return first.id < second.id;
-        }
-        return first.updatedUtc < second.updatedUtc;
-    });
-    return result;
-}
-
 std::optional<PinnedWindowRecord> PinnedWindowRepository::loadRecord(const QString& id) const {
     if (m_impl == nullptr || !safeId(id)) {
         return std::nullopt;
@@ -1097,33 +1067,6 @@ StorageResult PinnedWindowRepository::setGroups(QVector<PinnedWindowGroup> group
                          [&it](const auto& group) { return group.id == it->record.groupId; })) {
             it->record.groupId = QString::fromLatin1(kDefaultGroupId);
         }
-    }
-    m_impl->markDirtyLocked();
-    return StorageResult::ok();
-}
-
-StorageResult PinnedWindowRepository::removeEmptyGroups() {
-    if (m_impl == nullptr || !m_impl->writeAvailable) {
-        return StorageResult::failure(QStringLiteral("Pinned-window storage is not writable"));
-    }
-    std::lock_guard locker(m_impl->mutex);
-    QSet<QString> occupied;
-    for (const auto& stored : m_impl->records) {
-        occupied.insert(stored.record.groupId);
-    }
-    QVector<PinnedWindowGroup> kept;
-    for (const auto& group : m_impl->groups) {
-        if (group.id == QString::fromLatin1(kDefaultGroupId) || occupied.contains(group.id)) {
-            kept.push_back(group);
-        }
-    }
-    if (kept.size() == m_impl->groups.size()) {
-        return StorageResult::ok();
-    }
-    m_impl->groups = std::move(kept);
-    if (!std::any_of(m_impl->groups.cbegin(), m_impl->groups.cend(),
-                     [this](const auto& group) { return group.id == m_impl->activeGroupId; })) {
-        m_impl->activeGroupId = QString::fromLatin1(kDefaultGroupId);
     }
     m_impl->markDirtyLocked();
     return StorageResult::ok();

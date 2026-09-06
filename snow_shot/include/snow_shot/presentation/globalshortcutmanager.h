@@ -28,9 +28,7 @@ class GlobalShortcutManager final : public QObject {
 
   public:
     explicit GlobalShortcutManager(QObject* parent = nullptr);
-    GlobalShortcutManager(std::unique_ptr<GlobalShortcutBackend> backend,
-                          const QString& organization, const QString& application,
-                          QObject* parent = nullptr,
+    GlobalShortcutManager(std::unique_ptr<GlobalShortcutBackend> backend, QObject* parent = nullptr,
                           std::function<bool()> focusedFullscreenDetector = {});
     ~GlobalShortcutManager() override;
 

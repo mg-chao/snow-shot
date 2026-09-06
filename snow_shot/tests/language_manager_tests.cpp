@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
     require(settings.language() == QStringLiteral("en_US"),
             "the canonical language preference should persist");
     require(manager.currentLocale().name() == QStringLiteral("en_US"),
-            "the English catalog should be active after migration");
+            "the English catalog should be active after canonicalizing the locale");
     require(adqt::locale::LocaleManager::instance().locale().name() == QStringLiteral("en_US"),
             "Ant Design Qt should follow the English application locale");
 
@@ -76,8 +76,7 @@ int main(int argc, char** argv) {
             "Follow system should resolve to a valid bundled locale");
 
     const QString preferenceBeforeFailure = manager.languagePreference();
-    const QString settingBeforeFailure =
-        settings.language();
+    const QString settingBeforeFailure = settings.language();
     require(!manager.setLanguage(QStringLiteral("fr_FR")),
             "an unavailable locale should fail transactionally");
     require(manager.languagePreference() == preferenceBeforeFailure,

@@ -30,7 +30,6 @@ class PinnedWindowRepository final {
         return 128;
     }
 
-    [[nodiscard]] QVector<PinnedWindowRecord> records() const;
     [[nodiscard]] std::optional<PinnedWindowRecord> loadRecord(const QString& id) const;
     [[nodiscard]] QVector<PinnedWindowSummary> summaries() const;
     [[nodiscard]] quint64 revision() const;
@@ -39,7 +38,6 @@ class PinnedWindowRepository final {
     [[nodiscard]] StorageResult setActiveGroup(const QString& groupId);
     [[nodiscard]] StorageResult setGroups(QVector<PinnedWindowGroup> groups,
                                           const QString& activeGroupId);
-    [[nodiscard]] StorageResult removeEmptyGroups();
     [[nodiscard]] StorageResult setRecordGroup(const QString& recordId, const QString& groupId);
     [[nodiscard]] StorageResult create(PinnedWindowRecord record, PreparedPngImage sourceImage);
     [[nodiscard]] StorageResult create(PinnedWindowRecord record);

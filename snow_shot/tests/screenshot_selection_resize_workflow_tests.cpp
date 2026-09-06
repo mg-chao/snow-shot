@@ -175,11 +175,7 @@ void presetCreateModalRetranslatesInPlace(ScreenshotSelectionResizeWorkflow& wor
 
 int main(int argc, char* argv[]) {
     QApplication application(argc, argv);
-    const QString settingsApplication =
-        QStringLiteral("snow-shot-selection-resize-workflow-tests-%1")
-            .arg(QCoreApplication::applicationPid());
-    ScreenshotSelectionSettingsStore settingsStore(QStringLiteral("SnowShotTests"),
-                                                   settingsApplication);
+    ScreenshotSelectionSettingsStore settingsStore;
     settingsStore.clear();
     ScreenshotSelectionResizeWorkflow workflow(settingsStore);
 

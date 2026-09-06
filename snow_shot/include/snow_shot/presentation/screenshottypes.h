@@ -38,20 +38,9 @@ enum class ScreenshotCaptureBackend {
     Gdi = 3,
 };
 
-struct ScreenshotWindowCaptureFrame {
-    QImage image;
-    QRect physicalRect;
-    ScreenshotCaptureBackend backend = ScreenshotCaptureBackend::Auto;
-
-    [[nodiscard]] bool isValid() const {
-        return !image.isNull() && !physicalRect.isEmpty() && physicalRect.size() == image.size();
-    }
-};
-
 struct ScreenshotCaptureRequest {
     quint64 requestId = 0;
     bool refreshLayout = false;
-    quintptr focusedWindowHandle = 0;
     bool restoreOriginalScreenColors = false;
 };
 
@@ -75,7 +64,6 @@ struct CapturedDisplayModel {
 struct ScreenshotCaptureResult {
     quint64 requestId = 0;
     QVector<CapturedDisplayModel> displays;
-    std::optional<ScreenshotWindowCaptureFrame> focusedWindow;
     QString errorMessage;
     bool succeeded = false;
 };

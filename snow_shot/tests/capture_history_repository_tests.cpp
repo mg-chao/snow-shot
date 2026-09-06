@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <limits>
 
 namespace storage = snow_shot::storage;
 
@@ -89,6 +90,62 @@ QJsonObject firstRecord(const QString& root) {
         .toObject();
 }
 
+void sourceCanvasOriginsRoundTripAndRejectInvalidCoordinates() {
+    const auto now = QDateTime::currentDateTimeUtc();
+    for (const auto origin :
+         {std::optional<QPoint>{}, std::optional<QPoint>{QPoint(-1920, -200)},
+          std::optional<QPoint>{QPoint(0, 0)}, std::optional<QPoint>{QPoint(1920, 400)}}) {
+        QTemporaryDir temporary;
+        storage::CaptureHistoryRecord published;
+        {
+            auto repository = storage::makeCaptureHistoryRepository(temporary.path());
+            auto draft = draftAt(now);
+            draft.displays.front().sourceCanvasOrigin = origin;
+            const auto result = repository->publish(draft).get();
+            require(result.storage.success, "positioned display publication failed");
+            published = result.record;
+        }
+        auto repository = storage::makeCaptureHistoryRepository(temporary.path());
+        require(repository->records().size() == 1 && repository->records().front() == published &&
+                    published.displays.front().sourceCanvasOrigin == origin &&
+                    repository->load(published).has_value(),
+                "display source origin did not survive a repository restart");
+    }
+
+    QTemporaryDir temporary;
+    {
+        auto repository = storage::makeCaptureHistoryRepository(temporary.path());
+        auto draft = draftAt(now);
+        require(repository->publish(draft).get().storage.success,
+                "source origin validation fixture failed");
+        draft.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        draft.displays.front().sourceCanvasOrigin = QPoint(std::numeric_limits<int>::max(), 0);
+        require(!repository->publish(draft).get().storage.success,
+                "publication accepted an overflowing source rectangle");
+    }
+    const QJsonObject index = readObject(indexPath(temporary.path()));
+    const QJsonValue invalidOrigins[] = {
+        QJsonValue(QJsonValue::Null), QJsonObject{},
+        QJsonObject{{QStringLiteral("x"), 1.5}, {QStringLiteral("y"), 0}},
+        QJsonObject{{QStringLiteral("x"), std::numeric_limits<int>::max()},
+                    {QStringLiteral("y"), 0}},
+        QJsonObject{{QStringLiteral("x"), 0},
+                    {QStringLiteral("y"), std::numeric_limits<int>::max()}}};
+    for (const auto& origin : invalidOrigins) {
+        QJsonObject record = index.value(QStringLiteral("records")).toArray().first().toObject();
+        QJsonArray displays = record.value(QStringLiteral("displays")).toArray();
+        QJsonObject display = displays.first().toObject();
+        display.insert(QStringLiteral("source_canvas_origin"), origin);
+        displays[0] = display;
+        record.insert(QStringLiteral("displays"), displays);
+        QJsonObject invalidIndex = index;
+        invalidIndex.insert(QStringLiteral("records"), QJsonArray{record});
+        writeBytes(indexPath(temporary.path()), QJsonDocument(invalidIndex).toJson());
+        auto repository = storage::makeCaptureHistoryRepository(temporary.path());
+        require(repository->records().isEmpty(), "invalid source origin was accepted on load");
+    }
+}
+
 void publicationAndRecovery() {
     QTemporaryDir temporary;
     require(temporary.isValid(), "failed to create publication directory");
@@ -135,7 +192,6 @@ void publicationAndRecovery() {
                 "manifest total byte accounting is inconsistent");
         const storage::CaptureHistoryUsage usage = repository->usage();
         require(usage.entryCount == 1 && usage.recordBytes == physicalBytes &&
-                    usage.quarantineBytes == 0 && usage.temporaryBytes == 0 &&
                     usage.indexBytes == QFileInfo(indexPath(temporary.path())).size() &&
                     usage.totalBytes == physicalBytes + usage.indexBytes,
                 "capture-history usage includes data outside self-contained records");
@@ -155,10 +211,6 @@ void publicationAndRecovery() {
         require(loadedResult->format() == QImage::Format_ARGB32,
                 "Windows history result image should use BGRA-backed ARGB32 pixels");
 #endif
-        require(
-            !QFileInfo::exists(
-                QDir(temporary.path()).filePath(QStringLiteral("capture_history_catalog.json"))),
-            "capture-history publication unexpectedly created a catalog");
     }
 
     {
@@ -198,6 +250,9 @@ void preparedResultBytesAreCommittedWithoutReplacement() {
     const auto loaded = repository->loadResultImage(published.record);
     require(loaded.has_value() && loaded->pixelColor(4, 6) == result.pixelColor(4, 6),
             "prepared history result did not round-trip");
+    const auto loadedPng = repository->loadResultPng(published.record);
+    require(loadedPng.has_value() && loadedPng->bytes() == *sharedBytes,
+            "history clipboard read must preserve the stored PNG bytes");
 }
 
 void quickCaptureSourcesRoundTrip() {
@@ -237,41 +292,31 @@ void quickCaptureSourcesRoundTrip() {
     verifySource(storage::CaptureHistorySource::FocusedWindow, QStringLiteral("focused_window"));
 }
 
-void trustedStartupAndExplicitLegacyClear() {
+void trustedStartupAndExplicitClear() {
     QTemporaryDir temporary;
-    require(temporary.isValid(), "failed to create quarantine directory");
+    require(temporary.isValid(), "failed to create history leftover directory");
     QString recordDirectory;
     {
         auto repository = storage::makeCaptureHistoryRepository(temporary.path());
         require(repository->publish(draftAt(QDateTime::currentDateTimeUtc())).get().storage.success,
-                "failed to publish quarantine fixture");
+                "failed to publish leftover fixture");
         recordDirectory = onlyRecordDirectory(temporary.path());
     }
     writeBytes(QDir(recordDirectory).filePath(QStringLiteral("canvas_history.json")),
                QByteArrayLiteral("not-json"));
     const QString temporaryRecord =
-        QDir(temporary.path()).filePath(QStringLiteral("capture_history_records/.tmp-abandoned"));
+        QDir(temporary.path()).filePath(QStringLiteral("capture_history/records/.tmp-abandoned"));
     require(QDir().mkpath(temporaryRecord), "failed to create temporary fixture");
     writeBytes(QDir(temporaryRecord).filePath(QStringLiteral("partial")), QByteArrayLiteral("x"));
-    const QString expiredQuarantine =
-        QDir(temporary.path())
-            .filePath(QStringLiteral(
-                "capture_history_quarantine/expired.quarantine-20200101-000000-000"));
-    require(QDir().mkpath(expiredQuarantine), "failed to create expired quarantine fixture");
-    writeBytes(QDir(expiredQuarantine).filePath(QStringLiteral("partial")), QByteArrayLiteral("x"));
 
     auto repository = storage::makeCaptureHistoryRepository(temporary.path());
-    require(repository->records().size() == 1 && QFileInfo::exists(temporaryRecord) &&
-                QFileInfo::exists(expiredQuarantine) && repository->usage().quarantineBytes == 0,
-            "startup inspected payloads or legacy data");
+    require(repository->records().size() == 1 && QFileInfo::exists(temporaryRecord),
+            "startup inspected payloads or unmanaged leftovers");
     const auto clearResult = repository->requestClear().get();
     require(clearResult.success && repository->usage().entryCount == 0 &&
                 repository->usage().totalBytes == repository->usage().indexBytes &&
-                !QFileInfo::exists(
-                    QDir(temporary.path()).filePath(QStringLiteral("capture_history_records"))) &&
-                !QFileInfo::exists(
-                    QDir(temporary.path()).filePath(QStringLiteral("capture_history_quarantine"))),
-            "clear did not remove every managed history area");
+                !QFileInfo::exists(temporaryRecord),
+            "clear did not remove unmanaged leftovers inside the history tree");
 }
 
 void policyBoundariesAndDisabledPreservation() {
@@ -403,7 +448,7 @@ void displayAssetsAreMetadataOnly() {
     require(repository->records().isEmpty(),
             "invalid payload was not removed after lazy validation failure");
 
-    require(!QFileInfo::exists(imagePath), "quarantine left the invalid display payload in place");
+    require(!QFileInfo::exists(imagePath), "invalid display payload was left in place");
     require(!repository->displayAssets(record).has_value(),
             "asset lookup accepted a missing display file");
 }
@@ -626,10 +671,11 @@ void clearCancelsQueuedPublicationsAndShutdownDrains() {
 
 int main(int argc, char** argv) {
     QCoreApplication application(argc, argv);
+    sourceCanvasOriginsRoundTripAndRejectInvalidCoordinates();
     publicationAndRecovery();
     preparedResultBytesAreCommittedWithoutReplacement();
     quickCaptureSourcesRoundTrip();
-    trustedStartupAndExplicitLegacyClear();
+    trustedStartupAndExplicitClear();
     policyBoundariesAndDisabledPreservation();
     publicationQueueCapacity();
     displayAssetsAreMetadataOnly();

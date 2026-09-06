@@ -25,10 +25,6 @@ class ScreenshotExportService final : public ScreenshotSelectionImageComposerPor
     explicit ScreenshotExportService(ScreenshotExportServiceContext context);
     ~ScreenshotExportService() override;
 
-    // Consumed by the next result or clipboard request. Focused-window capture uses this to export
-    // the WGC surface directly while display snapshots remain untouched for history.
-    void setNextSelectionSourceImage(QImage image);
-    void clearNextSelectionSourceImage();
 
     [[nodiscard]] bool requestSelectionResult(
         const QRect& selection, const ScreenshotResultStyle& style, QObject* receiver,
@@ -48,7 +44,6 @@ class ScreenshotExportService final : public ScreenshotSelectionImageComposerPor
     std::unique_ptr<QThread> m_thread;
     QObject* m_worker = nullptr;
     QObject* m_completionContext = nullptr;
-    QImage m_nextSelectionSourceImage;
 };
 
 #endif // SNOW_SHOT_PRESENTATION_SCREENSHOTEXPORTSERVICE_H

@@ -570,7 +570,7 @@ QColor opaquePinnedBackground(const QWidget* widget) {
 
 } // namespace
 
-ScreenshotPinnedWindow::ScreenshotPinnedWindow(RuntimeMode mode, QWidget* parent)
+ScreenshotPinnedWindow::ScreenshotPinnedWindow(QWidget* parent)
     : QWidget(parent),
       m_runtime(SnowCanvasRuntimeConfig{snow_shot::presentation::screenshotCanvasStyleDefaults()}),
       m_shortcutManager(std::make_unique<snow_shot::presentation::WindowShortcutManager>()),
@@ -618,8 +618,6 @@ ScreenshotPinnedWindow::ScreenshotPinnedWindow(RuntimeMode mode, QWidget* parent
                     }
                 });
     }
-
-    Q_UNUSED(mode);
 
     createUi();
     m_shortcutManager->addScopeWindow(this);
@@ -921,10 +919,6 @@ ScreenshotPinnedWindow::~ScreenshotPinnedWindow() {
     delete m_editController;
     m_editController = nullptr;
     destroyCanvas();
-}
-
-void ScreenshotPinnedWindow::setPersistenceId(const QString& id) {
-    m_persistenceId = id;
 }
 
 void ScreenshotPinnedWindow::setGroupId(const QString& id) {
@@ -1553,17 +1547,6 @@ void ScreenshotPinnedWindow::retranslateUi() {
 
 bool ScreenshotPinnedWindow::present(const Config& config,
                                      std::function<void(bool, QImage)> completion) {
-    return presentInternal(config, std::move(completion), false);
-}
-
-bool ScreenshotPinnedWindow::presentPending(const Config& config,
-                                            std::function<void(bool, QImage)> completion) {
-    return presentInternal(config, std::move(completion), true);
-}
-
-bool ScreenshotPinnedWindow::presentInternal(const Config& config,
-                                             std::function<void(bool, QImage)> completion,
-                                             bool allowPending) {
     SNOW_SHOT_PIN_PERF_SCOPE("window.present");
     SNOW_SHOT_PIN_PERF_MILESTONE("window.present_enter");
     const QRectF contentCanvasRect =
@@ -1575,15 +1558,12 @@ bool ScreenshotPinnedWindow::presentInternal(const Config& config,
             ? config.surfaceCanvasRect.normalized()
             : contentCanvasRect;
     ScreenshotImageSource imageSource = config.imageSource;
-    if (!imageSource.isValid() && !config.backgroundImage.isNull()) {
-        imageSource = ScreenshotImageSource::fromImage(config.backgroundImage, contentCanvasRect);
-    }
     if (m_presented || isVisible() || config.screen == nullptr ||
         !config.nativeGeometry.isValid() || config.nativeGeometry.isEmpty() ||
         !contentCanvasRect.isValid() || contentCanvasRect.isEmpty() ||
         !surfaceCanvasRect.isValid() || surfaceCanvasRect.isEmpty() ||
         !surfaceCanvasRect.contains(contentCanvasRect) ||
-        (!allowPending && !imageSource.isValid() && !config.imageLoader) ||
+        (!imageSource.isValid() && !config.imageLoader) ||
         (config.formattedTextDocument != nullptr &&
          (!std::isfinite(config.formattedTextDevicePixelRatio) ||
           config.formattedTextDevicePixelRatio <= 0.0)) ||
@@ -1623,7 +1603,6 @@ bool ScreenshotPinnedWindow::presentInternal(const Config& config,
     m_imageSource = std::move(imageSource);
     m_presentationCompletion = std::move(completion);
     m_imageLoader = config.imageLoader;
-    m_pendingImage = allowPending && m_imageSource.isValid() == false && !m_imageLoader;
     ++m_presentationGeneration;
     m_deferredPresentationSetupScheduled = false;
     m_recognitionTargetReady = false;
@@ -1632,7 +1611,6 @@ bool ScreenshotPinnedWindow::presentInternal(const Config& config,
     m_firstFramePaintSucceeded = true;
     m_deferFirstFrameNativeFlush = false;
     m_completePresentationAfterFirstFrame = false;
-    setAttribute(Qt::WA_TransparentForMouseEvents, m_pendingImage);
     // A materialized source may only be a geometry placeholder when a loader
     // is present. Do not expose it to OCR or editing as the final image.
     m_originalImage = !m_imageLoader && m_imageSource.isMaterialized()
@@ -1725,7 +1703,7 @@ bool ScreenshotPinnedWindow::presentInternal(const Config& config,
         finishPresentation(false);
         return false;
     }
-    if (config.enableEditing && !m_pendingImage) {
+    if (config.enableEditing) {
         if (m_editButton != nullptr) {
             m_editButton->hide();
         }
@@ -1747,9 +1725,6 @@ bool ScreenshotPinnedWindow::presentInternal(const Config& config,
                                                  m_resultStyle);
     const bool deferContent = static_cast<bool>(m_imageLoader) || !m_imageSource.isMaterialized();
     m_canvas->setCanvasContentVisible(!deferContent);
-    if (m_pendingImage) {
-        m_canvas->setInteractionEnabled(false);
-    }
     // The pinned renderer paints its image in renderBeforeCanvas, even when the
     // canvas scene content is suppressed. Keep the deferred shell transparent
     // by withholding the source until materialization completes.
@@ -2106,7 +2081,7 @@ bool ScreenshotPinnedWindow::presentInternal(const Config& config,
         m_completePresentationAfterFirstFrame = true;
         requestFirstContentFramePaint();
     }
-    if (deferContent && !m_pendingImage) {
+    if (deferContent) {
         m_completePresentationAfterFirstFrame = true;
         requestMaterializedImage([this](bool succeeded) {
             if (!succeeded || m_closing) {
@@ -2269,7 +2244,6 @@ void ScreenshotPinnedWindow::closeEvent(QCloseEvent* event) {
     }
     m_closing = true;
     m_deferredInactiveGroupClose = false;
-    m_pendingImage = false;
     m_firstContentFramePublished = false;
     m_firstFramePaintPending = false;
     m_firstFramePaintSucceeded = false;
@@ -3029,7 +3003,6 @@ void ScreenshotPinnedWindow::finishMaterializedImage(ScreenshotExportTaskResult 
     }
 
     if (succeeded && m_canvas != nullptr && !m_firstContentFramePublished) {
-        m_pendingImage = false;
         m_canvas->setCanvasContentVisible(!m_ocrMode);
         m_firstFramePaintSucceeded = true;
         requestFirstContentFramePaint();
@@ -3239,34 +3212,6 @@ void ScreenshotPinnedWindow::finishDeferredPresentationSetup(quint64 generation)
             });
         });
     }
-}
-
-bool ScreenshotPinnedWindow::publishMaterializedImage(QImage image) {
-    SNOW_SHOT_PIN_PERF_SCOPE("window.publish_materialized_image");
-    if (!m_presented || !m_pendingImage || m_closing) {
-        return false;
-    }
-    if (image.isNull()) {
-        m_pendingImage = false;
-        finishPresentation(false);
-        close();
-        return false;
-    }
-    if (!installMaterializedImage(std::move(image))) {
-        m_pendingImage = false;
-        finishPresentation(false);
-        close();
-        return false;
-    }
-
-    m_pendingImage = false;
-    setAttribute(Qt::WA_TransparentForMouseEvents, false);
-    if (m_canvas != nullptr) {
-        m_canvas->setCanvasContentVisible(!m_ocrMode);
-        m_completePresentationAfterFirstFrame = true;
-        requestFirstContentFramePaint();
-    }
-    return true;
 }
 
 void ScreenshotPinnedWindow::finishPresentation(bool succeeded, QImage image) {
@@ -3723,8 +3668,7 @@ void ScreenshotPinnedWindow::copyCurrentViewport() {
         ScreenshotExportSource::fromPinnedViewport(std::move(request)));
     m_exportArtifact = artifact;
     if (!artifact->requestClipboard(
-            this, ScreenshotClipboardFormatMode::DibV5,
-            [this, artifact](ScreenshotExportClipboardResult result) mutable {
+            this, [this, artifact](ScreenshotExportClipboardResult result) mutable {
                 if (m_exportArtifact == artifact && !m_closing) {
                     commitClipboardPayload(std::move(result.payload));
                     m_exportArtifact.reset();
@@ -3796,8 +3740,7 @@ void ScreenshotPinnedWindow::copyOriginalContent() {
         ScreenshotExportSource::fromImage(m_originalImage));
     m_exportArtifact = artifact;
     if (!artifact->requestClipboard(
-            this, ScreenshotClipboardFormatMode::DibV5,
-            [this, artifact](ScreenshotExportClipboardResult result) mutable {
+            this, [this, artifact](ScreenshotExportClipboardResult result) mutable {
                 if (m_exportArtifact == artifact && !m_closing) {
                     commitClipboardPayload(std::move(result.payload));
                     m_exportArtifact.reset();

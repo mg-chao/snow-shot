@@ -25,6 +25,8 @@ namespace snow_shot::image_codec {
                                   QString* error = nullptr, quint64* bytesWritten = nullptr);
 
 [[nodiscard]] QByteArray encodePng(const QImage& image);
+[[nodiscard]] QByteArray encodePng(const ScreenshotImageRowSource& source);
+[[nodiscard]] ScreenshotImageRowSource srgbRowSource(const QImage& image);
 [[nodiscard]] QByteArray encodeWebp(const QImage& image, int quality = 75);
 [[nodiscard]] QImage decode(const QByteArray& encoded, snow::image::Format expectedFormat,
                             const char* nameHint);

@@ -53,14 +53,34 @@ constexpr int kScrollingTextLineHeight = 36;
 template <typename T> class ComPtr final {
   public:
     ComPtr() = default;
-    ComPtr(ComPtr&& other) noexcept : m_value(other.m_value) { other.m_value = nullptr; }
-    ComPtr& operator=(ComPtr&& other) noexcept { if (this != &other) { reset(other.m_value); other.m_value = nullptr; } return *this; }
-    ~ComPtr() { reset(); }
+    ComPtr(ComPtr&& other) noexcept : m_value(other.m_value) {
+        other.m_value = nullptr;
+    }
+    ComPtr& operator=(ComPtr&& other) noexcept {
+        if (this != &other) {
+            reset(other.m_value);
+            other.m_value = nullptr;
+        }
+        return *this;
+    }
+    ~ComPtr() {
+        reset();
+    }
     ComPtr(const ComPtr&) = delete;
     ComPtr& operator=(const ComPtr&) = delete;
-    T* get() const { return m_value; }
-    T** put() { reset(); return &m_value; }
-    void reset(T* value = nullptr) { if (m_value) m_value->Release(); m_value = value; }
+    T* get() const {
+        return m_value;
+    }
+    T** put() {
+        reset();
+        return &m_value;
+    }
+    void reset(T* value = nullptr) {
+        if (m_value)
+            m_value->Release();
+        m_value = value;
+    }
+
   private:
     T* m_value = nullptr;
 };
@@ -68,51 +88,91 @@ template <typename T> class ComPtr final {
 class ScopedCom final {
   public:
     ScopedCom() : m_result(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED)) {}
-    ~ScopedCom() { if (SUCCEEDED(m_result)) CoUninitialize(); }
-    HRESULT result() const { return m_result; }
-  private: HRESULT m_result;
+    ~ScopedCom() {
+        if (SUCCEEDED(m_result))
+            CoUninitialize();
+    }
+    HRESULT result() const {
+        return m_result;
+    }
+
+  private:
+    HRESULT m_result;
 };
 
 class ChildProcess final {
   public:
-    ~ChildProcess() { stop(); }
+    ~ChildProcess() {
+        stop();
+    }
     bool start(const QString& executable) {
         std::wstring path = executable.toStdWString();
-        std::wstring command = L"\"" + path + L"\" --show-main-window --e2e-allow-overlay-capture --e2e-instance-id=" + std::to_wstring(GetCurrentProcessId());
-        std::vector<wchar_t> commandLine(command.begin(), command.end()); commandLine.push_back(L'\0');
-        STARTUPINFOW startup{}; startup.cb = sizeof(startup); PROCESS_INFORMATION process{};
-        if (!CreateProcessW(path.c_str(), commandLine.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) return false;
-        CloseHandle(process.hThread); m_process = process.hProcess; m_pid = process.dwProcessId; return true;
+        std::wstring command =
+            L"\"" + path + L"\" --show-main-window --e2e-allow-overlay-capture --e2e-instance-id=" +
+            std::to_wstring(GetCurrentProcessId());
+        std::vector<wchar_t> commandLine(command.begin(), command.end());
+        commandLine.push_back(L'\0');
+        STARTUPINFOW startup{};
+        startup.cb = sizeof(startup);
+        PROCESS_INFORMATION process{};
+        if (!CreateProcessW(path.c_str(), commandLine.data(), nullptr, nullptr, FALSE, 0, nullptr,
+                            nullptr, &startup, &process))
+            return false;
+        CloseHandle(process.hThread);
+        m_process = process.hProcess;
+        m_pid = process.dwProcessId;
+        return true;
     }
-    DWORD pid() const { return m_pid; }
-    bool alive() const { return m_process && WaitForSingleObject(m_process, 0) == WAIT_TIMEOUT; }
+    DWORD pid() const {
+        return m_pid;
+    }
+    bool alive() const {
+        return m_process && WaitForSingleObject(m_process, 0) == WAIT_TIMEOUT;
+    }
     qint64 workingSetBytes(bool peak) const {
         PROCESS_MEMORY_COUNTERS_EX counters{};
         counters.cb = sizeof(counters);
-        if (!m_process || !GetProcessMemoryInfo(m_process,
-                                                reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters),
-                                                sizeof(counters))) {
+        if (!m_process ||
+            !GetProcessMemoryInfo(m_process, reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters),
+                                  sizeof(counters))) {
             return 0;
         }
-        return static_cast<qint64>(peak ? counters.PeakWorkingSetSize
-                                       : counters.WorkingSetSize);
+        return static_cast<qint64>(peak ? counters.PeakWorkingSetSize : counters.WorkingSetSize);
     }
-    void stop() { if (!m_process) return; if (alive()) { TerminateProcess(m_process, 1); WaitForSingleObject(m_process, 5000); } CloseHandle(m_process); m_process = nullptr; }
-  private: HANDLE m_process = nullptr; DWORD m_pid = 0;
+    void stop() {
+        if (!m_process)
+            return;
+        if (alive()) {
+            TerminateProcess(m_process, 1);
+            WaitForSingleObject(m_process, 5000);
+        }
+        CloseHandle(m_process);
+        m_process = nullptr;
+    }
+
+  private:
+    HANDLE m_process = nullptr;
+    DWORD m_pid = 0;
 };
 
-void require(bool condition, const char* message) { if (!condition) throw std::runtime_error(message); }
+void require(bool condition, const char* message) {
+    if (!condition)
+        throw std::runtime_error(message);
+}
 
 ComPtr<IUIAutomation> createAutomation() {
     ComPtr<IUIAutomation> automation;
     require(SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
-                                       IID_PPV_ARGS(automation.put()))), "UI Automation initialization failed");
+                                       IID_PPV_ARGS(automation.put()))),
+            "UI Automation initialization failed");
     return automation;
 }
 
 bool automationIdMatches(const wchar_t* automationId, const wchar_t* needle) {
-    if (automationId == nullptr) return false;
-    if (wcscmp(automationId, needle) == 0) return true;
+    if (automationId == nullptr)
+        return false;
+    if (wcscmp(automationId, needle) == 0)
+        return true;
     const std::wstring candidate(automationId);
     const std::wstring suffix = std::wstring(L".") + needle;
     return candidate.size() >= suffix.size() &&
@@ -122,18 +182,30 @@ bool automationIdMatches(const wchar_t* automationId, const wchar_t* needle) {
 ComPtr<IUIAutomationElement> findByAutomationId(IUIAutomation& automation, DWORD pid,
                                                 const wchar_t* needle) {
     ComPtr<IUIAutomationElement> root;
-    if (FAILED(automation.GetRootElement(root.put()))) return {};
-    VARIANT value{}; value.vt = VT_I4; value.lVal = static_cast<LONG>(pid);
+    if (FAILED(automation.GetRootElement(root.put())))
+        return {};
+    VARIANT value{};
+    value.vt = VT_I4;
+    value.lVal = static_cast<LONG>(pid);
     ComPtr<IUIAutomationCondition> condition;
-    if (FAILED(automation.CreatePropertyCondition(UIA_ProcessIdPropertyId, value, condition.put()))) return {};
+    if (FAILED(automation.CreatePropertyCondition(UIA_ProcessIdPropertyId, value, condition.put())))
+        return {};
     ComPtr<IUIAutomationElementArray> elements;
-    if (FAILED(root.get()->FindAll(TreeScope_Descendants, condition.get(), elements.put()))) return {};
-    int length = 0; elements.get()->get_Length(&length);
+    if (FAILED(root.get()->FindAll(TreeScope_Descendants, condition.get(), elements.put())))
+        return {};
+    int length = 0;
+    elements.get()->get_Length(&length);
     for (int i = 0; i < length; ++i) {
-        ComPtr<IUIAutomationElement> element; if (FAILED(elements.get()->GetElement(i, element.put()))) continue;
-        BSTR id = nullptr; if (FAILED(element.get()->get_CurrentAutomationId(&id))) continue;
-        const bool match = automationIdMatches(id, needle); SysFreeString(id);
-        if (match) return element;
+        ComPtr<IUIAutomationElement> element;
+        if (FAILED(elements.get()->GetElement(i, element.put())))
+            continue;
+        BSTR id = nullptr;
+        if (FAILED(element.get()->get_CurrentAutomationId(&id)))
+            continue;
+        const bool match = automationIdMatches(id, needle);
+        SysFreeString(id);
+        if (match)
+            return element;
     }
     return {};
 }
@@ -141,8 +213,10 @@ ComPtr<IUIAutomationElement> findByAutomationId(IUIAutomation& automation, DWORD
 ComPtr<IUIAutomationElement> findVisibleByAutomationId(IUIAutomation& automation, DWORD pid,
                                                        const wchar_t* needle) {
     ComPtr<IUIAutomationElement> element = findByAutomationId(automation, pid, needle);
-    if (element.get() == nullptr) return {};
-    BOOL offscreen = TRUE; RECT bounds{};
+    if (element.get() == nullptr)
+        return {};
+    BOOL offscreen = TRUE;
+    RECT bounds{};
     if (FAILED(element.get()->get_CurrentIsOffscreen(&offscreen)) || offscreen != FALSE ||
         FAILED(element.get()->get_CurrentBoundingRectangle(&bounds)) ||
         bounds.right <= bounds.left || bounds.bottom <= bounds.top) {
@@ -154,7 +228,9 @@ ComPtr<IUIAutomationElement> findVisibleByAutomationId(IUIAutomation& automation
 template <typename Finder> ComPtr<IUIAutomationElement> waitFor(Finder finder, int timeoutMs) {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
     while (std::chrono::steady_clock::now() < deadline) {
-        auto result = finder(); if (result.get() != nullptr) return result;
+        auto result = finder();
+        if (result.get() != nullptr)
+            return result;
         std::this_thread::sleep_for(25ms);
     }
     return {};
@@ -168,17 +244,26 @@ bool invoke(IUIAutomationElement& element) {
 }
 
 RECT bounds(IUIAutomationElement& element) {
-    RECT result{}; element.get_CurrentBoundingRectangle(&result); return result;
+    RECT result{};
+    element.get_CurrentBoundingRectangle(&result);
+    return result;
 }
 
 LONG absoluteCoordinate(LONG value, LONG origin, LONG extent) {
-    return extent <= 1 ? 0 : static_cast<LONG>((static_cast<double>(value - origin) * 65535.0) / (extent - 1));
+    return extent <= 1
+               ? 0
+               : static_cast<LONG>((static_cast<double>(value - origin) * 65535.0) / (extent - 1));
 }
 
 void sendMouse(int x, int y, DWORD flags) {
-    const LONG left = GetSystemMetrics(SM_XVIRTUALSCREEN), top = GetSystemMetrics(SM_YVIRTUALSCREEN);
-    const LONG width = GetSystemMetrics(SM_CXVIRTUALSCREEN), height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-    INPUT input{}; input.type = INPUT_MOUSE; input.mi.dx = absoluteCoordinate(x, left, width); input.mi.dy = absoluteCoordinate(y, top, height);
+    const LONG left = GetSystemMetrics(SM_XVIRTUALSCREEN),
+               top = GetSystemMetrics(SM_YVIRTUALSCREEN);
+    const LONG width = GetSystemMetrics(SM_CXVIRTUALSCREEN),
+               height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+    INPUT input{};
+    input.type = INPUT_MOUSE;
+    input.mi.dx = absoluteCoordinate(x, left, width);
+    input.mi.dy = absoluteCoordinate(y, top, height);
     input.mi.dwFlags = flags | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK;
     require(SendInput(1, &input, sizeof(input)) == 1, "SendInput failed");
 }
@@ -200,8 +285,10 @@ void dragRect(const RECT& rect) {
 }
 
 void dragSelection(const RECT& monitor, int fraction) {
-    const int width = std::max(64, static_cast<int>((monitor.right - monitor.left) * fraction / 100));
-    const int height = std::max(64, static_cast<int>((monitor.bottom - monitor.top) * fraction / 100));
+    const int width =
+        std::max(64, static_cast<int>((monitor.right - monitor.left) * fraction / 100));
+    const int height =
+        std::max(64, static_cast<int>((monitor.bottom - monitor.top) * fraction / 100));
     const RECT rect{monitor.left + (monitor.right - monitor.left - width) / 2,
                     monitor.top + (monitor.bottom - monitor.top - height) / 2,
                     monitor.left + (monitor.right - monitor.left + width) / 2,
@@ -211,24 +298,35 @@ void dragSelection(const RECT& monitor, int fraction) {
 
 QVector<RECT> monitors() {
     QVector<RECT> result;
-    EnumDisplayMonitors(nullptr, nullptr, [](HMONITOR monitor, HDC, LPRECT, LPARAM data) -> BOOL {
-        MONITORINFO info{}; info.cbSize = sizeof(info); GetMonitorInfoW(monitor, &info);
-        static_cast<QVector<RECT>*>(reinterpret_cast<void*>(data))->push_back(info.rcWork); return TRUE;
-    }, reinterpret_cast<LPARAM>(&result));
+    EnumDisplayMonitors(
+        nullptr, nullptr,
+        [](HMONITOR monitor, HDC, LPRECT, LPARAM data) -> BOOL {
+            MONITORINFO info{};
+            info.cbSize = sizeof(info);
+            GetMonitorInfoW(monitor, &info);
+            static_cast<QVector<RECT>*>(reinterpret_cast<void*>(data))->push_back(info.rcWork);
+            return TRUE;
+        },
+        reinterpret_cast<LPARAM>(&result));
     return result;
 }
 
 int traceLineCount(const QString& path) {
-    QFile file(path); if (!file.open(QIODevice::ReadOnly)) return 0;
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return 0;
     return file.readAll().count('\n');
 }
 
 QJsonObject readTraceLine(const QString& path, int expectedLine) {
-    QFile file(path); require(file.open(QIODevice::ReadOnly), "could not open app trace");
+    QFile file(path);
+    require(file.open(QIODevice::ReadOnly), "could not open app trace");
     const QList<QByteArray> lines = file.readAll().split('\n');
     require(expectedLine > 0 && expectedLine <= lines.size(), "trace line was unavailable");
-    QJsonParseError error{}; const QJsonDocument document = QJsonDocument::fromJson(lines.at(expectedLine - 1), &error);
-    require(error.error == QJsonParseError::NoError && document.isObject(), "trace JSON was invalid");
+    QJsonParseError error{};
+    const QJsonDocument document = QJsonDocument::fromJson(lines.at(expectedLine - 1), &error);
+    require(error.error == QJsonParseError::NoError && document.isObject(),
+            "trace JSON was invalid");
     return document.object();
 }
 
@@ -237,7 +335,8 @@ class TraceCollector final {
     explicit TraceCollector(QString path) : m_path(std::move(path)) {}
     QJsonObject next(const QString& expectedScenario, int timeoutMs, const ChildProcess& child) {
         const int targetLine = m_line + 1;
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+        const auto deadline =
+            std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
         while (traceLineCount(m_path) < targetLine && child.alive() &&
                std::chrono::steady_clock::now() < deadline) {
             std::this_thread::sleep_for(25ms);
@@ -255,23 +354,36 @@ class TraceCollector final {
     int m_line = 0;
 };
 
-QJsonObject statistics(const QVector<double>& source,
-                       const QString& unit = QStringLiteral("ms")) {
-    if (source.isEmpty()) return {};
-    QVector<double> values = source; std::sort(values.begin(), values.end());
-    auto at = [&values](double p) { return values[std::min(values.size() - 1, static_cast<qsizetype>(std::ceil(p * values.size()) - 1))]; };
+QJsonObject statistics(const QVector<double>& source, const QString& unit = QStringLiteral("ms")) {
+    if (source.isEmpty())
+        return {};
+    QVector<double> values = source;
+    std::sort(values.begin(), values.end());
+    auto at = [&values](double p) {
+        return values[std::min(values.size() - 1,
+                               static_cast<qsizetype>(std::ceil(p * values.size()) - 1))];
+    };
     const double mean = std::accumulate(values.cbegin(), values.cend(), 0.0) / values.size();
-    double variance = 0.0; for (double value : values) variance += (value - mean) * (value - mean);
+    double variance = 0.0;
+    for (double value : values)
+        variance += (value - mean) * (value - mean);
     const auto key = [&unit](const char* name) {
         return QString::fromLatin1(name) + QLatin1Char('_') + unit;
     };
-    return {{QStringLiteral("count"), values.size()}, {key("min"), values.first()},
-            {key("mean"), mean}, {key("p50"), at(.50)}, {key("p90"), at(.90)},
-            {key("p95"), at(.95)}, {key("p99"), at(.99)}, {key("max"), values.last()},
+    return {{QStringLiteral("count"), values.size()},
+            {key("min"), values.first()},
+            {key("mean"), mean},
+            {key("p50"), at(.50)},
+            {key("p90"), at(.90)},
+            {key("p95"), at(.95)},
+            {key("p99"), at(.99)},
+            {key("max"), values.last()},
             {key("stddev"), std::sqrt(variance / values.size())}};
 }
 
-QString htmlEscape(QString value) { return value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;"); }
+QString htmlEscape(QString value) {
+    return value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+}
 
 // --- Scrolling source window ------------------------------------------------
 // A layered top-level window that renders a deterministic, dense document and
@@ -283,7 +395,9 @@ struct ScrollingSourceState {
 };
 
 std::uint32_t nextRandom(std::uint32_t& state) {
-    state ^= state << 13U; state ^= state >> 17U; state ^= state << 5U;
+    state ^= state << 13U;
+    state ^= state >> 17U;
+    state ^= state << 5U;
     return state;
 }
 
@@ -295,28 +409,39 @@ std::uint32_t scrollingSourcePixel(int x, int documentY) {
     int red = 30 + static_cast<int>(hash & 0xbfU);
     int green = 30 + static_cast<int>((hash >> 8U) & 0xbfU);
     int blue = 30 + static_cast<int>((hash >> 16U) & 0xbfU);
-    if (x % 37 < 2 || documentY % 43 < 2) { red = 245; green = 245; blue = 245; }
-    else if ((x + documentY) % 61 < 3) { red = 10; green = 10; blue = 10; }
+    if (x % 37 < 2 || documentY % 43 < 2) {
+        red = 245;
+        green = 245;
+        blue = 245;
+    } else if ((x + documentY) % 61 < 3) {
+        red = 10;
+        green = 10;
+        blue = 10;
+    }
     return static_cast<std::uint32_t>(blue | (green << 8) | (red << 16));
 }
 
 std::wstring scrollingSourceTextLine(int lineNumber) {
     constexpr wchar_t alphabet[] = L"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
     constexpr std::size_t alphabetLength = std::size(alphabet) - 1;
-    std::uint32_t randomState = 0x6d2b79f5U ^ (static_cast<std::uint32_t>(lineNumber) * 0x9e3779b9U);
+    std::uint32_t randomState =
+        0x6d2b79f5U ^ (static_cast<std::uint32_t>(lineNumber) * 0x9e3779b9U);
     std::wstring characters = L"L" + std::to_wstring(lineNumber);
-    while (characters.size() < 8) characters.push_back(alphabet[nextRandom(randomState) % alphabetLength]);
+    while (characters.size() < 8)
+        characters.push_back(alphabet[nextRandom(randomState) % alphabetLength]);
     std::wstring line;
     for (std::size_t index = 0; index < characters.size(); ++index) {
         line.push_back(characters[index]);
-        if (index + 1 < characters.size()) line.append(1 + nextRandom(randomState) % 3, L' ');
+        if (index + 1 < characters.size())
+            line.append(1 + nextRandom(randomState) % 3, L' ');
     }
     return line;
 }
 
 class ScrollingSourceWindow final {
   public:
-    ScrollingSourceWindow(LONG left, LONG top, int extent) : m_left(left), m_top(top), m_extent(extent) {
+    ScrollingSourceWindow(LONG left, LONG top, int extent)
+        : m_left(left), m_top(top), m_extent(extent) {
         m_instance = GetModuleHandleW(nullptr);
         WNDCLASSEXW windowClass{};
         windowClass.cbSize = sizeof(windowClass);
@@ -324,23 +449,32 @@ class ScrollingSourceWindow final {
         windowClass.lpfnWndProc = scrollingSourceWindowProc;
         windowClass.lpszClassName = m_className;
         windowClass.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
-        require(RegisterClassExW(&windowClass) != 0, "could not register the scrolling source class");
-        m_window = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED,
-                                   m_className, L"", WS_POPUP, left, top, extent, extent,
-                                   nullptr, nullptr, m_instance, nullptr);
+        require(RegisterClassExW(&windowClass) != 0,
+                "could not register the scrolling source class");
+        m_window = CreateWindowExW(
+            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED, m_className, L"",
+            WS_POPUP, left, top, extent, extent, nullptr, nullptr, m_instance, nullptr);
         require(m_window != nullptr, "could not create the scrolling source window");
         ShowWindow(m_window, SW_SHOWNOACTIVATE);
         render();
     }
     ~ScrollingSourceWindow() {
-        if (m_window != nullptr) DestroyWindow(m_window);
-        if (m_instance != nullptr) UnregisterClassW(m_className, m_instance);
+        if (m_window != nullptr)
+            DestroyWindow(m_window);
+        if (m_instance != nullptr)
+            UnregisterClassW(m_className, m_instance);
     }
     ScrollingSourceWindow(const ScrollingSourceWindow&) = delete;
     ScrollingSourceWindow& operator=(const ScrollingSourceWindow&) = delete;
 
-    void scrollDown(int distance) { m_state.offset += distance; render(); }
-    void reset() { m_state.offset = 0; render(); }
+    void scrollDown(int distance) {
+        m_state.offset += distance;
+        render();
+    }
+    void reset() {
+        m_state.offset = 0;
+        render();
+    }
     [[nodiscard]] RECT rect() const {
         return RECT{m_left, m_top, m_left + m_extent, m_top + m_extent};
     }
@@ -350,7 +484,9 @@ class ScrollingSourceWindow final {
                                                       LPARAM lParam) {
         return DefWindowProcW(window, message, wParam, lParam);
     }
-    void render() { presentScrollingSource(m_window, m_state); }
+    void render() {
+        presentScrollingSource(m_window, m_state);
+    }
     void presentScrollingSource(HWND window, const ScrollingSourceState& state) {
         const int width = m_extent, height = m_extent;
         HDC screen = GetDC(nullptr);
@@ -366,7 +502,8 @@ class ScrollingSourceWindow final {
         bitmapInfo.bmiHeader.biBitCount = 32;
         bitmapInfo.bmiHeader.biCompression = BI_RGB;
         void* bitmapPixels = nullptr;
-        HBITMAP bitmap = CreateDIBSection(screen, &bitmapInfo, DIB_RGB_COLORS, &bitmapPixels, nullptr, 0);
+        HBITMAP bitmap =
+            CreateDIBSection(screen, &bitmapInfo, DIB_RGB_COLORS, &bitmapPixels, nullptr, 0);
         require(bitmap != nullptr && bitmapPixels != nullptr,
                 "could not allocate the scrolling source surface");
 
@@ -399,7 +536,8 @@ class ScrollingSourceWindow final {
                 0xa511e9b3U ^ (static_cast<std::uint32_t>(lineNumber) * 0x85ebca6bU);
             SetTextColor(memory, textColors[nextRandom(colorState) % textColors.size()]);
             const std::wstring line = scrollingSourceTextLine(lineNumber);
-            require(TextOutW(memory, 12, y + 2, line.c_str(), static_cast<int>(line.size())) != FALSE,
+            require(TextOutW(memory, 12, y + 2, line.c_str(), static_cast<int>(line.size())) !=
+                        FALSE,
                     "could not render scrolling source text");
 
             HPEN separator = CreatePen(PS_SOLID, 1, RGB(222, 226, 234));
@@ -440,21 +578,32 @@ class ClipboardScope final {
     explicit ClipboardScope(int attempts = 20) {
         for (int attempt = 0; attempt < attempts && !m_open; ++attempt) {
             m_open = OpenClipboard(nullptr) != FALSE;
-            if (!m_open) std::this_thread::sleep_for(50ms);
+            if (!m_open)
+                std::this_thread::sleep_for(50ms);
         }
     }
-    ~ClipboardScope() { if (m_open) CloseClipboard(); }
+    ~ClipboardScope() {
+        if (m_open)
+            CloseClipboard();
+    }
     ClipboardScope(const ClipboardScope&) = delete;
     ClipboardScope& operator=(const ClipboardScope&) = delete;
-    [[nodiscard]] bool open() const { return m_open; }
-  private: bool m_open = false;
+    [[nodiscard]] bool open() const {
+        return m_open;
+    }
+
+  private:
+    bool m_open = false;
 };
 
 void setClipboardPayload(UINT format, const void* data, std::size_t size) {
     HGLOBAL handle = GlobalAlloc(GMEM_MOVEABLE, size);
     require(handle != nullptr, "could not allocate the clipboard payload");
     void* target = GlobalLock(handle);
-    if (target == nullptr) { GlobalFree(handle); require(false, "could not lock the clipboard payload"); }
+    if (target == nullptr) {
+        GlobalFree(handle);
+        require(false, "could not lock the clipboard payload");
+    }
     std::memcpy(target, data, size);
     GlobalUnlock(handle);
     if (SetClipboardData(format, handle) == nullptr) {
@@ -495,7 +644,8 @@ QByteArray encodeClipboardDibV5(const QImage& image) {
     const QImage source = image.convertToFormat(QImage::Format_ARGB32);
     const int width = source.width(), height = source.height();
     const int rowBytes = width * 4;
-    QByteArray buffer(static_cast<int>(sizeof(BITMAPV5HEADER)) + rowBytes * height, Qt::Uninitialized);
+    QByteArray buffer(static_cast<int>(sizeof(BITMAPV5HEADER)) + rowBytes * height,
+                      Qt::Uninitialized);
     auto* header = reinterpret_cast<BITMAPV5HEADER*>(buffer.data());
     header->bV5Size = sizeof(BITMAPV5HEADER);
     header->bV5Width = width;
@@ -512,8 +662,8 @@ QByteArray encodeClipboardDibV5(const QImage& image) {
     auto* pixels = reinterpret_cast<std::uint32_t*>(buffer.data() + sizeof(BITMAPV5HEADER));
     for (int y = 0; y < height; ++y) {
         const auto* row = reinterpret_cast<const QRgb*>(source.scanLine(y));
-        auto* destination = pixels + static_cast<std::size_t>(height - 1 - y) *
-                                           static_cast<std::size_t>(width);
+        auto* destination =
+            pixels + static_cast<std::size_t>(height - 1 - y) * static_cast<std::size_t>(width);
         for (int x = 0; x < width; ++x) {
             const QRgb pixel = row[x];
             destination[x] = (static_cast<std::uint32_t>(qAlpha(pixel)) << 24) |
@@ -530,16 +680,15 @@ QByteArray buildClipboardHtmlFragment() {
         "<h1 style=\"font-size:24px;color:#1f3b73;margin:10px 0\">Snow Shot clipboard HTML pin "
         "benchmark</h1>");
     for (int paragraph = 0; paragraph < 18; ++paragraph) {
-        fragment += QStringLiteral(
-                        "<p style=\"margin:6px 0\">Paragraph %1: the <b>quick</b> brown fox "
-                        "<i>jumps</i> over the lazy dog <span style=\"color:#c0392b\">%2</span> "
-                        "times while the rich text document is laid out and rendered.</p>")
-                        .arg(paragraph + 1)
-                        .arg(paragraph * 7 + 3);
+        fragment +=
+            QStringLiteral("<p style=\"margin:6px 0\">Paragraph %1: the <b>quick</b> brown fox "
+                           "<i>jumps</i> over the lazy dog <span style=\"color:#c0392b\">%2</span> "
+                           "times while the rich text document is laid out and rendered.</p>")
+                .arg(paragraph + 1)
+                .arg(paragraph * 7 + 3);
     }
-    fragment += QStringLiteral(
-        "<table border=\"1\" cellspacing=\"0\" cellpadding=\"4\" "
-        "style=\"border-collapse:collapse;margin:8px 0\">");
+    fragment += QStringLiteral("<table border=\"1\" cellspacing=\"0\" cellpadding=\"4\" "
+                               "style=\"border-collapse:collapse;margin:8px 0\">");
     for (int row = 0; row < 8; ++row) {
         fragment += QStringLiteral("<tr>");
         for (int column = 0; column < 4; ++column) {
@@ -588,7 +737,8 @@ QByteArray wrapClipboardHtml(const QByteArray& fragment) {
 }
 
 void setClipboardDibV5(const QByteArray& bytes) {
-    ClipboardScope clipboard; require(clipboard.open(), "could not open the clipboard for DIBV5");
+    ClipboardScope clipboard;
+    require(clipboard.open(), "could not open the clipboard for DIBV5");
     require(EmptyClipboard() != FALSE, "could not empty the clipboard for DIBV5");
     setClipboardPayload(CF_DIBV5, bytes.constData(), static_cast<std::size_t>(bytes.size()));
 }
@@ -606,13 +756,15 @@ void setClipboardFileDrop(const QString& path) {
     dropFiles->fWide = TRUE;
     std::memcpy(buffer.data() + sizeof(DROPFILES), native.c_str(),
                 (native.size() + 1) * sizeof(wchar_t));
-    ClipboardScope clipboard; require(clipboard.open(), "could not open the clipboard for HDROP");
+    ClipboardScope clipboard;
+    require(clipboard.open(), "could not open the clipboard for HDROP");
     require(EmptyClipboard() != FALSE, "could not empty the clipboard for HDROP");
     setClipboardPayload(CF_HDROP, buffer.constData(), static_cast<std::size_t>(buffer.size()));
 }
 
 void setClipboardHtml(const QByteArray& bytes) {
-    ClipboardScope clipboard; require(clipboard.open(), "could not open the clipboard for HTML");
+    ClipboardScope clipboard;
+    require(clipboard.open(), "could not open the clipboard for HTML");
     require(EmptyClipboard() != FALSE, "could not empty the clipboard for HTML");
     setClipboardPayload(registeredClipboardFormat(L"HTML Format"), bytes.constData(),
                         static_cast<std::size_t>(bytes.size()));
@@ -631,8 +783,8 @@ QVector<QPair<QString, double>> milestoneStages(const QJsonObject& milestonesNan
     QString previous = QStringLiteral("begin");
     double previousValue = 0.0;
     for (const auto& entry : ordered) {
-        stages.append({QStringLiteral("%1→%2").arg(previous, entry.first),
-                       entry.second - previousValue});
+        stages.append(
+            {QStringLiteral("%1→%2").arg(previous, entry.first), entry.second - previousValue});
         previous = entry.first;
         previousValue = entry.second;
     }
@@ -667,10 +819,9 @@ void accumulateRecord(ScenarioSeries& series, const QJsonObject& record) {
     if (!firstContentFrame.has_value()) {
         throw std::runtime_error("pin sample did not publish a first content frame");
     }
-    const QStringList completionMilestones{
-        QStringLiteral("workflow.destination_complete"),
-        QStringLiteral("controller.presentation_complete"),
-        QStringLiteral("clipboard.presentation_complete")};
+    const QStringList completionMilestones{QStringLiteral("workflow.destination_complete"),
+                                           QStringLiteral("controller.presentation_complete"),
+                                           QStringLiteral("clipboard.presentation_complete")};
     for (const QString& completionKey : completionMilestones) {
         const std::optional<double> completion = milestoneValue(completionKey);
         if (completion.has_value() && *firstContentFrame > *completion) {
@@ -687,7 +838,8 @@ void accumulateRecord(ScenarioSeries& series, const QJsonObject& record) {
                                 (1024.0 * 1024.0));
     series.peakWorkingSet.push_back(
         record.value(QStringLiteral("peak_working_set_bytes")).toDouble() / (1024.0 * 1024.0));
-    for (const auto& stage : milestoneStages(record.value(QStringLiteral("milestones_ns")).toObject())) {
+    for (const auto& stage :
+         milestoneStages(record.value(QStringLiteral("milestones_ns")).toObject())) {
         series.stages[stage.first].push_back(stage.second);
     }
     for (auto iterator = milestones.begin(); iterator != milestones.end(); ++iterator) {
@@ -699,15 +851,13 @@ void accumulateRecord(ScenarioSeries& series, const QJsonObject& record) {
     const std::optional<double> decodeFinished =
         milestoneValue(QStringLiteral("clipboard.decode_finished"));
     if (decodeFinished.has_value()) {
-        series.decodeToFirstContentFrame.push_back(
-            (*firstContentFrame - *decodeFinished) / 1e6);
+        series.decodeToFirstContentFrame.push_back((*firstContentFrame - *decodeFinished) / 1e6);
     }
     if (renderFinished.has_value()) {
-        series.firstContentFrameResidual.push_back(
-            (*firstContentFrame - *renderFinished) / 1e6);
+        series.firstContentFrameResidual.push_back((*firstContentFrame - *renderFinished) / 1e6);
     }
     const auto appendMilestoneDelta = [&series, &milestoneValue](const QString& from,
-                                                                  const QString& to) {
+                                                                 const QString& to) {
         const std::optional<double> start = milestoneValue(from);
         const std::optional<double> end = milestoneValue(to);
         if (start.has_value() && end.has_value()) {
@@ -735,15 +885,18 @@ void accumulateRecord(ScenarioSeries& series, const QJsonObject& record) {
         series.counters[key].push_back(value);
     }
     const double bytes = counters.value(QStringLiteral("materialization.bytes")).toDouble();
-    if (bytes > 0.0) series.materializationMegabytes.push_back(bytes / (1024.0 * 1024.0));
-    if (counters.contains(QStringLiteral("shell.hit"))) ++series.shellHits;
+    if (bytes > 0.0)
+        series.materializationMegabytes.push_back(bytes / (1024.0 * 1024.0));
+    if (counters.contains(QStringLiteral("shell.hit")))
+        ++series.shellHits;
 }
 
 QJsonObject statisticsMap(const QHash<QString, QVector<double>>& source) {
     QJsonObject report;
     QVector<QString> keys = source.keys();
     std::sort(keys.begin(), keys.end());
-    for (const QString& key : keys) report.insert(key, statistics(source.value(key)));
+    for (const QString& key : keys)
+        report.insert(key, statistics(source.value(key)));
     return report;
 }
 
@@ -758,7 +911,8 @@ QJsonObject coreReport(const ScenarioSeries& series) {
                   series.endToEnd.size();
     QJsonObject core;
     const auto add = [&](const QString& name, const QVector<double>& values) {
-        if (values.isEmpty()) return;
+        if (values.isEmpty())
+            return;
         QJsonObject entry = statistics(values);
         if (totalMean > 0.0) {
             entry.insert(QStringLiteral("share_pct"),
@@ -771,61 +925,78 @@ QJsonObject coreReport(const ScenarioSeries& series) {
         series.firstContentFrameResidual);
     add(QStringLiteral("input_to_first_content_frame"), series.inputToFirstContentFrame);
     add(QStringLiteral("decode_to_first_content_frame"), series.decodeToFirstContentFrame);
-    const QStringList milestoneKeys{
-        QStringLiteral("controller.enter"), QStringLiteral("window.hwnd_created"),
-        QStringLiteral("window.before_show"), QStringLiteral("window.show_returned"),
-        QStringLiteral("window.shell_visible"), QStringLiteral("window.first_content_frame"),
-        QStringLiteral("window.first_frame.update"),
-        QStringLiteral("window.first_frame.update_finished"),
-        QStringLiteral("window.canvas_repainted"),
-        QStringLiteral("window.native_paint_synchronized"),
-        QStringLiteral("window.recognition_target_ready"),
-        QStringLiteral("window.controls_ready"), QStringLiteral("export.render_started"),
-        QStringLiteral("export.dispatch_started"), QStringLiteral("export.render_finished"),
-        QStringLiteral("export.result_published"),
-        QStringLiteral("controller.snapshot_ready"),
-        QStringLiteral("controller.materialize_started"),
-        QStringLiteral("clipboard.decode_started"), QStringLiteral("clipboard.decode_finished"),
-        QStringLiteral("clipboard.input_started"), QStringLiteral("clipboard.snapshot_started"),
-        QStringLiteral("clipboard.snapshot_finished"),
-        QStringLiteral("clipboard.native_dib_copied"),
-        QStringLiteral("clipboard.native_dib_decoded"),
-        QStringLiteral("controller.presentation_complete")};
+    const QStringList milestoneKeys{QStringLiteral("controller.enter"),
+                                    QStringLiteral("window.hwnd_created"),
+                                    QStringLiteral("window.before_show"),
+                                    QStringLiteral("window.show_returned"),
+                                    QStringLiteral("window.shell_visible"),
+                                    QStringLiteral("window.first_content_frame"),
+                                    QStringLiteral("window.first_frame.update"),
+                                    QStringLiteral("window.first_frame.update_finished"),
+                                    QStringLiteral("window.canvas_repainted"),
+                                    QStringLiteral("window.native_paint_synchronized"),
+                                    QStringLiteral("window.recognition_target_ready"),
+                                    QStringLiteral("window.controls_ready"),
+                                    QStringLiteral("export.render_started"),
+                                    QStringLiteral("export.dispatch_started"),
+                                    QStringLiteral("export.render_finished"),
+                                    QStringLiteral("export.result_published"),
+                                    QStringLiteral("controller.snapshot_ready"),
+                                    QStringLiteral("controller.materialize_started"),
+                                    QStringLiteral("clipboard.decode_started"),
+                                    QStringLiteral("clipboard.decode_finished"),
+                                    QStringLiteral("clipboard.input_started"),
+                                    QStringLiteral("clipboard.snapshot_started"),
+                                    QStringLiteral("clipboard.snapshot_finished"),
+                                    QStringLiteral("clipboard.native_dib_copied"),
+                                    QStringLiteral("clipboard.native_dib_decoded"),
+                                    QStringLiteral("controller.presentation_complete")};
     for (const QString& key : milestoneKeys) {
         add(QStringLiteral("time_to_") + key, series.milestones.value(key));
     }
-    const QStringList spanKeys{
-        QStringLiteral("export.prepare_pin_plan"), QStringLiteral("export.serialize_document"),
-        QStringLiteral("export.render_selection"), QStringLiteral("export.render_canvas"),
-        QStringLiteral("export.compose_result"), QStringLiteral("export.convert_argb32"),
-        QStringLiteral("export.scrolling_trimmed_snapshot"),
-        QStringLiteral("export.materialize_scrolling_snapshot"),
-        QStringLiteral("clipboard.reader_snapshot"),
-        QStringLiteral("clipboard.decode_native_dib"),
-        QStringLiteral("clipboard.decode_file_image"),
-        QStringLiteral("clipboard.decode_html_document"),
-        QStringLiteral("clipboard.html_document_layout"),
-        QStringLiteral("clipboard.html_document_render"),
-        QStringLiteral("clipboard.decode_detached_image"),
-        QStringLiteral("ui.present_pinned_selection"), QStringLiteral("ui.present_pinned_image"),
-        QStringLiteral("window.present"), QStringLiteral("window.materialize_image"),
-        QStringLiteral("window.finish_materialized_image"),
-        QStringLiteral("window.publish_materialized_image"), QStringLiteral("window.install_image"),
-        QStringLiteral("window.install_normalize"), QStringLiteral("window.install_renderer_source"),
-        QStringLiteral("window.install_renderer"), QStringLiteral("window.install_recognition"),
-        QStringLiteral("window.first_frame.repaint"), QStringLiteral("window.first_frame.native_sync"),
-        QStringLiteral("window.publish.first_frame.repaint"),
-        QStringLiteral("window.publish.first_frame.native_sync"),
-        QStringLiteral("window.finish.first_frame.repaint"),
-        QStringLiteral("window.finish.first_frame.native_sync"),
-        QStringLiteral("cleanup.cancel_capture_for_export"),
-        QStringLiteral("cleanup.cancel_active_capture"), QStringLiteral("cleanup.capture_terminated"),
-        QStringLiteral("cleanup.finish_capture_session"),
-        QStringLiteral("cleanup.hide_overlays_immediately"),
-        QStringLiteral("cleanup.deferred_export_cleanup"),
-        QStringLiteral("cleanup.release_selector_cache"), QStringLiteral("cleanup.clear_displays"),
-        QStringLiteral("cleanup.reset_runtime"), QStringLiteral("cleanup.reset_canvas_runtime"),
-        QStringLiteral("cleanup.hide_toolbar")};
+    const QStringList spanKeys{QStringLiteral("export.prepare_pin_plan"),
+                               QStringLiteral("export.serialize_document"),
+                               QStringLiteral("export.render_selection"),
+                               QStringLiteral("export.render_canvas"),
+                               QStringLiteral("export.compose_result"),
+                               QStringLiteral("export.convert_argb32"),
+                               QStringLiteral("export.scrolling_trimmed_snapshot"),
+                               QStringLiteral("export.materialize_scrolling_snapshot"),
+                               QStringLiteral("clipboard.reader_snapshot"),
+                               QStringLiteral("clipboard.decode_native_dib"),
+                               QStringLiteral("clipboard.decode_file_image"),
+                               QStringLiteral("clipboard.decode_html_document"),
+                               QStringLiteral("clipboard.html_document_layout"),
+                               QStringLiteral("clipboard.html_document_render"),
+                               QStringLiteral("clipboard.decode_detached_image"),
+                               QStringLiteral("ui.present_pinned_selection"),
+                               QStringLiteral("ui.present_pinned_image"),
+                               QStringLiteral("window.present"),
+                               QStringLiteral("window.materialize_image"),
+                               QStringLiteral("window.finish_materialized_image"),
+                               QStringLiteral("window.publish_materialized_image"),
+                               QStringLiteral("window.install_image"),
+                               QStringLiteral("window.install_normalize"),
+                               QStringLiteral("window.install_renderer_source"),
+                               QStringLiteral("window.install_renderer"),
+                               QStringLiteral("window.install_recognition"),
+                               QStringLiteral("window.first_frame.repaint"),
+                               QStringLiteral("window.first_frame.native_sync"),
+                               QStringLiteral("window.publish.first_frame.repaint"),
+                               QStringLiteral("window.publish.first_frame.native_sync"),
+                               QStringLiteral("window.finish.first_frame.repaint"),
+                               QStringLiteral("window.finish.first_frame.native_sync"),
+                               QStringLiteral("cleanup.cancel_capture_for_export"),
+                               QStringLiteral("cleanup.cancel_active_capture"),
+                               QStringLiteral("cleanup.capture_terminated"),
+                               QStringLiteral("cleanup.finish_capture_session"),
+                               QStringLiteral("cleanup.hide_overlays_immediately"),
+                               QStringLiteral("cleanup.deferred_export_cleanup"),
+                               QStringLiteral("cleanup.release_selector_cache"),
+                               QStringLiteral("cleanup.clear_displays"),
+                               QStringLiteral("cleanup.reset_runtime"),
+                               QStringLiteral("cleanup.reset_canvas_runtime"),
+                               QStringLiteral("cleanup.hide_toolbar")};
     for (const QString& key : spanKeys) {
         add(QStringLiteral("duration_") + key, series.spans.value(key));
     }
@@ -855,8 +1026,8 @@ QJsonObject firstContentFrameAcceptance(const ScenarioSeries& series) {
              QStringLiteral("first_content_frame_minus_export_render_finished")},
             {QStringLiteral("target_p95_ms"), targetP95Milliseconds},
             {QStringLiteral("p95_ms"), p95},
-            {QStringLiteral("passed"), !series.firstContentFrameResidual.isEmpty() &&
-                                           p95 <= targetP95Milliseconds},
+            {QStringLiteral("passed"),
+             !series.firstContentFrameResidual.isEmpty() && p95 <= targetP95Milliseconds},
             {QStringLiteral("applicable"), !series.firstContentFrameResidual.isEmpty()},
             {QStringLiteral("samples"), series.firstContentFrameResidual.size()}};
 }
@@ -879,8 +1050,7 @@ QJsonObject scenarioReport(const QString& id, const ScenarioSeries& series) {
             {QStringLiteral("milestones_ms"), statisticsMap(series.milestones)},
             {QStringLiteral("stages_ms"), statisticsMap(series.stages)},
             {QStringLiteral("spans_ms"), statisticsMap(series.spans)},
-            {QStringLiteral("first_content_frame_acceptance"),
-             firstContentFrameAcceptance(series)},
+            {QStringLiteral("first_content_frame_acceptance"), firstContentFrameAcceptance(series)},
             {QStringLiteral("materialization_mb"), statistics(series.materializationMegabytes)},
             {QStringLiteral("shell_pool_hit_rate"),
              series.samples == 0 ? 0.0 : static_cast<double>(series.shellHits) / series.samples},
@@ -907,17 +1077,21 @@ struct BenchmarkConfiguration {
 };
 
 void invokeQuickScreenshot(IUIAutomation& automation, const ChildProcess& child, int timeout) {
-    auto screenshot = waitFor([&]() { return findByAutomationId(automation, child.pid(),
-                                                                L"settings-item-quick-screenshot"); },
-                              timeout);
+    auto screenshot = waitFor(
+        [&]() {
+            return findByAutomationId(automation, child.pid(), L"settings-item-quick-screenshot");
+        },
+        timeout);
     require(screenshot.get() != nullptr && invoke(*screenshot.get()),
             "could not invoke screenshot capture");
 }
 
 void clickPinButton(IUIAutomation& automation, const ChildProcess& child, int timeout) {
-    auto pin = waitFor([&]() { return findByAutomationId(automation, child.pid(),
-                                                         L"screenshotPinToScreenButton"); },
-                       timeout);
+    auto pin = waitFor(
+        [&]() {
+            return findByAutomationId(automation, child.pid(), L"screenshotPinToScreenButton");
+        },
+        timeout);
     require(pin.get() != nullptr, "pin button did not appear");
     clickCenter(*pin.get());
 }
@@ -926,8 +1100,7 @@ void clickPinButton(IUIAutomation& automation, const ChildProcess& child, int ti
 // own the input surface, leaving the session without a selection. Re-drag on
 // the still-open overlay instead of failing the sample.
 void dragWithRetry(IUIAutomation& automation, const ChildProcess& child,
-                   const wchar_t* expectedControl, int timeout,
-                   const std::function<void()>& drag) {
+                   const wchar_t* expectedControl, int timeout, const std::function<void()>& drag) {
     for (int attempt = 0; attempt < 2; ++attempt) {
         drag();
         if (waitFor([&]() { return findByAutomationId(automation, child.pid(), expectedControl); },
@@ -973,16 +1146,21 @@ void driveScrollingSelection(IUIAutomation& automation, const ChildProcess& chil
     source.reset();
     invokeQuickScreenshot(automation, child, configuration.timeout);
     std::this_thread::sleep_for(1000ms);
-    dragWithRetry(automation, child, L"screenshotScrollingScreenshotButton",
-                  configuration.timeout, [&]() { dragRect(source.rect()); });
-    auto scrolling = waitFor([&]() { return findByAutomationId(
-                                      automation, child.pid(), L"screenshotScrollingScreenshotButton"); },
-                             configuration.timeout);
+    dragWithRetry(automation, child, L"screenshotScrollingScreenshotButton", configuration.timeout,
+                  [&]() { dragRect(source.rect()); });
+    auto scrolling = waitFor(
+        [&]() {
+            return findByAutomationId(automation, child.pid(),
+                                      L"screenshotScrollingScreenshotButton");
+        },
+        configuration.timeout);
     require(scrolling.get() != nullptr && invoke(*scrolling.get()),
             "could not enter scrolling screenshot");
     auto thumbnail = waitFor(
-        [&]() { return findVisibleByAutomationId(automation, child.pid(),
-                                                 L"screenshot-scrolling-thumbnail"); },
+        [&]() {
+            return findVisibleByAutomationId(automation, child.pid(),
+                                             L"screenshot-scrolling-thumbnail");
+        },
         configuration.timeout);
     require(thumbnail.get() != nullptr, "scrolling thumbnail did not appear");
     const RECT selection = source.rect();
@@ -1001,12 +1179,13 @@ void invokePinClipboard(IUIAutomation& automation, const ChildProcess& child, in
                         const RECT& monitor) {
     sendMouse((monitor.left + monitor.right) / 2, (monitor.top + monitor.bottom) / 2,
               MOUSEEVENTF_MOVE);
-    auto item = waitFor([&]() { return findByAutomationId(
-                                    automation, child.pid(),
-                                    L"settings-item-quick-pin-clipboard-content"); },
-                        timeout);
-    require(item.get() != nullptr && invoke(*item.get()),
-            "could not invoke pin clipboard content");
+    auto item = waitFor(
+        [&]() {
+            return findByAutomationId(automation, child.pid(),
+                                      L"settings-item-quick-pin-clipboard-content");
+        },
+        timeout);
+    require(item.get() != nullptr && invoke(*item.get()), "could not invoke pin clipboard content");
 }
 
 QString expectedTraceScenario(const QString& scenario) {
@@ -1057,41 +1236,44 @@ bool runSelfTest() {
 
     const QImage image = makeClipboardImage(QSize(4, 4));
     const QByteArray png = encodeClipboardPng(image);
-    if (png.size() < 8 || png.startsWith("\x89PNG") == false) return false;
+    if (png.size() < 8 || png.startsWith("\x89PNG") == false)
+        return false;
 
     const QByteArray dib = encodeClipboardDibV5(image);
-    if (dib.size() != static_cast<int>(sizeof(BITMAPV5HEADER)) + 4 * 4 * 4) return false;
+    if (dib.size() != static_cast<int>(sizeof(BITMAPV5HEADER)) + 4 * 4 * 4)
+        return false;
     const auto* header = reinterpret_cast<const BITMAPV5HEADER*>(dib.constData());
     if (header->bV5Width != 4 || header->bV5Height != 4 || header->bV5BitCount != 32 ||
         header->bV5Compression != BI_BITFIELDS) {
         return false;
     }
     const QImage bottomLeft = image.copy(0, 3, 1, 1);
-    const auto* lastRow = reinterpret_cast<const std::uint32_t*>(
-        dib.constData() + sizeof(BITMAPV5HEADER));
+    const auto* lastRow =
+        reinterpret_cast<const std::uint32_t*>(dib.constData() + sizeof(BITMAPV5HEADER));
     const QRgb expected = bottomLeft.pixel(0, 0);
-    if (lastRow[0] != ((0xffu << 24) | (static_cast<unsigned>(qRed(expected)) << 16) |
-                       (static_cast<unsigned>(qGreen(expected)) << 8) |
-                       static_cast<unsigned>(qBlue(expected)))) {
+    if (lastRow[0] !=
+        ((0xffu << 24) | (static_cast<unsigned>(qRed(expected)) << 16) |
+         (static_cast<unsigned>(qGreen(expected)) << 8) | static_cast<unsigned>(qBlue(expected)))) {
         return false;
     }
 
     ScenarioSeries series;
-    accumulateRecord(series, QJsonObject{
-        {QStringLiteral("scenario"), QStringLiteral("clipboard-html")},
-        {QStringLiteral("end_to_end_ns"), 2000000},
-        {QStringLiteral("working_set_bytes"), 2 * 1024 * 1024},
-        {QStringLiteral("peak_working_set_bytes"), 3 * 1024 * 1024},
-        {QStringLiteral("milestones_ns"),
-         QJsonObject{{QStringLiteral("controller.enter"), 100000},
-                     {QStringLiteral("window.shell_visible"), 800000},
-                     {QStringLiteral("export.render_finished"), 1200000},
-                     {QStringLiteral("window.first_content_frame"), 1500000}}},
-        {QStringLiteral("spans_ns"), QJsonObject{{QStringLiteral("window.present"), 500000}}},
-        {QStringLiteral("counters"),
-         QJsonObject{{QStringLiteral("shell.hit"), 1},
-                     {QStringLiteral("clipboard.reader_snapshot_ns"), 250000},
-                     {QStringLiteral("materialization.bytes"), 1024 * 1024}}}});
+    accumulateRecord(
+        series, QJsonObject{{QStringLiteral("scenario"), QStringLiteral("clipboard-html")},
+                            {QStringLiteral("end_to_end_ns"), 2000000},
+                            {QStringLiteral("working_set_bytes"), 2 * 1024 * 1024},
+                            {QStringLiteral("peak_working_set_bytes"), 3 * 1024 * 1024},
+                            {QStringLiteral("milestones_ns"),
+                             QJsonObject{{QStringLiteral("controller.enter"), 100000},
+                                         {QStringLiteral("window.shell_visible"), 800000},
+                                         {QStringLiteral("export.render_finished"), 1200000},
+                                         {QStringLiteral("window.first_content_frame"), 1500000}}},
+                            {QStringLiteral("spans_ns"),
+                             QJsonObject{{QStringLiteral("window.present"), 500000}}},
+                            {QStringLiteral("counters"),
+                             QJsonObject{{QStringLiteral("shell.hit"), 1},
+                                         {QStringLiteral("clipboard.reader_snapshot_ns"), 250000},
+                                         {QStringLiteral("materialization.bytes"), 1024 * 1024}}}});
     if (series.samples != 1 || series.shellHits != 1 || series.endToEnd != QVector<double>{2.0} ||
         series.spans.value(QStringLiteral("clipboard.reader_snapshot")) != QVector<double>{0.25} ||
         series.materializationMegabytes.size() != 1 ||
@@ -1105,7 +1287,8 @@ bool runSelfTest() {
     }
     const QJsonObject core = report.value(QStringLiteral("core")).toObject();
     if (!core.contains(QStringLiteral("end_to_end")) ||
-        !qFuzzyCompare(core.value(QStringLiteral("end_to_end")).toObject()
+        !qFuzzyCompare(core.value(QStringLiteral("end_to_end"))
+                           .toObject()
                            .value(QStringLiteral("share_pct"))
                            .toDouble(),
                        100.0) ||
@@ -1114,7 +1297,8 @@ bool runSelfTest() {
         !core.contains(QStringLiteral("duration_clipboard.reader_snapshot"))) {
         return false;
     }
-    const QJsonObject acceptance = report.value(QStringLiteral("first_content_frame_acceptance")).toObject();
+    const QJsonObject acceptance =
+        report.value(QStringLiteral("first_content_frame_acceptance")).toObject();
     if (!acceptance.value(QStringLiteral("passed")).toBool() ||
         !qFuzzyCompare(acceptance.value(QStringLiteral("p95_ms")).toDouble() + 1.0, 1.3)) {
         return false;
@@ -1134,9 +1318,8 @@ int run(const QCommandLineParser& parser) {
     configuration.scrollDistance = parser.value(QStringLiteral("scroll-distance")).toInt();
     configuration.scrollSettleMilliseconds =
         parser.value(QStringLiteral("scroll-settle-ms")).toInt();
-    const QStringList sizeParts =
-        parser.value(QStringLiteral("clipboard-image-size"))
-            .split(QLatin1Char('x'), Qt::SkipEmptyParts);
+    const QStringList sizeParts = parser.value(QStringLiteral("clipboard-image-size"))
+                                      .split(QLatin1Char('x'), Qt::SkipEmptyParts);
     require(sizeParts.size() == 2, "invalid --clipboard-image-size (expected WxH)");
     configuration.clipboardImageSize = {sizeParts.at(0).toInt(), sizeParts.at(1).toInt()};
     configuration.paintMode = parser.value(QStringLiteral("paint-mode"));
@@ -1147,14 +1330,15 @@ int run(const QCommandLineParser& parser) {
                 configuration.paintMode == QStringLiteral("single"),
             "invalid --paint-mode (expected control or single-paint)");
     configuration.scenarios =
-        parser.value(QStringLiteral("scenarios"))
-            .split(QLatin1Char(','), Qt::SkipEmptyParts);
+        parser.value(QStringLiteral("scenarios")).split(QLatin1Char(','), Qt::SkipEmptyParts);
     if (configuration.scenarios == QStringList{QStringLiteral("all")}) {
-        configuration.scenarios = QStringList{
-            QStringLiteral("normal-selection-small"), QStringLiteral("normal-selection-medium"),
-            QStringLiteral("normal-selection-large"), QStringLiteral("scrolling-selection"),
-            QStringLiteral("clipboard-image-detached"), QStringLiteral("clipboard-image-file"),
-            QStringLiteral("clipboard-html")};
+        configuration.scenarios = QStringList{QStringLiteral("normal-selection-small"),
+                                              QStringLiteral("normal-selection-medium"),
+                                              QStringLiteral("normal-selection-large"),
+                                              QStringLiteral("scrolling-selection"),
+                                              QStringLiteral("clipboard-image-detached"),
+                                              QStringLiteral("clipboard-image-file"),
+                                              QStringLiteral("clipboard-html")};
     }
     for (const QString& scenario : configuration.scenarios) {
         require(scenario == QStringLiteral("normal-selection-small") ||
@@ -1182,9 +1366,11 @@ int run(const QCommandLineParser& parser) {
     QFile::remove(tracePath);
     _putenv_s("SNOW_SHOT_PIN_PERF_TRACE", tracePath.toLocal8Bit().constData());
     _putenv_s("SNOW_SHOT_PIN_PERF_PAINT_MODE", configuration.paintMode.toLocal8Bit().constData());
-    ScopedCom com; require(SUCCEEDED(com.result()), "COM initialization failed");
+    ScopedCom com;
+    require(SUCCEEDED(com.result()), "COM initialization failed");
     auto automation = createAutomation();
-    ChildProcess child; require(child.start(configuration.appPath), "could not start snow_shot");
+    ChildProcess child;
+    require(child.start(configuration.appPath), "could not start snow_shot");
     TraceCollector collector(tracePath);
 
     ScenarioPayloads payloads;
@@ -1235,8 +1421,7 @@ int run(const QCommandLineParser& parser) {
                 setClipboardHtml(payloads.htmlBytes);
                 invokePinClipboard(*automation.get(), child, configuration.timeout, monitor);
             }
-            QJsonObject record =
-                collector.next(traceScenario, configuration.timeout, child);
+            QJsonObject record = collector.next(traceScenario, configuration.timeout, child);
             record.insert(QStringLiteral("scenario"), scenario);
             record.insert(QStringLiteral("iteration"), iteration);
             record.insert(QStringLiteral("warmup"), iteration < 0);
@@ -1251,9 +1436,10 @@ int run(const QCommandLineParser& parser) {
             record.insert(QStringLiteral("scroll_steps"), configuration.scrollSteps);
             record.insert(QStringLiteral("scroll_distance"), configuration.scrollDistance);
             records.push_back(record);
-            const qint64 hwndValue =
-                record.value(QStringLiteral("counters")).toObject()
-                    .value(QStringLiteral("window.hwnd")).toInteger();
+            const qint64 hwndValue = record.value(QStringLiteral("counters"))
+                                         .toObject()
+                                         .value(QStringLiteral("window.hwnd"))
+                                         .toInteger();
             if (hwndValue != 0) {
                 PostMessageW(reinterpret_cast<HWND>(static_cast<quintptr>(hwndValue)), WM_CLOSE, 0,
                              0);
@@ -1285,7 +1471,7 @@ int run(const QCommandLineParser& parser) {
         scenarioReports.append(scenarioReport(scenario, series));
     }
     const QJsonObject report{
-        {QStringLiteral("schema_version"), 3},
+        {QStringLiteral("schema_version"), 1},
         {QStringLiteral("benchmark"), QStringLiteral("screenshot_pin_to_screen")},
         {QStringLiteral("generated_utc"),
          QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
@@ -1313,11 +1499,12 @@ int run(const QCommandLineParser& parser) {
     reportFile.close();
     QFile html(QDir(configuration.output).filePath(QStringLiteral("report.html")));
     require(html.open(QIODevice::WriteOnly | QIODevice::Truncate), "could not write report.html");
-    html.write(("<!doctype html><meta charset=utf-8><title>Snow Shot pin performance</title>"
-                "<h1>Pin-to-screen performance</h1><pre>" +
-                htmlEscape(QString::fromUtf8(QJsonDocument(report).toJson(QJsonDocument::Indented))) +
-                "</pre>")
-                   .toUtf8());
+    html.write(
+        ("<!doctype html><meta charset=utf-8><title>Snow Shot pin performance</title>"
+         "<h1>Pin-to-screen performance</h1><pre>" +
+         htmlEscape(QString::fromUtf8(QJsonDocument(report).toJson(QJsonDocument::Indented))) +
+         "</pre>")
+            .toUtf8());
     html.close();
     return 0;
 }
@@ -1332,22 +1519,44 @@ int main(int argc, char** argv) {
     parser.setApplicationDescription(
         QStringLiteral("Native Windows pin-to-screen performance benchmark"));
     parser.addHelpOption();
-    parser.addOption({QStringLiteral("app"), QStringLiteral("snow_shot executable"), QStringLiteral("path")});
-    parser.addOption({QStringLiteral("output"), QStringLiteral("output directory"), QStringLiteral("directory"), QStringLiteral("pin-to-screen-performance")});
-    parser.addOption({QStringLiteral("screen-index"), QStringLiteral("monitor index"), QStringLiteral("index"), QStringLiteral("0")});
-    parser.addOption({QStringLiteral("warmups"), QStringLiteral("warmup samples"), QStringLiteral("count"), QStringLiteral("3")});
-    parser.addOption({QStringLiteral("samples"), QStringLiteral("measured samples"), QStringLiteral("count"), QStringLiteral("40")});
-    parser.addOption({QStringLiteral("timeout-ms"), QStringLiteral("sample timeout"), QStringLiteral("milliseconds"), QStringLiteral("30000")});
-    parser.addOption({QStringLiteral("scenarios"), QStringLiteral("comma-separated scenarios (normal-selection-small, normal-selection-medium, normal-selection-large, scrolling-selection, clipboard-image-detached, clipboard-image-file, clipboard-html, or all)"), QStringLiteral("list"), QStringLiteral("all")});
-    parser.addOption({QStringLiteral("scroll-steps"), QStringLiteral("scroll steps before pinning a scrolling screenshot"), QStringLiteral("count"), QStringLiteral("8")});
-    parser.addOption({QStringLiteral("scroll-distance"), QStringLiteral("scroll distance per step in pixels"), QStringLiteral("pixels"), QStringLiteral("96")});
-    parser.addOption({QStringLiteral("scroll-settle-ms"), QStringLiteral("settle time after each scroll step"), QStringLiteral("milliseconds"), QStringLiteral("700")});
-    parser.addOption({QStringLiteral("clipboard-image-size"), QStringLiteral("clipboard image size"), QStringLiteral("WxH"), QStringLiteral("1920x1080")});
-    parser.addOption({QStringLiteral("paint-mode"), QStringLiteral("paint sequence (control or single-paint)"), QStringLiteral("mode"), QStringLiteral("control")});
+    parser.addOption(
+        {QStringLiteral("app"), QStringLiteral("snow_shot executable"), QStringLiteral("path")});
+    parser.addOption({QStringLiteral("output"), QStringLiteral("output directory"),
+                      QStringLiteral("directory"), QStringLiteral("pin-to-screen-performance")});
+    parser.addOption({QStringLiteral("screen-index"), QStringLiteral("monitor index"),
+                      QStringLiteral("index"), QStringLiteral("0")});
+    parser.addOption({QStringLiteral("warmups"), QStringLiteral("warmup samples"),
+                      QStringLiteral("count"), QStringLiteral("3")});
+    parser.addOption({QStringLiteral("samples"), QStringLiteral("measured samples"),
+                      QStringLiteral("count"), QStringLiteral("40")});
+    parser.addOption({QStringLiteral("timeout-ms"), QStringLiteral("sample timeout"),
+                      QStringLiteral("milliseconds"), QStringLiteral("30000")});
+    parser.addOption(
+        {QStringLiteral("scenarios"),
+         QStringLiteral("comma-separated scenarios (normal-selection-small, "
+                        "normal-selection-medium, normal-selection-large, scrolling-selection, "
+                        "clipboard-image-detached, clipboard-image-file, clipboard-html, or all)"),
+         QStringLiteral("list"), QStringLiteral("all")});
+    parser.addOption({QStringLiteral("scroll-steps"),
+                      QStringLiteral("scroll steps before pinning a scrolling screenshot"),
+                      QStringLiteral("count"), QStringLiteral("8")});
+    parser.addOption({QStringLiteral("scroll-distance"),
+                      QStringLiteral("scroll distance per step in pixels"),
+                      QStringLiteral("pixels"), QStringLiteral("96")});
+    parser.addOption({QStringLiteral("scroll-settle-ms"),
+                      QStringLiteral("settle time after each scroll step"),
+                      QStringLiteral("milliseconds"), QStringLiteral("700")});
+    parser.addOption({QStringLiteral("clipboard-image-size"),
+                      QStringLiteral("clipboard image size"), QStringLiteral("WxH"),
+                      QStringLiteral("1920x1080")});
+    parser.addOption({QStringLiteral("paint-mode"),
+                      QStringLiteral("paint sequence (control or single-paint)"),
+                      QStringLiteral("mode"), QStringLiteral("control")});
     parser.addOption({QStringLiteral("self-test"), QStringLiteral("run report self-tests")});
     parser.process(application);
     try {
-        if (parser.isSet(QStringLiteral("self-test"))) return runSelfTest() ? 0 : 1;
+        if (parser.isSet(QStringLiteral("self-test")))
+            return runSelfTest() ? 0 : 1;
         return run(parser);
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

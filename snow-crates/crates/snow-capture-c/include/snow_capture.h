@@ -10,6 +10,7 @@ extern "C" {
 typedef struct SnowCaptureDesktopSessionImpl SnowCaptureDesktopSession;
 typedef struct SnowCaptureRegionSessionImpl SnowCaptureRegionSession;
 typedef struct SnowCaptureWindowSessionImpl SnowCaptureWindowSession;
+typedef struct SnowCaptureMonitorSessionImpl SnowCaptureMonitorSession;
 typedef struct SnowCaptureFrameLeaseImpl SnowCaptureFrameLease;
 typedef struct SnowCaptureCancellationTokenImpl SnowCaptureCancellationToken;
 typedef struct SnowCaptureScreenshotResultImpl SnowCaptureScreenshotResult;
@@ -38,6 +39,8 @@ typedef enum SnowCapturePixelFormat {
 typedef struct SnowCaptureDesktopSessionConfig {
     size_t capture_retry_count;
     uint8_t wgc_update_mode;
+    /* Preferred backend; remaining backends are tried in default order on eligible failures.
+       AUTO retains the default priority for each capture target. */
     uint8_t capture_backend;
     uint8_t pixel_format;
     uint8_t reserved[29];
@@ -67,6 +70,24 @@ typedef struct SnowCaptureFrameInfo {
     const uint8_t* rgba_bytes;
     size_t rgba_len;
 } SnowCaptureFrameInfo;
+
+/* A single monitor identified by its native device name (for example \\.\DISPLAY1).
+ * Uses DXGI, WGC, then GDI on eligible failures, independently of desktop sessions. */
+typedef struct SnowCaptureMonitorSessionConfig {
+    const char* device_name_utf8;
+    size_t capture_retry_count;
+    uint8_t pixel_format;
+    uint8_t reserved[31];
+} SnowCaptureMonitorSessionConfig;
+
+SnowCaptureMonitorSession* snow_capture_monitor_session_create(
+    const SnowCaptureMonitorSessionConfig* config);
+void snow_capture_monitor_session_destroy(SnowCaptureMonitorSession* session);
+uint8_t snow_capture_monitor_session_capture(
+    SnowCaptureMonitorSession* session, SnowCaptureFrameInfo* out_info);
+/* Retained pixels survive the next capture and session destruction. */
+SnowCaptureFrameLease* snow_capture_monitor_session_frame_retain(
+    const SnowCaptureMonitorSession* session);
 
 typedef struct SnowCaptureRegionSessionConfig {
     int32_t x;
@@ -254,7 +275,7 @@ typedef enum SnowCaptureEncoderPreference {
     SNOW_CAPTURE_ENCODER_PREFERENCE_H264_HARDWARE = 1,
 } SnowCaptureEncoderPreference;
 
-#define SNOW_CAPTURE_RECORDING_EXPORT_CONFIG_VERSION 2u
+#define SNOW_CAPTURE_RECORDING_EXPORT_CONFIG_VERSION 1u
 
 typedef struct SnowCaptureRecordingExportConfig {
     uint32_t version;

@@ -33,8 +33,6 @@ foreach(_source IN LISTS _snow_shot_sources)
     foreach(_forbidden IN ITEMS
         "config.json"
         "__data_directory"
-        "capture_history_records"
-        "capture_history_quarantine"
         "canvas_history.json"
         "display_0.png"
     )

@@ -19,8 +19,8 @@ snow_shot::storage::ConfigurationStore& configuration() {
 }
 
 storage::PersistedSelection persistedSelection(const ScreenshotSelectionParams& params) {
-    return {params.selection, params.radius, params.shadowWidth, params.shadowColor,
-            params.lockAspectRatio, params.lockDragAspectRatio};
+    return {params.selection,   params.radius,          params.shadowWidth,
+            params.shadowColor, params.lockAspectRatio, params.lockDragAspectRatio};
 }
 
 std::optional<ScreenshotSelectionParams> selectionFromJson(const QJsonValue& value) {
@@ -29,17 +29,13 @@ std::optional<ScreenshotSelectionParams> selectionFromJson(const QJsonValue& val
         return std::nullopt;
     }
     const storage::PersistedSelection& selection = normalized.value;
-    return ScreenshotSelectionParams{selection.rectangle, selection.cornerRadius,
-                                     selection.shadowWidth, selection.shadowColor,
+    return ScreenshotSelectionParams{selection.rectangle,       selection.cornerRadius,
+                                     selection.shadowWidth,     selection.shadowColor,
                                      selection.lockAspectRatio, selection.lockDragAspectRatio};
 }
 } // namespace
 
-ScreenshotSelectionSettingsStore::ScreenshotSelectionSettingsStore(const QString& organization,
-                                                                   const QString& application) {
-    Q_UNUSED(organization)
-    Q_UNUSED(application)
-}
+ScreenshotSelectionSettingsStore::ScreenshotSelectionSettingsStore() = default;
 
 bool ScreenshotSelectionSettingsStore::hasPreviousSelectionParams() const {
     return selectionFromJson(
@@ -55,22 +51,21 @@ ScreenshotSelectionParams ScreenshotSelectionSettingsStore::previousSelectionPar
 
 void ScreenshotSelectionSettingsStore::setPreviousSelectionParams(
     const ScreenshotSelectionParams& params) {
-    static_cast<void>(configuration().setValue(
-        QStringLiteral("screenshot_selection/previous_selection"),
-        storage::persistedSelectionToJson(persistedSelection(params))));
+    static_cast<void>(
+        configuration().setValue(QStringLiteral("screenshot_selection/previous_selection"),
+                                 storage::persistedSelectionToJson(persistedSelection(params))));
 }
 
 QVector<ScreenshotSelectionPreset> ScreenshotSelectionSettingsStore::presets() const {
     QVector<ScreenshotSelectionPreset> result;
-    const QJsonArray array = configuration()
-                                 .value(QStringLiteral(
-                                     "screenshot_selection/selection_rect_presets"))
-                                 .toArray();
+    const QJsonArray array =
+        configuration()
+            .value(QStringLiteral("screenshot_selection/selection_rect_presets"))
+            .toArray();
     for (const QJsonValue& item : array) {
         const auto params = selectionFromJson(item);
         if (params.has_value()) {
-            result.push_back(
-                {item.toObject().value(QStringLiteral("name")).toString(), *params});
+            result.push_back({item.toObject().value(QStringLiteral("name")).toString(), *params});
         }
     }
     return result;

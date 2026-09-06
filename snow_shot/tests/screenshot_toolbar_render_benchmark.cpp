@@ -67,8 +67,8 @@ HWND toNativeHwnd(WId windowId) {
 }
 #endif
 
-constexpr int kReportSchemaVersion = 2;
-constexpr int kScenarioManifestVersion = 5;
+constexpr int kReportSchemaVersion = 1;
+constexpr int kScenarioManifestVersion = 1;
 constexpr int kCrossMonitorDragSteps = 240;
 constexpr double kRegressionPercent = 15.0;
 constexpr double kRegressionAbsoluteMilliseconds = 0.5;
@@ -2142,13 +2142,12 @@ QJsonObject coverageJson(const QVector<Scenario>& scenarios) {
     for (const Scenario& scenario : scenarios)
         scenarioIds.push_back(scenario.id);
     const QJsonArray entryPoints{
-        QStringLiteral("resetForNewCapture"),  QStringLiteral("setScrollingScreenshotMode"),
-        QStringLiteral("setActiveTool"),       QStringLiteral("setStyleToolbarState"),
-        QStringLiteral("setWatermarkConfig"),
-        QStringLiteral("setPlacementContext"),
-        QStringLiteral("setMovementBounds"),   QStringLiteral("setStyleToolbarAboveMain"),
-        QStringLiteral("prepareForDisplay"),   QStringLiteral("moveContentTo"),
-        QStringLiteral("show/hide"),           QStringLiteral("native hover/press/drag/wheel"),
+        QStringLiteral("resetForNewCapture"), QStringLiteral("setScrollingScreenshotMode"),
+        QStringLiteral("setActiveTool"),      QStringLiteral("setStyleToolbarState"),
+        QStringLiteral("setWatermarkConfig"), QStringLiteral("setPlacementContext"),
+        QStringLiteral("setMovementBounds"),  QStringLiteral("setStyleToolbarAboveMain"),
+        QStringLiteral("prepareForDisplay"),  QStringLiteral("moveContentTo"),
+        QStringLiteral("show/hide"),          QStringLiteral("native hover/press/drag/wheel"),
     };
     return {
         {QStringLiteral("toolbar_scope"), QStringLiteral("ScreenshotToolbarWindow")},

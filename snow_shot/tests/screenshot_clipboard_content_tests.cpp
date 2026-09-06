@@ -3,6 +3,7 @@
 #include <QAbstractTextDocumentLayout>
 #include <QApplication>
 #include <QBuffer>
+#include <QClipboard>
 #include <QImage>
 #include <QMimeData>
 #include <QPalette>
@@ -128,6 +129,48 @@ void encodedImagesPrecedeDetachedImagesAndCorruptionFallsBack() {
     require(fallback.has_value() && fallback->image.size() == detached.size() &&
                 fallback->image.pixelColor(0, 0) == QColor(Qt::red),
             "corrupt encoded image data should fall back to the detached image snapshot");
+}
+
+class ImageDataOnlyMimeData final : public QMimeData {
+  public:
+    bool hasFormat(const QString& mimeType) const override {
+        return mimeType != QStringLiteral("application/x-qt-image") &&
+               QMimeData::hasFormat(mimeType);
+    }
+
+    QStringList formats() const override {
+        QStringList result = QMimeData::formats();
+        result.removeAll(QStringLiteral("application/x-qt-image"));
+        return result;
+    }
+};
+
+void liveSnapshotRetainsBitmapFallback() {
+    QClipboard* clipboard = QApplication::clipboard();
+    QImage bitmap(QSize(3, 2), QImage::Format_RGB32);
+    bitmap.fill(Qt::red);
+    QImage encoded(QSize(4, 3), QImage::Format_RGB32);
+    encoded.fill(Qt::blue);
+    for (bool corrupt : {false, true}) {
+        // Keep imageData() available without advertising a native bitmap format.
+        auto* mime = new ImageDataOnlyMimeData;
+        mime->setImageData(bitmap);
+        mime->setData(QStringLiteral("image/png"),
+                      corrupt ? QByteArrayLiteral("corrupt") : pngBytes(encoded));
+        mime->setText(QStringLiteral("text fallback"));
+        clipboard->setMimeData(mime);
+        auto snapshot = ScreenshotClipboardContentReader::snapshot(clipboard, 1.0);
+        clipboard->clear();
+        require(snapshot.has_value(), "live clipboard image should be snapshotted");
+        require(!snapshot->nativeDib.has_value() && !snapshot->detachedImage.isNull(),
+                "an imageData-only provider must retain its detached bitmap fallback");
+        const auto content = ScreenshotClipboardContentReader::decode(std::move(*snapshot));
+        const QImage& expected = corrupt ? bitmap : encoded;
+        require(content.has_value() && !content->isFormattedText() &&
+                    content->image.size() == expected.size() &&
+                    content->image.pixelColor(0, 0) == expected.pixelColor(0, 0),
+                "live snapshot must retain an owned bitmap when encoded decoding fails");
+    }
 }
 
 void localImageFilesAndPlainTextFallbackAreSupported() {
@@ -434,18 +477,75 @@ void nativeDibSnapshotDecodesOffClipboard() {
     pixels[2] = 0xff00ff00; // top row: green, white
     pixels[3] = 0xffffffff;
 
-    ScreenshotClipboardContentSnapshot snapshot;
-    snapshot.devicePixelRatio = 1.0;
-    snapshot.nativeDib = ScreenshotClipboardNativeDib{
-        std::move(bytes), QSize(2, 2), ScreenshotClipboardNativeDibFormat::DibV5};
-    const auto decoded = ScreenshotClipboardContentReader::decode(std::move(snapshot));
-    require(decoded.has_value() && decoded->image.size() == QSize(2, 2),
-            "native DIB snapshot should decode into an image");
-    require(decoded->image.pixelColor(0, 0) == QColor(Qt::green) &&
-                decoded->image.pixelColor(1, 0) == QColor(Qt::white) &&
-                decoded->image.pixelColor(0, 1) == QColor(Qt::blue) &&
-                decoded->image.pixelColor(1, 1) == QColor(Qt::red),
-            "native DIB snapshot should preserve orientation and channels");
+    for (const int maskOrder : {0, 1, 2}) {
+        QByteArray payload = bytes;
+        if (maskOrder != 0) {
+            const DWORD masks[3]{maskOrder == 1 ? header.bV5RedMask : header.bV5BlueMask,
+                                 header.bV5GreenMask,
+                                 maskOrder == 1 ? header.bV5BlueMask : header.bV5RedMask};
+            payload.insert(sizeof(header), reinterpret_cast<const char*>(masks), sizeof(masks));
+        }
+        ScreenshotClipboardContentSnapshot snapshot;
+        snapshot.devicePixelRatio = 1.0;
+        snapshot.nativeDib = ScreenshotClipboardNativeDib{
+            payload, QSize(2, 2), ScreenshotClipboardNativeDibFormat::DibV5};
+        const auto decoded = ScreenshotClipboardContentReader::decode(snapshot);
+        require(decoded.has_value() && decoded->image.size() == QSize(2, 2),
+                "native DIB snapshot should decode into an image");
+        require(decoded->image.pixelColor(0, 0) == QColor(Qt::green) &&
+                    decoded->image.pixelColor(1, 0) == QColor(Qt::white) &&
+                    decoded->image.pixelColor(0, 1) == QColor(Qt::blue) &&
+                    decoded->image.pixelColor(1, 1) == QColor(Qt::red),
+                "native DIB snapshot should preserve orientation and channels");
+        if (maskOrder != 0) {
+            // Declare the table so truncation is unambiguous: an undeclared
+            // partial table is indistinguishable from pixels and trailing data.
+            auto* declaredHeader =
+                reinterpret_cast<BITMAPV5HEADER*>(snapshot.nativeDib->bytes.data());
+            declaredHeader->bV5ClrUsed = 3;
+            const auto declared = ScreenshotClipboardContentReader::decode(snapshot);
+            require(declared.has_value() && declared->image == decoded->image,
+                    "a declared color table must precede the bitmap pixels");
+            snapshot.nativeDib->bytes.chop(1);
+            require(!ScreenshotClipboardContentReader::decode(std::move(snapshot)).has_value(),
+                    "a truncated canonical DIBV5 must not decode its mask table as pixels");
+        }
+    }
+}
+
+void nativeDibMaskColoredPixelsRemainPixels() {
+    for (DWORD headerSize : {DWORD(sizeof(BITMAPV5HEADER)), DWORD(sizeof(BITMAPV4HEADER))}) {
+        for (int trailingBytes : {0, 1, 11, 12, 13, 16}) {
+            if (headerSize == sizeof(BITMAPV4HEADER) && trailingBytes == 12)
+                continue;
+            BITMAPV5HEADER header{};
+            header.bV5Size = headerSize;
+            header.bV5Width = 3;
+            header.bV5Height = -1;
+            header.bV5Planes = 1;
+            header.bV5BitCount = 32;
+            header.bV5Compression = BI_BITFIELDS;
+            header.bV5RedMask = 0x00ff0000;
+            header.bV5GreenMask = 0x0000ff00;
+            header.bV5BlueMask = 0x000000ff;
+            const DWORD pixels[]{header.bV5RedMask, header.bV5GreenMask, header.bV5BlueMask};
+            if (trailingBytes == 12) {
+                header.bV5CSType = PROFILE_EMBEDDED;
+                header.bV5ProfileData = headerSize + sizeof(pixels);
+                header.bV5ProfileSize = trailingBytes;
+            }
+            QByteArray bytes(static_cast<qsizetype>(headerSize + sizeof(pixels) + trailingBytes),
+                             0);
+            std::memcpy(bytes.data(), &header, headerSize);
+            std::memcpy(bytes.data() + headerSize, pixels, sizeof(pixels));
+            const auto decoded = ScreenshotClipboardContentReader::decode(
+                nativeDibSnapshot(std::move(bytes), QSize(3, 1)));
+            require(decoded.has_value() && decoded->image.pixelColor(0, 0) == QColor(Qt::red) &&
+                        decoded->image.pixelColor(1, 0) == QColor(Qt::green) &&
+                        decoded->image.pixelColor(2, 0) == QColor(Qt::blue),
+                    "V4/V5 pixels equal to masks must not be skipped as an extra mask table");
+        }
+    }
 }
 #endif
 } // namespace
@@ -453,6 +553,7 @@ void nativeDibSnapshotDecodesOffClipboard() {
 int main(int argc, char** argv) {
     QApplication application(argc, argv);
     QApplication::setQuitOnLastWindowClosed(false);
+    liveSnapshotRetainsBitmapFallback();
     directImageWinsOverRichText();
     oversizedDirectImagesAreIgnored();
     encodedImageAndTextAreSupported();
@@ -470,6 +571,7 @@ int main(int argc, char** argv) {
     standardRgbDibOrientationAndAlphaAreHandled();
     malformedAndLargeDibsAreHandled();
     nativeDibSnapshotDecodesOffClipboard();
+    nativeDibMaskColoredPixelsRemainPixels();
 #endif
     return 0;
 }

@@ -17,7 +17,8 @@ use snow_capture::frame::{CaptureEvent, CapturePixelFormat, CapturedFrame, Frame
 use snow_capture::{
     CaptureOptions, CaptureRegion, CaptureSession, CaptureStream, CaptureStreamConfig,
     CaptureSystem, CaptureTarget, CaptureWorkload, MonitorId, MonitorLayout, WgcUpdateMode,
-    WindowId, backend::CaptureBackendKind,
+    WindowId,
+    backend::{AutoBackendPolicy, CaptureBackendKind},
 };
 use snow_core::error::RecvTimeoutError;
 use snow_screen_recorder::{
@@ -48,6 +49,20 @@ pub struct SnowCaptureRegionSessionImpl {
 pub struct SnowCaptureWindowSessionImpl {
     session: CaptureSession,
     frame: Frame,
+}
+
+pub struct SnowCaptureMonitorSessionImpl {
+    session: CaptureSession,
+    entry: MonitorEntry,
+    frame: Option<SnapshotFrame>,
+}
+
+#[repr(C)]
+pub struct SnowCaptureMonitorSessionConfig {
+    device_name_utf8: *const c_char,
+    capture_retry_count: usize,
+    pixel_format: u8,
+    reserved: [u8; 31],
 }
 
 pub struct SnowCaptureCancellationTokenImpl {
@@ -324,7 +339,7 @@ enum WorkerCommand {
 }
 
 pub const SCREENSHOT_REQUEST_VERSION: u32 = 1;
-const SCREENSHOT_REQUEST_V1_SIZE: u32 = std::mem::size_of::<SnowCaptureScreenshotRequest>() as u32;
+const SCREENSHOT_REQUEST_SIZE: u32 = std::mem::size_of::<SnowCaptureScreenshotRequest>() as u32;
 const SCREENSHOT_REQUEST_REFRESH_LAYOUT: u32 = 1 << 0;
 const SCREENSHOT_REQUEST_RESTORE_ORIGINAL_COLORS: u32 = 1 << 1;
 pub const WINDOW_FRAME_INFO_VERSION: u32 = 1;
@@ -382,10 +397,10 @@ unsafe fn read_screenshot_request(
             header.version
         ));
     }
-    if header.struct_size < SCREENSHOT_REQUEST_V1_SIZE {
+    if header.struct_size < SCREENSHOT_REQUEST_SIZE {
         return Err(format!(
             "screenshot request is too small: {} < {}",
-            header.struct_size, SCREENSHOT_REQUEST_V1_SIZE
+            header.struct_size, SCREENSHOT_REQUEST_SIZE
         ));
     }
     let request = unsafe { *request };
@@ -494,7 +509,7 @@ struct SnowCaptureRecordingExportConfigHeader {
     struct_size: u32,
 }
 
-pub const RECORDING_EXPORT_CONFIG_VERSION: u32 = 2;
+pub const RECORDING_EXPORT_CONFIG_VERSION: u32 = 1;
 const RECORDING_EXPORT_CONFIG_SIZE: u32 =
     std::mem::size_of::<SnowCaptureRecordingExportConfig>() as u32;
 
@@ -536,6 +551,16 @@ fn default_options(
         },
         capture_backend,
     ))
+}
+
+fn desktop_backend_policy(preferred: CaptureBackendKind) -> Option<AutoBackendPolicy> {
+    if preferred == CaptureBackendKind::Auto {
+        return None;
+    }
+    let mut policy = AutoBackendPolicy::default();
+    policy.priority.retain(|kind| *kind != preferred);
+    policy.priority.insert(0, preferred);
+    Some(policy)
 }
 
 #[allow(clippy::needless_update)] // needed when snow-capture enables its `stage-timing` feature
@@ -968,6 +993,132 @@ fn reset_workers_to_prepared(session: &mut SnowCaptureDesktopSessionImpl) -> Res
     Ok(())
 }
 
+fn select_monitor_entry(
+    entries: Vec<MonitorEntry>,
+    device_name: &str,
+) -> Result<MonitorEntry, String> {
+    entries
+        .into_iter()
+        .find(|entry| entry.id.name() == device_name)
+        .ok_or_else(|| format!("capture monitor is unavailable: {device_name}"))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn snow_capture_monitor_session_create(
+    config: *const SnowCaptureMonitorSessionConfig,
+) -> *mut SnowCaptureMonitorSessionImpl {
+    let result = (|| {
+        let config = unsafe { config.as_ref() }.ok_or("monitor session config is null")?;
+        if config.device_name_utf8.is_null() {
+            return Err("monitor device name is null".to_owned());
+        }
+        let name = unsafe { CStr::from_ptr(config.device_name_utf8) }
+            .to_str()
+            .map_err(|error| error.to_string())?;
+        if name.is_empty() {
+            return Err("monitor device name is empty".to_owned());
+        }
+        let options = snapshot_options(
+            config.capture_retry_count,
+            0,
+            parse_pixel_format(config.pixel_format)?,
+        )?;
+        let system = CaptureSystem::builder()
+            .build()
+            .map_err(|error| error.to_string())?;
+        let entry = select_monitor_entry(build_monitor_entries(&system)?, name)?;
+        let session = system
+            .open_session(CaptureTarget::Monitor(entry.id.clone()), options)
+            .map_err(|error| error.to_string())?;
+        Ok(SnowCaptureMonitorSessionImpl {
+            session,
+            entry,
+            frame: None,
+        })
+    })();
+    match result {
+        Ok(session) => {
+            clear_last_error();
+            Box::into_raw(Box::new(session))
+        }
+        Err(error) => {
+            set_last_error(error);
+            ptr::null_mut()
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn snow_capture_monitor_session_destroy(
+    session: *mut SnowCaptureMonitorSessionImpl,
+) {
+    if !session.is_null() {
+        drop(unsafe { Box::from_raw(session) });
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn snow_capture_monitor_session_capture(
+    session: *mut SnowCaptureMonitorSessionImpl,
+    out_info: *mut SnowCaptureFrameInfo,
+) -> u8 {
+    let result = (|| {
+        let session = unsafe { session.as_mut() }.ok_or("monitor session is null")?;
+        if out_info.is_null() {
+            return Err("monitor frame out_info is null".to_owned());
+        }
+        session.frame = None;
+        let frame = session
+            .session
+            .capture_once()
+            .map_err(|error| error.to_string())?;
+        if session.session.active_capture_access_count() != 0 {
+            return Err("capture access remained active after one-shot monitor capture".to_owned());
+        }
+        let target = session
+            .session
+            .target_info_for_backend(frame.metadata().backend_kind())
+            .map_err(|error| error.to_string())?;
+        let mut entry = session.entry.clone();
+        entry.x = target.origin_x;
+        entry.y = target.origin_y;
+        session.frame = Some(SnapshotFrame {
+            entry,
+            frame: Arc::new(frame),
+        });
+        write_snapshot_frame_info(session.frame.as_ref().unwrap(), out_info)
+    })();
+    match result {
+        Ok(()) => {
+            clear_last_error();
+            1
+        }
+        Err(error) => {
+            set_last_error(error);
+            0
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn snow_capture_monitor_session_frame_retain(
+    session: *const SnowCaptureMonitorSessionImpl,
+) -> *mut SnowCaptureFrameLeaseImpl {
+    let frame = unsafe { session.as_ref() }.and_then(|session| session.frame.as_ref());
+    match frame {
+        Some(frame) => {
+            clear_last_error();
+            Box::into_raw(Box::new(SnowCaptureFrameLeaseImpl {
+                _frame: Arc::clone(&frame.frame),
+            }))
+        }
+        None => {
+            set_last_error("monitor session has no captured frame");
+            ptr::null_mut()
+        }
+    }
+}
+
 fn backend_kind_ptr(session: &SnowCaptureDesktopSessionImpl) -> *const c_char {
     match session.system.backend_kind().as_str() {
         "auto" => c"auto".as_ptr(),
@@ -1099,10 +1250,12 @@ pub extern "C" fn snow_capture_desktop_session_create(
             return ptr::null_mut();
         }
     };
-    match CaptureSystem::builder()
-        .with_backend_kind(capture_backend)
-        .build()
-    {
+    // Desktop screenshots treat the configured API as a preference, with per-target fallback.
+    let mut builder = CaptureSystem::builder();
+    if let Some(policy) = desktop_backend_policy(capture_backend) {
+        builder = builder.with_auto_backend_policy(policy);
+    }
+    match builder.build() {
         Ok(system) => {
             let mut session = SnowCaptureDesktopSessionImpl {
                 system,
@@ -2438,7 +2591,7 @@ fn parse_recording_export_config(
         ));
     }
     if config.struct_size < RECORDING_EXPORT_CONFIG_SIZE {
-        return Err("recording export config is smaller than version 1".to_string());
+        return Err("recording export config is too small".to_string());
     }
     if (config.maximum_width == 0) != (config.maximum_height == 0) {
         return Err(
@@ -2495,7 +2648,7 @@ unsafe fn read_recording_export_config(
 
     // Read only the fixed header until the caller-provided size has been
     // validated. This keeps undersized future/foreign-language inputs from
-    // being dereferenced as a complete version 1 structure.
+    // being dereferenced as a complete structure.
     let header = unsafe {
         std::ptr::read_unaligned(config.cast::<SnowCaptureRecordingExportConfigHeader>())
     };
@@ -2506,7 +2659,7 @@ unsafe fn read_recording_export_config(
         ));
     }
     if header.struct_size < RECORDING_EXPORT_CONFIG_SIZE {
-        return Err("recording export config is smaller than version 1".to_string());
+        return Err("recording export config is too small".to_string());
     }
 
     Ok(unsafe { std::ptr::read_unaligned(config) })
@@ -2867,6 +3020,39 @@ mod tests {
     }
 
     #[test]
+    fn monitor_session_rejects_missing_names_without_opening_capture() {
+        assert!(unsafe { snow_capture_monitor_session_create(ptr::null()) }.is_null());
+        let mut config = SnowCaptureMonitorSessionConfig {
+            device_name_utf8: ptr::null(),
+            capture_retry_count: 1,
+            pixel_format: 0,
+            reserved: [0; 31],
+        };
+        assert!(unsafe { snow_capture_monitor_session_create(&config) }.is_null());
+        config.device_name_utf8 = c"".as_ptr();
+        assert!(unsafe { snow_capture_monitor_session_create(&config) }.is_null());
+        assert_eq!(
+            unsafe { snow_capture_monitor_session_capture(ptr::null_mut(), ptr::null_mut()) },
+            0
+        );
+        assert!(unsafe { snow_capture_monitor_session_frame_retain(ptr::null()) }.is_null());
+    }
+
+    #[test]
+    fn monitor_selection_requires_exact_device_identity() {
+        let first = test_entry();
+        let mut second = test_entry();
+        second.id = MonitorId::from_name(2, "secondary", false);
+        assert_eq!(
+            select_monitor_entry(vec![first.clone(), second.clone()], "secondary")
+                .unwrap()
+                .id,
+            second.id
+        );
+        assert!(select_monitor_entry(vec![first, second], "disconnected").is_err());
+    }
+
+    #[test]
     fn region_capture_rejects_null_handles() {
         let mut info = SnowCaptureRegionFrameInfo {
             width: 0,
@@ -3132,6 +3318,33 @@ mod tests {
     }
 
     #[test]
+    fn desktop_backend_preferences_keep_all_fallbacks() {
+        use CaptureBackendKind::{DxgiDuplication, Gdi, WindowsGraphicsCapture};
+
+        for (preferred, expected) in [
+            (
+                DxgiDuplication,
+                [DxgiDuplication, WindowsGraphicsCapture, Gdi],
+            ),
+            (
+                WindowsGraphicsCapture,
+                [WindowsGraphicsCapture, DxgiDuplication, Gdi],
+            ),
+            (Gdi, [Gdi, DxgiDuplication, WindowsGraphicsCapture]),
+        ] {
+            let policy = desktop_backend_policy(preferred).unwrap();
+            assert_eq!(policy.normalized_priority(), expected);
+        }
+    }
+
+    #[test]
+    fn desktop_auto_preserves_default_target_priorities() {
+        assert_eq!(desktop_backend_policy(CaptureBackendKind::Auto), None);
+        let (_, backend) = default_options(ptr::null()).unwrap();
+        assert_eq!(backend, CaptureBackendKind::Auto);
+    }
+
+    #[test]
     fn capture_config_extensions_reuse_reserved_bytes_without_growing_configs() {
         let pointer_sized_prefix = std::mem::size_of::<usize>();
         assert_eq!(
@@ -3176,7 +3389,7 @@ mod tests {
             std::mem::offset_of!(SnowCaptureStreamConfig, include_cursor) + 1
         );
         assert_eq!(
-            SCREENSHOT_REQUEST_V1_SIZE as usize,
+            SCREENSHOT_REQUEST_SIZE as usize,
             std::mem::size_of::<SnowCaptureScreenshotRequest>()
         );
         assert_eq!(
@@ -3207,7 +3420,7 @@ mod tests {
 
         let unknown = SnowCaptureScreenshotRequestHeader {
             version: SCREENSHOT_REQUEST_VERSION + 1,
-            struct_size: SCREENSHOT_REQUEST_V1_SIZE,
+            struct_size: SCREENSHOT_REQUEST_SIZE,
         };
         let request = (&raw const unknown).cast::<SnowCaptureScreenshotRequest>();
         assert!(unsafe { read_screenshot_request(request) }.is_err());
@@ -3217,7 +3430,7 @@ mod tests {
     fn versioned_screenshot_request_rejects_unsupported_flags() {
         let request = SnowCaptureScreenshotRequest {
             version: SCREENSHOT_REQUEST_VERSION,
-            struct_size: SCREENSHOT_REQUEST_V1_SIZE,
+            struct_size: SCREENSHOT_REQUEST_SIZE,
             flags: SCREENSHOT_REQUEST_REFRESH_LAYOUT | (1 << 31),
             reserved0: 0,
             focused_window: 0,
@@ -3254,7 +3467,7 @@ mod tests {
         assert_eq!(options.color_correction, ColorCorrection::Disabled);
         let request = SnowCaptureScreenshotRequest {
             version: SCREENSHOT_REQUEST_VERSION,
-            struct_size: SCREENSHOT_REQUEST_V1_SIZE,
+            struct_size: SCREENSHOT_REQUEST_SIZE,
             flags: SCREENSHOT_REQUEST_RESTORE_ORIGINAL_COLORS,
             reserved0: 0,
             focused_window: 0,

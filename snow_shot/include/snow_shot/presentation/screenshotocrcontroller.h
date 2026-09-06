@@ -51,13 +51,9 @@ struct ScreenshotOcrControllerContext {
     std::function<void()> cancelCapture = []() {};
     std::function<ScreenshotSelectionDragMode(const QPointF&)> selectionResizeDragMode =
         [](const QPointF&) { return ScreenshotSelectionDragMode::None; };
-    std::function<bool(const QPointF&)> beginSelectionResize = [](const QPointF&) {
-        return false;
-    };
+    std::function<bool(const QPointF&)> beginSelectionResize = [](const QPointF&) { return false; };
     std::function<void(const QPointF&)> updateSelectionResize = [](const QPointF&) {};
     std::function<void(const QPointF&)> finishSelectionResize = [](const QPointF&) {};
-    // Keep this optional dependency at the end so existing aggregate
-    // initializers remain source-compatible.
     snow_shot::presentation::WindowShortcutManager* shortcutManager = nullptr;
 };
 
@@ -123,9 +119,10 @@ class ScreenshotOcrController final : public QObject {
     void activateMode(Mode mode);
     void handleQrLinkActivated(const QUrl& url);
     void updateOverlays() const;
-    void applyOcrBackgroundToOverlays(
-        const std::shared_ptr<ScreenshotOcrPresentation>& presentation,
-        QImage filteredImage = {}, QRectF filteredImageCanvasRect = {}) const;
+    void
+    applyOcrBackgroundToOverlays(const std::shared_ptr<ScreenshotOcrPresentation>& presentation,
+                                 QImage filteredImage = {},
+                                 QRectF filteredImageCanvasRect = {}) const;
     void clearOcrBackgroundFromOverlays() const;
     void deactivateImpl(bool preserveRecognitionWindow);
     void restorePreviousToolAfterFailure();

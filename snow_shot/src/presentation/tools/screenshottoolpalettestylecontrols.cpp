@@ -82,32 +82,32 @@ constexpr char kRoleWatermarkFont[] = "watermark-font";
 constexpr char kRoleAngle[] = "angle";
 constexpr char kRoleGap[] = "gap";
 
-constexpr char kSignatureStroke[] = "stroke:colors-v1:styles-v1";
+constexpr char kSignatureStroke[] = "stroke:colors:styles";
 constexpr char kSignatureStrokeWidth[] = "numeric:stroke-widths-2-4-8";
-constexpr char kSignatureShapeFill[] = "fill:shape-colors-v1";
-constexpr char kSignatureHighlightMode[] = "radio:highlight-mode-v1";
-constexpr char kSignatureHighlightColor[] = "color:text-colors-v1";
-constexpr char kSignatureHighlightBorder[] = "width-color:highlight-v1";
-constexpr char kSignatureBrushWidth[] = "numeric:size-presets-v1";
-constexpr char kSignatureMaskColor[] = "color:text-colors-v1:mask";
+constexpr char kSignatureShapeFill[] = "fill:shape-colors";
+constexpr char kSignatureHighlightMode[] = "radio:highlight-mode";
+constexpr char kSignatureHighlightColor[] = "color:text-colors";
+constexpr char kSignatureHighlightBorder[] = "width-color:highlight";
+constexpr char kSignatureBrushWidth[] = "numeric:size-presets";
+constexpr char kSignatureMaskColor[] = "color:text-colors:mask";
 constexpr char kSignatureOpacity[] = "slider:opacity-0-100";
-constexpr char kSignatureForegroundColor[] = "color:text-colors-v1:foreground";
-constexpr char kSignatureTextFont[] = "font:text-size-presets-v1";
-constexpr char kSignatureTextFill[] = "fill:text-colors-v1";
+constexpr char kSignatureForegroundColor[] = "color:text-colors:foreground";
+constexpr char kSignatureTextFont[] = "font:text-size-presets";
+constexpr char kSignatureTextFill[] = "fill:text-colors";
 constexpr char kSignatureCornerRadius[] = "numeric:corner-radius";
-constexpr char kSignatureShapeKind[] = "radio:shape-kind-v1";
-constexpr char kSignatureArrowType[] = "radio:arrow-type-v1";
-constexpr char kSignatureArrowhead[] = "icon-options:arrowhead-v1";
-constexpr char kSignatureTextAlignment[] = "icon-options:text-align-v1";
-constexpr char kSignatureTextStroke[] = "width-color:text-stroke-v1";
-constexpr char kSignatureSerialValue[] = "serial-value:v1";
-constexpr char kSignatureFilterMode[] = "radio:filter-mode-v1";
-constexpr char kSignatureFilterType[] = "select:filter-types-v1";
-constexpr char kSignatureFilterIntensity[] = "slider:filter-intensity-v1";
-constexpr char kSignatureWatermarkText[] = "line-edit:watermark-v1";
-constexpr char kSignatureWatermarkFont[] = "font:watermark-presets-v1";
-constexpr char kSignatureAngle[] = "numeric:angle-v1";
-constexpr char kSignatureGap[] = "numeric:gap-v1";
+constexpr char kSignatureShapeKind[] = "radio:shape-kind";
+constexpr char kSignatureArrowType[] = "radio:arrow-type";
+constexpr char kSignatureArrowhead[] = "icon-options:arrowhead";
+constexpr char kSignatureTextAlignment[] = "icon-options:text-align";
+constexpr char kSignatureTextStroke[] = "width-color:text-stroke";
+constexpr char kSignatureSerialValue[] = "serial-value";
+constexpr char kSignatureFilterMode[] = "radio:filter-mode";
+constexpr char kSignatureFilterType[] = "select:filter-types";
+constexpr char kSignatureFilterIntensity[] = "slider:filter-intensity";
+constexpr char kSignatureWatermarkText[] = "line-edit:watermark";
+constexpr char kSignatureWatermarkFont[] = "font:watermark-presets";
+constexpr char kSignatureAngle[] = "numeric:angle";
+constexpr char kSignatureGap[] = "numeric:gap";
 
 QVector<QByteArray> styleEditorRoles(ScreenshotToolPalette::Tool tool) {
     using Tool = ScreenshotToolPalette::Tool;
@@ -2177,7 +2177,7 @@ ScreenshotToolPaletteFilterFamilyResult ScreenshotToolPaletteStyleControls::buil
          QStringLiteral("Rectangle filter"), custom_outlined_icons::ShapeRectangle()},
     };
     QWidget* modeSelector =
-        takeReusableWidget("filter-mode", "radio:filter-mode-v1", layout, result.controls);
+        takeReusableWidget("filter-mode", kSignatureFilterMode, layout, result.controls);
     if (modeSelector == nullptr && host.createModeSelector) {
         modeSelector = host.createModeSelector(
             result.controls, QStringLiteral("screenshotFilterModeSelector"),
@@ -2187,7 +2187,7 @@ ScreenshotToolPaletteFilterFamilyResult ScreenshotToolPaletteStyleControls::buil
         modeSelector->setObjectName(QStringLiteral("screenshotFilterModeSelector"));
         modeSelector->setProperty("screenshotStyleEditorRoot", true);
         modeSelector->setProperty("screenshotStyleEditorRole", "filter-mode");
-        modeSelector->setProperty("screenshotStyleEditorSignature", "radio:filter-mode-v1");
+        modeSelector->setProperty("screenshotStyleEditorSignature", kSignatureFilterMode);
         layout->addWidget(modeSelector);
     }
     if (host.addGroupSpacing) {
@@ -2200,7 +2200,7 @@ ScreenshotToolPaletteFilterFamilyResult ScreenshotToolPaletteStyleControls::buil
     typeSelectConfig.tooltip = QStringLiteral("Filter type");
     typeSelectConfig.placeholder = QStringLiteral("Filter type");
     result.typeSelect = dynamic_cast<adqt::widgets::AdSelect*>(
-        takeReusableWidget("filter-type", "select:filter-types-v1", layout, result.controls));
+        takeReusableWidget("filter-type", kSignatureFilterType, layout, result.controls));
     if (result.typeSelect == nullptr) {
         const ScreenshotToolPaletteSelectEditor typeSelectEditor =
             createScreenshotToolPaletteSelectEditor(result.controls, typeSelectConfig, metrics);
@@ -2234,7 +2234,7 @@ ScreenshotToolPaletteFilterFamilyResult ScreenshotToolPaletteStyleControls::buil
     result.typeSelect->setPlaceholder(QStringLiteral("Filter type"));
     result.typeSelect->setProperty("screenshotStyleEditorRoot", true);
     result.typeSelect->setProperty("screenshotStyleEditorRole", "filter-type");
-    result.typeSelect->setProperty("screenshotStyleEditorSignature", "select:filter-types-v1");
+    result.typeSelect->setProperty("screenshotStyleEditorSignature", kSignatureFilterType);
 
     if (host.addGroupSeparator) {
         host.addGroupSeparator(layout);
@@ -2279,12 +2279,12 @@ ScreenshotToolPaletteFilterFamilyResult ScreenshotToolPaletteStyleControls::buil
     intensityConfig.initialValue = 50;
     intensityConfig.baseIconSize = kCompactSliderIconSize;
     intensityConfig.baseSliderWidth = kCompactSliderWidth;
-    QWidget* intensityRoot = takeReusableWidget("filter-intensity", "slider:filter-intensity-v1",
-                                                layout, result.controls);
+    QWidget* intensityRoot =
+        takeReusableWidget("filter-intensity", kSignatureFilterIntensity, layout, result.controls);
     ScreenshotToolPaletteSliderEditor intensityEditor;
     if (intensityRoot == nullptr) {
         intensityRoot = createRawEditorRoot(layout, result.controls, "filter-intensity",
-                                            "slider:filter-intensity-v1");
+                                            kSignatureFilterIntensity);
         intensityEditor = createScreenshotToolPaletteSliderEditor(
             static_cast<QBoxLayout*>(intensityRoot->layout()), intensityRoot, intensityConfig,
             metrics);

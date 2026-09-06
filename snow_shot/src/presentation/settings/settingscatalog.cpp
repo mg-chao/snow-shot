@@ -168,12 +168,13 @@ SettingsItemDefinition screenRecordCopyItem() {
     return quickActionItem(
         QStringLiteral("quick.screen-record-copy"),
         QT_TRANSLATE_NOOP("SettingsCatalog", "Start screen recording / stop and copy video"),
-        QT_TRANSLATE_NOOP("SettingsCatalog", "Start a screen recording, or stop and copy the current video"),
+        QT_TRANSLATE_NOOP("SettingsCatalog",
+                          "Start a screen recording, or stop and copy the current video"),
         {settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Copy video")),
          settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Recording toggle"))},
-        GlobalShortcutAction::ScreenRecordCopy, QStringLiteral("global_shortcuts/screen_record_copy"),
-        []() { return custom_outlined_icons::ScreenshotCopy(); },
-        SettingsShortcutAdjustment::None);
+        GlobalShortcutAction::ScreenRecordCopy,
+        QStringLiteral("global_shortcuts/screen_record_copy"),
+        []() { return custom_outlined_icons::ScreenshotCopy(); }, SettingsShortcutAdjustment::None);
 }
 
 SettingsItemDefinition openCaptureHistoryItem() {
@@ -403,8 +404,7 @@ SettingsItemDefinition applicationPriorityItem() {
 SettingsItemDefinition proxyItem() {
     SettingsSelectDefinition payload;
     payload.options = {
-        {QStringLiteral("none"),
-         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "No proxy"))},
+        {QStringLiteral("none"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "No proxy"))},
         {QStringLiteral("system"),
          settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Use system proxy"))},
     };
@@ -412,10 +412,32 @@ SettingsItemDefinition proxyItem() {
     return {
         QStringLiteral("network.proxy"),
         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Proxy")),
-        settingsText(QT_TRANSLATE_NOOP(
-            "SettingsCatalog", "Choose whether network requests use the system proxy")),
+        settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
+                                       "Choose whether network requests use the system proxy")),
         {settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Network proxy"))},
         QStringLiteral("network/proxy"),
+        payload,
+    };
+}
+
+SettingsItemDefinition screenshotApiModeItem() {
+    SettingsSelectDefinition payload;
+    payload.binding = SettingsSelectBinding::ScreenshotApiMode;
+    payload.options = {
+        {QStringLiteral("auto"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Auto"))},
+        {QStringLiteral("dxgi"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "DXGI"))},
+        {QStringLiteral("wgc"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "WGC"))},
+        {QStringLiteral("gdi"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "GDI"))},
+    };
+    return {
+        QStringLiteral("screenshot.api-mode"),
+        settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "API Mode")),
+        settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
+                                       "Choose the preferred API for normal screenshots; Auto uses "
+                                       "DXGI on HDR displays and GDI otherwise")),
+        {settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Screenshot API")),
+         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Capture backend"))},
+        QStringLiteral("screenshot/api_mode"),
         payload,
     };
 }
@@ -449,8 +471,8 @@ SettingsItemDefinition trayMenuOptionsItem() {
     return {
         QStringLiteral("tray.menu-options"),
         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Menu options")),
-        settingsText(QT_TRANSLATE_NOOP(
-            "SettingsCatalog", "Choose the functions shown in the system tray menu")),
+        settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
+                                       "Choose the functions shown in the system tray menu")),
         {settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Tray menu"))},
         QStringLiteral("tray/menu_options"),
         SettingsCustomDefinition{SettingsCustomRenderer::TrayMenuOptions},
@@ -470,22 +492,26 @@ SettingsItemDefinition pinClipboardContentItem() {
         []() { return custom_outlined_icons::PinToScreen(); });
 }
 
-SettingsItemDefinition fixedSelectItem(
-    const QString& id, const char* title, const char* description, const QString& key,
-    SettingsSelectBinding binding, QVector<SettingsOptionDefinition> options,
-    QVector<TranslatableText> aliases = {}) {
+SettingsItemDefinition fixedSelectItem(const QString& id, const char* title,
+                                       const char* description, const QString& key,
+                                       SettingsSelectBinding binding,
+                                       QVector<SettingsOptionDefinition> options,
+                                       QVector<TranslatableText> aliases = {}) {
     SettingsSelectDefinition payload;
     payload.binding = binding;
     payload.options = std::move(options);
-    return {id, settingsText(title), settingsText(description), std::move(aliases), key,
-            std::move(payload)};
+    return {id,  settingsText(title), settingsText(description), std::move(aliases),
+            key, std::move(payload)};
 }
 
-SettingsItemDefinition switchItem(const QString& id, const char* title,
-                                  const char* description, const QString& key,
-                                  SettingsSwitchBinding binding,
+SettingsItemDefinition switchItem(const QString& id, const char* title, const char* description,
+                                  const QString& key, SettingsSwitchBinding binding,
                                   QVector<TranslatableText> aliases = {}) {
-    return {id, settingsText(title), settingsText(description), std::move(aliases), key,
+    return {id,
+            settingsText(title),
+            settingsText(description),
+            std::move(aliases),
+            key,
             SettingsSwitchDefinition{binding}};
 }
 
@@ -499,15 +525,17 @@ SettingsItemDefinition directoryPathItem(const QString& id, const char* title,
             {},
             key,
             SettingsDirectoryPathDefinition{
-                binding,
-                settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Browse")),
+                binding, settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Browse")),
                 settingsText(dialogTitle)}};
 }
 
-SettingsItemDefinition textFormatItem(const QString& id, const char* title,
-                                      const char* description, const QString& key,
-                                      SettingsTextBinding binding) {
-    return {id, settingsText(title), settingsText(description), {}, key,
+SettingsItemDefinition textFormatItem(const QString& id, const char* title, const char* description,
+                                      const QString& key, SettingsTextBinding binding) {
+    return {id,
+            settingsText(title),
+            settingsText(description),
+            {},
+            key,
             SettingsTextDefinition{binding}};
 }
 
@@ -540,17 +568,15 @@ QVector<SettingsItemDefinition> screenshotOutputItems() {
         textFormatItem(
             QStringLiteral("screenshot-output.manual-filename-format"),
             QT_TRANSLATE_NOOP("SettingsCatalog", "Manual save screenshot filename format"),
-            QT_TRANSLATE_NOOP(
-                "SettingsCatalog",
-                "Set the generated filename used when saving a screenshot as a file"),
+            QT_TRANSLATE_NOOP("SettingsCatalog",
+                              "Set the generated filename used when saving a screenshot as a file"),
             QStringLiteral("screenshot/manual_save_filename_format"),
             SettingsTextBinding::ScreenshotManualFilenameFormat),
         textFormatItem(
             QStringLiteral("screenshot-output.auto-filename-format"),
             QT_TRANSLATE_NOOP("SettingsCatalog", "Auto-save screenshot filename format"),
-            QT_TRANSLATE_NOOP(
-                "SettingsCatalog",
-                "Set the generated filename used by automatic screenshot file saves"),
+            QT_TRANSLATE_NOOP("SettingsCatalog",
+                              "Set the generated filename used by automatic screenshot file saves"),
             QStringLiteral("screenshot/auto_save_filename_format"),
             SettingsTextBinding::ScreenshotAutoFilenameFormat),
     };
@@ -568,7 +594,8 @@ QVector<SettingsItemDefinition> videoOutputItems() {
         textFormatItem(
             QStringLiteral("screen-recording-output.video-filename-format"),
             QT_TRANSLATE_NOOP("SettingsCatalog", "Video filename format"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Set the generated filename used for recording output files"),
+            QT_TRANSLATE_NOOP("SettingsCatalog",
+                              "Set the generated filename used for recording output files"),
             QStringLiteral("screen_recording/video_filename_format"),
             SettingsTextBinding::ScreenRecordingVideoFilenameFormat),
     };
@@ -588,14 +615,12 @@ SettingsItemDefinition screenshotOcrActionItem() {
             {QStringLiteral("copy_text"),
              settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Copy text"))},
             {QStringLiteral("copy_text_and_end_screenshot"),
-             settingsText(
-                 QT_TRANSLATE_NOOP("SettingsCatalog", "Copy text and end screenshot"))},
+             settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Copy text and end screenshot"))},
             {QStringLiteral("quick_copy_text"),
-             settingsText(
-                 QT_TRANSLATE_NOOP("SettingsCatalog", "Copy text (quick function)"))},
+             settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Copy text (quick function)"))},
             {QStringLiteral("quick_copy_text_and_end_screenshot"),
-             settingsText(QT_TRANSLATE_NOOP(
-                 "SettingsCatalog", "Copy text and end screenshot (quick function)"))},
+             settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
+                                            "Copy text and end screenshot (quick function)"))},
             {QStringLiteral("enable_edit_mode"),
              settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Enable edit mode"))},
         });
@@ -659,9 +684,8 @@ SettingsItemDefinition screenshotCopyFileItem() {
     return switchItem(
         QStringLiteral("screenshot.copy-image-file-to-clipboard"),
         QT_TRANSLATE_NOOP("SettingsCatalog", "Copy image file to clipboard"),
-        QT_TRANSLATE_NOOP(
-            "SettingsCatalog",
-            "Write the screenshot to a file and copy that file to the clipboard"),
+        QT_TRANSLATE_NOOP("SettingsCatalog",
+                          "Write the screenshot to a file and copy that file to the clipboard"),
         QStringLiteral("screenshot/copy_image_file_to_clipboard"),
         SettingsSwitchBinding::ScreenshotCopyImageFileToClipboard);
 }
@@ -669,12 +693,10 @@ SettingsItemDefinition screenshotCopyFileItem() {
 SettingsItemDefinition drawingQuickSelectionItem() {
     SettingsMultiSelectDefinition payload;
     payload.options = {
-        {QStringLiteral("shape"),
-         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Shape tool"))},
+        {QStringLiteral("shape"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Shape tool"))},
         {QStringLiteral("arrow"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Arrow"))},
         {QStringLiteral("line"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Line"))},
-        {QStringLiteral("free-draw"),
-         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Pen"))},
+        {QStringLiteral("free-draw"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Pen"))},
         {QStringLiteral("rectangle-highlight"),
          settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Rectangle highlight"))},
         {QStringLiteral("pen-highlight"),
@@ -688,15 +710,14 @@ SettingsItemDefinition drawingQuickSelectionItem() {
         {QStringLiteral("text"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Text"))},
         {QStringLiteral("serial-number"),
          settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Serial number"))},
-        {QStringLiteral("eraser"),
-         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Eraser"))},
+        {QStringLiteral("eraser"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Eraser"))},
         {QStringLiteral("watermark"),
          settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Watermark"))},
     };
     return {
         QStringLiteral("drawing.quick-selection-disabled-tools"),
-        settingsText(QT_TRANSLATE_NOOP(
-            "SettingsCatalog", "Tools that forbid quick selection of same-type elements")),
+        settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
+                                       "Tools that forbid quick selection of same-type elements")),
         settingsText(QT_TRANSLATE_NOOP(
             "SettingsCatalog",
             "Prevent left-click selection of matching elements while these tools are active")),
@@ -716,8 +737,7 @@ SettingsItemDefinition pinZoomModeItem() {
         SettingsSelectBinding::PinMouseWheelZoomMode,
         {
             {QStringLiteral("mouse_position"),
-             settingsText(
-                 QT_TRANSLATE_NOOP("SettingsCatalog", "Center on mouse position"))},
+             settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Center on mouse position"))},
             {QStringLiteral("top_left"),
              settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Fix top-left corner"))},
             {QStringLiteral("top_right"),
@@ -774,12 +794,12 @@ QVector<SettingsOptionDefinition> clarityOptions(bool includeHighRes) {
         options.push_back(
             {QStringLiteral("2k"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "2K"))});
     }
-    options.push_back({QStringLiteral("1080p"),
-                       settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "1080p"))});
-    options.push_back({QStringLiteral("720p"),
-                       settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "720p"))});
-    options.push_back({QStringLiteral("480p"),
-                       settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "480p"))});
+    options.push_back(
+        {QStringLiteral("1080p"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "1080p"))});
+    options.push_back(
+        {QStringLiteral("720p"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "720p"))});
+    options.push_back(
+        {QStringLiteral("480p"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "480p"))});
     return options;
 }
 
@@ -788,19 +808,14 @@ QVector<SettingsOptionDefinition> frameRateOptions(std::initializer_list<int> fr
     options.reserve(static_cast<qsizetype>(frameRates.size()));
     for (int frameRate : frameRates) {
         options.push_back({frameRate, {}});
-        options.last().label = frameRate == 83
-                                   ? settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "83"))
-                               : frameRate == 120
-                                   ? settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "120"))
-                               : frameRate == 60
-                                   ? settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "60"))
-                               : frameRate == 30
-                                   ? settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "30"))
-                               : frameRate == 24
-                                   ? settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "24"))
-                               : frameRate == 15
-                                   ? settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "15"))
-                                   : settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "10"));
+        options.last().label =
+            frameRate == 83    ? settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "83"))
+            : frameRate == 120 ? settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "120"))
+            : frameRate == 60  ? settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "60"))
+            : frameRate == 30  ? settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "30"))
+            : frameRate == 24  ? settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "24"))
+            : frameRate == 15  ? settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "15"))
+                               : settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "10"));
     }
     return options;
 }
@@ -814,24 +829,22 @@ QVector<SettingsItemDefinition> screenRecordingItems() {
                               "Scale recordings that exceed the selected maximum resolution"),
             QStringLiteral("screen_recording/clarity"),
             SettingsSelectBinding::ScreenRecordingClarity, clarityOptions(true)),
-        fixedSelectItem(
-            QStringLiteral("screen-recording.frame-rate"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Frame rate"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Set the screen recording frame rate"),
-            QStringLiteral("screen_recording/frame_rate"),
-            SettingsSelectBinding::ScreenRecordingFrameRate, frameRateOptions({10, 15, 24, 30, 60, 120, 83})),
-        fixedSelectItem(
-            QStringLiteral("screen-recording.animated-image-clarity"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Animated image clarity"),
-            QT_TRANSLATE_NOOP("SettingsCatalog",
-                              "Set the maximum resolution of exported animated images"),
-            QStringLiteral("screen_recording/animated_image_clarity"),
-            SettingsSelectBinding::AnimatedImageClarity, clarityOptions(false)),
+        fixedSelectItem(QStringLiteral("screen-recording.frame-rate"),
+                        QT_TRANSLATE_NOOP("SettingsCatalog", "Frame rate"),
+                        QT_TRANSLATE_NOOP("SettingsCatalog", "Set the screen recording frame rate"),
+                        QStringLiteral("screen_recording/frame_rate"),
+                        SettingsSelectBinding::ScreenRecordingFrameRate,
+                        frameRateOptions({10, 15, 24, 30, 60, 120, 83})),
+        fixedSelectItem(QStringLiteral("screen-recording.animated-image-clarity"),
+                        QT_TRANSLATE_NOOP("SettingsCatalog", "Animated image clarity"),
+                        QT_TRANSLATE_NOOP("SettingsCatalog",
+                                          "Set the maximum resolution of exported animated images"),
+                        QStringLiteral("screen_recording/animated_image_clarity"),
+                        SettingsSelectBinding::AnimatedImageClarity, clarityOptions(false)),
         fixedSelectItem(
             QStringLiteral("screen-recording.animated-image-frame-rate"),
             QT_TRANSLATE_NOOP("SettingsCatalog", "Animated image frame rate"),
-            QT_TRANSLATE_NOOP("SettingsCatalog",
-                              "Set the frame rate of exported animated images"),
+            QT_TRANSLATE_NOOP("SettingsCatalog", "Set the frame rate of exported animated images"),
             QStringLiteral("screen_recording/animated_image_frame_rate"),
             SettingsSelectBinding::AnimatedImageFrameRate, frameRateOptions({10, 15, 24})),
         fixedSelectItem(
@@ -848,11 +861,13 @@ QVector<SettingsItemDefinition> screenRecordingItems() {
             QStringLiteral("screen-recording.encoder"),
             QT_TRANSLATE_NOOP("SettingsCatalog", "Encoder"),
             QT_TRANSLATE_NOOP("SettingsCatalog", "Choose the video encoder"),
-            QStringLiteral("screen_recording/encoder"), SettingsSelectBinding::ScreenRecordingEncoder,
+            QStringLiteral("screen_recording/encoder"),
+            SettingsSelectBinding::ScreenRecordingEncoder,
             {{QStringLiteral("h264_hw"),
               settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "H.264 (Hardware)"))},
              {QStringLiteral("h264"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "H.264"))},
-             {QStringLiteral("h265"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "H.265"))}}),
+             {QStringLiteral("h265"),
+              settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "H.265"))}}),
         fixedSelectItem(
             QStringLiteral("screen-recording.encoding-preset"),
             QT_TRANSLATE_NOOP("SettingsCatalog", "Encoding preset"),
@@ -870,22 +885,20 @@ QVector<SettingsItemDefinition> screenRecordingItems() {
               settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Very slow"))},
              {QStringLiteral("placebo"),
               settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Maximum compression"))}}),
-        switchItem(
-            QStringLiteral("screen-recording.hide-toolbar"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Hide toolbar in recording"),
-            QT_TRANSLATE_NOOP("SettingsCatalog",
-                              "Exclude the screen recording toolbar from captured video"),
-            QStringLiteral("screen_recording/hide_toolbar_in_recording"),
-            SettingsSwitchBinding::ScreenRecordingHideToolbar),
+        switchItem(QStringLiteral("screen-recording.hide-toolbar"),
+                   QT_TRANSLATE_NOOP("SettingsCatalog", "Hide toolbar in recording"),
+                   QT_TRANSLATE_NOOP("SettingsCatalog",
+                                     "Exclude the screen recording toolbar from captured video"),
+                   QStringLiteral("screen_recording/hide_toolbar_in_recording"),
+                   SettingsSwitchBinding::ScreenRecordingHideToolbar),
     };
 }
 
 SettingsItemDefinition fullscreenHotkeySuppressionItem() {
     return switchItem(
         QStringLiteral("global-hotkeys.disable-on-focused-fullscreen-window"),
-        QT_TRANSLATE_NOOP(
-            "SettingsCatalog",
-            "Automatically disable when a focused fullscreen window exists"),
+        QT_TRANSLATE_NOOP("SettingsCatalog",
+                          "Automatically disable when a focused fullscreen window exists"),
         QT_TRANSLATE_NOOP(
             "SettingsCatalog",
             "Ignore global hotkeys while the focused window occupies an entire monitor"),
@@ -894,45 +907,41 @@ SettingsItemDefinition fullscreenHotkeySuppressionItem() {
 }
 
 SettingsItemDefinition autoStartItem() {
-    return switchItem(
-        QStringLiteral("system.auto-start-at-boot"),
-        QT_TRANSLATE_NOOP("SettingsCatalog", "Auto start at boot"),
-        QT_TRANSLATE_NOOP("SettingsCatalog",
-                          "Start Snow Shot in the background when Windows starts"),
-        QStringLiteral("system/auto_start_at_boot"), SettingsSwitchBinding::AutoStartAtBoot);
+    return switchItem(QStringLiteral("system.auto-start-at-boot"),
+                      QT_TRANSLATE_NOOP("SettingsCatalog", "Auto start at boot"),
+                      QT_TRANSLATE_NOOP("SettingsCatalog",
+                                        "Start Snow Shot in the background when Windows starts"),
+                      QStringLiteral("system/auto_start_at_boot"),
+                      SettingsSwitchBinding::AutoStartAtBoot);
 }
 
-SettingsItemDefinition localShortcutItem(
-    SettingsLocalShortcutScope scope, const QString& shortcutId, const char* title,
-    std::function<adqt::icons::IconRef()> iconFactory) {
+SettingsItemDefinition localShortcutItem(SettingsLocalShortcutScope scope,
+                                         const QString& shortcutId, const char* title,
+                                         std::function<adqt::icons::IconRef()> iconFactory) {
     const bool screenshotShortcut = scope == SettingsLocalShortcutScope::Screenshot;
     const bool drawingShortcut = scope == SettingsLocalShortcutScope::Drawing;
-    const QString scopeName = screenshotShortcut
-                                  ? QStringLiteral("screenshot")
-                                  : drawingShortcut ? QStringLiteral("drawing")
-                                                    : QStringLiteral("pin-to-screen");
-    const QString configurationPrefix = screenshotShortcut
-                                            ? QStringLiteral("screenshot_shortcuts/")
-                                            : drawingShortcut
-                                                  ? QStringLiteral("drawing_shortcuts/")
-                                                  : QStringLiteral("pin_to_screen_shortcuts/");
+    const QString scopeName = screenshotShortcut ? QStringLiteral("screenshot")
+                              : drawingShortcut  ? QStringLiteral("drawing")
+                                                 : QStringLiteral("pin-to-screen");
+    const QString configurationPrefix = screenshotShortcut ? QStringLiteral("screenshot_shortcuts/")
+                                        : drawingShortcut
+                                            ? QStringLiteral("drawing_shortcuts/")
+                                            : QStringLiteral("pin_to_screen_shortcuts/");
     return {
         QStringLiteral("%1-shortcut.%2").arg(scopeName, shortcutId),
         settingsText(title),
         screenshotShortcut
             ? settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
                                              "Set up to two keys for this screenshot action"))
-            : drawingShortcut
-                  ? settingsText(QT_TRANSLATE_NOOP(
-                        "SettingsCatalog", "Set up to two keys for this screenshot drawing tool"))
-                  : settingsText(QT_TRANSLATE_NOOP(
-                        "SettingsCatalog", "Set up to two keys for this pinned window action")),
-        {settingsText(screenshotShortcut
-                          ? QT_TRANSLATE_NOOP("SettingsCatalog", "Screenshot shortcut")
-                          : drawingShortcut
-                                ? QT_TRANSLATE_NOOP("SettingsCatalog", "Drawing shortcut")
-                                : QT_TRANSLATE_NOOP("SettingsCatalog",
-                                                   "Pin to screen shortcut"))},
+        : drawingShortcut
+            ? settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
+                                             "Set up to two keys for this screenshot drawing tool"))
+            : settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
+                                             "Set up to two keys for this pinned window action")),
+        {settingsText(
+            screenshotShortcut ? QT_TRANSLATE_NOOP("SettingsCatalog", "Screenshot shortcut")
+            : drawingShortcut  ? QT_TRANSLATE_NOOP("SettingsCatalog", "Drawing shortcut")
+                               : QT_TRANSLATE_NOOP("SettingsCatalog", "Pin to screen shortcut"))},
         configurationPrefix + shortcutId,
         SettingsLocalShortcutDefinition{shortcutId, std::move(iconFactory), scope},
     };
@@ -940,101 +949,94 @@ SettingsItemDefinition localShortcutItem(
 
 QVector<SettingsItemDefinition> screenshotShortcutItems() {
     return {
-        localShortcutItem(
-            SettingsLocalShortcutScope::Screenshot, QStringLiteral("move_tool"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Edit selection"),
-            []() { return custom_outlined_icons::ToolMove(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Screenshot, QStringLiteral("move_cursor_up"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Move cursor up"),
-            []() { return outlined_icons::ArrowUp(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Screenshot, QStringLiteral("move_cursor_down"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Move cursor down"),
-            []() { return outlined_icons::ArrowDown(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Screenshot, QStringLiteral("move_cursor_left"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Move cursor left"),
-            []() { return outlined_icons::ArrowLeft(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Screenshot, QStringLiteral("move_cursor_right"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Move cursor right"),
-            []() { return outlined_icons::ArrowRight(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Screenshot, QStringLiteral("move_entire_selection"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Move entire selection"),
-            []() { return custom_outlined_icons::ToolMove(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Screenshot, QStringLiteral("move_tool"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Edit selection"),
+                          []() { return custom_outlined_icons::ToolMove(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Screenshot, QStringLiteral("move_cursor_up"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Move cursor up"),
+                          []() { return outlined_icons::ArrowUp(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Screenshot,
+                          QStringLiteral("move_cursor_down"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Move cursor down"),
+                          []() { return outlined_icons::ArrowDown(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Screenshot,
+                          QStringLiteral("move_cursor_left"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Move cursor left"),
+                          []() { return outlined_icons::ArrowLeft(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Screenshot,
+                          QStringLiteral("move_cursor_right"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Move cursor right"),
+                          []() { return outlined_icons::ArrowRight(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Screenshot,
+                          QStringLiteral("move_entire_selection"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Move entire selection"),
+                          []() { return custom_outlined_icons::ToolMove(); }),
         localShortcutItem(
             SettingsLocalShortcutScope::Screenshot,
             QStringLiteral("keep_selection_width_and_height_consistent"),
             QT_TRANSLATE_NOOP("SettingsCatalog", "Keep selection width and height consistent"),
             []() { return outlined_icons::Control(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Screenshot,
-            QStringLiteral("switch_selection_between_window_and_window_sub_element"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Select window/window sub-element"),
-            []() { return outlined_icons::Function(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Screenshot, QStringLiteral("previous_screenshot_history"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Previous screenshot history"),
-            []() { return outlined_icons::History(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Screenshot, QStringLiteral("next_screenshot_history"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Next screenshot history"),
-            []() { return outlined_icons::History(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Screenshot, QStringLiteral("select_previously_selected_area"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Select previously selected area"),
-            []() { return outlined_icons::Rest(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Screenshot, QStringLiteral("copy_color"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Copy color"),
-            []() { return outlined_icons::Copy(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Screenshot, QStringLiteral("pin_to_screen"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Pin to screen"),
-            []() { return custom_outlined_icons::PinToScreen(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Screenshot, QStringLiteral("video_recording"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Video recording"),
-            []() { return custom_outlined_icons::RecordScreen(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Screenshot, QStringLiteral("scrolling_screenshot"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Scrolling screenshot"),
-            []() { return custom_outlined_icons::ScrollingScreenshot(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Screenshot, QStringLiteral("save_as_file"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Save as file"),
-            []() { return custom_outlined_icons::Save(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Screenshot, QStringLiteral("cancel_screenshot"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Cancel screenshot"),
-            []() { return outlined_icons::Close(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Screenshot, QStringLiteral("copy_to_clipboard"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Copy to clipboard"),
-            []() { return outlined_icons::Copy(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Screenshot,
+                          QStringLiteral("switch_selection_between_window_and_window_sub_element"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Select window/window sub-element"),
+                          []() { return outlined_icons::Function(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Screenshot,
+                          QStringLiteral("previous_screenshot_history"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Previous screenshot history"),
+                          []() { return outlined_icons::History(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Screenshot,
+                          QStringLiteral("next_screenshot_history"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Next screenshot history"),
+                          []() { return outlined_icons::History(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Screenshot,
+                          QStringLiteral("select_previously_selected_area"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Select previously selected area"),
+                          []() { return outlined_icons::Rest(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Screenshot, QStringLiteral("copy_color"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Copy color"),
+                          []() { return outlined_icons::Copy(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Screenshot, QStringLiteral("pin_to_screen"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Pin to screen"),
+                          []() { return custom_outlined_icons::PinToScreen(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Screenshot, QStringLiteral("video_recording"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Video recording"),
+                          []() { return custom_outlined_icons::RecordScreen(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Screenshot,
+                          QStringLiteral("scrolling_screenshot"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Scrolling screenshot"),
+                          []() { return custom_outlined_icons::ScrollingScreenshot(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Screenshot, QStringLiteral("save_as_file"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Save as file"),
+                          []() { return custom_outlined_icons::Save(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Screenshot,
+                          QStringLiteral("cancel_screenshot"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Cancel screenshot"),
+                          []() { return outlined_icons::Close(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Screenshot,
+                          QStringLiteral("copy_to_clipboard"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Copy to clipboard"),
+                          []() { return outlined_icons::Copy(); }),
     };
 }
 
 QVector<SettingsItemDefinition> screenshotOtherShortcutItems() {
     return {
-        localShortcutItem(
-            SettingsLocalShortcutScope::Screenshot, QStringLiteral("table_recognition"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Table recognition"),
-            []() { return custom_outlined_icons::TableRecognition(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Screenshot, QStringLiteral("qr_code_recognition"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Barcode recognition"),
-            []() { return custom_outlined_icons::ScanQrcode(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Screenshot, QStringLiteral("text_recognition"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Text recognition"),
-            []() { return custom_outlined_icons::ToolRecognizeText(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Screenshot, QStringLiteral("text_translation"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Text translation"),
-            []() { return custom_outlined_icons::OcrTranslate(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Screenshot,
+                          QStringLiteral("table_recognition"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Table recognition"),
+                          []() { return custom_outlined_icons::TableRecognition(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Screenshot,
+                          QStringLiteral("qr_code_recognition"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Barcode recognition"),
+                          []() { return custom_outlined_icons::ScanQrcode(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Screenshot,
+                          QStringLiteral("text_recognition"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Text recognition"),
+                          []() { return custom_outlined_icons::ToolRecognizeText(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Screenshot,
+                          QStringLiteral("text_translation"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Text translation"),
+                          []() { return custom_outlined_icons::OcrTranslate(); }),
         localShortcutItem(SettingsLocalShortcutScope::Screenshot, QStringLiteral("undo"),
                           QT_TRANSLATE_NOOP("SettingsCatalog", "Undo"),
                           []() { return outlined_icons::Undo(); }),
@@ -1046,96 +1048,80 @@ QVector<SettingsItemDefinition> screenshotOtherShortcutItems() {
 
 QVector<SettingsItemDefinition> drawingShortcutItems() {
     return {
-        localShortcutItem(
-            SettingsLocalShortcutScope::Drawing, QStringLiteral("select"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Select tool"),
-            []() { return custom_outlined_icons::ToolSelect(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Drawing, QStringLiteral("shape"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Shape tool"),
-            []() { return custom_outlined_icons::ToolRectangle(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Drawing, QStringLiteral("arrow"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Arrow"),
-            []() { return custom_outlined_icons::ToolArrow(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Drawing, QStringLiteral("brush"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Pen"),
-            []() { return custom_outlined_icons::ToolFreeDraw(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Drawing, QStringLiteral("highlight"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Highlight"),
-            []() { return custom_outlined_icons::ToolHighlight(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Drawing, QStringLiteral("text"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Text"),
-            []() { return custom_outlined_icons::ToolText(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Drawing, QStringLiteral("serial_number"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Serial number"),
-            []() { return custom_outlined_icons::ToolSerialNumber(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Drawing, QStringLiteral("filter"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Filter"),
-            []() { return custom_outlined_icons::ToolFilter(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Drawing, QStringLiteral("eraser"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Eraser"),
-            []() { return custom_outlined_icons::ToolEraser(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::Drawing, QStringLiteral("watermark"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Watermark"),
-            []() { return custom_outlined_icons::ToolWatermark(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Drawing, QStringLiteral("select"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Select tool"),
+                          []() { return custom_outlined_icons::ToolSelect(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Drawing, QStringLiteral("shape"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Shape tool"),
+                          []() { return custom_outlined_icons::ToolRectangle(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Drawing, QStringLiteral("arrow"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Arrow"),
+                          []() { return custom_outlined_icons::ToolArrow(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Drawing, QStringLiteral("brush"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Pen"),
+                          []() { return custom_outlined_icons::ToolFreeDraw(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Drawing, QStringLiteral("highlight"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Highlight"),
+                          []() { return custom_outlined_icons::ToolHighlight(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Drawing, QStringLiteral("text"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Text"),
+                          []() { return custom_outlined_icons::ToolText(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Drawing, QStringLiteral("serial_number"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Serial number"),
+                          []() { return custom_outlined_icons::ToolSerialNumber(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Drawing, QStringLiteral("filter"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Filter"),
+                          []() { return custom_outlined_icons::ToolFilter(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Drawing, QStringLiteral("eraser"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Eraser"),
+                          []() { return custom_outlined_icons::ToolEraser(); }),
+        localShortcutItem(SettingsLocalShortcutScope::Drawing, QStringLiteral("watermark"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Watermark"),
+                          []() { return custom_outlined_icons::ToolWatermark(); }),
     };
 }
 
 QVector<SettingsItemDefinition> pinToScreenShortcutItems() {
     return {
-        localShortcutItem(
-            SettingsLocalShortcutScope::PinToScreen, QStringLiteral("copy_to_clipboard"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Copy to clipboard"),
-            []() { return outlined_icons::Copy(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::PinToScreen, QStringLiteral("copy_original_content"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Copy original content"),
-            []() { return outlined_icons::FileImage(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::PinToScreen, QStringLiteral("save_as_file"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Save as file"),
-            []() { return custom_outlined_icons::Save(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::PinToScreen,
-            QStringLiteral("show_text_recognition_results"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Show text recognition results"),
-            []() { return custom_outlined_icons::ToolRecognizeText(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::PinToScreen, QStringLiteral("drawing_mode"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Drawing mode"),
-            []() { return outlined_icons::Edit(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::PinToScreen, QStringLiteral("thumbnail_mode"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Thumbnail mode"),
-            []() { return outlined_icons::Compress(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::PinToScreen, QStringLiteral("close_window"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Close window"),
-            []() { return outlined_icons::Close(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::PinToScreen, QStringLiteral("move_cursor_up"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Move cursor up"),
-            []() { return outlined_icons::ArrowUp(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::PinToScreen, QStringLiteral("move_cursor_down"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Move cursor down"),
-            []() { return outlined_icons::ArrowDown(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::PinToScreen, QStringLiteral("move_cursor_left"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Move cursor left"),
-            []() { return outlined_icons::ArrowLeft(); }),
-        localShortcutItem(
-            SettingsLocalShortcutScope::PinToScreen, QStringLiteral("move_cursor_right"),
-            QT_TRANSLATE_NOOP("SettingsCatalog", "Move cursor right"),
-            []() { return outlined_icons::ArrowRight(); }),
+        localShortcutItem(SettingsLocalShortcutScope::PinToScreen,
+                          QStringLiteral("copy_to_clipboard"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Copy to clipboard"),
+                          []() { return outlined_icons::Copy(); }),
+        localShortcutItem(SettingsLocalShortcutScope::PinToScreen,
+                          QStringLiteral("copy_original_content"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Copy original content"),
+                          []() { return outlined_icons::FileImage(); }),
+        localShortcutItem(SettingsLocalShortcutScope::PinToScreen, QStringLiteral("save_as_file"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Save as file"),
+                          []() { return custom_outlined_icons::Save(); }),
+        localShortcutItem(SettingsLocalShortcutScope::PinToScreen,
+                          QStringLiteral("show_text_recognition_results"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Show text recognition results"),
+                          []() { return custom_outlined_icons::ToolRecognizeText(); }),
+        localShortcutItem(SettingsLocalShortcutScope::PinToScreen, QStringLiteral("drawing_mode"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Drawing mode"),
+                          []() { return outlined_icons::Edit(); }),
+        localShortcutItem(SettingsLocalShortcutScope::PinToScreen, QStringLiteral("thumbnail_mode"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Thumbnail mode"),
+                          []() { return outlined_icons::Compress(); }),
+        localShortcutItem(SettingsLocalShortcutScope::PinToScreen, QStringLiteral("close_window"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Close window"),
+                          []() { return outlined_icons::Close(); }),
+        localShortcutItem(SettingsLocalShortcutScope::PinToScreen, QStringLiteral("move_cursor_up"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Move cursor up"),
+                          []() { return outlined_icons::ArrowUp(); }),
+        localShortcutItem(SettingsLocalShortcutScope::PinToScreen,
+                          QStringLiteral("move_cursor_down"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Move cursor down"),
+                          []() { return outlined_icons::ArrowDown(); }),
+        localShortcutItem(SettingsLocalShortcutScope::PinToScreen,
+                          QStringLiteral("move_cursor_left"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Move cursor left"),
+                          []() { return outlined_icons::ArrowLeft(); }),
+        localShortcutItem(SettingsLocalShortcutScope::PinToScreen,
+                          QStringLiteral("move_cursor_right"),
+                          QT_TRANSLATE_NOOP("SettingsCatalog", "Move cursor right"),
+                          []() { return outlined_icons::ArrowRight(); }),
     };
 }
 
@@ -1143,9 +1129,8 @@ SettingsItemDefinition directMlAccelerationItem() {
     return {
         QStringLiteral("text-recognition.direct-ml-acceleration"),
         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "DirectML acceleration")),
-        settingsText(
-            QT_TRANSLATE_NOOP("SettingsCatalog",
-                              "Use DirectML for GPU-accelerated text recognition when available")),
+        settingsText(QT_TRANSLATE_NOOP(
+            "SettingsCatalog", "Use DirectML for GPU-accelerated text recognition when available")),
         {settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "DirectML")),
          settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "GPU acceleration"))},
         QStringLiteral("text_recognition/direct_ml_acceleration"),
@@ -1169,16 +1154,16 @@ SettingsItemDefinition clearHistoryItem() {
     payload.iconFactory = []() { return outlined_icons::Rest(); };
     payload.confirmation = {
         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Clear screenshot history?")),
-        settingsText(QT_TRANSLATE_NOOP(
-            "SettingsCatalog", "All screenshot history and quarantined records will be removed")),
+        settingsText(
+            QT_TRANSLATE_NOOP("SettingsCatalog", "All screenshot history will be removed")),
         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Clear history")),
         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Cancel")),
     };
     return {
         QStringLiteral("history.clear"),
         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Clear screenshot history")),
-        settingsText(QT_TRANSLATE_NOOP(
-            "SettingsCatalog", "Permanently remove all saved screenshots and quarantined records")),
+        settingsText(
+            QT_TRANSLATE_NOOP("SettingsCatalog", "Permanently remove all saved screenshots")),
         {settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Delete history")),
          settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Remove screenshots"))},
         {},
@@ -1209,16 +1194,15 @@ SettingsItemDefinition clearThumbnailCacheItem() {
     payload.confirmation = {
         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Clear the thumbnail cache?")),
         settingsText(QT_TRANSLATE_NOOP(
-            "SettingsCatalog",
-            "Cached history thumbnails will be removed and rebuilt on demand")),
+            "SettingsCatalog", "Cached history thumbnails will be removed and rebuilt on demand")),
         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Clear cache")),
         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Cancel")),
     };
     return {
         QStringLiteral("storage.clear-thumbnails"),
         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Clear thumbnail cache")),
-        settingsText(QT_TRANSLATE_NOOP(
-            "SettingsCatalog", "Remove cached screenshot-history thumbnails")),
+        settingsText(
+            QT_TRANSLATE_NOOP("SettingsCatalog", "Remove cached screenshot-history thumbnails")),
         {settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Thumbnail cache"))},
         {},
         payload,
@@ -1231,8 +1215,7 @@ SettingsItemDefinition clearRecordingTempItem() {
     payload.buttonText = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Delete"));
     payload.iconFactory = []() { return outlined_icons::IconDelete(); };
     payload.confirmation = {
-        settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
-                                       "Delete temporary recording files?")),
+        settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Delete temporary recording files?")),
         settingsText(QT_TRANSLATE_NOOP(
             "SettingsCatalog",
             "Leftover working files from finished or interrupted recordings will be removed")),
@@ -1242,9 +1225,9 @@ SettingsItemDefinition clearRecordingTempItem() {
     return {
         QStringLiteral("storage.clear-recording-temp"),
         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Delete temporary recording files")),
-        settingsText(QT_TRANSLATE_NOOP(
-            "SettingsCatalog",
-            "Remove leftover recording working files that are no longer needed")),
+        settingsText(
+            QT_TRANSLATE_NOOP("SettingsCatalog",
+                              "Remove leftover recording working files that are no longer needed")),
         {settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Recording temporary files"))},
         {},
         payload,
@@ -1558,7 +1541,7 @@ QVector<SettingsPageDefinition> builtInPages() {
                     settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Screenshot")),
                     settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Screen capture settings")),
                     SettingsSectionReset::ScreenshotCapture,
-                    {screenshotRestoreOriginalScreenColorsItem()},
+                    {screenshotApiModeItem(), screenshotRestoreOriginalScreenColorsItem()},
                 },
                 {
                     QStringLiteral("network"),
@@ -1695,8 +1678,7 @@ void addUnique(QStringList* errors, QSet<QString>* values, const QString& value,
     }
 }
 
-void validateIndexKeyComponent(QStringList* errors, const QString& value,
-                               const QString& kind) {
+void validateIndexKeyComponent(QStringList* errors, const QString& value, const QString& kind) {
     if (value.contains(QChar(0x1f))) {
         errors->push_back(QStringLiteral("%1 contains the reserved settings index delimiter: %2")
                               .arg(kind, value));
@@ -1764,8 +1746,7 @@ SettingsCatalog::SettingsCatalog(QVector<SettingsPageDefinition> pages,
         if (!m_pageIndexByRoute.contains(pageDefinition.route)) {
             m_pageIndexByRoute.insert(pageDefinition.route, pageIndex);
         }
-        for (int sectionIndex = 0; sectionIndex < pageDefinition.sections.size();
-             ++sectionIndex) {
+        for (int sectionIndex = 0; sectionIndex < pageDefinition.sections.size(); ++sectionIndex) {
             const SettingsSectionDefinition& sectionDefinition =
                 pageDefinition.sections.at(sectionIndex);
             const QString sectionKey =
@@ -1774,7 +1755,8 @@ SettingsCatalog::SettingsCatalog(QVector<SettingsPageDefinition> pages,
                 m_sectionIndexByLocation.insert(sectionKey, sectionIndex);
             }
             for (int itemIndex = 0; itemIndex < sectionDefinition.items.size(); ++itemIndex) {
-                const SettingsItemDefinition& itemDefinition = sectionDefinition.items.at(itemIndex);
+                const SettingsItemDefinition& itemDefinition =
+                    sectionDefinition.items.at(itemIndex);
                 const QString itemKey = sectionKey + QLatin1Char('\x1f') + itemDefinition.id;
                 if (!m_itemIndexByLocation.contains(itemKey)) {
                     m_itemIndexByLocation.insert(itemKey, itemIndex);
@@ -1822,7 +1804,7 @@ const SettingsSectionDefinition* SettingsCatalog::section(const QString& pageId,
     const QString key = pageId + QLatin1Char('\x1f') + sectionId;
     const auto found = m_sectionIndexByLocation.constFind(key);
     return found == m_sectionIndexByLocation.cend() ? nullptr
-                                                     : &foundPage->sections.at(found.value());
+                                                    : &foundPage->sections.at(found.value());
 }
 
 const SettingsItemDefinition* SettingsCatalog::item(const SettingsLocation& location) const {
@@ -1833,8 +1815,7 @@ const SettingsItemDefinition* SettingsCatalog::item(const SettingsLocation& loca
     const QString key = location.pageId + QLatin1Char('\x1f') + location.sectionId +
                         QLatin1Char('\x1f') + location.itemId;
     const auto found = m_itemIndexByLocation.constFind(key);
-    return found == m_itemIndexByLocation.cend() ? nullptr
-                                                  : &foundSection->items.at(found.value());
+    return found == m_itemIndexByLocation.cend() ? nullptr : &foundSection->items.at(found.value());
 }
 
 std::optional<SettingsCommand>
@@ -1846,8 +1827,7 @@ SettingsCatalog::commandForShortcut(GlobalShortcutAction action) const {
     return std::nullopt;
 }
 
-const SettingsItemDefinition*
-SettingsCatalog::itemForShortcut(GlobalShortcutAction action) const {
+const SettingsItemDefinition* SettingsCatalog::itemForShortcut(GlobalShortcutAction action) const {
     const auto found = m_shortcutItemByAction.constFind(static_cast<int>(action));
     if (found == m_shortcutItemByAction.cend()) {
         return nullptr;
@@ -1865,8 +1845,7 @@ QString SettingsCatalog::shortcutActionTitle(GlobalShortcutAction action,
     if (itemDefinition == nullptr) {
         return {};
     }
-    const auto* shortcut =
-        std::get_if<SettingsShortcutActionDefinition>(&itemDefinition->payload);
+    const auto* shortcut = std::get_if<SettingsShortcutActionDefinition>(&itemDefinition->payload);
     Q_ASSERT(shortcut != nullptr);
     QString title = itemDefinition->title.translated();
     if (shortcut->adjustment == SettingsShortcutAdjustment::ScreenshotDelaySeconds) {
@@ -1889,10 +1868,9 @@ QVector<SettingsTrayMenuGroupDefinition> SettingsCatalog::trayMenuGroups() const
                 if (shortcut == nullptr) {
                     continue;
                 }
-                group.options.push_back({itemDefinition.id,
-                                          itemDefinition.title,
-                                          SettingsTrayMenuOptionKind::QuickAction,
-                                          shortcut->shortcutAction, shortcut->iconFactory});
+                group.options.push_back({itemDefinition.id, itemDefinition.title,
+                                         SettingsTrayMenuOptionKind::QuickAction,
+                                         shortcut->shortcutAction, shortcut->iconFactory});
             }
             if (!group.options.isEmpty()) {
                 groups.push_back(std::move(group));
@@ -1924,7 +1902,7 @@ QVector<SettingsTrayMenuGroupDefinition> SettingsCatalog::trayMenuGroups() const
 }
 
 QString TrayCommandManifest::shortcutActionTitle(GlobalShortcutAction action,
-                                                  int screenshotDelaySeconds) const {
+                                                 int screenshotDelaySeconds) const {
     for (const SettingsTrayMenuGroupDefinition& group : groups) {
         for (const SettingsTrayMenuOptionDefinition& option : group.options) {
             if (option.kind != SettingsTrayMenuOptionKind::QuickAction ||
@@ -1948,28 +1926,31 @@ QString TrayCommandManifest::shortcutActionTitle(GlobalShortcutAction action,
 // full settings hierarchy into the always-on application bootstrap.
 TrayCommandManifest buildBuiltInTrayCommandManifest() {
     TrayCommandManifest manifest;
-    const auto quick = [&manifest](const QString& id, const char* title,
-                                   GlobalShortcutAction action,
-                                   std::function<adqt::icons::IconRef()> iconFactory,
-                                   SettingsShortcutAdjustment adjustment =
-                                       SettingsShortcutAdjustment::None) {
-        SettingsTrayMenuOptionDefinition option{id, {"SettingsCatalog", title},
-                                                 SettingsTrayMenuOptionKind::QuickAction, action,
-                                                 std::move(iconFactory)};
-        manifest.shortcutAdjustments.insert(static_cast<int>(action), adjustment);
-        return option;
-    };
+    const auto quick =
+        [&manifest](const QString& id, const char* title, GlobalShortcutAction action,
+                    std::function<adqt::icons::IconRef()> iconFactory,
+                    SettingsShortcutAdjustment adjustment = SettingsShortcutAdjustment::None) {
+            SettingsTrayMenuOptionDefinition option{id,
+                                                    {"SettingsCatalog", title},
+                                                    SettingsTrayMenuOptionKind::QuickAction,
+                                                    action,
+                                                    std::move(iconFactory)};
+            manifest.shortcutAdjustments.insert(static_cast<int>(action), adjustment);
+            return option;
+        };
 
     manifest.groups = {
         {QStringLiteral("screenshot"),
-         {quick(QStringLiteral("quick.screenshot"), QT_TRANSLATE_NOOP("SettingsCatalog", "Screenshot"),
+         {quick(QStringLiteral("quick.screenshot"),
+                QT_TRANSLATE_NOOP("SettingsCatalog", "Screenshot"),
                 GlobalShortcutAction::Screenshot,
                 []() { return custom_twotone_icons::ScreenshotFeature(); }),
-          quick(QStringLiteral("quick.screenshot-delay"),
-                QT_TRANSLATE_NOOP("SettingsCatalog", "Delay %1s to execute"),
-                GlobalShortcutAction::ScreenshotDelay,
-                []() { return custom_outlined_icons::ScreenshotDelay(); },
-                SettingsShortcutAdjustment::ScreenshotDelaySeconds),
+          quick(
+              QStringLiteral("quick.screenshot-delay"),
+              QT_TRANSLATE_NOOP("SettingsCatalog", "Delay %1s to execute"),
+              GlobalShortcutAction::ScreenshotDelay,
+              []() { return custom_outlined_icons::ScreenshotDelay(); },
+              SettingsShortcutAdjustment::ScreenshotDelaySeconds),
           quick(QStringLiteral("quick.screenshot-fixed"),
                 QT_TRANSLATE_NOOP("SettingsCatalog", "Pin to screen"),
                 GlobalShortcutAction::ScreenshotFixed,
@@ -1999,10 +1980,11 @@ TrayCommandManifest buildBuiltInTrayCommandManifest() {
                 QT_TRANSLATE_NOOP("SettingsCatalog", "Screen recording"),
                 GlobalShortcutAction::ScreenRecord,
                 []() { return custom_outlined_icons::RecordScreen(); }),
-          quick(QStringLiteral("quick.screen-record-copy"),
-                QT_TRANSLATE_NOOP("SettingsCatalog", "Start screen recording / stop and copy video"),
-                GlobalShortcutAction::ScreenRecordCopy,
-                []() { return custom_outlined_icons::ScreenshotCopy(); })}},
+          quick(
+              QStringLiteral("quick.screen-record-copy"),
+              QT_TRANSLATE_NOOP("SettingsCatalog", "Start screen recording / stop and copy video"),
+              GlobalShortcutAction::ScreenRecordCopy,
+              []() { return custom_outlined_icons::ScreenshotCopy(); })}},
         {QStringLiteral("other"),
          {quick(QStringLiteral("quick.open-capture-history"),
                 QT_TRANSLATE_NOOP("SettingsCatalog", "Screenshot history"),
@@ -2114,8 +2096,7 @@ QStringList SettingsCatalog::validationErrors() const {
             addUnique(&errors, &sectionLocations,
                       QStringLiteral("%1/%2").arg(pageDefinition.id, sectionDefinition.id),
                       QStringLiteral("section location"));
-            validateIndexKeyComponent(&errors, sectionDefinition.id,
-                                      QStringLiteral("section id"));
+            validateIndexKeyComponent(&errors, sectionDefinition.id, QStringLiteral("section id"));
             addUnique(&errors, &searchIds,
                       QStringLiteral("section:%1/%2").arg(pageDefinition.id, sectionDefinition.id),
                       QStringLiteral("generated search id"));
@@ -2178,6 +2159,9 @@ QStringList SettingsCatalog::validationErrors() const {
                     case SettingsSelectBinding::Proxy:
                         expectedKey = QStringLiteral("network/proxy");
                         break;
+                    case SettingsSelectBinding::ScreenshotApiMode:
+                        expectedKey = QStringLiteral("screenshot/api_mode");
+                        break;
                     case SettingsSelectBinding::ScreenshotToolbarSize:
                         expectedKey = QStringLiteral("screenshot_ui/toolbar_size");
                         break;
@@ -2204,12 +2188,10 @@ QStringList SettingsCatalog::validationErrors() const {
                         expectedKey = QStringLiteral("screen_recording/frame_rate");
                         break;
                     case SettingsSelectBinding::AnimatedImageClarity:
-                        expectedKey =
-                            QStringLiteral("screen_recording/animated_image_clarity");
+                        expectedKey = QStringLiteral("screen_recording/animated_image_clarity");
                         break;
                     case SettingsSelectBinding::AnimatedImageFrameRate:
-                        expectedKey =
-                            QStringLiteral("screen_recording/animated_image_frame_rate");
+                        expectedKey = QStringLiteral("screen_recording/animated_image_frame_rate");
                         break;
                     case SettingsSelectBinding::AnimatedImageFormat:
                         expectedKey = QStringLiteral("screen_recording/animated_image_format");
@@ -2246,11 +2228,10 @@ QStringList SettingsCatalog::validationErrors() const {
                             errors.push_back(QStringLiteral("select option text is incomplete: %1")
                                                  .arg(itemDefinition.id));
                         }
-                        if (schemaEntry != nullptr &&
-                            !storage::ConfigurationSchema::normalize(
-                                 itemDefinition.configurationKey,
-                                 QJsonValue::fromVariant(option.value))
-                                 .valid) {
+                        if (schemaEntry != nullptr && !storage::ConfigurationSchema::normalize(
+                                                           itemDefinition.configurationKey,
+                                                           QJsonValue::fromVariant(option.value))
+                                                           .valid) {
                             errors.push_back(QStringLiteral("select option is invalid: %1")
                                                  .arg(itemDefinition.id));
                         }
@@ -2293,23 +2274,20 @@ QStringList SettingsCatalog::validationErrors() const {
                         expectedKey = QStringLiteral("screenshot/restore_original_screen_colors");
                         break;
                     case SettingsSwitchBinding::ScreenshotCopyImageFileToClipboard:
-                        expectedKey =
-                            QStringLiteral("screenshot/copy_image_file_to_clipboard");
+                        expectedKey = QStringLiteral("screenshot/copy_image_file_to_clipboard");
                         break;
                     case SettingsSwitchBinding::PinAutomaticTextRecognition:
-                        expectedKey =
-                            QStringLiteral("pin_to_screen/automatic_text_recognition");
+                        expectedKey = QStringLiteral("pin_to_screen/automatic_text_recognition");
                         break;
                     case SettingsSwitchBinding::PinAutoResizeWindow:
                         expectedKey = QStringLiteral("pin_to_screen/auto_resize_window");
                         break;
                     case SettingsSwitchBinding::ScreenRecordingHideToolbar:
-                        expectedKey =
-                            QStringLiteral("screen_recording/hide_toolbar_in_recording");
+                        expectedKey = QStringLiteral("screen_recording/hide_toolbar_in_recording");
                         break;
                     case SettingsSwitchBinding::DisableHotkeysOnFocusedFullscreen:
-                        expectedKey = QStringLiteral(
-                            "global_shortcuts/disable_on_focused_fullscreen_window");
+                        expectedKey =
+                            QStringLiteral("global_shortcuts/disable_on_focused_fullscreen_window");
                         break;
                     case SettingsSwitchBinding::AutoStartAtBoot:
                         expectedKey = QStringLiteral("system/auto_start_at_boot");
@@ -2332,8 +2310,9 @@ QStringList SettingsCatalog::validationErrors() const {
                     for (const SettingsOptionDefinition& option : multi->options) {
                         configuredValues.insert(option.value.toString());
                         if (!option.label.isValid()) {
-                            errors.push_back(QStringLiteral("multi-select option text is incomplete: %1")
-                                                 .arg(itemDefinition.id));
+                            errors.push_back(
+                                QStringLiteral("multi-select option text is incomplete: %1")
+                                    .arg(itemDefinition.id));
                         }
                     }
                     QSet<QString> allowed;
@@ -2442,9 +2421,9 @@ QStringList SettingsCatalog::validationErrors() const {
                     const QString expectedKey =
                         (local->scope == SettingsLocalShortcutScope::Screenshot
                              ? QStringLiteral("screenshot_shortcuts/")
-                             : local->scope == SettingsLocalShortcutScope::Drawing
-                                   ? QStringLiteral("drawing_shortcuts/")
-                                   : QStringLiteral("pin_to_screen_shortcuts/")) +
+                         : local->scope == SettingsLocalShortcutScope::Drawing
+                             ? QStringLiteral("drawing_shortcuts/")
+                             : QStringLiteral("pin_to_screen_shortcuts/")) +
                         local->shortcutId;
                     if (local->shortcutId.isEmpty() || !local->iconFactory ||
                         itemDefinition.configurationKey != expectedKey || schemaEntry == nullptr ||
@@ -2579,9 +2558,8 @@ QStringList SettingsCatalog::validationErrors() const {
                     }
                     if (itemDefinition.configurationKey != expectedKey || schemaEntry == nullptr ||
                         schemaEntry->valueKind != storage::ConfigurationValueKind::String) {
-                        errors.push_back(
-                            QStringLiteral("text binding is incompatible: %1")
-                                .arg(itemDefinition.id));
+                        errors.push_back(QStringLiteral("text binding is incompatible: %1")
+                                             .arg(itemDefinition.id));
                     }
                 }
                 if (const auto* action =

@@ -1,4 +1,7 @@
 #include "snow_shot/presentation/screenshotcanvasrenderer.h"
+#include "snow_shot/presentation/directcapturehistory.h"
+#include "snow_shot/presentation/screenshothistoryservice.h"
+#include "snow_shot/presentation/screenshotinteractionstate.h"
 #include "snow_shot/presentation/screenshotdisplaysession.h"
 #include "snow_shot/presentation/screenshotgeometry.h"
 #include "snow_shot/presentation/screenshotguidelinerendering.h"
@@ -23,6 +26,9 @@
 #include <QColor>
 #include <QCursor>
 #include <QEvent>
+#include <QElapsedTimer>
+#include <QTemporaryDir>
+#include <QThread>
 #include <QFontDatabase>
 #include <QGraphicsItem>
 #include <QGraphicsScene>
@@ -205,6 +211,119 @@ QImage renderCanvas(SnowCanvasWidget& canvas, qreal devicePixelRatio = 1.0) {
     canvas.render(&painter);
     painter.end();
     return output;
+}
+
+void directCaptureHistoryUsesTheEditorCoordinateSystem() {
+    using namespace snow_shot::presentation;
+    for (const auto target :
+         {DirectCaptureTarget::FocusedWindow, DirectCaptureTarget::CurrentMonitor}) {
+        for (int storedFormat = 0; storedFormat < 3; ++storedFormat) {
+            QTemporaryDir temporary;
+            auto repository = snow_shot::storage::makeCaptureHistoryRepository(temporary.path());
+            SnowCanvasRuntime runtime;
+            NoopOverlayEventSink sink;
+            ScreenshotOverlayWindow left(sink, new SnowCanvasWidget(runtime));
+            ScreenshotOverlayWindow right(sink, new SnowCanvasWidget(runtime));
+            ScreenshotDisplaySession displays;
+            DirectCaptureFrame captured;
+            const QRect physicalRects[] = {QRect(-400, -200, 200, 120), QRect(0, 0, 200, 120)};
+            const QColor colors[] = {QColor(180, 40, 60), QColor(40, 160, 80)};
+            ScreenshotOverlayWindow* overlays[] = {&left, &right};
+            for (int i = 0; i < 2; ++i) {
+                QImage image(physicalRects[i].size(), QImage::Format_RGB32);
+                image.fill(colors[i]);
+                image.setPixelColor(100, 60, QColor(30, 60, 190));
+                CapturedDisplayModel model;
+                model.stableId = QString::number(i);
+                model.name = QStringLiteral("History fixture %1").arg(i);
+                model.physicalRect = physicalRects[i];
+                model.active = true;
+                model.image = image;
+                captured.displays.push_back({image, physicalRects[i], model.stableId, model.name});
+                displays.appendDisplay(model, overlays[i]);
+            }
+            ScreenshotGeometryMapper geometry;
+            geometry.rebuild(displays);
+            // Keep widget geometry deterministic while retaining the real normalized canvas layout.
+            for (int i = 0; i < 2; ++i) {
+                displays.displayAt(i).screen = nullptr;
+                displays.displayAt(i).logicalRect = QRect(i * 200, 0, 200, 120);
+            }
+            captured.physicalBounds = target == DirectCaptureTarget::FocusedWindow
+                                          ? QRect(20, 25, 60, 40)
+                                          : physicalRects[1];
+            captured.image = captured.displays[1].image.copy(
+                captured.physicalBounds.translated(-physicalRects[1].topLeft()));
+            DirectCaptureRequest request;
+            request.target = target;
+            request.requestedAt = QDateTime::currentDateTimeUtc();
+            auto draft = directCaptureHistoryDraft(request, captured);
+            if (storedFormat == 1) {
+                // Reproduce complete sessions written with absolute desktop coordinates.
+                draft.canvasBounds.translate(geometry.canvasOrigin());
+                draft.selection.rectangle.translate(geometry.canvasOrigin());
+                for (auto& saved : draft.displays)
+                    *saved.sourceCanvasOrigin += geometry.canvasOrigin();
+            } else if (storedFormat == 2) {
+                // The first direct-capture implementation persisted only the positioned target
+                // image.
+                draft.contentKind = snow_shot::storage::CaptureHistoryContentKind::Image;
+                draft.canvasBounds = captured.physicalBounds;
+                draft.selection.rectangle = captured.physicalBounds;
+                draft.displays = {{QStringLiteral("target"), QStringLiteral("Target"),
+                                   captured.image, captured.physicalBounds.topLeft()}};
+            }
+            const auto published = repository->publish(std::move(draft)).get();
+            require(published.storage.success, "failed to persist editor rendering fixture");
+            ScreenshotOverlayCanvasPresenter presenter(
+                [](ScreenshotOverlayWindow* overlay) { return overlay; });
+            presenter.applyDisplayModels(displays);
+            left.show();
+            right.show();
+            QApplication::processEvents();
+            ScreenshotSelectionModel selection;
+            selection.setSelectionRect(QRect(10, 10, 30, 30));
+            ScreenshotInteractionState interaction;
+            interaction.confirmSelection();
+            ScreenshotIntelligentSelectionModel intelligent;
+            ScreenshotHistoryService history({displays, runtime, selection, interaction,
+                                              intelligent,
+                                              [&]() { presenter.applyDisplayModels(displays); }},
+                                             *repository);
+            require(history.navigateToRecord(published.record.id),
+                    "history rendering navigation failed");
+            QElapsedTimer timer;
+            timer.start();
+            while (history.navigationInProgress() && timer.elapsed() < 5000) {
+                QApplication::processEvents();
+                QThread::msleep(1);
+            }
+            require(!history.navigationInProgress(), "history rendering navigation timed out");
+            const QRect expected =
+                geometry.canvasRectForPhysicalRect(displays, captured.physicalBounds)
+                    .toAlignedRect();
+            const bool selectionMatches = selection.pixelSelection() == expected;
+            bool pixelsMatch = true;
+            for (int i = 0; i < 2; ++i) {
+                overlays[i]->setScreenshotMaskVisible(false);
+                const QImage rendered = renderCanvas(*overlays[i]->canvas());
+                const QColor actual = rendered.pixelColor(30, 30);
+                if (storedFormat != 2) {
+                    pixelsMatch &= rendered.convertToFormat(QImage::Format_RGB32) ==
+                                   captured.displays[i].image;
+                } else if (i == 1) {
+                    pixelsMatch &= actual == colors[i];
+                }
+                std::cout << "history display " << i << " pixel=" << actual.name().toStdString()
+                          << " expected=" << colors[i].name().toStdString() << '\n';
+            }
+            std::cout << "selection actual=" << selection.pixelSelection().x() << ','
+                      << selection.pixelSelection().y() << " expected=" << expected.x() << ','
+                      << expected.y() << '\n';
+            require(selectionMatches && pixelsMatch,
+                    "history Edit displaced the selection or failed to render the saved desktop");
+        }
+    }
 }
 
 void layeredImageSourceMatchesMaterializedOutput() {
@@ -1106,8 +1225,7 @@ void rendererCoversTheWidgetRectOnceAScreenshotFillsTheViewport() {
             "pinned-result mode Source-fills the viewport before the image blit");
 
     renderer.reset();
-    require(!renderer.coversWidgetRect(canvas.rect()),
-            "resetting the renderer must drop coverage");
+    require(!renderer.coversWidgetRect(canvas.rect()), "resetting the renderer must drop coverage");
 }
 
 void overlayPaintSkipsRedundantTransparentClearWhenRendererCoversTheRect() {
@@ -3245,6 +3363,10 @@ void resettingDisplaySessionEditingStateResetsEveryCanvas() {
 
 int main(int argc, char** argv) {
     QApplication application(argc, argv);
+    if (application.arguments().contains(QStringLiteral("--direct-capture-history-rendering"))) {
+        directCaptureHistoryUsesTheEditorCoordinateSystem();
+        return 0;
+    }
     if (application.arguments().contains(QStringLiteral("--overlay-native-surface-release"))) {
         overlayNativeSurfaceIsReleasedBeforeDeferredObjectDeletion();
         return 0;

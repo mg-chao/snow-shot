@@ -90,7 +90,7 @@ void emptyStateRemainsVisibleAfterFilteringEmptyHistory() {
             "screenshot history page must expose its empty state and filters");
     require(page.findChild<adqt::widgets::AdButton*>(QStringLiteral("screenshotHistoryDeleteAll"))
                 ->isEnabled(),
-            "empty history must allow explicit cleanup of legacy files or a broken index");
+            "empty history must allow explicit cleanup of unmanaged files or a broken index");
     const auto requireCompleteEmptyState = [title, description, icon](const char* message) {
         require(title->isVisible() && description->isVisible() && icon->isVisible(), message);
         require(title->text() == QStringLiteral("No screenshot history") &&
@@ -164,7 +164,7 @@ void imageFailuresRespectCacheFallbackAndCancellation() {
               "thumbnail cache write did not finish");
     require(first->isSuccessful() && dataSource.readFailures == 0, "valid thumbnail failed");
     QString key = record.id + u'|' + QDir::fromNativeSeparators(source);
-    key += QStringLiteral("|%1x%2|%3|%4|v2")
+    key += QStringLiteral("|%1x%2|%3|%4")
                .arg(options.targetPixelSize.width())
                .arg(options.targetPixelSize.height())
                .arg(static_cast<int>(options.aspectRatioMode))

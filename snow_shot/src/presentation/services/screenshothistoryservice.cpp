@@ -95,6 +95,7 @@ presentationSelection(const snow_shot::storage::PersistedSelection& selection) {
 
 snow_shot::storage::CaptureHistoryDraft storageDraft(const ScreenshotHistoryEntry& entry) {
     snow_shot::storage::CaptureHistoryDraft draft;
+    draft.contentKind = entry.contentKind;
     draft.id = entry.id;
     draft.createdUtc = entry.createdUtc.toUTC();
     draft.canvasBounds = entry.recordedCanvasBounds;
@@ -102,7 +103,8 @@ snow_shot::storage::CaptureHistoryDraft storageDraft(const ScreenshotHistoryEntr
     draft.canvasHistory = entry.canvasHistory;
     draft.source = entry.source;
     for (const ScreenshotHistoryDisplay& display : entry.displays) {
-        draft.displays.push_back({display.stableId, display.name, display.image});
+        draft.displays.push_back(
+            {display.stableId, display.name, display.image, display.sourceCanvasOrigin});
     }
     draft.resultImage = entry.resultImage;
     draft.preparedResultImage = entry.preparedResultImage;
@@ -112,6 +114,7 @@ snow_shot::storage::CaptureHistoryDraft storageDraft(const ScreenshotHistoryEntr
 snow_shot::storage::CaptureHistoryRecord
 placeholderRecord(const snow_shot::storage::CaptureHistoryDraft& draft) {
     snow_shot::storage::CaptureHistoryRecord record;
+    record.contentKind = draft.contentKind;
     record.id = draft.id;
     record.createdUtc = draft.createdUtc;
     record.canvasBounds = draft.canvasBounds;
@@ -125,7 +128,8 @@ placeholderRecord(const snow_shot::storage::CaptureHistoryDraft& draft) {
         record.result = snow_shot::storage::CaptureHistoryResultRecord{resultSize, 0};
     }
     for (const snow_shot::storage::CaptureHistoryDisplayDraft& display : draft.displays) {
-        record.displays.push_back({display.stableId, display.name, display.image.size(), 0});
+        record.displays.push_back(
+            {display.stableId, display.name, display.image.size(), 0, display.sourceCanvasOrigin});
     }
     return record;
 }
@@ -138,6 +142,7 @@ presentationEntry(const snow_shot::storage::CaptureHistoryRecord& record,
         return std::nullopt;
     }
     ScreenshotHistoryEntry entry;
+    entry.contentKind = record.contentKind;
     entry.id = record.id;
     entry.createdUtc = record.createdUtc;
     entry.recordedCanvasBounds = record.canvasBounds;
@@ -147,7 +152,23 @@ presentationEntry(const snow_shot::storage::CaptureHistoryRecord& record,
     entry.persistent = true;
     for (qsizetype index = 0; index < record.displays.size(); ++index) {
         entry.displays.push_back({record.displays[index].stableId, record.displays[index].name,
-                                  payload.displayImages[index]});
+                                  payload.displayImages[index],
+                                  record.displays[index].sourceCanvasOrigin});
+    }
+    // Early direct-capture sessions stored absolute desktop coordinates instead of canvas ones.
+    const bool directCapture =
+        record.source == snow_shot::storage::CaptureHistorySource::FocusedWindow ||
+        record.source == snow_shot::storage::CaptureHistorySource::CurrentMonitor;
+    if (directCapture &&
+        record.contentKind == snow_shot::storage::CaptureHistoryContentKind::ScreenshotSession &&
+        !record.canvasBounds.topLeft().isNull()) {
+        const QPoint canvasOffset = -record.canvasBounds.topLeft();
+        entry.recordedCanvasBounds.translate(canvasOffset);
+        entry.selection.selection.translate(canvasOffset);
+        for (auto& display : entry.displays) {
+            if (display.sourceCanvasOrigin.has_value())
+                *display.sourceCanvasOrigin += canvasOffset;
+        }
     }
     return entry;
 }
@@ -327,8 +348,13 @@ ScreenshotHistoryService::snapshotCurrent(bool persistent) const {
             if (display.image.isNull()) {
                 return;
             }
-            entry.displays.push_back(
-                ScreenshotHistoryDisplay{display.stableId, display.name, display.image});
+            const QPoint origin =
+                ScreenshotGeometryMapper::displayImageSourceCanvasRect(display).topLeft().toPoint();
+            const QPoint displayOrigin =
+                ScreenshotGeometryMapper::displayCanvasRect(display).topLeft().toPoint();
+            entry.displays.push_back(ScreenshotHistoryDisplay{
+                display.stableId, display.name, display.image,
+                origin != displayOrigin ? std::optional<QPoint>(origin) : std::nullopt});
         });
     if (entry.displays.isEmpty()) {
         return std::nullopt;
@@ -345,7 +371,8 @@ bool ScreenshotHistoryService::navigateToRecord(const QString& recordId) {
     if (recordId.isEmpty() || m_navigationInProgress) {
         return false;
     }
-    reapCompletedWrites();
+    // Other capture controllers publish directly to the shared repository.
+    refreshMetadata();
     const auto target =
         std::find_if(m_entries.cbegin(), m_entries.cend(),
                      [&recordId](const snow_shot::storage::CaptureHistoryRecord& record) {
@@ -379,7 +406,7 @@ bool ScreenshotHistoryService::navigatePrevious() {
     if (m_navigationInProgress) {
         return false;
     }
-    reapCompletedWrites();
+    refreshMetadata();
     if (m_entries.isEmpty()) {
         return false;
     }
@@ -393,7 +420,7 @@ bool ScreenshotHistoryService::navigateNext() {
     if (m_navigationInProgress) {
         return false;
     }
-    reapCompletedWrites();
+    refreshMetadata();
     if (!ensureLiveEndpoint() || m_navigationIndex <= 0) {
         return false;
     }
@@ -480,8 +507,12 @@ void ScreenshotHistoryService::finishPersistentNavigation(
     }
 
     m_navigationInProgress = false;
-    const bool targetStillExists =
-        index > 0 && index <= m_entries.size() && m_entries[index - 1].id == entryId;
+    const auto target =
+        std::find_if(m_entries.cbegin(), m_entries.cend(),
+                     [&entryId](const auto& record) { return record.id == entryId; });
+    const bool targetStillExists = target != m_entries.cend();
+    if (targetStillExists)
+        index = static_cast<int>(std::distance(m_entries.cbegin(), target)) + 1;
     if (!entry.has_value()) {
         if (targetStillExists) {
             m_entries.removeAt(index - 1);
@@ -500,7 +531,24 @@ void ScreenshotHistoryService::finishPersistentNavigation(
 bool ScreenshotHistoryService::applyEntry(const ScreenshotHistoryEntry& entry) {
     const QRect bounds = currentCanvasBounds();
     ScreenshotSelectionModel restoredSelection = m_context.selection;
-    if (!restoredSelection.applyParams(entry.selection, bounds)) {
+    auto selectionParams = entry.selection;
+    const bool imageOnly =
+        entry.contentKind == snow_shot::storage::CaptureHistoryContentKind::Image;
+    QPoint imageCanvasOffset;
+    if (imageOnly) {
+        if (entry.displays.front().sourceCanvasOrigin.has_value()) {
+            QRect physicalDesktop;
+            m_context.displays.forEachActiveDisplay(
+                [&physicalDesktop](qsizetype, const CapturedDisplayModel& display) {
+                    physicalDesktop = physicalDesktop.united(display.physicalRect);
+                });
+            imageCanvasOffset = bounds.topLeft() - physicalDesktop.topLeft();
+        } else {
+            imageCanvasOffset = bounds.topLeft();
+        }
+        selectionParams.selection.translate(imageCanvasOffset);
+    }
+    if (!restoredSelection.applyParams(selectionParams, bounds)) {
         return false;
     }
 
@@ -549,6 +597,13 @@ bool ScreenshotHistoryService::applyEntry(const ScreenshotHistoryEntry& entry) {
 
     for (qsizetype currentOrder = 0; currentOrder < current.size(); ++currentOrder) {
         CapturedDisplayModel& display = m_context.displays.displayAt(current[currentOrder]);
+        if (imageOnly) {
+            display.image = entry.displays.front().image;
+            display.imageSourceCanvasRect = QRect(
+                entry.displays.front().sourceCanvasOrigin.value_or(QPoint()) + imageCanvasOffset,
+                display.image.size());
+            continue;
+        }
         const int savedIndex = matchedSaved[currentOrder];
         if (savedIndex < 0) {
             display.image = QImage();
@@ -557,8 +612,10 @@ bool ScreenshotHistoryService::applyEntry(const ScreenshotHistoryEntry& entry) {
         }
         const QImage& image = entry.displays[savedIndex].image;
         display.image = image;
-        display.imageSourceCanvasRect = QRect(
-            ScreenshotGeometryMapper::displayCanvasRect(display).topLeft().toPoint(), image.size());
+        display.imageSourceCanvasRect =
+            QRect(entry.displays[savedIndex].sourceCanvasOrigin.value_or(
+                      ScreenshotGeometryMapper::displayCanvasRect(display).topLeft().toPoint()),
+                  image.size());
     }
     m_context.selection = restoredSelection;
     m_context.interaction.cancelDrag();
@@ -649,6 +706,9 @@ void ScreenshotHistoryService::drainPendingWrites() {
 }
 
 void ScreenshotHistoryService::refreshMetadata() {
+    const QString selectedId = m_navigationIndex > 0 && m_navigationIndex <= m_entries.size()
+                                   ? m_entries[m_navigationIndex - 1].id
+                                   : QString();
     reapCompletedWrites();
     QVector<snow_shot::storage::CaptureHistoryRecord> refreshed = m_repository->records();
     for (const PendingWrite& pending : m_pendingWrites) {
@@ -668,6 +728,14 @@ void ScreenshotHistoryService::refreshMetadata() {
         return first.createdUtc > second.createdUtc;
     });
     m_entries = std::move(refreshed);
+    if (!selectedId.isEmpty()) {
+        const auto selected =
+            std::find_if(m_entries.cbegin(), m_entries.cend(),
+                         [&selectedId](const auto& record) { return record.id == selectedId; });
+        if (selected != m_entries.cend()) {
+            m_navigationIndex = static_cast<int>(std::distance(m_entries.cbegin(), selected)) + 1;
+        }
+    }
     if (m_navigationIndex > m_entries.size()) {
         m_navigationIndex = static_cast<int>(m_entries.size()) + 1;
     }

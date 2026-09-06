@@ -20,7 +20,7 @@ struct SavedState {
     QRect nativeGeometry;
     // Empty when the window was not in thumbnail mode.
     QRect preThumbnailNativeGeometry;
-    // Empty for legacy records that did not capture the saving monitor; such
+    // Empty when the record did not capture the saving monitor; such
     // records are restored at their saved coordinates without re-basing.
     QRect screenPhysicalBounds;
 };

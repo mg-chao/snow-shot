@@ -45,8 +45,9 @@ struct ScreenshotOverlayInputActions {
         [](const QString&) {};
     std::function<bool()> localShortcutInputAllowed = []() { return true; };
     std::function<bool()> activateMoveTool = []() { return false; };
-    std::function<bool(const QString& toolId)> activateDrawingShortcut =
-        [](const QString&) { return false; };
+    std::function<bool(const QString& toolId)> activateDrawingShortcut = [](const QString&) {
+        return false;
+    };
     std::function<bool()> navigateHistoryPrevious = []() { return false; };
     std::function<bool()> navigateHistoryNext = []() { return false; };
     std::function<bool()> returnToCurrentScreenshot = []() { return false; };
@@ -69,15 +70,13 @@ struct ScreenshotOverlayInputActions {
     std::function<void()> selectionConfirmed = []() {};
 
     // Applies the persisted selection rectangle from the preceding screenshot.
-    // Keep this at the end of the aggregate so existing positional initializers
-    // remain source-compatible.
     std::function<bool()> selectPreviousSelection = []() { return false; };
 
     // Performs the same lasting tool activation as a direct toolbar command.
     std::function<bool(ScreenshotActiveTool tool)> activateToolForSelectionResize =
         [](ScreenshotActiveTool) { return false; };
 
-    // Keep sampler callbacks together to preserve existing positional initializers.
+    // Canvas color sampler callbacks.
     std::function<void()> cancelCanvasColorSampling = []() {};
     std::function<bool(ScreenshotOverlayWindow* overlay, const QPointF& localPosition)>
         sampleCanvasColor = [](ScreenshotOverlayWindow*, const QPointF&) { return false; };
@@ -143,8 +142,7 @@ class ScreenshotOverlayInputHandler final {
                                    const QPoint& angleDelta, const QPoint& pixelDelta);
     [[nodiscard]] bool shouldBlockUnhandledKeyInput() const;
     [[nodiscard]] bool activateMoveEntireSelectionShortcut();
-    [[nodiscard]] bool activateKeepSelectionAspectRatioShortcut(
-        bool cycleColorFormatIfUnused);
+    [[nodiscard]] bool activateKeepSelectionAspectRatioShortcut(bool cycleColorFormatIfUnused);
     bool releaseMoveEntireSelectionShortcut();
     bool releaseKeepSelectionAspectRatioShortcut();
     [[nodiscard]] bool toggleIntelligentSelectionTargetShortcut();
@@ -168,6 +166,7 @@ class ScreenshotOverlayInputHandler final {
                              const QPointF& virtualPosition);
     void requestIntelligentSelectionHitTest(const QPointF& virtualPosition);
     void setIntelligentSelectionIndex(int index);
+
   public:
     // Confirms the current model selection and invokes selectionConfirmed.
     // This is also used by non-interactive quick actions that select a whole

@@ -44,7 +44,7 @@ storage::PinnedWindowRecord record(const QString& id) {
 }
 
 QString manifestPath(const QTemporaryDir& directory) {
-    return QDir(directory.path()).filePath(QStringLiteral("pinned_windows_v3/index.json"));
+    return QDir(directory.path()).filePath(QStringLiteral("pinned_windows/index.json"));
 }
 
 QJsonObject readManifest(const QString& path) {
@@ -66,28 +66,29 @@ void defaultGroupAndFreshSchema() {
     require(repository.activeGroupId() == "default", "default group should be active initially");
     require(repository.upsert(record(QUuid::createUuid().toString(QUuid::WithoutBraces))).success,
             "failed to seed a pinned-window record");
-    require(repository.flush().success, "failed to flush the v3 pinned-window index");
+    require(repository.flush().success, "failed to flush the pinned-window index");
 
     const QJsonObject manifest = readManifest(manifestPath(directory));
-    require(manifest.value(QStringLiteral("format_version")).toInt() == 3,
-            "the fresh pinned-window index should use the v3 schema");
+    require(manifest.value(QStringLiteral("format_version")).toInt() == 1,
+            "the fresh pinned-window index should use the current schema");
     require(manifest.value(QStringLiteral("groups")).toArray().size() == 1 &&
                 manifest.value(QStringLiteral("records")).toArray().size() == 1,
             "the fresh pinned-window index should contain the default group and seeded record");
 
-    QTemporaryDir legacyDirectory;
-    require(legacyDirectory.isValid(), "legacy fixture directory is unavailable");
-    const QString legacyPath = QDir(legacyDirectory.path()).filePath(
-        QStringLiteral("pinned_windows/manifest.json"));
-    QDir().mkpath(QFileInfo(legacyPath).absolutePath());
-    QFile legacy(legacyPath);
-    require(legacy.open(QIODevice::WriteOnly), "failed to create legacy pinned-window fixture");
-    require(legacy.write(QByteArrayLiteral("{\"format_version\":2,\"records\":[]}")) > 0,
-            "failed to write legacy pinned-window fixture");
-    legacy.close();
-    storage::PinnedWindowRepository fresh(legacyDirectory.path());
-    require(fresh.records().isEmpty() && QFileInfo::exists(legacyPath),
-            "legacy pinned-window data should remain untouched and unimported");
+    QTemporaryDir unrelatedDirectory;
+    require(unrelatedDirectory.isValid(), "unrelated fixture directory is unavailable");
+    const QString unrelatedPath =
+        QDir(unrelatedDirectory.path()).filePath(QStringLiteral("unrelated_pins/manifest.json"));
+    QDir().mkpath(QFileInfo(unrelatedPath).absolutePath());
+    QFile unrelated(unrelatedPath);
+    require(unrelated.open(QIODevice::WriteOnly),
+            "failed to create unrelated pinned-window fixture");
+    require(unrelated.write(QByteArrayLiteral("{\"format_version\":1,\"records\":[]}")) > 0,
+            "failed to write unrelated pinned-window fixture");
+    unrelated.close();
+    storage::PinnedWindowRepository fresh(unrelatedDirectory.path());
+    require(fresh.summaries().isEmpty() && QFileInfo::exists(unrelatedPath),
+            "unrelated pinned-window files should remain untouched and unimported");
 }
 
 void managerValidationPersistenceAndCounts() {

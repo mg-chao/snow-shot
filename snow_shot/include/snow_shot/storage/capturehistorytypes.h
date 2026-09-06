@@ -16,6 +16,7 @@
 #include <optional>
 
 namespace snow_shot::storage {
+enum class CaptureHistoryContentKind { ScreenshotSession, Image };
 enum class CaptureHistorySource {
     CopiedToClipboard,
     SavedToFile,
@@ -44,6 +45,8 @@ struct CaptureHistoryDisplayDraft {
     QString stableId;
     QString name;
     QImage image;
+    // Missing origins follow the matched display; explicit origins anchor captured pixels.
+    std::optional<QPoint> sourceCanvasOrigin;
 };
 
 struct CaptureHistoryResultRecord {
@@ -69,6 +72,7 @@ struct CaptureHistoryResultAsset {
 };
 
 struct CaptureHistoryDraft {
+    CaptureHistoryContentKind contentKind = CaptureHistoryContentKind::ScreenshotSession;
     QString id;
     QDateTime createdUtc;
     QRect canvasBounds;
@@ -85,15 +89,18 @@ struct CaptureHistoryDisplayRecord {
     QString name;
     QSize imageSize;
     qint64 encodedBytes = 0;
+    std::optional<QPoint> sourceCanvasOrigin;
 
     friend bool operator==(const CaptureHistoryDisplayRecord& first,
                            const CaptureHistoryDisplayRecord& second) {
         return first.stableId == second.stableId && first.name == second.name &&
-               first.imageSize == second.imageSize && first.encodedBytes == second.encodedBytes;
+               first.imageSize == second.imageSize && first.encodedBytes == second.encodedBytes &&
+               first.sourceCanvasOrigin == second.sourceCanvasOrigin;
     }
 };
 
 struct CaptureHistoryRecord {
+    CaptureHistoryContentKind contentKind = CaptureHistoryContentKind::ScreenshotSession;
     QString id;
     QDateTime createdUtc;
     QRect canvasBounds;
@@ -105,11 +112,11 @@ struct CaptureHistoryRecord {
     CaptureHistorySource source = CaptureHistorySource::CopiedToClipboard;
 
     friend bool operator==(const CaptureHistoryRecord& first, const CaptureHistoryRecord& second) {
-        return first.id == second.id && first.createdUtc == second.createdUtc &&
-               first.canvasBounds == second.canvasBounds && first.selection == second.selection &&
-               first.displays == second.displays && first.result == second.result &&
-               first.canvasBytes == second.canvasBytes && first.totalBytes == second.totalBytes &&
-               first.source == second.source;
+        return first.contentKind == second.contentKind && first.id == second.id &&
+               first.createdUtc == second.createdUtc && first.canvasBounds == second.canvasBounds &&
+               first.selection == second.selection && first.displays == second.displays &&
+               first.result == second.result && first.canvasBytes == second.canvasBytes &&
+               first.totalBytes == second.totalBytes && first.source == second.source;
     }
 };
 
@@ -173,16 +180,12 @@ struct CaptureHistoryPolicy {
 struct CaptureHistoryUsage {
     int entryCount = 0;
     qint64 recordBytes = 0;
-    qint64 quarantineBytes = 0;
-    qint64 temporaryBytes = 0;
     qint64 indexBytes = 0;
     qint64 pendingDeletionBytes = 0;
     qint64 totalBytes = 0;
 
     friend bool operator==(const CaptureHistoryUsage& first, const CaptureHistoryUsage& second) {
         return first.entryCount == second.entryCount && first.recordBytes == second.recordBytes &&
-               first.quarantineBytes == second.quarantineBytes &&
-               first.temporaryBytes == second.temporaryBytes &&
                first.indexBytes == second.indexBytes &&
                first.pendingDeletionBytes == second.pendingDeletionBytes &&
                first.totalBytes == second.totalBytes;

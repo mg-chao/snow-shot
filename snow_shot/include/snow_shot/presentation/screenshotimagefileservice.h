@@ -2,6 +2,7 @@
 #define SNOW_SHOT_PRESENTATION_SCREENSHOTIMAGEFILESERVICE_H
 
 #include "snow_shot/presentation/screenshotimagerowsource.h"
+#include "snow_shot/storage/preparedpngimage.h"
 
 #include <QDateTime>
 #include <QImage>
@@ -73,6 +74,10 @@ class ScreenshotImageFileService final {
                       const QString& filenameFormat,
                       const QDateTime& timestamp = QDateTime::currentDateTime());
     [[nodiscard]] static bool publishFileToClipboard(QClipboard* clipboard, const QString& path);
+    [[nodiscard]] static ScreenshotImageFileSaveResult
+    saveAutomatically(const snow_shot::storage::PreparedPngImage& png,
+                      const QStringList& candidateDirectories, const QString& filenameFormat,
+                      const QDateTime& timestamp = QDateTime::currentDateTime());
 };
 
 #endif // SNOW_SHOT_PRESENTATION_SCREENSHOTIMAGEFILESERVICE_H
