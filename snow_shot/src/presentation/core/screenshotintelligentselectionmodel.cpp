@@ -2,12 +2,12 @@
 
 #include <algorithm>
 
-void ScreenshotIntelligentSelectionModel::beginCaptureSession(bool smartSelectionEnabled) {
+void ScreenshotIntelligentSelectionModel::beginCaptureSession(
+    bool smartSelectionEnabled, ScreenshotIntelligentSelectionTarget preferredTarget) {
     clearTransientState();
     m_smartSelectionEnabled = smartSelectionEnabled;
-    m_selectionTarget = smartSelectionEnabled
-                            ? ScreenshotIntelligentSelectionTarget::WindowSubElement
-                            : ScreenshotIntelligentSelectionTarget::Window;
+    m_selectionTarget =
+        smartSelectionEnabled ? preferredTarget : ScreenshotIntelligentSelectionTarget::Window;
 }
 
 void ScreenshotIntelligentSelectionModel::reset() {
@@ -32,17 +32,16 @@ void ScreenshotIntelligentSelectionModel::clearPress() {
     m_pressSelection = QRectF();
 }
 
-bool ScreenshotIntelligentSelectionModel::updateSmartSelectionEnabled(bool enabled) {
+bool ScreenshotIntelligentSelectionModel::updateSmartSelectionEnabled(
+    bool enabled, ScreenshotIntelligentSelectionTarget preferredTarget) {
     if (m_smartSelectionEnabled == enabled) {
         return false;
     }
 
     m_smartSelectionEnabled = enabled;
-    m_selectionTarget = enabled ? ScreenshotIntelligentSelectionTarget::WindowSubElement
-                                : ScreenshotIntelligentSelectionTarget::Window;
+    m_selectionTarget = enabled ? preferredTarget : ScreenshotIntelligentSelectionTarget::Window;
     clearPress();
-    static_cast<void>(setIndex(m_selectionTarget ==
-                                       ScreenshotIntelligentSelectionTarget::Window
+    static_cast<void>(setIndex(m_selectionTarget == ScreenshotIntelligentSelectionTarget::Window
                                    ? static_cast<int>(m_hitRects.size() - 1)
                                    : 0));
     return true;

@@ -33,6 +33,11 @@ void selectionEffectsPersistAcrossRestarts() {
     ScreenshotSelectionSettingsStore settings;
     require(settings.cornerRadius() == 0 && settings.shadowWidth() == 0,
             "new installations must default to disabled selection effects");
+    require(settings.selectionTarget() == ScreenshotIntelligentSelectionTarget::WindowSubElement,
+            "new installations must default to the existing child-element selection mode");
+    settings.setSelectionTarget(ScreenshotIntelligentSelectionTarget::Window);
+    require(settings.selectionTarget() == ScreenshotIntelligentSelectionTarget::Window,
+            "selection target preference must be writable");
 
     QObject parent;
     ScreenshotCaptureState state;
@@ -79,6 +84,9 @@ void selectionEffectsPersistAcrossRestarts() {
     ScreenshotSelectionSettingsStore restartedSettings;
     require(restartedSettings.cornerRadius() == 24 && restartedSettings.shadowWidth() == 12,
             "selection effects must survive a storage restart");
+    require(restartedSettings.selectionTarget() == ScreenshotIntelligentSelectionTarget::Window,
+            "selection target preference must survive a storage restart");
+    restartedSettings.setSelectionTarget(ScreenshotIntelligentSelectionTarget::WindowSubElement);
 
     workflow.openSelectionResizeModalFromToolbar();
     require(static_cast<bool>(applyResize), "resize workflow must expose its apply callback");
@@ -116,6 +124,8 @@ void selectionEffectsPersistAcrossRestarts() {
     settings.clear();
     require(settings.cornerRadius() == 0 && settings.shadowWidth() == 0,
             "clearing selection settings must reset the persistent effects");
+    require(settings.selectionTarget() == ScreenshotIntelligentSelectionTarget::WindowSubElement,
+            "selection target preference must remain independently persisted when effects clear");
     storage.shutdown();
 }
 } // namespace

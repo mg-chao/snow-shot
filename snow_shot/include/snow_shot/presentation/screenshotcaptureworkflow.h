@@ -2,8 +2,8 @@
 #define SNOW_SHOT_PRESENTATION_SCREENSHOTCAPTUREWORKFLOW_H
 
 #include "snow_shot/presentation/screenshotcaptureworkflowports.h"
+#include "snow_shot/presentation/screenshotintelligentselectionmodel.h"
 #include "snow_shot/presentation/screenshottypes.h"
-
 
 #include <cstdint>
 #include <functional>
@@ -36,6 +36,9 @@ struct ScreenshotCaptureWorkflowContext {
     std::function<void()> refreshCanvasCreationStyles = []() {};
     std::function<void()> restoreSelectionEffects = []() {};
     std::function<bool()> restoreOriginalScreenColors = []() { return true; };
+    std::function<ScreenshotIntelligentSelectionTarget()> preferredSelectionTarget = []() {
+        return ScreenshotIntelligentSelectionTarget::WindowSubElement;
+    };
 };
 
 class ScreenshotCaptureWorkflow final : private ScreenshotCaptureWorkerEventSink {

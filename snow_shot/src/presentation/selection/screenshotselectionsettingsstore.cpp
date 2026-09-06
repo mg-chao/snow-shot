@@ -86,6 +86,22 @@ void ScreenshotSelectionSettingsStore::setSelectionEffects(int cornerRadius, int
     }));
 }
 
+ScreenshotIntelligentSelectionTarget ScreenshotSelectionSettingsStore::selectionTarget() const {
+    return configuration().value(QStringLiteral("screenshot_selection/selection_target")) ==
+                   QStringLiteral("window")
+               ? ScreenshotIntelligentSelectionTarget::Window
+               : ScreenshotIntelligentSelectionTarget::WindowSubElement;
+}
+
+void ScreenshotSelectionSettingsStore::setSelectionTarget(
+    ScreenshotIntelligentSelectionTarget target) {
+    static_cast<void>(
+        configuration().setValue(QStringLiteral("screenshot_selection/selection_target"),
+                                 target == ScreenshotIntelligentSelectionTarget::Window
+                                     ? QStringLiteral("window")
+                                     : QStringLiteral("window_sub_element")));
+}
+
 void ScreenshotSelectionSettingsStore::setPresets(
     const QVector<ScreenshotSelectionPreset>& presets) {
     QJsonArray array;

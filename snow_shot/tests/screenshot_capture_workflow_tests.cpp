@@ -739,7 +739,7 @@ void intelligentSelectionTargetsPreserveElementPathBehavior() {
 
     selection.beginCaptureSession(true);
     require(selection.selectionTarget() == ScreenshotIntelligentSelectionTarget::WindowSubElement,
-            "a new screenshot must discard the preceding screenshot's Tab target mode");
+            "capture without a supplied preference must retain the default child-element mode");
 
     selection.beginCaptureSession(false);
     require(!selection.smartSelectionEnabled() &&
@@ -781,7 +781,7 @@ void captureSessionsApplyTheCurrentSmartSelectionSetting() {
     enabledWorkflow.startCapture();
     require(enabledIntelligentSelection.selectionTarget() ==
                 ScreenshotIntelligentSelectionTarget::WindowSubElement,
-            "restarting capture must restore the enabled session's initial child-element mode");
+            "capture without a persistence callback must retain the default child-element mode");
 
     ScreenshotCaptureState disabledState;
     disabledState.sessionState = ScreenshotSessionState::IdlePrepared;

@@ -1443,12 +1443,20 @@ void configuredSelectionShortcutsRouteTabHistoryAndColorActions(bool targetSwitc
     int previousSelectionCalls = 0;
     int copyColorCalls = 0;
     int selectorHitTestRequests = 0;
+    int persistedTargetChanges = 0;
+    ScreenshotIntelligentSelectionTarget persistedTarget =
+        ScreenshotIntelligentSelectionTarget::Window;
     bool previousSelectionAvailable = true;
     ScreenshotOverlayInputActions actions;
     actions.updateOverlayState = [&overlayUpdates]() { ++overlayUpdates; };
     actions.requestUiSelectorHitTest = [&selectorHitTestRequests](const QPoint&) {
         ++selectorHitTestRequests;
     };
+    actions.persistSelectionTarget =
+        [&persistedTargetChanges, &persistedTarget](ScreenshotIntelligentSelectionTarget target) {
+            ++persistedTargetChanges;
+            persistedTarget = target;
+        };
     actions.navigateHistoryPrevious = [&previousHistoryCalls]() {
         ++previousHistoryCalls;
         return true;
@@ -1485,6 +1493,9 @@ void configuredSelectionShortcutsRouteTabHistoryAndColorActions(bool targetSwitc
                 selection.normalizedSelection() == nestedChildSelection &&
                 !intelligent.pressActive() && selectorHitTestRequests == 1,
             "Tab did not switch intelligent selection to window sub-elements");
+    require(persistedTargetChanges == 1 &&
+                persistedTarget == ScreenshotIntelligentSelectionTarget::WindowSubElement,
+            "Tab did not persist the selected window sub-element mode");
     require(intelligent.setIndex(1) && intelligent.index() == 1 &&
                 intelligent.currentSelection() == childSelection,
             "window sub-element mode did not retain full-path navigation");
@@ -1503,6 +1514,9 @@ void configuredSelectionShortcutsRouteTabHistoryAndColorActions(bool targetSwitc
                 selection.normalizedSelection() == nextWindowSelection &&
                 selectorHitTestRequests == 2,
             "Tab did not switch intelligent selection back to windows");
+    require(persistedTargetChanges == 2 &&
+                persistedTarget == ScreenshotIntelligentSelectionTarget::Window,
+            "Tab did not persist the selected window mode");
     require(intelligent.setIndex(0) && intelligent.index() == 2,
             "window mode allowed a window sub-element selection level");
     require(intelligent.applyCanvasHitPath({nestedChildSelection, childSelection, windowSelection},
@@ -1539,6 +1553,8 @@ void configuredSelectionShortcutsRouteTabHistoryAndColorActions(bool targetSwitc
                 intelligent.currentSelection() == windowSelection &&
                 selection.normalizedSelection() == windowSelection && selectorHitTestRequests == 5,
             "disabled Smart selection must reject Tab and remain in window mode");
+    require(persistedTargetChanges == 4,
+            "disabled Smart selection must not persist a rejected Tab shortcut");
     if (targetSwitchOnly) {
         require(shortcutSettings.setAllShortcutsAtomic(originalShortcuts),
                 "failed to restore selection shortcuts after target-switch test");
