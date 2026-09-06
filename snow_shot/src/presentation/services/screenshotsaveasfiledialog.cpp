@@ -1,5 +1,7 @@
 #include "snow_shot/presentation/screenshotsaveasfiledialog.h"
 
+#include "snow_shot/presentation/components/aspectratiolockbutton.h"
+#include "snow_shot/presentation/components/pathinput.h"
 #include "snow_shot/presentation/screenshotexportartifact.h"
 #include "snow_shot/presentation/screenshotsavepreviewcanvas.h"
 #include "snow_shot/storage/settingsadapters.h"
@@ -7,6 +9,7 @@
 #include "widgets/button.h"
 #include "widgets/context_menu.h"
 #include "widgets/detail/flow_layout.h"
+#include "widgets/field_group.h"
 #include "widgets/form.h"
 #include "widgets/input_line_edit.h"
 #include "widgets/input_number.h"
@@ -14,17 +17,18 @@
 #include "widgets/select.h"
 #include "widgets/scroll_area.h"
 #include "widgets/slider.h"
-#include "widgets/tag.h"
 #include "theme/theme_manager.h"
 #include "antd_icons.h"
 
 #include <QApplication>
 #include <QCoreApplication>
+#include <QCursor>
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QMouseEvent>
 #include <QPointer>
 #include <QRegularExpression>
 #include <QScreen>
@@ -42,6 +46,15 @@ namespace icons = adqt::icons::antd::outlined;
 namespace pipeline = screenshot_save_export;
 using Format = ScreenshotImageFileFormat;
 using Shortcut = snow_shot::storage::ScreenshotSavePathShortcut;
+
+constexpr int kSaveFormContentWidth = 328;
+constexpr int kAspectRatioLockButtonSize = 32;
+constexpr int kDimensionFieldWidth = (kSaveFormContentWidth - kAspectRatioLockButtonSize) / 2;
+constexpr int kDimensionLockControlHeight = 62;
+
+bool formatSupportsLossless(Format format) {
+    return format == Format::Webp || format == Format::Jxl || format == Format::Avif;
+}
 
 QString translated(const char* text) {
     return QCoreApplication::translate("ScreenshotSaveAsFileDialog", text);
@@ -81,28 +94,23 @@ class SaveContent final : public QWidget {
         m_form->setAutoFillBackground(false);
         layout->addWidget(scroll);
 
-        m_path = new AdLineEdit(m_form);
-        m_path->setObjectName(QStringLiteral("saveDirectoryInput"));
-        m_path->setText(m_state.directory);
         auto* directory = new QWidget(m_form);
         directory->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
         auto* directoryLayout = new QVBoxLayout(directory);
         directoryLayout->setContentsMargins(0, 0, 0, 0);
         directoryLayout->setSpacing(8);
-        auto* directoryRow = new QHBoxLayout;
-        directoryRow->setSpacing(4);
-        directoryRow->addWidget(m_path, 1);
-        m_browse = new AdButton(directory);
-        m_browse->setIconRef(icons::FolderOpen());
-        m_browse->setFixedSize(32, 32);
-        directoryRow->addWidget(m_browse);
-        directoryLayout->addLayout(directoryRow);
+        m_directory = new DirectoryPathInput(directory);
+        m_directory->setObjectName(QStringLiteral("saveDirectoryPathInput"));
+        m_directory->lineEdit()->setObjectName(QStringLiteral("saveDirectoryInput"));
+        m_directory->browseButton()->setObjectName(QStringLiteral("saveDirectoryBrowseButton"));
+        m_directory->setText(m_state.directory);
+        directoryLayout->addWidget(m_directory);
         addField("Save path", directory, "directory");
-        connect(m_browse, &QAbstractButton::clicked, this, [this] {
+        connect(m_directory, &DirectoryPathInput::browseRequested, this, [this] {
             const QString path = QFileDialog::getExistingDirectory(
-                window(), tr("Select save directory"), m_path->text());
+                window(), tr("Select save directory"), m_directory->text());
             if (!path.isEmpty())
-                m_path->setText(path);
+                m_directory->setText(path);
         });
         m_shortcutsHost = new QWidget(directory);
         m_shortcutsHost->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
@@ -120,56 +128,45 @@ class SaveContent final : public QWidget {
         m_format->setObjectName(QStringLiteral("saveFormatSelect"));
         addField("Image format", m_format, "format");
 
-        auto* dimensions = new QWidget(m_form);
-        auto* dimensionLayout = new QHBoxLayout(dimensions);
-        dimensionLayout->setContentsMargins(0, 0, 0, 24);
-        dimensionLayout->setSpacing(0);
+        auto* dimensions = new AdForm(m_form);
+        configureForm(dimensions);
+        dimensions->setObjectName(QStringLiteral("saveDimensionsForm"));
+        dimensions->setFormLayout(AdForm::FormLayout::Inline);
+        dimensions->setFixedWidth(kSaveFormContentWidth);
         m_width = number("saveWidthInput");
         m_height = number("saveHeightInput");
-        for (const auto& pair :
-             {std::pair<const char*, AdInputNumber*>("Width", m_width), {"Height", m_height}}) {
-            if (pair.second == m_height) {
-                m_lock = new AdButton(dimensions);
-                m_lock->setObjectName(QStringLiteral("saveAspectLockButton"));
-                m_lock->setButtonStyle(AdButton::ButtonStyle::Text);
-                m_lock->setCheckable(true);
-                m_lock->setChecked(true);
-                m_lock->setFixedSize(32, 32);
-                dimensionLayout->addWidget(m_lock, 0, Qt::AlignBottom);
-            }
-            auto* field = new QWidget(dimensions);
-            auto* fieldLayout = new QVBoxLayout(field);
-            fieldLayout->setContentsMargins(0, 0, 0, 0);
-            fieldLayout->setSpacing(8);
-            auto* label = new QLabel(field);
-            label->setProperty("exportLabel", pair.first);
-            label->setBuddy(pair.second);
-            fieldLayout->addWidget(label);
-            fieldLayout->addWidget(pair.second);
-            dimensionLayout->addWidget(field, 1);
-        }
+        auto* widthItem = dimensions->addField({}, m_width, QStringLiteral("width"));
+        widthItem->setProperty("exportLabel", "Width");
+        widthItem->setItemLayout(AdFormItem::ItemLayout::Vertical);
+        widthItem->setFixedWidth(kDimensionFieldWidth);
+
+        auto* lockControl = new QWidget(dimensions);
+        lockControl->setFixedSize(kAspectRatioLockButtonSize, kDimensionLockControlHeight);
+        auto* lockLayout = new QVBoxLayout(lockControl);
+        lockLayout->setContentsMargins(0, 30, 0, 0);
+        lockLayout->setSpacing(0);
+        m_lock = new AspectRatioLockButton(lockControl);
+        m_lock->setObjectName(QStringLiteral("saveAspectLockButton"));
+        m_lock->setChecked(true);
+        lockLayout->addWidget(m_lock);
+        auto* lockItem = dimensions->addField({}, lockControl);
+        lockItem->setItemLayout(AdFormItem::ItemLayout::Vertical);
+        lockItem->setNoStyle(true);
+        lockItem->setFixedWidth(kAspectRatioLockButtonSize);
+
+        auto* heightItem = dimensions->addField({}, m_height, QStringLiteral("height"));
+        heightItem->setProperty("exportLabel", "Height");
+        heightItem->setItemLayout(AdFormItem::ItemLayout::Vertical);
+        heightItem->setFixedWidth(kDimensionFieldWidth);
         auto* dimensionsItem = m_form->addField({}, dimensions, QStringLiteral("dimensions"));
         dimensionsItem->setNoStyle(true);
-        auto* quality = new QWidget(m_form);
-        auto* qualityLayout = new QHBoxLayout(quality);
-        qualityLayout->setContentsMargins(0, 0, 0, 0);
-        qualityLayout->setSpacing(8);
-        m_quality = new AdSlider(quality);
+
+        m_quality = new AdSlider(m_form);
         m_quality->setObjectName(QStringLiteral("saveQualitySlider"));
         m_quality->setRange(1, 100);
         m_quality->setValue(100);
         m_quality->setSingleStep(1);
-        m_qualityValue = new QLabel(quality);
-        m_qualityValue->setFixedWidth(40);
-        m_qualityValue->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        m_lossless = new AdTag(quality);
-        m_lossless->setObjectName(QStringLiteral("saveLosslessBadge"));
-        m_lossless->setColorScheme(AdTag::ColorScheme::Success);
-        m_lossless->setFocusPolicy(Qt::NoFocus);
-        qualityLayout->addWidget(m_quality, 1);
-        qualityLayout->addWidget(m_qualityValue);
-        qualityLayout->addWidget(m_lossless);
-        addField("Quality", quality, "quality");
+        addField("Quality", m_quality, "quality");
         m_error = new QLabel(m_form);
         m_error->setObjectName(QStringLiteral("saveErrorLabel"));
         m_error->setWordWrap(true);
@@ -186,7 +183,13 @@ class SaveContent final : public QWidget {
         m_debounce.setSingleShot(true);
         m_debounce.setInterval(140);
         connect(&m_debounce, &QTimer::timeout, this, [this] { startRender(); });
-        connect(m_path, &AdLineEdit::textChanged, this, [this](const QString& value) {
+        m_menuCloseTimer.setSingleShot(true);
+        m_menuCloseTimer.setInterval(150);
+        connect(&m_menuCloseTimer, &QTimer::timeout, this, [this] {
+            if (m_menu && m_menu->isVisible() && !shortcutMenuContains(QCursor::pos()))
+                m_menu->hide();
+        });
+        connect(m_directory, &DirectoryPathInput::textChanged, this, [this](const QString& value) {
             m_state.directory = value;
             validateFields();
         });
@@ -196,9 +199,6 @@ class SaveContent final : public QWidget {
         });
         connect(m_format, &AdSelect::currentValueChanged, this, [this](const QVariant& value) {
             m_state.output.format = ScreenshotImageFileService::formatForKey(value.toString());
-            m_filename->setText(QFileInfo(ScreenshotImageFileService::normalizedPath(
-                                              m_filename->text(), m_state.output.format))
-                                    .fileName());
             changed();
         });
         connect(m_width, &AdInputNumber::valueChanged, this,
@@ -236,6 +236,7 @@ class SaveContent final : public QWidget {
         m_closed = true;
         ++m_generation;
         m_debounce.stop();
+        m_menuCloseTimer.stop();
         m_job.cancel();
         m_saveJob.cancel();
         if (cancelSource)
@@ -247,7 +248,7 @@ class SaveContent final : public QWidget {
     void save() {
         if (m_saving || !m_source.rows.isValid())
             return;
-        m_state.directory = m_path->text();
+        m_state.directory = m_directory->text();
         m_state.filename = m_filename->text();
         const QString error = m_state.validationError();
         if (!error.isEmpty()) {
@@ -302,6 +303,21 @@ class SaveContent final : public QWidget {
                 button && button->property("shortcutIndex").isValid())
                 openShortcutMenu(button, button->property("shortcutIndex").toInt());
         }
+        if (m_menu && m_menu->isVisible() &&
+            (object == m_menu || object == m_menu->triggerWidget())) {
+            if (event->type() == QEvent::Enter) {
+                m_menuCloseTimer.stop();
+            } else if (event->type() == QEvent::Leave) {
+                m_menuCloseTimer.start();
+            } else if (event->type() == QEvent::MouseMove) {
+                // QMenu also receives grabbed mouse moves outside its native popup window.
+                const auto* mouse = static_cast<QMouseEvent*>(event);
+                if (shortcutMenuContains(mouse->globalPosition().toPoint()))
+                    m_menuCloseTimer.stop();
+                else if (!m_menuCloseTimer.isActive())
+                    m_menuCloseTimer.start();
+            }
+        }
         return QWidget::eventFilter(object, event);
     }
 
@@ -354,12 +370,10 @@ class SaveContent final : public QWidget {
         m_modal->setWindowTitle(tr("Save as file"));
         m_modal->setAcceptText(tr("Save"));
         m_modal->setRejectText(tr("Cancel"));
-        m_browse->setToolTip(tr("Select save directory"));
-        m_browse->setAccessibleName(m_browse->toolTip());
+        m_directory->setBrowseButtonText(tr("Select save directory"));
         m_lock->setToolTip(tr("Lock aspect ratio"));
         m_lock->setAccessibleName(m_lock->toolTip());
-        m_lossless->setText(tr("Lossless"));
-        m_path->setAccessibleName(tr("Save path"));
+        m_directory->lineEdit()->setAccessibleName(tr("Save path"));
         m_filename->setAccessibleName(tr("File name"));
         m_format->setAccessibleName(tr("Image format"));
         m_width->setAccessibleName(tr("Width"));
@@ -369,12 +383,6 @@ class SaveContent final : public QWidget {
             const QByteArray source = item->property("exportLabel").toByteArray();
             if (!source.isEmpty())
                 item->setLabel(translated(source.constData()));
-        }
-        for (auto* label : findChildren<QLabel*>()) {
-            const QByteArray source = label->property("exportLabel").toByteArray();
-            if (!source.isEmpty()) {
-                label->setText(translated(source.constData()));
-            }
         }
         const QSignalBlocker blocker(m_format);
         QVector<AdSelect::Option> options;
@@ -443,18 +451,16 @@ class SaveContent final : public QWidget {
         }
         m_shortcuts = snow_shot::storage::ScreenshotSettings().savePathShortcuts();
         auto add = [this](const QString& name, const QString& path, int index) {
-            auto* group = new QWidget(m_shortcutsHost);
-            auto* row = new QHBoxLayout(group);
-            row->setContentsMargins(0, 0, 0, 0);
-            row->setSpacing(0);
+            auto* group = new AdFieldGroup(m_shortcutsHost);
+            group->setObjectName(QStringLiteral("savePathShortcutGroup_%1").arg(index));
             auto* button = new AdButton(name, group);
             button->setSizeClass(AdButton::SizeClass::Small);
             button->setMaximumWidth(230);
             button->setToolTip(path);
             button->setObjectName(QStringLiteral("savePathShortcut_%1").arg(index));
-            row->addWidget(button);
+            group->addControl(button);
             connect(button, &QAbstractButton::clicked, this,
-                    [this, path] { m_path->setText(path); });
+                    [this, path] { m_directory->setText(path); });
             if (index >= 0) {
                 auto* expand = new AdButton(group);
                 expand->setObjectName(QStringLiteral("savePathExpand_%1").arg(index));
@@ -467,7 +473,7 @@ class SaveContent final : public QWidget {
                 expand->installEventFilter(this);
                 connect(expand, &QAbstractButton::clicked, this,
                         [this, expand, index] { openShortcutMenu(expand, index); });
-                row->addWidget(expand);
+                group->addControl(expand);
             }
             m_shortcutsLayout->addWidget(group);
         };
@@ -492,6 +498,13 @@ class SaveContent final : public QWidget {
         if (m_shortcutsHost->minimumHeight() != height)
             m_shortcutsHost->setFixedHeight(height);
     }
+    bool shortcutMenuContains(const QPoint& globalPosition) const {
+        if (!m_menu)
+            return false;
+        const auto* trigger = m_menu->triggerWidget();
+        return m_menu->rect().contains(m_menu->mapFromGlobal(globalPosition)) ||
+               (trigger && trigger->rect().contains(trigger->mapFromGlobal(globalPosition)));
+    }
     void openShortcutMenu(AdButton* trigger, int index) {
         if ((m_menu && m_menu->isVisible()) || index < 0 || index >= m_shortcuts.size())
             return;
@@ -501,8 +514,11 @@ class SaveContent final : public QWidget {
         m_menu = menu;
         menu->setObjectName(QStringLiteral("savePathMenu"));
         menu->setTriggerWidget(trigger);
+        menu->installEventFilter(this);
+        connect(menu, &QMenu::aboutToHide, &m_menuCloseTimer, &QTimer::stop);
         const auto theme = adqt::theme::ThemeManager::instance().resolveTheme(this);
         auto tokens = menu->componentTokens();
+        tokens.minimumWidth = 0;
         tokens.text = theme.colorPrimary;
         tokens.hoverText = theme.colorPrimary;
         menu->setComponentTokens(tokens);
@@ -617,11 +633,13 @@ class SaveContent final : public QWidget {
     }
     void updateControls() {
         m_quality->setEnabled(m_state.output.format != Format::Png);
-        m_qualityValue->setText(tr("%1%").arg(m_state.output.quality));
-        m_lossless->setVisible(m_state.lossless());
-        m_lock->setIconRef(m_state.lockAspectRatio ? icons::Lock() : icons::Unlock());
-        m_lock->setAccentRole(m_state.lockAspectRatio ? AdButton::AccentRole::Primary
-                                                      : AdButton::AccentRole::Neutral);
+        AdSlider::Mark minimumMark;
+        minimumMark.label = tr("0%");
+        AdSlider::Mark maximumMark;
+        maximumMark.label =
+            formatSupportsLossless(m_state.output.format) ? tr("Lossless") : tr("100%");
+        m_quality->setMarks(
+            {{m_quality->minimum(), minimumMark}, {m_quality->maximum(), maximumMark}});
     }
     void changed() {
         updateControls();
@@ -821,21 +839,19 @@ class SaveContent final : public QWidget {
     bool m_renderRunning = false;
     ScreenshotSavePreviewCanvas* m_preview = nullptr;
     AdForm* m_form = nullptr;
-    AdLineEdit* m_path = nullptr;
+    DirectoryPathInput* m_directory = nullptr;
     AdLineEdit* m_filename = nullptr;
-    AdButton* m_browse = nullptr;
     AdSelect* m_format = nullptr;
     AdInputNumber* m_width = nullptr;
     AdInputNumber* m_height = nullptr;
-    AdButton* m_lock = nullptr;
+    AspectRatioLockButton* m_lock = nullptr;
     AdSlider* m_quality = nullptr;
-    AdTag* m_lossless = nullptr;
-    QLabel* m_qualityValue = nullptr;
     QLabel* m_error = nullptr;
     QWidget* m_shortcutsHost = nullptr;
     adqt::widgets::detail::FlowLayout* m_shortcutsLayout = nullptr;
     QVector<Shortcut> m_shortcuts;
     QPointer<AdContextMenu> m_menu;
+    QTimer m_menuCloseTimer;
     QPointer<AdModal> m_editor;
     QPointer<AdModal> m_overwrite;
 };
@@ -848,6 +864,8 @@ class SaveContent final : public QWidget {
     QT_TRANSLATE_NOOP("ScreenshotSaveAsFileDialog", "Width"),
     QT_TRANSLATE_NOOP("ScreenshotSaveAsFileDialog", "Height"),
     QT_TRANSLATE_NOOP("ScreenshotSaveAsFileDialog", "Quality"),
+    QT_TRANSLATE_NOOP("ScreenshotSaveAsFileDialog", "0%"),
+    QT_TRANSLATE_NOOP("ScreenshotSaveAsFileDialog", "100%"),
     QT_TRANSLATE_NOOP("ScreenshotSaveAsFileDialog", "PNG"),
     QT_TRANSLATE_NOOP("ScreenshotSaveAsFileDialog", "JPEG"),
     QT_TRANSLATE_NOOP("ScreenshotSaveAsFileDialog", "WebP"),
@@ -868,8 +886,7 @@ ScreenshotSaveDialogState ScreenshotSaveDialogState::initial(QSize size) {
     else
         result.directory = ScreenshotImageFileService::saveDialogDirectory({}, configured);
     result.filename =
-        ScreenshotImageFileService::suggestedBaseName(settings.manualSaveFilenameFormat()) +
-        QStringLiteral(".png");
+        ScreenshotImageFileService::suggestedBaseName(settings.manualSaveFilenameFormat());
     result.sourceSize = size;
     result.output.size = size;
     return result;
@@ -919,8 +936,7 @@ QString ScreenshotSaveDialogState::outputPath() const {
         QDir(directory.trimmed()).filePath(filename.trimmed()), output.format);
 }
 bool ScreenshotSaveDialogState::lossless() const {
-    return output.quality == 100 && (output.format == Format::Webp ||
-                                     output.format == Format::Jxl || output.format == Format::Avif);
+    return output.quality == 100 && formatSupportsLossless(output.format);
 }
 
 bool ScreenshotSaveAsFileDialog::open(QObject* lifetime, QWidget* owner,

@@ -465,7 +465,7 @@ struct AdButton::Private {
   bool autoCursorManaged = false;
   bool applyingAutoCursor = false;
   mutable bool circleTextWarningIssued = false;
-  QWidget* disabledCursorOverlay = nullptr;
+  QPointer<QWidget> disabledCursorOverlay;
 
   adqt::icons::IconRef iconRef;
   adqt::icons::IconRef busyIconRef;

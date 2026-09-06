@@ -1,26 +1,33 @@
 #include "snow_shot/presentation/screenshotsaveasfiledialog.h"
 #include "snow_shot/presentation/screenshotsavepreviewcanvas.h"
 #include "snow_shot/presentation/screenshotexportartifact.h"
+#include "snow_shot/presentation/components/aspectratiolockbutton.h"
+#include "snow_shot/presentation/components/pathinput.h"
+#include "snow_shot/presentation/components/settingspagewidget.h"
 #include "snow_shot/presentation/globalshortcutmanager.h"
 #include "snow_shot/presentation/settings/settingsbackend.h"
+#include "snow_shot/presentation/settings/settingsregistry.h"
+#include "snow_shot/presentation/settings/settingsruntimesession.h"
 #include "snow_shot/storage/applicationstorage.h"
 #include "snow_shot/storage/configurationschema.h"
 #include "screenshotsaveexportpipeline.h"
 #include "snowimageqtcodec.h"
 #include "widgets/button.h"
 #include "widgets/context_menu.h"
+#include "widgets/field_group.h"
 #include "widgets/form.h"
 #include "widgets/input_line_edit.h"
 #include "widgets/input_number.h"
 #include "widgets/modal.h"
 #include "widgets/select.h"
 #include "widgets/slider.h"
-#include "widgets/tag.h"
 #include "theme/theme_manager.h"
 
 #include <QApplication>
 #include <QColorSpace>
+#include <QCursor>
 #include <QElapsedTimer>
+#include <QEnterEvent>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -30,6 +37,8 @@
 #include <QPainter>
 #include <QPointer>
 #include <QScrollArea>
+#include <QScopeGuard>
+#include <QScreen>
 #include <QTranslator>
 #include <QTemporaryDir>
 #include <QThread>
@@ -47,8 +56,10 @@ namespace pipeline = screenshot_save_export;
 using Format = ScreenshotImageFileFormat;
 
 void require(bool condition, const char* message) {
-    if (!condition)
+    if (!condition) {
+        std::cerr << message << '\n';
         throw std::runtime_error(message);
+    }
 }
 void processUntil(const std::function<bool()>& condition) {
     QElapsedTimer timer;
@@ -63,6 +74,18 @@ void flush() {
     QApplication::processEvents();
     QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 }
+
+void requireJoinedPathControl(DirectoryPathInput* control) {
+    require(control != nullptr, "path input component is missing");
+    control->setFixedWidth(320);
+    control->show();
+    flush();
+    auto* group = control->fieldGroup();
+    require(group != nullptr && group->controlCount() == 2,
+            "path input must use a two-control Ant field group");
+    require(control->lineEdit()->geometry().right() == control->browseButton()->geometry().left(),
+            "path input and browse button must share a joined border without a gap");
+}
 template <class T> T* child(QObject* parent, const char* name) {
     auto* result = parent->findChild<T*>(QString::fromLatin1(name));
     require(result != nullptr, name);
@@ -75,6 +98,44 @@ QImage fixture(QSize size = QSize(160, 100)) {
         for (int x = 0; x < size.width(); ++x)
             image.setPixelColor(x, y, QColor((x * 9) % 256, (y * 17) % 256, (x + y) % 256));
     return image;
+}
+
+void reusablePathInputsAndSettings() {
+    DirectoryPathInput directory;
+    directory.setText(QStringLiteral("C:/captures"));
+    requireJoinedPathControl(&directory);
+    require(adqt::icons::describeIcon(directory.browseButton()->iconRef()).key.name ==
+                QStringLiteral("folder-open"),
+            "directory input must use FolderOpenOutlined");
+
+    FilePathInput file;
+    file.setText(QStringLiteral("C:/captures/icon.png"));
+    requireJoinedPathControl(&file);
+    require(adqt::icons::describeIcon(file.browseButton()->iconRef()).key.name ==
+                QStringLiteral("file-add"),
+            "file input must differ only by using FileAddOutlined");
+
+    snow_shot::presentation::GlobalShortcutManager shortcuts;
+    settings::BuiltInSettingsBackend backend(shortcuts);
+    const auto& registry = settings::builtInSettingsRegistry();
+    settings::SettingsRuntimeSession session(registry, backend);
+    SettingsPageWidget storagePage(registry, QStringLiteral("storage-and-privacy"), session);
+    const auto directoryControls = storagePage.findChildren<DirectoryPathInput*>();
+    require(directoryControls.size() == 2,
+            "all screenshot and recording directory settings must use DirectoryPathInput");
+    for (DirectoryPathInput* control : directoryControls) {
+        require(qobject_cast<FilePathInput*>(control) == nullptr &&
+                    adqt::icons::describeIcon(control->browseButton()->iconRef()).key.name ==
+                        QStringLiteral("folder-open"),
+                "directory settings must use the directory-specific path control");
+    }
+
+    SettingsPageWidget interfacePage(registry, QStringLiteral("interface-settings"), session);
+    const auto fileControls = interfacePage.findChildren<FilePathInput*>();
+    require(fileControls.size() == 1 &&
+                adqt::icons::describeIcon(fileControls.constFirst()->browseButton()->iconRef())
+                        .key.name == QStringLiteral("file-add"),
+            "file settings must use FilePathInput with FileAddOutlined");
 }
 void snapshot(AdModal* modal, const QString& name) {
     const QString directory = qEnvironmentVariable("SNOW_EXPORT_TEST_SCREENSHOT_DIR");
@@ -100,7 +161,29 @@ AdModal* openDialog(QWidget& owner, const QImage& image,
     processUntil(
         [&] { return modal->contentWidget()->property("previewGeneration").toULongLong() > 0; });
     flush();
+    require(child<AdInputNumber>(modal->contentWidget(), "saveWidthInput")->isEnabled() &&
+                child<AdInputNumber>(modal->contentWidget(), "saveHeightInput")->isEnabled() &&
+                child<AdButton>(modal->contentWidget(), "saveAspectLockButton")->isEnabled(),
+            "loading the screenshot must restore dimension and aspect-lock controls");
     return modal;
+}
+
+void centersOnDisplayOverlay() {
+    for (QScreen* screen : QApplication::screens()) {
+        QWidget overlay(nullptr, Qt::Tool | Qt::FramelessWindowHint);
+        overlay.setScreen(screen);
+        overlay.setGeometry(screen->geometry());
+        overlay.show();
+        flush();
+        auto* modal = openDialog(overlay, fixture());
+        QWidget* surface = modal->contentWidget()->window();
+        const QPoint offset = surface->geometry().center() - screen->geometry().center();
+        require(std::abs(offset.x()) <= 1 && std::abs(offset.y()) <= 1,
+                "Save dialog must be centered on its selection display overlay");
+        require(surface->screen() == screen, "Save dialog must remain on its selection display");
+        modal->reject();
+        flush();
+    }
 }
 
 void persistence(const QTemporaryDir& temp) {
@@ -173,6 +256,8 @@ void stateRules(const QTemporaryDir& temp) {
                 settings.setLastManualSaveDirectory(remembered),
             "directory setup failed");
     auto state = ScreenshotSaveDialogState::initial(QSize(160, 100));
+    require(!state.filename.isEmpty() && !state.filename.endsWith(QStringLiteral(".png")),
+            "suggested filename must omit the image format extension");
     require(state.directory == remembered && state.output.size == QSize(160, 100) &&
                 state.output.format == Format::Png && state.output.quality == 100 &&
                 state.lockAspectRatio,
@@ -191,6 +276,7 @@ void stateRules(const QTemporaryDir& temp) {
     state.lockAspectRatio = false;
     state.setDimension(false, 123);
     require(state.output.size == QSize(320, 123), "unlocked height must be independent");
+    state.filename = QStringLiteral("capture");
     for (auto format : {Format::Png, Format::Jpeg, Format::Webp, Format::Jxl, Format::Avif}) {
         state.output.format = format;
         state.output.quality = 100;
@@ -202,8 +288,10 @@ void stateRules(const QTemporaryDir& temp) {
             require(options.lossless, "quality 100 must explicitly encode losslessly");
         state.output.quality = 75;
         require(!state.lossless(), "lossy export must not show lossless badge");
-        require(state.outputPath().endsWith('.' + ScreenshotImageFileService::extension(format)),
-                "output extension must match selected format");
+        require(state.outputPath() == QDir(state.directory)
+                                          .filePath(QStringLiteral("capture.") +
+                                                    ScreenshotImageFileService::extension(format)),
+                "output must preserve the base name and append the selected format extension");
     }
     state.output.size = QSize(0, 100);
     require(!state.validationError().isEmpty(), "zero dimensions must fail");
@@ -308,9 +396,24 @@ void canvasInteraction() {
     flush();
     const auto screenshot = canvas.grab().toImage();
     const qreal dpr = screenshot.devicePixelRatio();
+    const auto pixel = [&screenshot, dpr](int x, int y) {
+        return screenshot.pixelColor(qRound(x * dpr), qRound(y * dpr));
+    };
     require(screenshot.pixelColor(qRound(200 * dpr), qRound(170 * dpr)) == QColor(Qt::red) &&
                 screenshot.pixelColor(qRound(400 * dpr), qRound(170 * dpr)) == QColor(Qt::green),
             "split canvas must render original on left and output on right");
+    require(pixel(295, 20) == QColor(Qt::white) && pixel(296, 20) != QColor(Qt::white) &&
+                pixel(303, 20) != pixel(304, 20),
+            "comparison divider must use the viewer-style eight-pixel dark track");
+    require(pixel(280, 200) == QColor(Qt::black) && pixel(292, 200).red() > 220 &&
+                pixel(292, 200).green() > 220 && pixel(307, 200) != QColor(Qt::black),
+            "comparison divider must use the viewer-style circular directional thumb");
+    QMouseEvent hover(QEvent::MouseMove, QPointF(300, 200), QPointF(300, 200), Qt::NoButton,
+                      Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&canvas, &hover);
+    const QImage hovered = canvas.grab().toImage();
+    require(hovered.pixelColor(qRound(280 * dpr), qRound(200 * dpr)) != QColor(Qt::black),
+            "comparison divider thumb must show its hover state");
     canvas.setSplitRatio(-1);
     require(canvas.splitRatio() == 0, "split lower bound failed");
     canvas.setSplitRatio(2);
@@ -340,6 +443,121 @@ void canvasInteraction() {
     QApplication::sendEvent(&canvas, &move);
     QApplication::sendEvent(&canvas, &up);
     require(canvas.pan() == pan + QPointF(25, 20), "canvas dragging did not pan");
+}
+
+void shortcutPopupInteraction(QWidget& owner, const QTemporaryDir& temp) {
+    struct RestoreCursor {
+        QPoint position = QCursor::pos();
+        ~RestoreCursor() {
+            QCursor::setPos(position);
+        }
+    } restoreCursor;
+    storage::ScreenshotSettings settings;
+    require(settings.setSavePathShortcuts({{QStringLiteral("Work"), temp.path()}}),
+            "hover shortcut setup failed");
+    auto* modal = openDialog(owner, fixture());
+    const auto closeDialog = qScopeGuard([modal] {
+        modal->rejectButton()->click();
+        flush();
+    });
+    auto* content = modal->contentWidget();
+    auto* trigger = child<AdButton>(content, "savePathExpand_0");
+    auto enter = [](QWidget* widget) {
+        const QPoint local = widget->rect().center();
+        const QPoint global = widget->mapToGlobal(local);
+        QCursor::setPos(global);
+        flush();
+        QEnterEvent event(local, local, global);
+        QApplication::sendEvent(widget, &event);
+    };
+    auto leave = [](QWidget* widget) {
+        QEvent event(QEvent::Leave);
+        QApplication::sendEvent(widget, &event);
+    };
+    auto settle = [] {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < 350) {
+            QApplication::processEvents(QEventLoop::AllEvents, 10);
+            QThread::msleep(1);
+        }
+    };
+    const QPoint outside = content->mapToGlobal(QPoint(10, 10));
+    enter(trigger);
+    QPointer<AdContextMenu> menu = child<AdContextMenu>(content, "savePathMenu");
+    require(menu->isVisible(), "hovering the shortcut arrow must open its menu");
+    const int popupWidth = menu->width();
+    QCursor::setPos(outside);
+    leave(trigger);
+    settle();
+    require(menu != nullptr, "hover popup was unexpectedly replaced during pointer movement");
+    std::cerr << "Shortcut popup width: " << popupWidth
+              << "; visible after leaving trigger: " << menu->isVisible() << '\n';
+    require(!menu->isVisible(), "leaving the trigger without entering its menu must hide it");
+    require(popupWidth < 160, "two-action shortcut popup must size to its content");
+    flush();
+
+    enter(trigger);
+    flush();
+    menu = child<AdContextMenu>(content, "savePathMenu");
+    leave(trigger);
+    enter(menu);
+    settle();
+    require(menu->isVisible(), "moving from the shortcut arrow into its menu must keep it open");
+    auto requireLabelsFit = [&] {
+        const auto theme = adqt::theme::ThemeManager::instance().resolve(menu, trigger).values;
+        QFont font = menu->font();
+        font.setPixelSize(qMax(12, qRound(theme.fontSize)));
+        const QFontMetrics metrics(font);
+        const int iconAndPadding = 2 * qMax(8, qRound(theme.sizeSM)) +
+                                   qMax(12, qRound(theme.fontSize)) + qMax(6, qRound(theme.sizeXS));
+        for (auto* action : menu->actions()) {
+            const int available = menu->actionGeometry(action).width() - iconAndPadding;
+            require(metrics.elidedText(action->text(), Qt::ElideRight, available) == action->text(),
+                    "content-sized shortcut popup must display complete action labels");
+        }
+    };
+    requireLabelsFit();
+    const QString screenshotDirectory = qEnvironmentVariable("SNOW_EXPORT_TEST_SCREENSHOT_DIR");
+    if (!screenshotDirectory.isEmpty()) {
+        require(QDir().mkpath(screenshotDirectory) &&
+                    menu->grab().save(QDir(screenshotDirectory).filePath("save-path-menu.png")),
+                "shortcut popup snapshot could not be written");
+    }
+    const QString editText = menu->actions()[0]->text();
+    menu->actions()[0]->setText(QStringLiteral("Edit this saved directory shortcut"));
+    menu->adjustSize();
+    require(menu->width() > popupWidth &&
+                menu->actionGeometry(menu->actions()[0]).width() >
+                    menu->fontMetrics().horizontalAdvance(menu->actions()[0]->text()),
+            "content-sized shortcut menu must still expand for longer translated labels");
+    requireLabelsFit();
+    menu->actions()[0]->setText(editText);
+    menu->adjustSize();
+    leave(menu);
+    enter(trigger);
+    settle();
+    require(menu->isVisible(), "returning to the shortcut arrow must cancel pending dismissal");
+
+    // A native popup can grab mouse moves outside its bounds without another Leave event.
+    QCursor::setPos(outside);
+    QMouseEvent move(QEvent::MouseMove, menu->mapFromGlobal(outside), outside, Qt::NoButton,
+                     Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(menu, &move);
+    settle();
+    require(!menu->isVisible(),
+            "grabbed mouse movement outside the hover region must hide the menu");
+    flush();
+
+    enter(trigger);
+    flush();
+    menu = child<AdContextMenu>(content, "savePathMenu");
+    enter(menu);
+    QCursor::setPos(outside);
+    leave(menu);
+    settle();
+    require(!menu->isVisible(), "leaving the popup must hide it without a click");
+    require(settings.setSavePathShortcuts({}), "hover shortcut cleanup failed");
 }
 
 void shortcutsAndCancellation(QWidget& owner, const QTemporaryDir& temp) {
@@ -374,6 +592,15 @@ void shortcutsAndCancellation(QWidget& owner, const QTemporaryDir& temp) {
     flush();
     require(storage::ScreenshotSettings().savePathShortcuts().size() == 1,
             "confirmed shortcut must persist immediately");
+    auto* shortcutGroup = child<AdFieldGroup>(content, "savePathShortcutGroup_0");
+    require(shortcutGroup->controlCount() == 2,
+            "custom save path must group its main and edit buttons");
+    auto* shortcutButton = child<AdButton>(content, "savePathShortcut_0");
+    auto* shortcutEdit = child<AdButton>(content, "savePathExpand_0");
+    require(shortcutButton->parentWidget() == shortcutGroup &&
+                shortcutEdit->parentWidget() == shortcutGroup &&
+                shortcutButton->geometry().right() == shortcutEdit->geometry().left(),
+            "save path and edit buttons must share a joined border without a gap");
     child<AdButton>(content, "savePathExpand_0")->click();
     auto* menu = child<AdContextMenu>(content, "savePathMenu");
     require(menu->actions().size() == 2 && menu->actionDanger(menu->actions()[1]),
@@ -425,7 +652,47 @@ void previewAndSave(QWidget& owner, const QTemporaryDir& temp) {
     auto* content = modal->contentWidget();
     auto* format = child<AdSelect>(content, "saveFormatSelect");
     auto* quality = child<AdSlider>(content, "saveQualitySlider");
-    auto* badge = child<AdTag>(content, "saveLosslessBadge");
+    auto* filename = child<AdLineEdit>(content, "saveFilenameInput");
+    require(!filename->text().isEmpty() && !filename->text().endsWith(QStringLiteral(".png")),
+            "filename input must initially omit the image format extension");
+    filename->setText(QStringLiteral("capture.v2"));
+    for (const auto& key : {QStringLiteral("jpeg"), QStringLiteral("webp"), QStringLiteral("jxl"),
+                            QStringLiteral("avif"), QStringLiteral("png")}) {
+        format->setCurrentValue(key);
+        require(filename->text() == QStringLiteral("capture.v2"),
+                "changing formats must leave the filename input unchanged");
+    }
+    auto* directoryControl = child<DirectoryPathInput>(content, "saveDirectoryPathInput");
+    requireJoinedPathControl(directoryControl);
+    auto* dimensions = child<AdForm>(content, "saveDimensionsForm");
+    require(
+        dimensions->formLayout() == AdForm::FormLayout::Inline &&
+            dimensions->itemForName(QStringLiteral("width")) != nullptr &&
+            dimensions->itemForName(QStringLiteral("height")) != nullptr &&
+            dimensions->itemForName(QStringLiteral("width"))->label() == QStringLiteral("Width") &&
+            dimensions->itemForName(QStringLiteral("height"))->label() == QStringLiteral("Height"),
+        "dimensions must be standard fields in a two-column Ant form");
+    auto* widthItem = dimensions->itemForName(QStringLiteral("width"));
+    auto* heightItem = dimensions->itemForName(QStringLiteral("height"));
+    require(widthItem->isVisible() && heightItem->isVisible() &&
+                widthItem->geometry().top() == heightItem->geometry().top() &&
+                widthItem->geometry().right() < heightItem->geometry().left(),
+            "width and height fields must remain visible on the same form row");
+    auto* lockBase = child<AdButton>(content, "saveAspectLockButton");
+    auto* lock = dynamic_cast<AspectRatioLockButton*>(lockBase);
+    require(lock != nullptr && lock->isChecked() &&
+                adqt::icons::describeIcon(lock->iconRef()).key.name ==
+                    QStringLiteral("selection-lock-aspect"),
+            "Save as File must start with the selection editor aspect lock active");
+    const QRect lockGeometry(lock->mapTo(dimensions, QPoint()), lock->size());
+    require(widthItem->geometry().right() < lockGeometry.left() &&
+                lockGeometry.right() < heightItem->geometry().left(),
+            "aspect lock must remain between the width and height fields");
+    require(quality->marks().value(quality->minimum()).label == QStringLiteral("0%") &&
+                quality->marks().value(quality->maximum()).label == QStringLiteral("100%"),
+            "PNG quality endpoints must read 0% and 100%");
+    require(content->findChild<QWidget*>(QStringLiteral("saveLosslessBadge")) == nullptr,
+            "quality must not retain the separate lossless badge");
     snapshot(modal, QStringLiteral("export-light"));
     if (!qEnvironmentVariable("SNOW_EXPORT_TEST_SCREENSHOT_DIR").isEmpty()) {
         adqt::theme::ThemeManager::instance().setColorScheme(adqt::theme::ThemeScheme::Dark);
@@ -441,18 +708,21 @@ void previewAndSave(QWidget& owner, const QTemporaryDir& temp) {
         static_cast<void>(modal->takeContentWidget());
         modal->setContentWidget(content);
     }
-    require(!quality->isEnabled() && badge->isHidden(), "PNG must disable quality");
+    require(!quality->isEnabled(), "PNG must disable quality");
     for (const auto& key :
          {QStringLiteral("webp"), QStringLiteral("avif"), QStringLiteral("jxl")}) {
         format->setCurrentValue(key);
         quality->setValue(100);
-        require(quality->isEnabled() && !badge->isHidden(),
-                "lossless format must show badge at 100");
+        require(quality->isEnabled() &&
+                    quality->marks().value(quality->maximum()).label == QStringLiteral("Lossless"),
+                "lossless format must replace the 100% endpoint with Lossless");
         if (key == QStringLiteral("webp"))
             snapshot(modal, QStringLiteral("export-lossless"));
         quality->setValue(99);
-        require(badge->isHidden(), "quality below 100 must hide badge");
     }
+    format->setCurrentValue(QStringLiteral("jpeg"));
+    require(quality->marks().value(quality->maximum()).label == QStringLiteral("100%"),
+            "lossy format must restore the 100% endpoint");
     format->setCurrentValue(QStringLiteral("png"));
     const quint64 generation = content->property("previewGeneration").toULongLong();
     child<AdLineEdit>(content, "saveFilenameInput")->setText(QString());
@@ -462,7 +732,7 @@ void previewAndSave(QWidget& owner, const QTemporaryDir& temp) {
     require(child<AdInputNumber>(content, "saveHeightInput")->value() == 50 &&
                 !modal->acceptButton()->isEnabled(),
             "latest geometry must render despite invalid filename and Save must remain blocked");
-    child<AdLineEdit>(content, "saveFilenameInput")->setText(QStringLiteral("result.jpg"));
+    child<AdLineEdit>(content, "saveFilenameInput")->setText(QStringLiteral("result"));
     const QString blocking = temp.filePath("blocking-file");
     QFile file(blocking);
     require(file.open(QIODevice::WriteOnly), "blocking file fixture failed");
@@ -475,6 +745,10 @@ void previewAndSave(QWidget& owner, const QTemporaryDir& temp) {
     require(modal->isOpen() && savedPath.isEmpty() &&
                 storage::ScreenshotSettings().lastManualSaveDirectory() == remembered,
             "failed write must keep dialog open and remembered directory unchanged");
+    require(child<AdInputNumber>(content, "saveWidthInput")->isEnabled() &&
+                child<AdInputNumber>(content, "saveHeightInput")->isEnabled() &&
+                child<AdButton>(content, "saveAspectLockButton")->isEnabled(),
+            "failed saves must restore dimension and aspect-lock controls");
     const QString directory = temp.filePath("new/nested");
     child<AdLineEdit>(content, "saveDirectoryInput")->setText(directory);
     int changes = 0;
@@ -700,13 +974,37 @@ int main(int argc, char* argv[]) {
                     .initialize({temp.filePath("app"), temp.filePath("data"), 60000})
                     .success,
                 "test storage initialization failed");
+        if (app.arguments().contains(QStringLiteral("--canvas"))) {
+            canvasInteraction();
+            ScreenshotExportCoordinator::shared().shutdown();
+            storage::ApplicationStorage::instance().shutdown();
+            std::cout << "Export preview canvas tests passed\n";
+            return 0;
+        }
+        if (app.arguments().contains(QStringLiteral("--placement"))) {
+            centersOnDisplayOverlay();
+            ScreenshotExportCoordinator::shared().shutdown();
+            storage::ApplicationStorage::instance().shutdown();
+            std::cout << "Export dialog placement tests passed\n";
+            return 0;
+        }
+        QWidget owner;
+        owner.resize(1200, 800);
+        owner.show();
+        if (app.arguments().contains(QStringLiteral("--preview-and-save"))) {
+            previewAndSave(owner, temp);
+            ScreenshotExportCoordinator::shared().shutdown();
+            storage::ApplicationStorage::instance().shutdown();
+            std::cout << "Export preview and save tests passed\n";
+            return 0;
+        }
+        shortcutPopupInteraction(owner, temp);
+        centersOnDisplayOverlay();
+        reusablePathInputsAndSettings();
         persistence(temp);
         stateRules(temp);
         encodingAndBoundedSources();
         canvasInteraction();
-        QWidget owner;
-        owner.resize(1200, 800);
-        owner.show();
         shortcutsAndCancellation(owner, temp);
         previewAndSave(owner, temp);
         overwriteRequiresConfirmation(owner, temp);

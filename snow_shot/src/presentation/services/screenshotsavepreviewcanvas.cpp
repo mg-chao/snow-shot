@@ -1,15 +1,26 @@
 #include "snow_shot/presentation/screenshotsavepreviewcanvas.h"
 #include "theme/theme_manager.h"
-#include "antd_icons.h"
 
+#include <QKeyEvent>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
-#include <QWheelEvent>
-#include <QKeyEvent>
+#include <QPolygonF>
 #include <QResizeEvent>
-#include <cmath>
+#include <QWheelEvent>
+
 #include <algorithm>
+#include <cmath>
+
+namespace {
+constexpr qreal kSplitHitHalfWidth = 15.0;
+constexpr qreal kSplitTrackWidth = 8.0;
+constexpr qreal kSplitThumbRadius = 24.0;
+constexpr qreal kSplitThumbOutlineWidth = 1.0;
+constexpr qreal kSplitThumbHitRadius = 30.0;
+constexpr qreal kSplitArrowHalfHeight = 8.0;
+constexpr qreal kSplitArrowWidth = 7.0;
+} // namespace
 
 ScreenshotSavePreviewCanvas::ScreenshotSavePreviewCanvas(QWidget* parent) : QWidget(parent) {
     setObjectName(QStringLiteral("savePreviewCanvas"));
@@ -97,19 +108,40 @@ void ScreenshotSavePreviewCanvas::paintEvent(QPaintEvent*) {
     painter.setClipRect(QRectF(split, 0, width() - split, height()));
     painter.drawImage(bounds, m_output.isNull() ? m_original : m_output);
     painter.restore();
+
     const auto theme = adqt::theme::ThemeManager::instance().resolveTheme(this);
-    painter.setPen(QPen(QColor(0, 0, 0, 150), 3));
-    painter.drawLine(QPointF(split, 0), QPointF(split, height()));
-    painter.setPen(QPen(theme.colorPrimary, 1));
-    painter.drawLine(QPointF(split, 0), QPointF(split, height()));
     painter.setRenderHint(QPainter::Antialiasing);
-    painter.setBrush(theme.colorBgElevated);
-    const QRectF grip(split - 12, height() / 2.0 - 20, 24, 40);
-    painter.drawRoundedRect(grip, 4, 4);
-    const auto icon =
-        adqt::icons::antd::outlined::Swap(adqt::icons::IconColors::primary(theme.colorPrimary));
-    painter.drawPixmap(QPointF(split - 8, height() / 2.0 - 8),
-                       adqt::icons::renderIconPixmap(icon, {QSize(16, 16), devicePixelRatioF()}));
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(7, 9, 12, 158));
+    painter.drawRect(QRectF(split - kSplitTrackWidth / 2.0, 0, kSplitTrackWidth, height()));
+
+    const QPointF thumbCenter(split, height() / 2.0);
+    painter.setBrush(QColor(246, 248, 251, 66));
+    painter.drawEllipse(thumbCenter, kSplitThumbRadius + kSplitThumbOutlineWidth,
+                        kSplitThumbRadius + kSplitThumbOutlineWidth);
+    QColor thumbColor(Qt::black);
+    if (m_splitDragging) {
+        thumbColor = theme.scheme == adqt::theme::ThemeScheme::Dark ? QColor(10, 12, 16, 252)
+                                                                    : QColor(12, 15, 20, 250);
+    } else if (m_splitHovered) {
+        thumbColor = theme.scheme == adqt::theme::ThemeScheme::Dark ? QColor(31, 35, 42, 252)
+                                                                    : QColor(32, 36, 43, 250);
+    }
+    painter.setBrush(thumbColor);
+    painter.drawEllipse(thumbCenter, kSplitThumbRadius, kSplitThumbRadius);
+
+    painter.setBrush(QColor(246, 248, 251, 242));
+    painter.drawPolygon(QPolygonF{
+        QPointF(split - kSplitTrackWidth / 2.0, thumbCenter.y() - kSplitArrowHalfHeight),
+        QPointF(split - kSplitTrackWidth / 2.0 - kSplitArrowWidth, thumbCenter.y()),
+        QPointF(split - kSplitTrackWidth / 2.0, thumbCenter.y() + kSplitArrowHalfHeight),
+    });
+    painter.setBrush(theme.colorPrimary);
+    painter.drawPolygon(QPolygonF{
+        QPointF(split + kSplitTrackWidth / 2.0, thumbCenter.y() - kSplitArrowHalfHeight),
+        QPointF(split + kSplitTrackWidth / 2.0 + kSplitArrowWidth, thumbCenter.y()),
+        QPointF(split + kSplitTrackWidth / 2.0, thumbCenter.y() + kSplitArrowHalfHeight),
+    });
 }
 void ScreenshotSavePreviewCanvas::resizeEvent(QResizeEvent*) {
     if (m_fit)
@@ -122,13 +154,19 @@ void ScreenshotSavePreviewCanvas::mousePressEvent(QMouseEvent* event) {
     setFocus();
     m_last = event->position();
     m_dragging = true;
-    m_splitDragging = std::abs(m_last.x() - width() * m_split) <= 12;
+    m_splitDragging = splitHandleContains(m_last);
+    m_splitHovered = m_splitDragging;
     setCursor(m_splitDragging ? Qt::SplitHCursor : Qt::ClosedHandCursor);
+    update();
 }
 void ScreenshotSavePreviewCanvas::mouseMoveEvent(QMouseEvent* event) {
     if (!m_dragging) {
-        setCursor(std::abs(event->position().x() - width() * m_split) <= 12 ? Qt::SplitHCursor
-                                                                            : Qt::OpenHandCursor);
+        const bool hovered = splitHandleContains(event->position());
+        if (hovered != m_splitHovered) {
+            m_splitHovered = hovered;
+            update();
+        }
+        setCursor(hovered ? Qt::SplitHCursor : Qt::OpenHandCursor);
         return;
     }
     if (m_splitDragging)
@@ -140,10 +178,19 @@ void ScreenshotSavePreviewCanvas::mouseMoveEvent(QMouseEvent* event) {
     }
     m_last = event->position();
 }
-void ScreenshotSavePreviewCanvas::mouseReleaseEvent(QMouseEvent*) {
+void ScreenshotSavePreviewCanvas::mouseReleaseEvent(QMouseEvent* event) {
     m_dragging = false;
     m_splitDragging = false;
-    setCursor(Qt::OpenHandCursor);
+    m_splitHovered = splitHandleContains(event->position());
+    setCursor(m_splitHovered ? Qt::SplitHCursor : Qt::OpenHandCursor);
+    update();
+}
+void ScreenshotSavePreviewCanvas::leaveEvent(QEvent* event) {
+    if (!m_splitDragging && m_splitHovered) {
+        m_splitHovered = false;
+        update();
+    }
+    QWidget::leaveEvent(event);
 }
 void ScreenshotSavePreviewCanvas::mouseDoubleClickEvent(QMouseEvent*) {
     fitImage();
@@ -156,6 +203,12 @@ void ScreenshotSavePreviewCanvas::zoomAt(double value, QPointF position) {
     m_fit = false;
     updateReadout();
     update();
+}
+bool ScreenshotSavePreviewCanvas::splitHandleContains(QPointF position) const {
+    const QPointF delta = position - QPointF(width() * m_split, height() / 2.0);
+    return std::abs(delta.x()) <= kSplitHitHalfWidth ||
+           delta.x() * delta.x() + delta.y() * delta.y() <=
+               kSplitThumbHitRadius * kSplitThumbHitRadius;
 }
 void ScreenshotSavePreviewCanvas::wheelEvent(QWheelEvent* event) {
     const double steps = !event->pixelDelta().isNull() ? event->pixelDelta().y() / 100.0

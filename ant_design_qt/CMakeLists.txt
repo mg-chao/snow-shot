@@ -110,6 +110,14 @@ if(ADQT_BUILD_TESTS)
     # Test binaries must report failures as stderr output plus a non-zero
     # exit code instead of blocking on modal dialogs.
     snow_link_test_cli_guard(qt)
+    add_executable(adqt-button-lifetime-tests tests/button_lifetime_tests.cpp)
+    target_link_libraries(adqt-button-lifetime-tests PRIVATE adqt::widgets Qt6::Widgets)
+    add_test(NAME adqt-button-lifetime-tests COMMAND adqt-button-lifetime-tests)
+    set_tests_properties(adqt-button-lifetime-tests PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=$<IF:$<BOOL:${WIN32}>,windows,offscreen>"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    )
+
     add_executable(adqt-icon-cache-tests tests/icon_cache_tests.cpp)
     target_link_libraries(adqt-icon-cache-tests PRIVATE adqt::icon_core Qt6::Widgets)
     add_test(NAME adqt-icon-cache-tests COMMAND adqt-icon-cache-tests)

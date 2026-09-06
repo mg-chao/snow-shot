@@ -127,6 +127,35 @@ class PopupResizeRecorder final : public QObject {
     }
 };
 
+void nestedFormsRestoreExplicitControlEnabledState() {
+    QWidget owner;
+    AdForm form(&owner);
+    auto* nested = new AdForm;
+    auto* enabled = new adqt::widgets::AdInputNumber;
+    auto* disabled = new adqt::widgets::AdInputNumber;
+    disabled->setEnabled(false);
+    nested->addField(QStringLiteral("Enabled"), enabled);
+    nested->addField(QStringLiteral("Disabled"), disabled);
+    form.addField({}, nested);
+
+    for (int cycle = 0; cycle < 2; ++cycle) {
+        form.setDisabled(true);
+        require(!enabled->isEnabled() && !disabled->isEnabled(),
+                "disabling the outer form must disable nested controls");
+        form.setDisabled(false);
+        require(enabled->isEnabled(),
+                "re-enabling the outer form must restore enabled nested controls");
+        require(!disabled->isEnabled(),
+                "re-enabling the outer form must preserve explicitly disabled controls");
+    }
+
+    owner.setEnabled(false);
+    require(!enabled->isEnabled(), "disabling an ancestor must disable form controls");
+    owner.setEnabled(true);
+    require(enabled->isEnabled() && !disabled->isEnabled(),
+            "ancestor enable cycles must preserve explicit control states");
+}
+
 void inlineFormPreservesAntItemLayoutPrecedence() {
     AdForm form;
     form.setFormLayout(AdForm::FormLayout::Inline);
@@ -622,6 +651,7 @@ int main(int argc, char* argv[]) {
     QApplication application(argc, argv);
     QCursor::setPos(0, 0);
     flushEvents();
+    nestedFormsRestoreExplicitControlEnabledState();
     inlineFormPreservesAntItemLayoutPrecedence();
     inlineItemEndMarginParticipatesInWrapping();
     verticalColumnsExpandInputNumberControls();

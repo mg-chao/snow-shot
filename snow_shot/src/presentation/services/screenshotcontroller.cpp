@@ -20,6 +20,7 @@
 #include "snow_shot/presentation/screenshotexportcoordinator.h"
 #include "snow_shot/presentation/screenshotimagefileservice.h"
 #include "snow_shot/presentation/screenshotsaveasfiledialog.h"
+#include "snow_shot/presentation/screenshotsavedialogowner.h"
 #include "widgets/modal.h"
 #include "snow_shot/presentation/screenshotgeometry.h"
 #include "snow_shot/presentation/screenshothistoryservice.h"
@@ -2608,7 +2609,13 @@ void ScreenshotController::Impl::saveSelectionWithSnowDialog() {
         !resetCanvasEditingState())
         return;
     rememberKeyboardOwner(QApplication::focusWidget());
-    const QPointer<ScreenshotOverlayWindow> dialogOwner(keyboardOwnerOverlay());
+    const QPointer<ScreenshotOverlayWindow> keyboardOwner(keyboardOwnerOverlay());
+    const QRectF dialogSelection =
+        m_scrollingCaptureController && m_scrollingCaptureController->active()
+            ? QRectF(m_scrollingCaptureController->canvasSelection())
+            : m_selection.normalizedSelection();
+    const QPointer<ScreenshotOverlayWindow> dialogOwner(
+        screenshotSaveDialogOwner(m_displaySession, m_geometry, dialogSelection, keyboardOwner));
     if (!dialogOwner)
         return;
     auto history = std::make_shared<std::optional<ScreenshotHistoryEntry>>();
@@ -2625,7 +2632,7 @@ void ScreenshotController::Impl::saveSelectionWithSnowDialog() {
     const QPointer<ScreenshotController> receiver(&owner);
     const auto epoch = m_captureEpoch;
     const auto completed = std::make_shared<bool>(false);
-    auto finished = [receiver, dialogOwner, suspension, completed,
+    auto finished = [receiver, keyboardOwner, suspension, completed,
                      generation = *generation](bool saved) {
         if (std::exchange(*completed, true))
             return;
@@ -2641,7 +2648,7 @@ void ScreenshotController::Impl::saveSelectionWithSnowDialog() {
         if (impl.m_windowShortcutManager && suspension)
             impl.m_windowShortcutManager->resumeInput(suspension);
         if (!saved)
-            impl.restoreKeyboardOwnerQueued(dialogOwner);
+            impl.restoreKeyboardOwnerQueued(keyboardOwner);
     };
     m_cancelSaveDialog = [receiver, finished] {
         if (!receiver)

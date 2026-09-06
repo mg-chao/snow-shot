@@ -31,6 +31,7 @@ class ScreenshotSavePreviewCanvas final : public QWidget {
     void mousePressEvent(QMouseEvent*) override;
     void mouseMoveEvent(QMouseEvent*) override;
     void mouseReleaseEvent(QMouseEvent*) override;
+    void leaveEvent(QEvent*) override;
     void mouseDoubleClickEvent(QMouseEvent*) override;
     void wheelEvent(QWheelEvent*) override;
     void keyPressEvent(QKeyEvent*) override;
@@ -39,6 +40,7 @@ class ScreenshotSavePreviewCanvas final : public QWidget {
   private:
     void updateReadout();
     void zoomAt(double value, QPointF position);
+    [[nodiscard]] bool splitHandleContains(QPointF position) const;
     QImage m_original;
     QImage m_output;
     QPixmap m_checkerboard;
@@ -49,6 +51,7 @@ class ScreenshotSavePreviewCanvas final : public QWidget {
     double m_zoom = 1;
     bool m_dragging = false;
     bool m_splitDragging = false;
+    bool m_splitHovered = false;
     bool m_fit = true;
     QLabel* m_readout = nullptr;
     QLabel* m_busy = nullptr;

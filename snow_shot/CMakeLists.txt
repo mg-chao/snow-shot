@@ -645,6 +645,7 @@ set(SNOW_SHOT_SETTINGS_SOURCES
     include/snow_shot/presentation/globalshortcutmanager.h
     include/snow_shot/presentation/globalshortcuttypes.h
     include/snow_shot/presentation/components/drawingtoolbareditorsettingswidget.h
+    include/snow_shot/presentation/components/pathinput.h
     include/snow_shot/presentation/components/infotooltipicon.h
     include/snow_shot/presentation/components/pagecontainerwidget.h
     include/snow_shot/presentation/components/sectionheaderwidget.h
@@ -660,6 +661,7 @@ set(SNOW_SHOT_SETTINGS_SOURCES
     include/snow_shot/presentation/settings/textrecognitionacceleration.h
     include/snow_shot/presentation/styles/thememanager.h
     src/presentation/components/infotooltipicon.cpp
+    src/presentation/components/pathinput.cpp
     src/presentation/components/pagecontainerwidget.cpp
     src/presentation/components/sectionheaderwidget.cpp
     src/presentation/components/screenshothistorypagewidget.cpp
@@ -716,6 +718,7 @@ set(PROJECT_HEADERS
     include/snow_shot/platform/windows/focusedfullscreenwindow.h
     include/snow_shot/platform/windows/windowchrome.h
     include/snow_shot/platform/physicalcursor.h
+    include/snow_shot/presentation/components/aspectratiolockbutton.h
     include/snow_shot/presentation/components/contentcardwidget.h
     include/snow_shot/presentation/components/maincontentheaderwidget.h
     include/snow_shot/presentation/components/icons/snowshoticons.h
@@ -2539,8 +2542,15 @@ if(SNOW_SHOT_BUILD_TESTS)
     target_link_libraries(snow-shot-export-dialog-workflow-tests PRIVATE
         snow_shot_image_codec snow_shot_settings snow_draw_engine_qt_canvas Qt6::Widgets
     )
+    snow_shot_import_offscreen_platform(snow-shot-export-dialog-workflow-tests)
     add_test(NAME snow-shot-export-dialog-workflow-tests
         COMMAND snow-shot-export-dialog-workflow-tests)
+    add_test(NAME snow-shot-export-dialog-placement-tests
+        COMMAND snow-shot-export-dialog-workflow-tests --placement)
+    set_tests_properties(snow-shot-export-dialog-placement-tests PROPERTIES
+        TIMEOUT 30
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    )
     set_tests_properties(snow-shot-export-dialog-workflow-tests PROPERTIES
         TIMEOUT 180
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"

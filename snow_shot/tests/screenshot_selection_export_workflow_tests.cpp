@@ -3,6 +3,7 @@
 #include "snow_shot/presentation/screenshotdisplaysession.h"
 #include "snow_shot/presentation/screenshotselectionexportworkflow.h"
 #include "snow_shot/presentation/screenshotselectionmodel.h"
+#include "snow_shot/presentation/screenshotsavedialogowner.h"
 
 #include <QCoreApplication>
 #include <QObject>
@@ -16,6 +17,45 @@ void require(bool condition, const char* message) {
     if (!condition) {
         throw std::runtime_error(message);
     }
+}
+
+void saveDialogOwnerFollowsSelection() {
+    // The display session treats overlay pointers as opaque identities; no widget is dereferenced.
+    alignas(void*) int leftToken = 0;
+    alignas(void*) int rightToken = 0;
+    auto* leftOverlay = reinterpret_cast<ScreenshotOverlayWindow*>(&leftToken);
+    auto* rightOverlay = reinterpret_cast<ScreenshotOverlayWindow*>(&rightToken);
+    ScreenshotDisplaySession displays;
+    CapturedDisplayModel left;
+    left.active = true;
+    left.canvasRect = QRect(-2560, 0, 2560, 1440);
+    left.logicalRect = QRect(-1707, 0, 1707, 960);
+    displays.appendDisplay(left, leftOverlay);
+    CapturedDisplayModel right;
+    right.active = true;
+    right.canvasRect = QRect(0, 0, 1920, 1080);
+    right.logicalRect = right.canvasRect;
+    displays.appendDisplay(right, rightOverlay);
+    ScreenshotGeometryMapper geometry;
+
+    require(screenshotSaveDialogOwner(displays, geometry, QRectF(-2400, 100, 800, 600),
+                                      rightOverlay) == leftOverlay,
+            "Save dialog must follow the selection display when keyboard focus is elsewhere");
+    require(screenshotSaveDialogOwner(displays, geometry, QRectF(200, 100, 800, 600),
+                                      leftOverlay) == rightOverlay,
+            "Save dialog must follow the selection in either monitor direction");
+    require(screenshotSaveDialogOwner(displays, geometry, QRectF(-200, 100, 800, 600),
+                                      leftOverlay) == rightOverlay,
+            "a spanning selection must use the display containing its canvas center");
+    require(screenshotSaveDialogOwner(displays, geometry, QRectF(-2400, 100, 800, 600), nullptr) ==
+                leftOverlay,
+            "a selection must provide a Save dialog owner without keyboard focus");
+    require(screenshotSaveDialogOwner(displays, geometry, QRectF(), rightOverlay) == rightOverlay,
+            "an empty selection must preserve the keyboard owner fallback");
+    displays.clear();
+    require(screenshotSaveDialogOwner(displays, geometry, QRectF(10, 10, 100, 100), rightOverlay) ==
+                rightOverlay,
+            "missing displays must preserve the keyboard owner fallback");
 }
 
 class FakeComposer final : public ScreenshotSelectionImageComposerPort {
@@ -202,6 +242,7 @@ void staleResultHasNoSideEffects() {
 int main(int argc, char** argv) {
     QCoreApplication application(argc, argv);
     try {
+        saveDialogOwnerFollowsSelection();
         publicationSuccessPersistsAndCompletes();
         publicationFailureDoesNotPersist();
         invalidPayloadDoesNotPublish();

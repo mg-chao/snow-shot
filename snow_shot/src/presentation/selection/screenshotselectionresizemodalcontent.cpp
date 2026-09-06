@@ -1,6 +1,6 @@
 #include "snow_shot/presentation/screenshotselectionresizemodalcontent.h"
 
-#include "snow_shot/presentation/components/icons/snowshoticons.h"
+#include "snow_shot/presentation/components/aspectratiolockbutton.h"
 #include "snow_shot/presentation/screenshotselectionlimits.h"
 
 #include "antd_icons.h"
@@ -38,7 +38,6 @@ constexpr int kModalContentWidth = 452;
 constexpr int kNormalFormColumnWidth = 218;
 constexpr int kNormalFormColumnGap = kModalContentWidth - 2 * kNormalFormColumnWidth;
 constexpr int kAspectRatioLockButtonSize = 32;
-constexpr int kAspectRatioLockIconSize = 20;
 constexpr int kDimensionFieldWidth = (kModalContentWidth - kAspectRatioLockButtonSize) / 2;
 constexpr int kDimensionLockControlHeight = 62;
 constexpr int kColorPickerWidth = 154;
@@ -447,16 +446,10 @@ QWidget* ScreenshotSelectionResizeModalContent::createNormalPage() {
     aspectRatioLockLayout->setContentsMargins(0, 30, 0, 0);
     aspectRatioLockLayout->setSpacing(0);
 
-    m_lockAspectRatioButton = new adqt::widgets::AdButton(aspectRatioLockControl);
+    m_lockAspectRatioButton = new AspectRatioLockButton(aspectRatioLockControl);
     m_lockAspectRatioButton->setObjectName(QStringLiteral("selectionAspectRatioLockButton"));
-    m_lockAspectRatioButton->setButtonStyle(adqt::widgets::AdButton::ButtonStyle::Text);
-    m_lockAspectRatioButton->setInteractionBackgroundVisible(false);
-    m_lockAspectRatioButton->setAccentRole(adqt::widgets::AdButton::AccentRole::Neutral);
-    m_lockAspectRatioButton->setCheckable(true);
-    m_lockAspectRatioButton->setIconSize(QSize(kAspectRatioLockIconSize, kAspectRatioLockIconSize));
     m_lockAspectRatioButton->setToolTip(tr("Lock aspect ratio"));
     m_lockAspectRatioButton->setAccessibleName(tr("Lock aspect ratio"));
-    m_lockAspectRatioButton->setFixedSize(kAspectRatioLockButtonSize, kAspectRatioLockButtonSize);
     aspectRatioLockLayout->addWidget(m_lockAspectRatioButton);
 
     auto* aspectRatioLockItem = m_normalForm->addField(QString(), aspectRatioLockControl);
@@ -518,8 +511,6 @@ QWidget* ScreenshotSelectionResizeModalContent::createNormalPage() {
 
     connect(m_lockAspectRatioButton, &QAbstractButton::toggled, this,
             &ScreenshotSelectionResizeModalContent::handleAspectRatioToggle);
-    connect(&adqt::theme::ThemeManager::instance(), &adqt::theme::ThemeManager::themeChanged, this,
-            [this]() { updateAspectRatioLockIcon(); });
     connect(m_normalForm, &adqt::widgets::AdForm::fieldPathValueChanged, this,
             [this](const QStringList& fieldPath, const QVariant&) {
                 const bool quickSetChanged =
@@ -622,10 +613,6 @@ void ScreenshotSelectionResizeModalContent::applyParamsToFields(
     }
     if (m_lockAspectRatioButton != nullptr) {
         m_lockAspectRatioButton->setChecked(lockAspectRatio);
-        m_lockAspectRatioButton->setAccentRole(lockAspectRatio
-                                                   ? adqt::widgets::AdButton::AccentRole::Primary
-                                                   : adqt::widgets::AdButton::AccentRole::Neutral);
-        updateAspectRatioLockIcon();
     }
     m_editAspectRatio = lockAspectRatio
                             ? static_cast<double>(std::max(1, clamped.selection.height())) /
@@ -886,30 +873,7 @@ void ScreenshotSelectionResizeModalContent::updateGeometryRanges() {
     m_heightInput->setRange(1, maxHeight);
 }
 
-void ScreenshotSelectionResizeModalContent::updateAspectRatioLockIcon() {
-    if (m_lockAspectRatioButton == nullptr) {
-        return;
-    }
-
-    adqt::icons::IconColors colors;
-    if (m_lockAspectRatioButton->isChecked()) {
-        const QColor primaryActive = adqt::theme::ThemeManager::instance()
-                                         .resolveTheme(m_lockAspectRatioButton)
-                                         .colorPrimaryActive;
-        colors = adqt::icons::IconColors::primary(
-            primaryActive.isValid() ? primaryActive : QColor(QStringLiteral("#0958d9")));
-    }
-    m_lockAspectRatioButton->setIconRef(
-        snow_shot::presentation::icons::custom::outlined::SelectionLockAspect(colors));
-}
-
 void ScreenshotSelectionResizeModalContent::handleAspectRatioToggle(bool checked) {
-    if (m_lockAspectRatioButton != nullptr) {
-        m_lockAspectRatioButton->setAccentRole(checked
-                                                   ? adqt::widgets::AdButton::AccentRole::Primary
-                                                   : adqt::widgets::AdButton::AccentRole::Neutral);
-        updateAspectRatioLockIcon();
-    }
     if (m_syncing) {
         return;
     }

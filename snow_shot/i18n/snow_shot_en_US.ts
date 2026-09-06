@@ -1185,245 +1185,252 @@
 <context>
     <name>ScreenshotSaveAsFileDialog</name>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="103"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="357"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="109"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="352"/>
         <source>Select save directory</source>
         <translation>Select save directory</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="265"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="410"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="260"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="397"/>
         <source>Replace file</source>
         <translation>Replace file</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="267"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="411"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="262"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="398"/>
         <source>Replace the existing file &quot;%1&quot;?</source>
         <translation>Replace the existing file &quot;%1&quot;?</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="269"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="413"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="264"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="400"/>
         <source>Replace</source>
         <translation>Replace</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="270"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="356"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="414"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="421"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="538"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="265"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="351"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="401"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="408"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="523"/>
         <source>Cancel</source>
         <translation>Cancel</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="354"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="349"/>
         <source>Save as file</source>
         <translation>Save as file</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="355"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="350"/>
         <source>Save</source>
         <translation>Save</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="359"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="353"/>
         <source>Lock aspect ratio</source>
         <translation>Lock aspect ratio</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="361"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="606"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="835"/>
+        <source>0%</source>
+        <translation>0%</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="609"/>
         <source>Lossless</source>
         <translation>Lossless</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="362"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="845"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="355"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="829"/>
         <source>Save path</source>
         <translation>Save path</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="363"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="846"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="356"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="830"/>
         <source>File name</source>
         <translation>File name</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="364"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="847"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="357"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="831"/>
         <source>Image format</source>
         <translation>Image format</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="365"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="848"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="358"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="832"/>
         <source>Width</source>
         <translation>Width</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="366"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="849"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="359"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="833"/>
         <source>Height</source>
         <translation>Height</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="367"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="850"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="360"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="834"/>
         <source>Quality</source>
         <translation>Quality</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="405"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="509"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="392"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="494"/>
         <source>Edit</source>
         <translation>Edit</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="406"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="510"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="393"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="495"/>
         <source>Delete</source>
         <translation>Delete</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="418"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="532"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="405"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="517"/>
         <source>Edit save path</source>
         <translation>Edit save path</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="419"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="483"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="532"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="406"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="468"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="517"/>
         <source>Add save path</source>
         <translation>Add save path</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="420"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="537"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="407"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="522"/>
         <source>OK</source>
         <translation>OK</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="424"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="427"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="552"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="411"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="414"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="537"/>
         <source>Name</source>
         <translation>Name</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="425"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="429"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="553"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="412"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="416"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="538"/>
         <source>Path</source>
         <translation>Path</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="464"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="449"/>
         <source>Edit or delete save path</source>
         <translation>Edit or delete save path</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="474"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="459"/>
         <source>App directory</source>
         <translation>App directory</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="475"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="460"/>
         <source>Desktop</source>
         <translation>Desktop</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="519"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="578"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="504"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="563"/>
         <source>The save paths could not be stored</source>
         <translation>The save paths could not be stored</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="594"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="579"/>
         <source>Please enter a name</source>
         <translation>Please enter a name</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="598"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="583"/>
         <source>A save path with this name already exists</source>
         <translation>A save path with this name already exists</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="600"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="894"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="585"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="880"/>
         <source>Please enter an absolute directory path</source>
         <translation>Please enter an absolute directory path</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="620"/>
-        <source>%1%</source>
-        <translation>%1%</translation>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="609"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="836"/>
+        <source>100%</source>
+        <translation>100%</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="678"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="739"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="807"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="665"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="726"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="794"/>
         <source>The screenshot export queue is full</source>
         <translation>The screenshot export queue is full</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="681"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="668"/>
         <source>The screenshot could not be prepared</source>
         <translation>The screenshot could not be prepared</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="685"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="672"/>
         <source>The screenshot could not be prepared: %1</source>
         <translation>The screenshot could not be prepared: %1</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="726"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="713"/>
         <source>The export could not be prepared: %1</source>
         <translation>The export could not be prepared: %1</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="733"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="720"/>
         <source>The encoded preview could not be displayed: %1</source>
         <translation>The encoded preview could not be displayed: %1</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="793"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="780"/>
         <source>The screenshot could not be saved: %1</source>
         <translation>The screenshot could not be saved: %1</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="851"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="837"/>
         <source>PNG</source>
         <translation>PNG</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="852"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="838"/>
         <source>JPEG</source>
         <translation>JPEG</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="853"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="839"/>
         <source>WebP</source>
         <translation>WebP</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="854"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="840"/>
         <source>JPEG XL</source>
         <translation>JPEG XL</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="855"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="841"/>
         <source>AVIF</source>
         <translation>AVIF</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="904"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="890"/>
         <source>Please enter a valid file name</source>
         <translation>Please enter a valid file name</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="913"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="899"/>
         <location filename="../src/presentation/services/screenshotsaveexportpipeline.cpp" line="172"/>
         <source>The dimensions are not supported by this image format</source>
         <translation>The dimensions are not supported by this image format</translation>
@@ -1472,120 +1479,120 @@
 <context>
     <name>ScreenshotSelectionResizeModalContent</name>
     <message>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="401"/>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="763"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="400"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="750"/>
         <source>Add</source>
         <translation>Add</translation>
     </message>
     <message>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="395"/>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="397"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="394"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="396"/>
         <source>Quick set</source>
         <translation>Quick set</translation>
     </message>
     <message>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="407"/>
         <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="408"/>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="409"/>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="757"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="744"/>
         <source>Add preset</source>
         <translation>Add preset</translation>
     </message>
     <message>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="433"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="432"/>
         <source>Position X</source>
         <translation>Position X</translation>
     </message>
     <message>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="436"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="435"/>
         <source>Position Y</source>
         <translation>Position Y</translation>
     </message>
     <message>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="441"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="440"/>
         <source>Width</source>
         <translation>Width</translation>
     </message>
     <message>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="457"/>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="458"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="451"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="452"/>
         <source>Lock aspect ratio</source>
         <translation>Lock aspect ratio</translation>
     </message>
     <message>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="468"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="461"/>
         <source>Height</source>
         <translation>Height</translation>
     </message>
     <message>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="472"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="465"/>
         <source>Corner radius</source>
         <translation>Corner radius</translation>
     </message>
     <message>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="483"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="476"/>
         <source>Shadow width</source>
         <translation>Shadow width</translation>
     </message>
     <message>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="484"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="477"/>
         <source>Shadow color</source>
         <translation>Shadow color</translation>
     </message>
     <message>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="669"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="656"/>
         <source>Current selection</source>
         <translation>Current selection</translation>
     </message>
     <message>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="671"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="658"/>
         <source>Previous selection</source>
         <translation>Previous selection</translation>
     </message>
     <message>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="739"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="726"/>
         <source>Preset name</source>
         <translation>Preset name</translation>
     </message>
     <message>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="817"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="804"/>
         <source>Delete preset</source>
         <translation>Delete preset</translation>
     </message>
     <message>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="670"/>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="672"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="657"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="659"/>
         <source>Selection</source>
         <translation>Selection</translation>
     </message>
     <message>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="675"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="662"/>
         <source>Preset</source>
         <translation>Preset</translation>
     </message>
     <message>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="720"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="707"/>
         <source>%1 x %2</source>
         <translation>%1 x %2</translation>
     </message>
     <message>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="742"/>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="747"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="729"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="734"/>
         <source>Please enter a preset name</source>
         <translation>Please enter a preset name</translation>
     </message>
     <message>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="764"/>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="826"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="751"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="813"/>
         <source>Cancel</source>
         <translation>Cancel</translation>
     </message>
     <message>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="824"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="811"/>
         <source>Delete preset &quot;%1&quot;? This action cannot be undone</source>
         <translation>Delete preset &quot;%1&quot;? This action cannot be undone</translation>
     </message>
     <message>
-        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="825"/>
+        <location filename="../src/presentation/selection/screenshotselectionresizemodalcontent.cpp" line="812"/>
         <source>Delete</source>
         <translation>Delete</translation>
     </message>

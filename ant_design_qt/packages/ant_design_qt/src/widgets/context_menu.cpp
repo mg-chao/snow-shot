@@ -8,6 +8,7 @@
 #include <QCoreApplication>
 #include <QEvent>
 #include <QFontMetrics>
+#include <QFontMetricsF>
 #include <QHideEvent>
 #include <QPaintEvent>
 #include <QPainter>
@@ -334,7 +335,8 @@ class AdContextMenuStyle final : public QProxyStyle {
 
     const QFontMetrics metrics(visual.font);
     const QString label = withoutMnemonicMarkers(actionLabelText(menuOption->text));
-    const int labelWidth = metrics.horizontalAdvance(label);
+    // Elision uses fractional advances, so rounding down can truncate a content-sized item.
+    const int labelWidth = qCeil(QFontMetricsF(visual.font).horizontalAdvance(label));
     const int shortcutWidth =
         std::max(maximumShortcutWidth(menu, metrics),
                  metrics.horizontalAdvance(actionShortcutText(nullptr, menuOption->text)));
