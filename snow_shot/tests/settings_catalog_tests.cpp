@@ -94,9 +94,8 @@ void builtInCatalogIsCompleteAndValid() {
             }
         }
     }
-    require(
-        sectionCount == 29 && itemCount == 115,
-        "catalog must contain the expected twenty-nine sections and one hundred fifteen items");
+    require(sectionCount == 29 && itemCount == 116,
+            "catalog must contain the expected twenty-nine sections and one hundred sixteen items");
     const auto* apiMode =
         catalog.item({QStringLiteral("system-settings"), QStringLiteral("screenshot-capture"),
                       QStringLiteral("screenshot.api-mode")});
@@ -134,6 +133,26 @@ void builtInCatalogIsCompleteAndValid() {
                 std::get<settings::SettingsSwitchDefinition>(colorRestoration->payload).binding ==
                     settings::SettingsSwitchBinding::ScreenshotRestoreOriginalScreenColors,
             "screen color restoration must be a system screenshot switch");
+    const auto* captureCursor =
+        catalog.item({QStringLiteral("system-settings"), QStringLiteral("screenshot-capture"),
+                      QStringLiteral("screenshot.capture-cursor")});
+    const auto* screenshotCaptureSection =
+        catalog.section(QStringLiteral("system-settings"), QStringLiteral("screenshot-capture"));
+    require(
+        captureCursor != nullptr && screenshotCaptureSection != nullptr &&
+            screenshotCaptureSection->items.size() == 4 &&
+            screenshotCaptureSection->items.at(2).id ==
+                QStringLiteral("screenshot.restore-original-screen-colors") &&
+            screenshotCaptureSection->items.at(3).id ==
+                QStringLiteral("screenshot.capture-cursor") &&
+            captureCursor->title.translated() == QStringLiteral("Capture cursor") &&
+            captureCursor->description.translated() ==
+                QStringLiteral("Include the mouse cursor in normal screenshots.") &&
+            captureCursor->configurationKey == QStringLiteral("screenshot/capture_cursor") &&
+            std::get<settings::SettingsSwitchDefinition>(captureCursor->payload).binding ==
+                settings::SettingsSwitchBinding::ScreenshotCaptureCursor &&
+            !storage::ConfigurationSchema::defaultValue(captureCursor->configurationKey).toBool(),
+        "cursor capture must be the disabled final switch in system Screenshot settings");
     const auto* functionPage = catalog.page(QStringLiteral("function-settings"));
     const auto* smartSelection =
         catalog.item({QStringLiteral("function-settings"), QStringLiteral("screenshot-settings"),
@@ -786,8 +805,8 @@ void invalidCatalogReportsAllConformanceErrors() {
 
 void searchIndexIsGeneratedAndRanked() {
     settings::SettingsSearchIndex index(settings::builtInSettingsRegistry());
-    require(index.entries().size() == 151 && index.search(QString()).size() == 151,
-            "search must generate all one hundred fifty-one catalog nodes in catalog order");
+    require(index.entries().size() == 152 && index.search(QString()).size() == 152,
+            "search must generate all one hundred fifty-two catalog nodes in catalog order");
     const auto translation = index.search(QStringLiteral("original image translation"));
     require(!translation.isEmpty() && translation.constFirst().location.itemId ==
                                           QStringLiteral("translation.original-image"),
@@ -818,8 +837,13 @@ void searchIndexIsGeneratedAndRanked() {
             break;
         }
     }
-    require(pages == 7 && sections == 29 && items == 115,
+    require(pages == 7 && sections == 29 && items == 116,
             "search node counts must match catalog page, section, and item counts");
+
+    const auto captureCursor = index.search(QStringLiteral("Capture cursor"));
+    require(!captureCursor.isEmpty() && captureCursor.constFirst().location.itemId ==
+                                            QStringLiteral("screenshot.capture-cursor"),
+            "search must find the cursor capture setting");
 
     const auto theme = index.search(QStringLiteral("theme"));
     require(!theme.isEmpty() && theme.constFirst().id == QStringLiteral("item:interface.theme"),

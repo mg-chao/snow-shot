@@ -1171,6 +1171,7 @@ void ScreenshotController::Impl::createCaptureWorkflow() {
                 static_cast<void>(m_selection.setShadowWidth(m_selectionSettings->shadowWidth()));
             },
             []() { return snow_shot::storage::ScreenshotSettings().restoreOriginalScreenColors(); },
+            []() { return snow_shot::storage::ScreenshotSettings().captureCursor(); },
             [this]() { return m_selectionSettings->selectionTarget(); },
         });
 }

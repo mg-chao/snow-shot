@@ -55,7 +55,8 @@ void setMode(const char* mode) {
             "failed to update screenshot API mode");
 }
 
-ScreenshotCaptureResult capture(ScreenshotCaptureWorker& worker, bool restoreColors = false) {
+ScreenshotCaptureResult capture(ScreenshotCaptureWorker& worker, bool restoreColors = false,
+                                bool captureCursor = false) {
     ScreenshotCaptureCoordinator coordinator;
     ScreenshotCaptureResult result;
     bool received = false;
@@ -67,6 +68,7 @@ ScreenshotCaptureResult capture(ScreenshotCaptureWorker& worker, bool restoreCol
     ScreenshotCaptureRequest request;
     request.requestId = 42;
     request.restoreOriginalScreenColors = restoreColors;
+    request.captureCursor = captureCursor;
     worker.capture(request, &coordinator, nullptr);
     QCoreApplication::sendPostedEvents(&coordinator);
     require(received && result.requestId == request.requestId, "capture result was not delivered");
@@ -129,6 +131,22 @@ void colorRestorationAppliesAcrossBackendChanges() {
             require(((capturedFlags & SNOW_CAPTURE_SCREENSHOT_REQUEST_RESTORE_ORIGINAL_COLORS) !=
                      0) == restoreColors,
                     "API selection must preserve the requested color restoration policy");
+        }
+    }
+}
+
+void cursorCaptureAppliesAcrossBackendChanges() {
+    ScreenshotCaptureWorker worker;
+    for (const auto* mode : {"dxgi", "wgc", "gdi", "auto"}) {
+        setMode(mode);
+        for (const bool captureCursor : {false, true}) {
+            require(capture(worker, false, captureCursor).succeeded,
+                    "cursor policy capture failed");
+            require(((capturedFlags & SNOW_CAPTURE_SCREENSHOT_REQUEST_INCLUDE_CURSOR) != 0) ==
+                            captureCursor &&
+                        (capturedFlags & SNOW_CAPTURE_SCREENSHOT_REQUEST_RESTORE_ORIGINAL_COLORS) ==
+                            0,
+                    "cursor policy must use its independent native request flag");
         }
     }
 }
@@ -285,6 +303,7 @@ int main(int argc, char** argv) {
     changedModeReplacesPrewarmedSession();
     allModeTransitionsApplyWithoutRestart();
     colorRestorationAppliesAcrossBackendChanges();
+    cursorCaptureAppliesAcrossBackendChanges();
     preparationAndLayoutRefreshUseCurrentMode();
     failedReplacementDoesNotCaptureWithOldBackend();
     modeChangeAfterCaptureFailurePreservesRetainedFrame();

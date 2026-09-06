@@ -102,6 +102,7 @@ enum class SettingsSwitchBinding {
     SelectionTransitionAnimation,
     TrayEnabled,
     ScreenshotAutoSaveAfterCopy,
+    ScreenshotCaptureCursor,
     ScreenshotRestoreOriginalScreenColors,
     ScreenshotCopyImageFileToClipboard,
     PinAutomaticTextRecognition,

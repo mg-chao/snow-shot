@@ -495,6 +495,18 @@ impl Frame {
         &self.metadata
     }
 
+    /// Permanently composites the cursor sample attached to this frame.
+    ///
+    /// Returns `true` when at least one in-bounds cursor pixel changed or
+    /// blended with the frame. Missing, hidden, or unusable cursor samples
+    /// leave the frame unchanged and return `false`.
+    pub fn composite_attached_cursor(&mut self) -> bool {
+        let Some(cursor) = self.metadata.cursor.clone() else {
+            return false;
+        };
+        crate::cursor_compositor::composite(self, &cursor)
+    }
+
     pub(crate) fn as_mut_rgba_ptr(&mut self) -> *mut u8 {
         self.data.as_mut_ptr()
     }

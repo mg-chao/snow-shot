@@ -332,7 +332,7 @@ struct SnapshotWindowFrame {
 
 enum WorkerCommand {
     Prepare(mpsc::Sender<Result<(), String>>),
-    Capture(mpsc::Sender<Result<Frame, String>>, ColorCorrection),
+    Capture(mpsc::Sender<Result<Frame, String>>, ColorCorrection, bool),
     ResetToPrepared(mpsc::Sender<Result<(), String>>),
     ActiveCaptureAccessCount(mpsc::Sender<Result<usize, String>>),
     Stop,
@@ -342,6 +342,7 @@ pub const SCREENSHOT_REQUEST_VERSION: u32 = 1;
 const SCREENSHOT_REQUEST_SIZE: u32 = std::mem::size_of::<SnowCaptureScreenshotRequest>() as u32;
 const SCREENSHOT_REQUEST_REFRESH_LAYOUT: u32 = 1 << 0;
 const SCREENSHOT_REQUEST_RESTORE_ORIGINAL_COLORS: u32 = 1 << 1;
+const SCREENSHOT_REQUEST_INCLUDE_CURSOR: u32 = 1 << 2;
 pub const WINDOW_FRAME_INFO_VERSION: u32 = 1;
 const WINDOW_FRAME_INFO_SIZE: u32 = std::mem::size_of::<SnowCaptureWindowFrameInfo>() as u32;
 pub const STREAM_CONFIG_VERSION: u32 = 1;
@@ -405,7 +406,9 @@ unsafe fn read_screenshot_request(
     }
     let request = unsafe { *request };
     if request.flags
-        & !(SCREENSHOT_REQUEST_REFRESH_LAYOUT | SCREENSHOT_REQUEST_RESTORE_ORIGINAL_COLORS)
+        & !(SCREENSHOT_REQUEST_REFRESH_LAYOUT
+            | SCREENSHOT_REQUEST_RESTORE_ORIGINAL_COLORS
+            | SCREENSHOT_REQUEST_INCLUDE_CURSOR)
         != 0
     {
         return Err(format!(
@@ -630,12 +633,17 @@ impl MonitorWorker {
                             };
                             let _ = reply.send(result);
                         }
-                        WorkerCommand::Capture(reply, correction) => {
+                        WorkerCommand::Capture(reply, correction, include_cursor) => {
                             let result = match session.as_mut() {
                                 Ok(session) => {
                                     session.set_color_correction(correction);
                                     match session.capture_once() {
-                                        Ok(frame) if session.active_capture_access_count() == 0 => {
+                                        Ok(mut frame)
+                                            if session.active_capture_access_count() == 0 =>
+                                        {
+                                            if include_cursor {
+                                                frame.composite_attached_cursor();
+                                            }
                                             Ok(frame)
                                         }
                                         Ok(_) => Err(
@@ -698,10 +706,11 @@ impl MonitorWorker {
     fn request_capture(
         &self,
         correction: ColorCorrection,
+        include_cursor: bool,
     ) -> Result<mpsc::Receiver<Result<Frame, String>>, String> {
         let (tx, rx) = mpsc::channel();
         self.tx
-            .send(WorkerCommand::Capture(tx, correction))
+            .send(WorkerCommand::Capture(tx, correction, include_cursor))
             .map_err(|_| "capture worker is not running".to_owned())?;
         Ok(rx)
     }
@@ -857,11 +866,12 @@ fn same_monitor_layout(left: &[MonitorEntry], right: &[MonitorEntry]) -> bool {
 fn capture_all_frames(
     session: &mut SnowCaptureDesktopSessionImpl,
     correction: ColorCorrection,
+    include_cursor: bool,
 ) -> Result<Vec<SnapshotFrame>, String> {
     let mut receivers = Vec::with_capacity(session.workers.len());
     let mut first_error = None;
     for worker in &session.workers {
-        match worker.request_capture(correction) {
+        match worker.request_capture(correction, include_cursor) {
             Ok(receiver) => receivers.push((worker.entry.clone(), receiver)),
             Err(error) => {
                 if first_error.is_none() {
@@ -903,8 +913,9 @@ fn capture_all_frames(
 fn capture_all_frames_with_layout_retry(
     session: &mut SnowCaptureDesktopSessionImpl,
     correction: ColorCorrection,
+    include_cursor: bool,
 ) -> Result<Vec<SnapshotFrame>, String> {
-    match capture_all_frames(session, correction) {
+    match capture_all_frames(session, correction, include_cursor) {
         Ok(frames) => Ok(frames),
         Err(first_error) => {
             if let Err(refresh_error) = session.system.refresh_display_configuration() {
@@ -929,7 +940,7 @@ fn capture_all_frames_with_layout_retry(
                     "{first_error}; layout refresh failed: {refresh_error}"
                 ));
             }
-            capture_all_frames(session, correction).map_err(|retry_error| {
+            capture_all_frames(session, correction, include_cursor).map_err(|retry_error| {
                 format!("{first_error}; retry after layout refresh failed: {retry_error}")
             })
         }
@@ -1132,6 +1143,7 @@ fn backend_kind_ptr(session: &SnowCaptureDesktopSessionImpl) -> *const c_char {
 fn capture_window_snapshot(
     hwnd: isize,
     options: CaptureOptions,
+    include_cursor: bool,
 ) -> Result<SnapshotWindowFrame, String> {
     let system = CaptureSystem::builder()
         .with_backend_kind(CaptureBackendKind::Auto)
@@ -1144,7 +1156,7 @@ fn capture_window_snapshot(
         )
         .map_err(|error| error.to_string())?;
     let capture_result = session.capture_once();
-    let frame = match capture_result {
+    let mut frame = match capture_result {
         Ok(frame) => frame,
         Err(error) => {
             let _ = session.reset_to_prepared();
@@ -1154,6 +1166,9 @@ fn capture_window_snapshot(
     if session.active_capture_access_count() != 0 {
         let _ = session.reset_to_prepared();
         return Err("capture access remained active after focused-window capture".to_owned());
+    }
+    if include_cursor {
+        frame.composite_attached_cursor();
     }
     let target = session
         .target_info_for_backend(frame.metadata().backend_kind())
@@ -1491,6 +1506,7 @@ pub unsafe extern "C" fn snow_capture_desktop_session_capture(
     } else {
         ColorCorrection::Disabled
     };
+    let include_cursor = request.flags & SCREENSHOT_REQUEST_INCLUDE_CURSOR != 0;
     let focused_window_worker = if request.focused_window != 0 {
         let hwnd = request.focused_window;
         let options = CaptureOptions {
@@ -1507,7 +1523,7 @@ pub unsafe extern "C" fn snow_capture_desktop_session_capture(
                 {
                     return Err("screenshot capture canceled".to_owned());
                 }
-                let result = capture_window_snapshot(hwnd, options);
+                let result = capture_window_snapshot(hwnd, options, include_cursor);
                 if canceled
                     .as_ref()
                     .is_some_and(|state| state.load(Ordering::Acquire))
@@ -1526,7 +1542,7 @@ pub unsafe extern "C" fn snow_capture_desktop_session_capture(
         None
     };
 
-    let frames_result = capture_all_frames_with_layout_retry(session, correction);
+    let frames_result = capture_all_frames_with_layout_retry(session, correction, include_cursor);
     let focused_window_result = focused_window_worker.map(|worker| {
         worker
             .join()
@@ -3503,6 +3519,21 @@ mod tests {
             cancellation_token: ptr::null(),
             reserved: [0; 32],
         };
+        assert!(unsafe { read_screenshot_request(&request) }.is_ok());
+    }
+
+    #[test]
+    fn cursor_compositing_request_flag_is_valid() {
+        let request = SnowCaptureScreenshotRequest {
+            version: SCREENSHOT_REQUEST_VERSION,
+            struct_size: SCREENSHOT_REQUEST_SIZE,
+            flags: SCREENSHOT_REQUEST_INCLUDE_CURSOR,
+            reserved0: 0,
+            focused_window: 0,
+            cancellation_token: ptr::null(),
+            reserved: [0; 32],
+        };
+
         assert!(unsafe { read_screenshot_request(&request) }.is_ok());
     }
 

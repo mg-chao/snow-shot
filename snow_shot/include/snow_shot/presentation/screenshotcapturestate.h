@@ -9,6 +9,7 @@ struct ScreenshotCaptureState {
     bool captureInProgress = false;
     bool layoutDirty = false;
     bool restoreOriginalScreenColors = true;
+    bool captureCursor = false;
 };
 
 #endif // SNOW_SHOT_PRESENTATION_SCREENSHOTCAPTURESTATE_H

@@ -84,6 +84,7 @@ void ScreenshotCaptureWorkflow::startCapture() {
     }
     const quint64 sessionId = ++m_state.sessionId;
     m_state.restoreOriginalScreenColors = m_context.restoreOriginalScreenColors();
+    m_state.captureCursor = m_context.captureCursor();
     m_state.sessionState = ScreenshotSessionState::Capturing;
     m_state.captureInProgress = true;
     clearCapturePresentationReadiness();
@@ -324,7 +325,8 @@ void ScreenshotCaptureWorkflow::beginCapturePreparation(quint64 sessionId) {
     // once. The capture worker can initialize lazy GPU resources while the
     // UI thread prepares selector and presentation state.
     m_context.runtime.captureAsync(ScreenshotCaptureRequest{sessionId, m_state.layoutDirty,
-                                                            m_state.restoreOriginalScreenColors});
+                                                            m_state.restoreOriginalScreenColors,
+                                                            m_state.captureCursor});
     SNOW_SHOT_CAPTURE_PERF_MILESTONE("capture.async_dispatched");
     if (sessionId != m_state.sessionId || !m_state.captureInProgress) {
         return;

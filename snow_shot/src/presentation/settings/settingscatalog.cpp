@@ -688,6 +688,15 @@ SettingsItemDefinition screenshotRestoreOriginalScreenColorsItem() {
         SettingsSwitchBinding::ScreenshotRestoreOriginalScreenColors);
 }
 
+SettingsItemDefinition screenshotCaptureCursorItem() {
+    return switchItem(
+        QStringLiteral("screenshot.capture-cursor"),
+        QT_TRANSLATE_NOOP("SettingsCatalog", "Capture cursor"),
+        QT_TRANSLATE_NOOP("SettingsCatalog", "Include the mouse cursor in normal screenshots."),
+        QStringLiteral("screenshot/capture_cursor"),
+        SettingsSwitchBinding::ScreenshotCaptureCursor);
+}
+
 SettingsItemDefinition screenshotAutoSaveAfterCopyItem() {
     return switchItem(
         QStringLiteral("screenshot.auto-save-after-copy"),
@@ -1577,7 +1586,7 @@ QVector<SettingsPageDefinition> builtInPages() {
                     settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Screen capture settings")),
                     SettingsSectionReset::ScreenshotCapture,
                     {screenshotApiModeItem(), windowElementApiItem(),
-                     screenshotRestoreOriginalScreenColorsItem()},
+                     screenshotRestoreOriginalScreenColorsItem(), screenshotCaptureCursorItem()},
                 },
                 {
                     QStringLiteral("network"),
@@ -2308,6 +2317,9 @@ QStringList SettingsCatalog::validationErrors() const {
                         break;
                     case SettingsSwitchBinding::ScreenshotAutoSaveAfterCopy:
                         expectedKey = QStringLiteral("screenshot/auto_save_after_copy");
+                        break;
+                    case SettingsSwitchBinding::ScreenshotCaptureCursor:
+                        expectedKey = QStringLiteral("screenshot/capture_cursor");
                         break;
                     case SettingsSwitchBinding::ScreenshotRestoreOriginalScreenColors:
                         expectedKey = QStringLiteral("screenshot/restore_original_screen_colors");

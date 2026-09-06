@@ -4,6 +4,7 @@ pub mod backend;
 pub mod capture_session;
 pub mod color_effect;
 pub mod convert;
+mod cursor_compositor;
 pub mod error;
 pub mod frame;
 pub mod monitor;
