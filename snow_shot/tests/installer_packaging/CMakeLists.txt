@@ -1,0 +1,12 @@
+cmake_minimum_required(VERSION 4.2)
+project(SnowShotInstallerTests VERSION 1.0.0 LANGUAGES NONE)
+set(SNOW_SHOT_EXECUTABLE_NAME snow_shot)
+set(CPACK_PACKAGE_NAME snow-shot-installer-test)
+set(CPACK_PACKAGE_VENDOR "Snow Apps")
+set(CPACK_PACKAGE_INSTALL_REGISTRY_KEY SnowShotInstallerTest)
+set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
+set(CPACK_VERBATIM_VARIABLES ON)
+include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/SnowShotInstaller.cmake")
+install(FILES "${CMAKE_CURRENT_LIST_DIR}/../installer_process_fixture.cpp"
+    DESTINATION bin RENAME snow_shot.exe)
+include(CPack)

@@ -411,6 +411,7 @@ $allowedSystemImports = @(
     "imm32.dll",
     "iphlpapi.dll",
     "kernel32.dll",
+    "magnification.dll",
     "mswsock.dll",
     "ncrypt.dll",
     "netapi32.dll",
@@ -594,7 +595,8 @@ if ($cpackConfiguration -notmatch 'set\(CPACK_PACKAGE_VERSION "([^"]+)"\)') {
     throw "CPack configuration does not declare the Snow Shot package version."
 }
 $packageVersion = $Matches[1]
-if ($versionInfo.FileVersion -ne "$packageVersion.0" -or
+$packageVersionNumeric = ($packageVersion -split "-", 2)[0]
+if ($versionInfo.FileVersion -ne "$packageVersionNumeric.0" -or
     $versionInfo.ProductVersion -ne $packageVersion) {
     throw "Snow Shot binary version '$($versionInfo.FileVersion)'/'$($versionInfo.ProductVersion)' does not match package version '$packageVersion'."
 }
@@ -901,10 +903,12 @@ foreach ($variant in $variantStages.Keys) {
     $variantConfig = Join-Path $buildDirectory "CPackConfig-$variant.cmake"
     $baseConfigPath = $cpackConfig.Replace('\', '/')
     $stagePath = $variantStages[$variant].Replace('\', '/')
+    $packageDirectory = $buildDirectory.Replace('\', '/')
     @"
 include("$baseConfigPath")
 set(CPACK_INSTALL_CMAKE_PROJECTS "")
 set(CPACK_INSTALLED_DIRECTORIES "$stagePath;/")
+set(CPACK_PACKAGE_DIRECTORY "$packageDirectory")
 set(CPACK_PACKAGE_FILE_NAME "$packageBaseName")
 string(REPLACE "snow-shot-$packageVersion-windows-x64.exe" "$packageBaseName.exe" CPACK_NSIS_DEFINES "`${CPACK_NSIS_DEFINES}")
 "@ | Set-Content -LiteralPath $variantConfig -Encoding utf8
@@ -921,7 +925,7 @@ string(REPLACE "snow-shot-$packageVersion-windows-x64.exe" "$packageBaseName.exe
     $expectedInstallerMetadata = @{
         CompanyName = "Snow Apps"
         FileDescription = "Snow Shot installer"
-        FileVersion = "$packageVersion.0"
+        FileVersion = "$packageVersionNumeric.0"
         InternalName = "snow-shot-installer"
         LegalCopyright = "Copyright (C) 2025-2026 mg-chao"
         OriginalFilename = "$packageBaseName.exe"
