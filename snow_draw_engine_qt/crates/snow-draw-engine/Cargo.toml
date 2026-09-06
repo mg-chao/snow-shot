@@ -1,0 +1,19 @@
+[package]
+name = "snow-draw-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+snow-draw-engine-core = { path = "../snow-draw-engine-core" }
+snow-draw-engine-display = { path = "../snow-draw-engine-display" }
+snow-draw-engine-document = { path = "../snow-draw-engine-document" }
+snow-draw-engine-editor = { path = "../snow-draw-engine-editor" }
+snow-draw-engine-interaction = { path = "../snow-draw-engine-interaction" }
+snow-draw-engine-model = { path = "../snow-draw-engine-model" }
+snow-draw-engine-scene = { path = "../snow-draw-engine-scene" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[lib]
+path = "src/lib.rs"

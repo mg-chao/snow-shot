@@ -1,0 +1,3 @@
+add_executable(snow_image_benchmark codec_benchmark.cpp)
+target_link_libraries(snow_image_benchmark PRIVATE snow_image::snow_image)
+target_compile_features(snow_image_benchmark PRIVATE cxx_std_20)

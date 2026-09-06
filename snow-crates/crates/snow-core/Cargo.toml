@@ -1,0 +1,15 @@
+[package]
+name = "snow-core"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+
+[dependencies]
+crossbeam-channel.workspace = true
+smallvec.workspace = true
+windows = { workspace = true, features = [
+    "Win32_System_Performance",
+] }
+
+[dev-dependencies]
+proptest = "1.11.0"

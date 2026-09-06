@@ -1,0 +1,107 @@
+﻿[package]
+name = "snow-capture"
+version = "0.2.0"
+edition = "2024"
+license.workspace = true
+
+[dependencies]
+snow-core = { path = "../snow-core" }
+snow-cursor = { path = "../snow-cursor" }
+anyhow.workspace = true
+rustc-hash.workspace = true
+half.workspace = true
+rayon.workspace = true
+num_cpus.workspace = true
+nalgebra = { version = "0.33.3", default-features = false, features = ["std"] }
+crossbeam-channel.workspace = true
+windows = { workspace = true, features = [
+    "Foundation",
+    "Foundation_Collections",
+    "Graphics_Capture",
+    "Graphics_DirectX",
+    "Graphics_DirectX_Direct3D11",
+    "Win32_Devices_Display",
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D_Fxc",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_ProcessStatus",
+    "Win32_System_WinRT_Direct3D11",
+    "Win32_System_WinRT_Graphics_Capture",
+    "Win32_System_Threading",
+    "Win32_Storage_Xps",
+    "Win32_UI",
+    "Win32_UI_Magnification",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Performance",
+] }
+
+[dev-dependencies]
+criterion = "0.5"
+image.workspace = true
+proptest = "1.11.0"
+
+[target.'cfg(windows)'.dev-dependencies]
+windows = { workspace = true, features = ["Win32_UI_HiDpi"] }
+
+[features]
+# Compile-time switch for capture performance instrumentation.
+#
+# When enabled, capture backends record a per-stage timing breakdown onto
+# frame metadata (`CaptureOptions::record_stage_timings` activates it per
+# session), frames carry a `capture_duration`, cursor-attach diagnostics
+# are aggregated into stream stats, and the benchmark examples /
+# stage-timing tests build.
+# When disabled (the default, used by all production/release builds) every
+# instrumentation marker compiles to nothing: no API surface, no fields,
+# no clock reads, no code.
+stage-timing = []
+
+[[bench]]
+name = "conversion_hot_path"
+harness = false
+
+[[example]]
+name = "capture"
+required-features = ["stage-timing"]
+
+[[example]]
+name = "benchmark"
+
+[[example]]
+name = "action_benchmark"
+required-features = ["stage-timing"]
+
+[[example]]
+name = "screenshot_benchmark"
+required-features = ["stage-timing"]
+
+[[test]]
+name = "screenshot_stage_timing_smoke"
+required-features = ["stage-timing"]
+
+[[example]]
+name = "snapshot_policy_benchmark"
+
+[[example]]
+name = "stream"
+required-features = ["stage-timing"]
+
+[[example]]
+name = "window_capture"
+
+[[example]]
+name = "region_capture"
+
+[[example]]
+name = "convert_benchmark"
+
+[[example]]
+name = "dxgi_region_dirty_rect_benchmark"

@@ -1,0 +1,13 @@
+[package]
+name = "snow-cursor"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+
+[dependencies]
+snow-core = { path = "../snow-core" }
+windows = { version = "0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
+] }

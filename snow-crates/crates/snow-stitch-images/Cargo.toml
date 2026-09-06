@@ -1,0 +1,56 @@
+[package]
+name = "snow-stitch-images"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+rust-version = "1.97.1"
+description = "Clean-room Rust implementation workspace for stateful vertical screenshot stitching"
+publish = false
+
+[lib]
+name = "snow_stitch_images"
+path = "src/lib.rs"
+
+[features]
+default = ["full-image-io"]
+# Gates the developer-facing batch-stitch CLI so plain `cargo build` only
+# produces the library consumed by the FFI wrapper. Build the CLI with:
+# `cargo build --features cli --bin snow-stitch-images`
+cli = []
+full-image-io = [
+    "image/avif",
+    "image/bmp",
+    "image/dds",
+    "image/ff",
+    "image/gif",
+    "image/hdr",
+    "image/ico",
+    "image/jpeg",
+    "image/pnm",
+    "image/qoi",
+    "image/rayon",
+    "image/tga",
+    "image/tiff",
+    "image/webp",
+]
+
+[dependencies]
+anyhow.workspace = true
+image.workspace = true
+rayon.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest = "1.11.0"
+tempfile.workspace = true
+
+[[bin]]
+name = "snow-stitch-images"
+path = "src/main.rs"
+required-features = ["cli"]
+
+[[example]]
+name = "scroll_4_benchmark"
+required-features = ["full-image-io"]

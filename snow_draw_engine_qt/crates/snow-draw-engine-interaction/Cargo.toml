@@ -1,0 +1,11 @@
+[package]
+name = "snow-draw-engine-interaction"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+snow-draw-engine-core = { path = "../snow-draw-engine-core" }
+
+[lib]
+path = "src/lib.rs"

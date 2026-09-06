@@ -1,0 +1,40 @@
+[workspace]
+members = [
+    "crates/snow-draw-engine-core",
+    "crates/snow-draw-engine-document",
+    "crates/snow-draw-engine-interaction",
+    "crates/snow-draw-engine-model",
+    "crates/snow-draw-engine-editor",
+    "crates/snow-draw-engine-display",
+    "crates/snow-draw-engine-scene",
+    "crates/snow-draw-engine",
+    "crates/snow-draw-engine-c",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
+version = "0.2.0"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+# Keep the C ABI library used by the Qt target on the same optimized profile
+# as the root Rust workspace. Fat LTO and one codegen unit favor runtime speed;
+# the CMake release preset controls the native linker and symbol policy.
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "fat"
+panic = "abort"
+debug = 0
+incremental = false
+overflow-checks = false
+
+[profile.release-fast]
+inherits = "release"
+opt-level = 2
+codegen-units = 16
+lto = "thin"
+incremental = true

@@ -1,0 +1,69 @@
+.codex-build/
+
+# Qt build directories
+build/
+build-*/
+**/build-*/
+debug/
+release/
+**/debug/
+**/release/
+Makefile*
+.qmake.stash
+
+# Qt Creator / CMake local files
+*.pro.user
+*.pro.user.*
+*.qbs.user
+*.qtc_clangd/
+*.qtc_clang/
+CMakeLists.txt.user
+compile_commands.json
+
+# Qt generated sources
+object_script.*
+moc_*.cpp
+moc_predefs.h
+qrc_*.cpp
+ui_*.h
+*.moc
+
+# Native binaries and intermediates
+*.o
+*.obj
+*.a
+*.lib
+*.dll
+*.so
+*.so.*
+*.dylib
+*.exe
+*.pdb
+*.ilk
+*.idb
+*.exp
+
+# Logs and temporary outputs
+*.log
+*.tmp
+*.stackdump
+/packages/ant_design_qt/tests/gdb-nav.txt
+
+# Local wrappers and scratch captures
+/target_wrapper.bat
+/packages/ant_design_qt/tests/target_wrapper.bat
+/antd-menu-inline-measure.png
+/artifacts/*.png
+/artifacts/**/*.html
+/artifacts/**/*.txt
+/artifacts/input_count_probe/*.png
+/artifacts/menu_collapsed_probe/*.png
+/artifacts/menu_spacing_probe/*.png
+/artifacts/menu_spacing_probe/*.txt
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vs/
+.vscode/
+.idea/

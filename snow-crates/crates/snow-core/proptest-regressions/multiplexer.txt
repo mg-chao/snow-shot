@@ -1,0 +1,10 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc d29818ae019b31d73975b35a9476884096283c3f27106eebf2fac4ab2408208d # shrinks to (batch_size, audio_count, video_count) = (4, 9, 4)
+cc bf3c0237b6170e75c62017a2d89708e7fc643418b93546e143a70e73414b26b1 # shrinks to (batch_size, audio_count, video_count) = (8, 10, 16)
+cc b51d931c157b45fda5cf097a7ef45833751fe7d0c44cdce0a0c522f7d613ac61 # shrinks to (batch_size, audio_count, video_count) = (4, 9, 7)
+cc 5186615e8b53279f2ab1014819a9fde03088d1b500fa71f69b4099ea10530c4a # shrinks to num_sources = 5, commands = [Resume, Resume, Resume, Resume, Pause]

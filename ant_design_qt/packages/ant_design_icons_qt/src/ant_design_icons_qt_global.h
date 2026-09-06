@@ -1,0 +1,6 @@
+#ifndef ADQT_ICONS_GLOBAL_H
+#define ADQT_ICONS_GLOBAL_H
+
+#define ADQT_ICONS_EXPORT
+
+#endif  // ADQT_ICONS_GLOBAL_H

@@ -1,0 +1,25 @@
+[package]
+name = "snow-capture-c"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+snow-capture = { path = "../snow-capture" }
+snow-core = { path = "../snow-core" }
+snow-screen-recorder = { path = "../snow-screen-recorder" }
+anyhow.workspace = true
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
+] }
+
+[[example]]
+name = "desktop_session_benchmark"
+
+[[example]]
+name = "scroll_region_benchmark"

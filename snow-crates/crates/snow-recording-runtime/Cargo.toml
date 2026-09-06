@@ -1,0 +1,25 @@
+[package]
+name = "snow-recording-runtime"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+build = "build.rs"
+
+[dependencies]
+snow-core = { path = "../snow-core" }
+snow-pipeline = { path = "../snow-pipeline" }
+snow-capture = { path = "../snow-capture" }
+snow-cursor = { path = "../snow-cursor" }
+snow-audio-recorder = { path = "../snow-audio-recorder" }
+snow-recording-model = { path = "../snow-recording-model" }
+crossbeam-channel.workspace = true
+ffmpeg-next.workspace = true
+rayon.workspace = true
+num_cpus.workspace = true
+smallvec.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+proptest = "1.11.0"
+tempfile.workspace = true

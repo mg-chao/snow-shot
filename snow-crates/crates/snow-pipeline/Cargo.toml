@@ -1,0 +1,15 @@
+[package]
+name = "snow-pipeline"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+
+[dependencies]
+snow-core = { path = "../snow-core" }
+snow-capture = { path = "../snow-capture" }
+snow-audio-recorder = { path = "../snow-audio-recorder" }
+crossbeam-channel.workspace = true
+smallvec.workspace = true
+
+[dev-dependencies]
+proptest = "1.11.0"

@@ -1,0 +1,22 @@
+[package]
+name = "snow-recording-export"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+build = "build.rs"
+
+[dependencies]
+snow-audio-recorder = { path = "../snow-audio-recorder" }
+snow-recording-model = { path = "../snow-recording-model" }
+crossbeam-channel.workspace = true
+ffmpeg-next.workspace = true
+rayon.workspace = true
+num_cpus.workspace = true
+serde.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+zstd.workspace = true
+
+[dev-dependencies]
+proptest = "1.11.0"
+symphonia = { version = "0.5.4", default-features = false, features = ["aac", "isomp4"] }

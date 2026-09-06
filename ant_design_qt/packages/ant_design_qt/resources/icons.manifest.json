@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "pack": "ant-design-qt",
+  "cppNamespace": "adqt::widgets::icons",
+  "source": "ant_design_qt widget-owned static SVG assets",
+  "entries": [
+    {
+      "variant": "twotone",
+      "symbol": "EmptySimple",
+      "name": "empty-simple",
+      "source": "icons/empty-simple.svg",
+      "colorModel": "threeTone",
+      "fit": "contain",
+      "defaultColors": {
+        "secondary": "#E6E6E6",
+        "tertiary": "#F5F5F5"
+      }
+    }
+  ]
+}

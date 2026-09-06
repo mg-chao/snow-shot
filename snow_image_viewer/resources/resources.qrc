@@ -1,0 +1,12 @@
+<RCC>
+  <qresource prefix="/shaders">
+    <file alias="image.vert.qsb">shaders/image.vert.qsb</file>
+    <file alias="image.frag.qsb">shaders/image.frag.qsb</file>
+    <file alias="image_array.frag.qsb">shaders/image_array.frag.qsb</file>
+    <file alias="navigation.vert.qsb">shaders/navigation.vert.qsb</file>
+    <file alias="navigation.frag.qsb">shaders/navigation.frag.qsb</file>
+    <file alias="edit_resize.vert.qsb">shaders/edit_resize.vert.qsb</file>
+    <file alias="edit_resize.frag.qsb">shaders/edit_resize.frag.qsb</file>
+    <file alias="edit_resize_array.frag.qsb">shaders/edit_resize_array.frag.qsb</file>
+  </qresource>
+</RCC>
