@@ -537,6 +537,17 @@ bool ScreenshotSettings::setApiMode(const QString& mode) const {
     return cache().setValue(QStringLiteral("screenshot/api_mode"), mode);
 }
 
+QString ScreenshotSettings::windowElementApi() const {
+    return cache().value(QStringLiteral("screenshot/window_element_api")).toString();
+}
+
+bool ScreenshotSettings::setWindowElementApi(const QString& api) const {
+    if (api != QStringLiteral("msaa") && api != QStringLiteral("uia")) {
+        return false;
+    }
+    return cache().setValue(QStringLiteral("screenshot/window_element_api"), api);
+}
+
 bool ScreenshotShortcutSettings::isReservedShortcut(const QString& shortcut) {
     return isReservedLocalShortcut(shortcut);
 }

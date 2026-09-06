@@ -78,6 +78,8 @@ class ScreenshotSettings final {
     bool setRestoreOriginalScreenColors(bool enabled) const;
     [[nodiscard]] QString apiMode() const;
     bool setApiMode(const QString& mode) const;
+    [[nodiscard]] QString windowElementApi() const;
+    bool setWindowElementApi(const QString& api) const;
     [[nodiscard]] int delaySeconds() const;
     bool setDelaySeconds(int seconds) const;
     [[nodiscard]] QString autoExecuteAfterTextRecognition() const;

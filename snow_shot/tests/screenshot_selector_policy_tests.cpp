@@ -11,11 +11,19 @@ void require(bool condition, const char* message) {
     }
 }
 
-void smartSelectionForcesMsaaElementLookup() {
-    const auto policy = screenshotSelectorLookupPolicy(true, QByteArrayLiteral("uia"));
-    require(policy.backend == SNOW_UI_SELECTOR_BACKEND_MSAA &&
-                policy.mode == SNOW_UI_SELECTOR_HIT_TEST_MODE_UI_ELEMENT,
-            "Smart selection must force MSAA child-element lookup");
+void smartSelectionUsesConfiguredElementApi() {
+    for (const auto& backend : {QByteArrayLiteral("msaa"), QByteArrayLiteral("uia")}) {
+        const auto policy = screenshotSelectorLookupPolicy(true, backend);
+        require(policy.backend == (backend == "uia" ? SNOW_UI_SELECTOR_BACKEND_UIA
+                                                    : SNOW_UI_SELECTOR_BACKEND_MSAA) &&
+                    policy.mode == SNOW_UI_SELECTOR_HIT_TEST_MODE_UI_ELEMENT,
+                "Smart selection must use the configured API for child-element lookup");
+    }
+    for (const auto& backend : {QByteArray(), QByteArrayLiteral("unknown")}) {
+        require(screenshotSelectorLookupPolicy(true, backend).backend ==
+                    SNOW_UI_SELECTOR_BACKEND_MSAA,
+                "missing or invalid window element APIs must default to MSAA");
+    }
 }
 
 void disabledSelectionUsesWindowLookup() {
@@ -56,7 +64,7 @@ void disabledSmartSelectionOverridesSubElementRequests() {
 } // namespace
 
 int main() {
-    smartSelectionForcesMsaaElementLookup();
+    smartSelectionUsesConfiguredElementApi();
     disabledSelectionUsesWindowLookup();
     invalidBackendFallsBackToMsaaWindowLookup();
     windowTargetUsesWindowOnlyLookup();

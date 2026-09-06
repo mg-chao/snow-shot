@@ -95,8 +95,8 @@ void builtInCatalogIsCompleteAndValid() {
         }
     }
     require(
-        sectionCount == 28 && itemCount == 113,
-        "catalog must contain the expected twenty-eight sections and one hundred thirteen items");
+        sectionCount == 28 && itemCount == 114,
+        "catalog must contain the expected twenty-eight sections and one hundred fourteen items");
     const auto* apiMode =
         catalog.item({QStringLiteral("system-settings"), QStringLiteral("screenshot-capture"),
                       QStringLiteral("screenshot.api-mode")});
@@ -105,6 +105,26 @@ void builtInCatalogIsCompleteAndValid() {
                 std::get<settings::SettingsSelectDefinition>(apiMode->payload).binding ==
                     settings::SettingsSelectBinding::ScreenshotApiMode,
             "capture API and color restoration must share the system screenshot section");
+    const auto* windowElementApi =
+        catalog.item({QStringLiteral("system-settings"), QStringLiteral("screenshot-capture"),
+                      QStringLiteral("screenshot.window-element-api")});
+    const auto* windowElementSelect =
+        windowElementApi != nullptr
+            ? std::get_if<settings::SettingsSelectDefinition>(&windowElementApi->payload)
+            : nullptr;
+    require(windowElementApi != nullptr && windowElementSelect != nullptr &&
+                windowElementApi->title.translated() == QStringLiteral("Window Element API") &&
+                windowElementApi->configurationKey ==
+                    QStringLiteral("screenshot/window_element_api") &&
+                windowElementSelect->binding == settings::SettingsSelectBinding::WindowElementApi &&
+                windowElementSelect->options.size() == 2 &&
+                windowElementSelect->options.at(0).value == QStringLiteral("msaa") &&
+                windowElementSelect->options.at(0).label.translated() == QStringLiteral("MSAA") &&
+                windowElementSelect->options.at(1).value == QStringLiteral("uia") &&
+                windowElementSelect->options.at(1).label.translated() == QStringLiteral("UIA") &&
+                storage::ConfigurationSchema::defaultValue(windowElementApi->configurationKey) ==
+                    QStringLiteral("msaa"),
+            "system Screenshot settings must expose MSAA and UIA with MSAA as the default");
     const auto* colorRestoration =
         catalog.item({QStringLiteral("system-settings"), QStringLiteral("screenshot-capture"),
                       QStringLiteral("screenshot.restore-original-screen-colors")});
@@ -754,8 +774,8 @@ void invalidCatalogReportsAllConformanceErrors() {
 
 void searchIndexIsGeneratedAndRanked() {
     settings::SettingsSearchIndex index(settings::builtInSettingsRegistry());
-    require(index.entries().size() == 148 && index.search(QString()).size() == 148,
-            "search must generate all one hundred forty-eight catalog nodes in catalog order");
+    require(index.entries().size() == 149 && index.search(QString()).size() == 149,
+            "search must generate all one hundred forty-nine catalog nodes in catalog order");
 
     int pages = 0;
     int sections = 0;
@@ -782,7 +802,7 @@ void searchIndexIsGeneratedAndRanked() {
             break;
         }
     }
-    require(pages == 7 && sections == 28 && items == 113,
+    require(pages == 7 && sections == 28 && items == 114,
             "search node counts must match catalog page, section, and item counts");
 
     const auto theme = index.search(QStringLiteral("theme"));
@@ -794,6 +814,10 @@ void searchIndexIsGeneratedAndRanked() {
     require(!option.isEmpty() &&
                 option.constFirst().location.itemId == QStringLiteral("interface.theme"),
             "select option labels must be indexed");
+    const auto windowElementApi = index.search(QStringLiteral("UIA"));
+    require(!windowElementApi.isEmpty() && windowElementApi.constFirst().location.itemId ==
+                                               QStringLiteral("screenshot.window-element-api"),
+            "window element API options must find the system Screenshot setting");
     const auto multipleTokens = index.search(QStringLiteral("storage error"));
     require(!multipleTokens.isEmpty() &&
                 multipleTokens.constFirst().location.itemId == QStringLiteral("storage.status"),

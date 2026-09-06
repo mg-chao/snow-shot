@@ -16,8 +16,12 @@ ScreenshotSelectorCoordinator::ScreenshotSelectorCoordinator(QObject* parent) : 
 
     auto& storage = snow_shot::storage::ApplicationStorage::instance();
     if (storage.isInitialized()) {
-        connect(&storage, &snow_shot::storage::ApplicationStorage::smartSelectionChanged, this,
-                [this](bool) {
+        connect(&storage.configuration(), &snow_shot::storage::ConfigurationStore::valueChanged,
+                this, [this](const QString& key, const QJsonValue&) {
+                    if (key != QStringLiteral("screenshot_selection/smart_selection") &&
+                        key != QStringLiteral("screenshot/window_element_api")) {
+                        return;
+                    }
                     const bool refreshRequired = m_ready || m_refreshInFlight;
                     const QVector<std::uintptr_t> excludedHwnds = m_lastExcludedHwnds;
                     destroyService();

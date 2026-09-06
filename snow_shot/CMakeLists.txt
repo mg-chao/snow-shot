@@ -1424,6 +1424,31 @@ if(SNOW_SHOT_BUILD_TESTS)
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
     )
 
+    add_executable(snow-shot-window-element-api-tests
+        tests/window_element_api_tests.cpp
+        include/snow_shot/presentation/screenshotselectorcoordinator.h
+        src/presentation/selector/screenshotselectorcoordinator.cpp
+        src/presentation/selector/screenshotselectorserviceclient.cpp
+        src/presentation/services/screenshotclipboardservice.cpp
+    )
+    target_include_directories(snow-shot-window-element-api-tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/image"
+        "${SNOW_SHOT_CAPTURE_CRATES_DIR}/crates/snow-ui-selector-c/include"
+    )
+    target_link_libraries(snow-shot-window-element-api-tests PRIVATE
+        snow_shot_settings
+        Qt6::Widgets
+    )
+    add_test(NAME snow-shot-window-element-api-tests
+             COMMAND snow-shot-window-element-api-tests)
+    snow_shot_import_offscreen_platform(snow-shot-window-element-api-tests)
+    set_tests_properties(snow-shot-window-element-api-tests PROPERTIES
+        ENVIRONMENT
+            "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"
+        ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    )
+
     add_executable(snow-shot-system-tray-controller-tests
         tests/system_tray_controller_tests.cpp
         include/snow_shot/presentation/languagemanager.h

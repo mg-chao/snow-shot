@@ -71,6 +71,7 @@ enum class SettingsSelectBinding {
     ApplicationPriority,
     Proxy,
     ScreenshotApiMode,
+    WindowElementApi,
     ScreenshotToolbarSize,
     ColorPickerDisplayMode,
     ScreenshotOcrAction,

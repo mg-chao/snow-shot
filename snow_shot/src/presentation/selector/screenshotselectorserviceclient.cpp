@@ -5,6 +5,7 @@
 #include "snow_ui_selector.h"
 #include "snow_shot/storage/applicationstorage.h"
 #include "snow_shot/storage/configurationschema.h"
+#include "snow_shot/storage/settingsadapters.h"
 
 #include <QByteArray>
 #include <QMetaObject>
@@ -25,6 +26,14 @@ QByteArray configuredSelectorBackend() {
     QByteArray backend = qgetenv("SNOW_SHOT_SELECTOR_BACKEND");
     if (backend.isEmpty()) {
         backend = qgetenv("SNOW_SHOT_UI_SELECTOR_BACKEND");
+    }
+    if (backend.isEmpty()) {
+        backend = snow_shot::storage::ApplicationStorage::instance().isInitialized()
+                      ? snow_shot::storage::ScreenshotSettings().windowElementApi().toLatin1()
+                      : snow_shot::storage::ConfigurationSchema::defaultValue(
+                            QStringLiteral("screenshot/window_element_api"))
+                            .toString()
+                            .toLatin1();
     }
     return backend.trimmed().toLower();
 }
