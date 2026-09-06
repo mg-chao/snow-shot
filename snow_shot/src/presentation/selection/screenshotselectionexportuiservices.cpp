@@ -3,7 +3,6 @@
 #include "snow_shot/presentation/screenshotpinnedwindow.h"
 #include "snow_shot/presentation/pinnedwindowgroupmanager.h"
 #include "snow_shot/presentation/screenshotocrrecognitionservice.h"
-#include "snow_shot/presentation/screenshotocrpresentation.h"
 #include "snow_shot/presentation/screenshotqrrecognitionservice.h"
 #include "snow_shot/storage/settingsadapters.h"
 #include "snow_shot/storage/applicationstorage.h"
@@ -30,40 +29,6 @@
 #include <optional>
 
 namespace {
-ScreenshotRecognitionResults
-recognitionResultsForPinnedImage(const ScreenshotRecognitionResults& sourceResults,
-                                 const QRect& sourceSelection,
-                                 const ScreenshotResultStyle& resultStyle, const QSize& imageSize) {
-    ScreenshotRecognitionResults results = sourceResults;
-    if (!results.text.has_value() || !results.text->error.isEmpty() ||
-        results.text->presentation == nullptr || sourceSelection.isEmpty() || imageSize.isEmpty()) {
-        return results;
-    }
-
-    const ScreenshotResultLayout layout =
-        ScreenshotResultCompositor::layoutForContent(sourceSelection.size(), resultStyle);
-    if (!layout.isValid() || layout.outputRect.size() != imageSize) {
-        return results;
-    }
-
-    // Cached OCR quads are in the original screenshot canvas. The pinned image is a
-    // separately rendered result whose origin is local to the new canvas and may include
-    // effect padding for the result shadow.
-    auto presentation = std::make_shared<ScreenshotOcrPresentation>();
-    presentation->lines = results.text->presentation->lines;
-    const QPointF sourceOrigin = sourceSelection.topLeft();
-    const QPointF destinationOrigin(layout.contentRect.topLeft());
-    presentation->selection = layout.contentRect;
-    for (ScreenshotOcrLine& line : presentation->lines) {
-        for (QPointF& point : line.quad) {
-            point = point - sourceOrigin + destinationOrigin;
-        }
-    }
-    presentation->prepareForRendering();
-    results.text->presentation = std::move(presentation);
-    return results;
-}
-
 void applyPinRuntimeSettings(ScreenshotPinnedWindow::Config* config) {
     if (config == nullptr) {
         return;
@@ -659,9 +624,9 @@ bool ScreenshotSelectionExportUiServices::presentPinnedArtifact(
     config.qrRecognition = m_qrRecognition;
     config.tableRecognition = m_tableRecognition;
     config.recognitionProvider = m_recognitionProvider;
-    config.recognitionResults =
-        recognitionResultsForPinnedImage(request.recognitionResults, request.selection,
-                                         request.resultStyle, request.fullResolutionScaleBasis);
+    // The pinned image retains the source canvas coordinates, including shadow padding.
+    // Cached OCR quads must stay in that same space to align with the image.
+    config.recognitionResults = request.recognitionResults;
     config.formattedTextDocument.reset();
     config.formattedPlainText.clear();
     applyPinRuntimeSettings(&config);
