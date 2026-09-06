@@ -378,6 +378,122 @@ void recorderAcceptsOnlyBackendSupportedShortcuts() {
             "the outer shortcut control must display a committed bare Shift key without duplication");
 }
 
+void printScreenButtonRecordsThroughValidation() {
+#ifdef Q_OS_WIN
+    const styles::ThemeColorScheme scheme = styles::ThemeManager::instance().themeColorScheme();
+    const auto mainWindowMetric = styles::buildMainWindowComponentMetricToken(scheme);
+    const auto flushEvents = []() {
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QApplication::processEvents();
+    };
+
+    QString lastValidatedShortcut;
+    QStringList savedShortcuts;
+    bool supported = false;
+    ShortcutKeyRowConfig config;
+    config.title = QStringLiteral("Screenshot");
+    config.registrationState.shortcuts = {QStringLiteral("Ctrl+1")};
+    config.maxShortcutCount = 2;
+    config.shortcutValidator = [&](const QString& shortcut) {
+        lastValidatedShortcut = shortcut;
+        return shortcuts::GlobalShortcutValidationResult{
+            shortcut, supported,
+            supported ? shortcuts::GlobalShortcutFailureReason::None
+                      : shortcuts::GlobalShortcutFailureReason::AlreadyInUse};
+    };
+
+    ShortcutKeyRow row(config, scheme.metricAlias, mainWindowMetric);
+    QObject::connect(&row, &ShortcutKeyRow::shortcutsChanged, &row,
+                     [&](const QStringList& shortcuts) { savedShortcuts = shortcuts; });
+    row.resize(720, row.height());
+    row.show();
+    flushEvents();
+    row.findChild<adqt::widgets::AdButton*>(QStringLiteral("shortcutKeyButton"))->click();
+    flushEvents();
+
+    auto* button =
+        row.findChild<adqt::widgets::AdButton*>(QStringLiteral("shortcutConfigPrintScreenButton"));
+    auto* modal = row.findChild<adqt::widgets::AdModal*>();
+    require(button != nullptr && button->isVisible() && button->isEnabled() && modal != nullptr,
+            "global shortcut recorders must offer Print Screen when another binding fits");
+    auto* info = button->findChild<InfoTooltipIcon*>(
+        QStringLiteral("shortcutConfigPrintScreenTooltipTrigger"));
+    require(info != nullptr && info->isVisible() && info->parentWidget() == button &&
+                info->geometry().left() > button->width() / 2 &&
+                info->geometry().right() < button->width() &&
+                std::abs(info->geometry().center().y() - button->rect().center().y()) <= 1 &&
+                info->property("inlineGap").toInt() == scheme.metricAlias.marginXS,
+            "the Print Screen info icon must sit inline after the centered button text");
+    auto* tooltip = info->tooltipHost();
+    require(button->toolTip().isEmpty() && tooltip != nullptr && tooltip->targetWidget() == info &&
+                tooltip->anchorWidget() == info &&
+                tooltip->placement() == adqt::widgets::AdTooltip::Placement::Top &&
+                tooltip->hoverOpenDelayMs() == 0 &&
+                tooltip->text() == button->accessibleDescription() &&
+                info->accessibleName() == button->text() &&
+                info->accessibleDescription() == tooltip->text() &&
+                tooltip->text().contains(
+                    QStringLiteral("Use the Print Screen key to open screen capture")) &&
+                tooltip->text().contains(QStringLiteral("try restarting")),
+            "the inline info icon must own the immediate Windows troubleshooting tooltip");
+
+    button->click();
+    flushEvents();
+    require(lastValidatedShortcut == QStringLiteral("Print") &&
+                !modal->acceptButton()->isEnabled() && savedShortcuts.isEmpty(),
+            "direct Print Screen recording must respect validator rejection before saving");
+
+    supported = true;
+    button->click();
+    flushEvents();
+    require(modal->acceptButton()->isEnabled() && !button->isEnabled() && savedShortcuts.isEmpty(),
+            "a successful direct recording must fill the available slot and wait for OK");
+    const auto keyButtons =
+        row.findChildren<adqt::widgets::AdButton*>(QStringLiteral("shortcutConfigKeyButton"));
+    require(keyButtons.size() == 2 && keyButtons[0]->text() == QStringLiteral("Ctrl+1") &&
+                keyButtons[1]->text() == QStringLiteral("Print") && !keyButtons[1]->busy(),
+            "the Print Screen button must preserve existing shortcuts and finish the new row");
+
+    keyButtons[1]->click();
+    flushEvents();
+    require(button->isEnabled(),
+            "Print Screen must remain available while editing a row at the binding limit");
+    button->click();
+    flushEvents();
+    modal->acceptButton()->click();
+    flushEvents();
+    require(savedShortcuts == QStringList{QStringLiteral("Ctrl+1"), QStringLiteral("Print")},
+            "OK must save the directly recorded Print Screen binding as portable text");
+
+    savedShortcuts.clear();
+    row.findChild<adqt::widgets::AdButton*>(QStringLiteral("shortcutKeyButton"))->click();
+    flushEvents();
+    button =
+        row.findChild<adqt::widgets::AdButton*>(QStringLiteral("shortcutConfigPrintScreenButton"));
+    button->click();
+    flushEvents();
+    modal = row.findChild<adqt::widgets::AdModal*>();
+    modal->rejectButton()->click();
+    flushEvents();
+    require(savedShortcuts.isEmpty(), "Cancel must discard direct Print Screen recordings");
+
+    row.setRegistrationState({});
+    row.findChild<adqt::widgets::AdButton*>(QStringLiteral("shortcutKeyButton"))->click();
+    flushEvents();
+    button =
+        row.findChild<adqt::widgets::AdButton*>(QStringLiteral("shortcutConfigPrintScreenButton"));
+    require(button != nullptr && button->isEnabled(),
+            "Print Screen must be available immediately for an unset shortcut");
+    button->click();
+    flushEvents();
+    modal = row.findChild<adqt::widgets::AdModal*>();
+    modal->acceptButton()->click();
+    flushEvents();
+    require(savedShortcuts == QStringList{QStringLiteral("Print")},
+            "an unset shortcut must record Print Screen without adding an extra row");
+#endif
+}
+
 void drawingRecorderUsesLocalValidationLanguage() {
     const styles::ThemeColorScheme scheme = styles::ThemeManager::instance().themeColorScheme();
     const auto mainWindowMetric = styles::buildMainWindowComponentMetricToken(scheme);
@@ -408,6 +524,9 @@ void drawingRecorderUsesLocalValidationLanguage() {
 
     auto* configContent = row.findChild<QWidget*>(QStringLiteral("shortcutConfigContent"));
     require(configContent != nullptr, "drawing shortcut recorder should be created");
+    require(row.findChild<adqt::widgets::AdButton*>(
+                QStringLiteral("shortcutConfigPrintScreenButton")) == nullptr,
+            "drawing shortcut recorders must not show the Windows global shortcut workaround");
     QKeyEvent duplicateEvent(QEvent::KeyPress, Qt::Key_S, Qt::NoModifier);
     QCoreApplication::sendEvent(configContent, &duplicateEvent);
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
@@ -614,6 +733,7 @@ int main(int argc, char** argv) {
 
     statusPresentationUsesSemanticTokens();
     recorderAcceptsOnlyBackendSupportedShortcuts();
+    printScreenButtonRecordsThroughValidation();
     drawingRecorderUsesLocalValidationLanguage();
     compactTitleAndKeyButtonStylesMatchReference();
     adjustableDelayUsesWheelAndClampsRange();
