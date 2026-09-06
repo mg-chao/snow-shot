@@ -1346,7 +1346,7 @@ bool is_sequence_document(const Document& document) {
 }
 
 Result<MutableImagePtr> make_heif_image(const ImageView& view, const ColorEncoding& color,
-                                        bool include_alpha) {
+                                        bool include_alpha, bool lossless_rgb = false) {
     Result<void> valid = view.validate();
     if (!valid)
         return valid.error();
@@ -1479,7 +1479,7 @@ Result<MutableImagePtr> make_heif_image(const ImageView& view, const ColorEncodi
         }
     }
     NclxPtr nclx(heif_nclx_color_profile_alloc());
-    if (nclx && (color.primaries != ColorPrimaries::unknown ||
+    if (nclx && (lossless_rgb || color.primaries != ColorPrimaries::unknown ||
                  color.transfer != TransferFunction::unknown)) {
         nclx->color_primaries = color.primaries == ColorPrimaries::rec2020
                                     ? heif_color_primaries_ITU_R_BT_2020_2_and_2100_0
@@ -1494,7 +1494,8 @@ Result<MutableImagePtr> make_heif_image(const ImageView& view, const ColorEncodi
                                              ? heif_transfer_characteristic_ITU_R_BT_2100_0_HLG
                                              : heif_transfer_characteristic_IEC_61966_2_1;
         nclx->matrix_coefficients =
-            color.primaries == ColorPrimaries::rec2020
+            lossless_rgb ? heif_matrix_coefficients_RGB_GBR
+            : color.primaries == ColorPrimaries::rec2020
                 ? heif_matrix_coefficients_ITU_R_BT_2020_2_non_constant_luminance
                 : heif_matrix_coefficients_ITU_R_BT_709_5;
         nclx->full_range_flag = 1;
@@ -1573,6 +1574,14 @@ Result<EncoderPtr> make_encoder(heif_context* context, Format format,
     if (error.code != heif_error_Ok) {
         return heif_status(error, ErrorCode::encode_failed, "HEIF encoder configuration");
     }
+    // Lossless AV1 quantization also needs an identity color transform and no chroma
+    // subsampling to preserve RGB values, as in libheif's lossless encoder example.
+    if (format == Format::avif && options.lossless) {
+        error = heif_encoder_set_parameter_string(encoder.get(), "chroma", "444");
+        if (error.code != heif_error_Ok)
+            return heif_status(error, ErrorCode::encode_failed,
+                               "AVIF lossless chroma configuration");
+    }
     const heif_encoder_parameter* const* parameters = heif_encoder_list_parameters(encoder.get());
     if (parameters) {
         for (std::size_t index = 0; parameters[index] != nullptr; ++index) {
@@ -1627,8 +1636,9 @@ Result<void> encode_still(heif_context* context, heif_encoder* encoder, const Do
     if (!alpha)
         return alpha.error();
     const bool include_alpha = alpha.value() == AlphaContent::non_opaque;
-    Result<MutableImagePtr> image =
-        make_heif_image(frame.image.view(), effective_color(document, frame), include_alpha);
+    const bool lossless_rgb = options.format == Format::avif && options.lossless;
+    Result<MutableImagePtr> image = make_heif_image(
+        frame.image.view(), effective_color(document, frame), include_alpha, lossless_rgb);
     if (!image)
         return image.error();
     EncodeOptionsPtr encoding(heif_encoding_options_alloc());
@@ -1638,6 +1648,15 @@ Result<void> encode_still(heif_context* context, heif_encoder* encoder, const Do
     }
     encoding->save_alpha_channel = include_alpha ? 1 : 0;
     encoding->save_two_colr_boxes_when_ICC_and_nclx_available = 1;
+    NclxPtr lossless_profile;
+    if (lossless_rgb) {
+        heif_color_profile_nclx* profile = nullptr;
+        const auto error = heif_image_get_nclx_color_profile(image.value().get(), &profile);
+        if (error.code != heif_error_Ok)
+            return heif_status(error, ErrorCode::encode_failed, "AVIF lossless color profile");
+        lossless_profile.reset(profile);
+        encoding->output_nclx_profile = lossless_profile.get();
+    }
     encoding->image_orientation = static_cast<heif_orientation>(
         preserve_metadata ? effective_metadata(document, frame).orientation
                           : Orientation::identity);
@@ -1717,7 +1736,8 @@ Result<void> encode_sequence(heif_context* context, heif_encoder* encoder, const
         if (stop.stop_requested())
             return cancelled_status();
         Result<MutableImagePtr> image =
-            make_heif_image(frame.image.view(), effective_color(document, frame), encode_alpha);
+            make_heif_image(frame.image.view(), effective_color(document, frame), encode_alpha,
+                            options.format == Format::avif && options.lossless);
         if (!image)
             return image.error();
         const std::int64_t duration_ns = std::max<std::int64_t>(0, frame.duration.count());

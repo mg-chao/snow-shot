@@ -724,6 +724,10 @@ void test_heif_family(Service& service) {
             "AVIF NCLX color primaries are preserved");
     require(decoded.frames.front().image.pixels()[7] == std::byte{0x80},
             "AVIF alpha survives lossless round trip");
+    require(std::equal(decoded.frames.front().image.pixels().begin(),
+                       decoded.frames.front().image.pixels().end(),
+                       still.frames.front().image.pixels().begin()),
+            "AVIF lossless encoding preserves RGB values without chroma or matrix rounding");
     StorageSink avif_sink;
     require(service.decode_to_sink(input, avif_sink).has_value() && avif_sink.ended &&
                 avif_sink.storage_requests == 1 && avif_sink.callback_rows == 0 &&
@@ -3515,7 +3519,13 @@ void test_jxl_opaque_progressive_preview(Service& service) {
 
 } // namespace
 
-int main() {
+int main(int argc, char* argv[]) {
+    if (argc == 2 && std::string_view(argv[1]) == "--heif-only") {
+        Service service;
+        test_heif_family(service);
+        std::cout << "snow_image HEIF tests passed\n";
+        return 0;
+    }
     test_shared_image_ownership();
     test_alpha_classification_and_composite();
     test_persistent_file_input();

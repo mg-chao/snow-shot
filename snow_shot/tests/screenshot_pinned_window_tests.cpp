@@ -21,6 +21,8 @@
 #include "widgets/button.h"
 #include "widgets/color_picker.h"
 #include "widgets/context_menu.h"
+#include "widgets/modal.h"
+#include "widgets/input_line_edit.h"
 
 #include <QAbstractButton>
 #include <QActionGroup>
@@ -34,6 +36,8 @@
 #include <QEnterEvent>
 #include <QEvent>
 #include <QFrame>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QGraphicsItem>
 #include <QGraphicsScene>
 #include <QGraphicsView>
@@ -2314,8 +2318,8 @@ void pinnedNativeDragAcceptsCursorMovementShortcuts(SnowCanvasRuntime&) {
     sendShortcut(*pinnedWindow, Qt::Key_W);
     const QPoint cursorAfterShortcuts = systemCursorPosition();
     // USER32 reacts to cursor movement with WM_MOVING on its next iteration.
-    RECT shortcutProposal = nativeRectForQRect(
-        startingGeometry.translated(cursorAfterShortcuts - startingCursor));
+    RECT shortcutProposal =
+        nativeRectForQRect(startingGeometry.translated(cursorAfterShortcuts - startingCursor));
     require(SendMessageW(hwnd, WM_MOVING, 0, reinterpret_cast<LPARAM>(&shortcutProposal)) == TRUE,
             "the shortcut's system move proposal was not accepted");
     SetWindowPos(hwnd, nullptr, shortcutProposal.left, shortcutProposal.top, 0, 0,
@@ -3987,6 +3991,92 @@ void pinnedEditToolbarControlsCanvasHistory(SnowCanvasRuntime&) {
     require(processUntilDeleted(guardedWindow, 2000),
             "pinned window was not deleted after the history test");
 }
+void pinnedSaveDialogRoutingAndCancellation() {
+    using adqt::widgets::AdLineEdit;
+    using adqt::widgets::AdModal;
+    const snow_shot::storage::ScreenshotSettings settings;
+    QTemporaryDir directory;
+    require(directory.isValid() && settings.setImageSaveDirectory(directory.path()),
+            "pinned save test directory unavailable");
+    QImage image(160, 100, QImage::Format_ARGB32_Premultiplied);
+    image.fill(QColor(25, 120, 180));
+    auto* window = new ScreenshotPinnedWindow;
+    QPointer<ScreenshotPinnedWindow> guarded(window);
+    ScreenshotPinnedWindow::Config config;
+    config.screen = QGuiApplication::primaryScreen();
+    config.nativeGeometry = physicalPinGeometry(*config.screen, QPoint(40, 40), image.size());
+    config.canvasSourceRect = QRectF(QPointF(), QSizeF(image.size()));
+    config.imageSource = ScreenshotImageSource::fromImage(image, config.canvasSourceRect);
+    config.automaticTextRecognition = false;
+    require(window->present(config), "pinned save source could not be presented");
+    waitForUi(50);
+    auto* action =
+        pinnedMenuActionNamed(*window, QStringLiteral("screenshotPinnedSaveAsFileAction"));
+    require(action, "pinned Save as file action missing");
+
+    require(settings.setSaveAsFileDialog(QStringLiteral("system")), "system routing setup failed");
+    const bool previousNativeSetting = QApplication::testAttribute(Qt::AA_DontUseNativeDialogs);
+    QApplication::setAttribute(Qt::AA_DontUseNativeDialogs, true);
+    const auto restoreNativeSetting = qScopeGuard([previousNativeSetting] {
+        QApplication::setAttribute(Qt::AA_DontUseNativeDialogs, previousNativeSetting);
+    });
+    bool systemDialogSeen = false;
+    QTimer dismiss;
+    dismiss.setInterval(10);
+    QObject::connect(&dismiss, &QTimer::timeout, window, [&] {
+        for (auto* widget : QApplication::topLevelWidgets()) {
+            if (auto* dialog = qobject_cast<QFileDialog*>(widget)) {
+                systemDialogSeen = true;
+                dialog->reject();
+            }
+        }
+    });
+    dismiss.start();
+    action->trigger();
+    dismiss.stop();
+    require(systemDialogSeen &&
+                !window->findChild<AdModal*>(QStringLiteral("screenshotSaveAsFileModal")),
+            "System must retain the QFileDialog route");
+    require(settings.setSaveAsFileDialog(QStringLiteral("snow_shot")),
+            "Snow Shot routing setup failed");
+    action->trigger();
+    auto* modal = window->findChild<AdModal*>(QStringLiteral("screenshotSaveAsFileModal"));
+    require(modal && modal->mode() == AdModal::Mode::Window,
+            "pinned save must open Snow Shot dialog");
+    modal->rejectButton()->click();
+    waitForUi(30);
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    require(guarded && guarded->isVisible() && !guarded->property("saveDialogOpen").toBool() &&
+                QDir(directory.path()).entryList(QDir::Files).isEmpty(),
+            "cancel must keep pinned window editable and save no file");
+    action->trigger();
+    modal = window->findChild<AdModal*>(QStringLiteral("screenshotSaveAsFileModal"));
+    require(modal, "pinned save must reopen after cancel");
+    QElapsedTimer ready;
+    ready.start();
+    while (!modal->acceptButton()->isEnabled() && ready.elapsed() < 10000)
+        waitForUi(10);
+    if (!modal->acceptButton()->isEnabled()) {
+        auto* error = modal->contentWidget()->findChild<QLabel*>(QStringLiteral("saveErrorLabel"));
+        if (error)
+            std::cerr << "pinned dialog: " << error->text().toStdString() << '\n';
+    }
+    require(modal->acceptButton()->isEnabled(), "pinned export source failed to load");
+    modal->contentWidget()
+        ->findChild<AdLineEdit*>(QStringLiteral("saveFilenameInput"))
+        ->setText(QStringLiteral("pin.png"));
+    modal->acceptButton()->click();
+    const QString path = QDir(directory.path()).filePath(QStringLiteral("pin.png"));
+    ready.restart();
+    while ((!QFileInfo::exists(path) || window->property("saveDialogOpen").toBool()) &&
+           ready.elapsed() < 10000)
+        waitForUi(10);
+    require(QFileInfo::exists(path) && window->isVisible() &&
+                settings.lastManualSaveDirectory() == directory.path(),
+            "successful pinned save must preserve window and remember destination");
+    window->close();
+    require(processUntilDeleted(guarded, 2000), "pinned save fixture did not close");
+}
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -4002,6 +4092,10 @@ int main(int argc, char* argv[]) {
         require(sourceRuntime.isValid(), "source runtime creation failed");
         if (app.arguments().contains(QStringLiteral("--translation-only"))) {
             runPinnedOriginalImageTranslationTests();
+            return 0;
+        }
+        if (app.arguments().contains(QStringLiteral("--save-dialog-only"))) {
+            pinnedSaveDialogRoutingAndCancellation();
             return 0;
         }
         if (app.arguments().contains(QStringLiteral("--pinned-shortcut-only"))) {

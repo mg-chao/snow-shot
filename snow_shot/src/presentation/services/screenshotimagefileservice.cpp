@@ -6,6 +6,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QFile>
 #include <QMimeData>
 #include <QRegularExpression>
 #include <QSaveFile>
@@ -252,28 +253,78 @@ snow::image::Format ScreenshotImageFileService::snowImageFormat(ScreenshotImageF
 }
 
 snow::image::EncodeOptions
-ScreenshotImageFileService::encodeOptions(ScreenshotImageFileFormat format) {
+ScreenshotImageFileService::encodeOptions(ScreenshotImageFileFormat format, int quality) {
     snow::image::EncodeOptions options;
     options.format = snowImageFormat(format);
     options.preserve_metadata = false;
+    options.quality = qBound(1, quality, 100);
     switch (format) {
     case ScreenshotImageFileFormat::Png:
         options.compression_level = 0;
         break;
     case ScreenshotImageFileFormat::Jpeg:
-        options.quality = 100;
         break;
     case ScreenshotImageFileFormat::Webp:
-        options.lossless = true;
+        options.lossless = options.quality == 100;
         options.lossless_effort = 0;
+        if (!options.lossless)
+            options.effort = 4;
         break;
     case ScreenshotImageFileFormat::Jxl:
     case ScreenshotImageFileFormat::Avif:
-        options.lossless = true;
+        options.lossless = options.quality == 100;
         options.effort = 1;
         break;
     }
     return options;
+}
+
+ScreenshotImageFileSaveResult
+ScreenshotImageFileService::writeEncodedFile(const QString& encodedFile, const QString& path,
+                                             ScreenshotImageFileFormat format,
+                                             std::function<bool()> cancelled) {
+    const QString outputPath = normalizedPath(path, format);
+    if (outputPath.isEmpty())
+        return {{},
+                QCoreApplication::translate("ScreenshotImageFileService",
+                                            "No output file was selected")};
+    const QString cancelledMessage =
+        QCoreApplication::translate("ScreenshotImageFileService", "The save was cancelled");
+    if (cancelled && cancelled())
+        return {{}, cancelledMessage};
+    if (!QDir().mkpath(QFileInfo(outputPath).absolutePath()))
+        return {{},
+                QCoreApplication::translate("ScreenshotImageFileService",
+                                            "The output directory could not be created")};
+    return writeAtomically(outputPath, [&](QIODevice* device, QString* error) {
+        QFile input(encodedFile);
+        if (!input.open(QIODevice::ReadOnly)) {
+            *error = input.errorString();
+            return false;
+        }
+        if (input.size() == 0) {
+            *error = QCoreApplication::translate("ScreenshotImageFileService",
+                                                 "The encoded image is empty");
+            return false;
+        }
+        while (!input.atEnd()) {
+            if (cancelled && cancelled()) {
+                *error = cancelledMessage;
+                return false;
+            }
+            const QByteArray bytes = input.read(1024 * 1024);
+            if (bytes.isEmpty() || device->write(bytes) != bytes.size()) {
+                *error = input.error() != QFileDevice::NoError ? input.errorString()
+                                                               : device->errorString();
+                return false;
+            }
+        }
+        if (cancelled && cancelled()) {
+            *error = cancelledMessage;
+            return false;
+        }
+        return true;
+    });
 }
 
 ScreenshotImageFileSaveResult ScreenshotImageFileService::write(const QImage& image,

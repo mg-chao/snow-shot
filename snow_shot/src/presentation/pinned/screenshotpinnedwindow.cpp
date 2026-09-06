@@ -13,6 +13,7 @@
 #include "snow_shot/presentation/screenshotdefaultstyles.h"
 #include "snow_shot/presentation/screenshotgeometry.h"
 #include "snow_shot/presentation/screenshotimagefileservice.h"
+#include "snow_shot/presentation/screenshotsaveasfiledialog.h"
 #include "snow_shot/presentation/screenshotocrpresentation.h"
 #include "snow_shot/presentation/screenshotocrrecognitionservice.h"
 #include "snow_shot/presentation/screenshotmessageservice.h"
@@ -3794,6 +3795,8 @@ void ScreenshotPinnedWindow::copyOriginalContent() {
 }
 
 void ScreenshotPinnedWindow::saveAsFile() {
+    if (property("saveDialogOpen").toBool())
+        return;
     if (m_originalImage.isNull()) {
         requestMaterializedImage([this](bool succeeded) {
             if (succeeded && !m_closing) {
@@ -3810,6 +3813,31 @@ void ScreenshotPinnedWindow::saveAsFile() {
     }
 
     const snow_shot::storage::ScreenshotSettings outputSettings;
+    if (outputSettings.saveAsFileDialog() == QStringLiteral("snow_shot")) {
+        if (m_canvas && !m_canvas->resetEditingStatePreservingTool())
+            return;
+        const qreal renderScale = m_backgroundCanvasRect.width() > 0
+                                      ? m_transformedImage.width() / m_backgroundCanvasRect.width()
+                                      : 1.0;
+        ScreenshotResultStyle style = m_resultStyle;
+        style.cornerRadius = qRound(style.cornerRadius * renderScale);
+        style.shadowWidth = qRound(style.shadowWidth * renderScale);
+        ScreenshotPinnedViewportExportSource request{m_runtime.serializeDocumentSession(),
+                                                     m_transformedImage, m_backgroundCanvasRect,
+                                                     m_transformedImage.size(), style};
+        auto artifact = std::make_shared<ScreenshotExportArtifact>(
+            ScreenshotExportSource::fromPinnedViewport(std::move(request)));
+        setProperty("saveDialogOpen", true);
+        if (!ScreenshotSaveAsFileDialog::open(this, this, artifact, {}, [this](bool) {
+                setProperty("saveDialogOpen", false);
+                if (!m_closing) {
+                    activateWindow();
+                    setFocus();
+                }
+            }))
+            setProperty("saveDialogOpen", false);
+        return;
+    }
     const QString directory = ScreenshotImageFileService::saveDialogDirectory(
         outputSettings.lastManualSaveDirectory(), outputSettings.imageSaveDirectory());
     static_cast<void>(QDir().mkpath(directory));
@@ -3824,8 +3852,6 @@ void ScreenshotPinnedWindow::saveAsFile() {
     if (selectedPath.isEmpty()) {
         return;
     }
-    static_cast<void>(
-        outputSettings.setLastManualSaveDirectory(QFileInfo(selectedPath).absolutePath()));
 
     const ScreenshotImageFileFormat format =
         ScreenshotImageFileService::formatForDialogSelection(selectedPath, selectedFilter);
@@ -3882,6 +3908,11 @@ void ScreenshotPinnedWindow::saveAsFile() {
                 },
                 [this](ScreenshotExportTaskResult result) {
                     m_fileSaveJob = {};
+                    if (result.succeeded()) {
+                        static_cast<void>(
+                            snow_shot::storage::ScreenshotSettings().setLastManualSaveDirectory(
+                                QFileInfo(result.savedPath).absolutePath()));
+                    }
                     if (!result.succeeded() &&
                         result.failureStage != ScreenshotExportFailureStage::Cancelled) {
                         showPinnedRecognitionMessage(

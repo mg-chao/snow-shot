@@ -86,6 +86,7 @@ enum class SettingsSelectBinding {
     ScreenRecordingEncoder,
     ScreenRecordingEncodingPreset,
     ScreenshotImageFormat,
+    ScreenshotSaveAsFileDialog,
     TrayLeftClickAction,
 };
 

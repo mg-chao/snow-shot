@@ -3,6 +3,7 @@
 #include "snowimageqtcodec.h"
 
 #include <QBuffer>
+#include <QCoreApplication>
 #include <QMetaObject>
 #include <QMutex>
 #include <QMutexLocker>
@@ -165,6 +166,63 @@ bool ScreenshotExportArtifact::requestImage(QObject* receiver, ImageCallback cal
         startImage();
     }
     return true;
+}
+
+bool ScreenshotExportArtifact::requestRowSource(QObject* receiver, RowSourceCallback callback) {
+    if (!receiver || !callback || isCancelled())
+        return false;
+    const auto factory = m_impl->source.m_rowSourceFactory;
+    const QPointer<QObject> target(receiver);
+    const QPointer<ScreenshotExportArtifact> guarded(this);
+    auto schedule = [target, guarded, factory,
+                     callback = std::move(callback)](QImage image, QString error) mutable {
+        if (!guarded || !target || guarded->isCancelled())
+            return;
+        if (!error.isEmpty()) {
+            callback({}, error);
+            return;
+        }
+        auto rows = std::make_shared<ScreenshotImageRowSource>();
+        auto completion = std::make_shared<RowSourceCallback>(std::move(callback));
+        auto job = ScreenshotExportCoordinator::shared().submit(
+            target, ScreenshotExportCoordinator::Priority::Foreground,
+            [factory, image, rows](const ScreenshotExportCancellation& cancellation) {
+                if (cancellation.isCancellationRequested())
+                    return ScreenshotExportTaskResult::failure(
+                        ScreenshotExportFailureStage::Cancelled,
+                        QCoreApplication::translate("ScreenshotExportArtifact",
+                                                    "Export cancelled"));
+                *rows =
+                    factory
+                        ? factory([cancellation] { return cancellation.isCancellationRequested(); })
+                        : snow_shot::image_codec::srgbRowSource(image);
+                return rows->isValid()
+                           ? ScreenshotExportTaskResult{}
+                           : ScreenshotExportTaskResult::failure(
+                                 ScreenshotExportFailureStage::Source,
+                                 QCoreApplication::translate("ScreenshotExportArtifact",
+                                                             "Image source unavailable"));
+            },
+            [target, guarded, rows, completion](ScreenshotExportTaskResult result) {
+                if (target && guarded && !guarded->isCancelled())
+                    (*completion)(*rows, result.error);
+            });
+        if (!job.isValid()) {
+            (*completion)({}, QCoreApplication::translate("ScreenshotExportArtifact",
+                                                          "The screenshot export queue is full"));
+        } else {
+            QMutexLocker lock(&guarded->m_impl->mutex);
+            guarded->m_impl->outputJobs.push_back(job);
+        }
+    };
+    if (factory) {
+        schedule({}, {});
+        return true;
+    }
+    return requestImage(
+        receiver, [schedule = std::move(schedule)](ScreenshotExportImageResult result) mutable {
+            schedule(std::move(result.image), result.error);
+        });
 }
 
 void ScreenshotExportArtifact::startImage() {

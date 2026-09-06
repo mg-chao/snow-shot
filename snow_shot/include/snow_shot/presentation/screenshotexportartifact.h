@@ -93,6 +93,8 @@ class ScreenshotExportArtifact final : public QObject {
     ScreenshotExportArtifact& operator=(const ScreenshotExportArtifact&) = delete;
 
     [[nodiscard]] bool requestImage(QObject* receiver, ImageCallback callback);
+    using RowSourceCallback = std::function<void(ScreenshotImageRowSource, QString)>;
+    [[nodiscard]] bool requestRowSource(QObject* receiver, RowSourceCallback callback);
     [[nodiscard]] bool requestCanonicalPng(QObject* receiver, EncodingCallback callback);
     [[nodiscard]] bool requestClipboard(QObject* receiver, ClipboardCallback callback);
     [[nodiscard]] bool requestAutomaticSave(QObject* receiver, QStringList directories,

@@ -161,6 +161,18 @@ SNOW_SHOT_IMAGE_CODEC_API int32_t SNOW_SHOT_IMAGE_CODEC_CALL snow_shot_image_cod
 SNOW_SHOT_IMAGE_CODEC_API void SNOW_SHOT_IMAGE_CODEC_CALL
 snow_shot_image_codec_release_buffer(SnowShotImageCodecBuffer* buffer);
 
+// Export-only operations use caller-owned, optionally file-mapped RGBA buffers.
+SNOW_SHOT_IMAGE_CODEC_API int32_t SNOW_SHOT_IMAGE_CODEC_CALL snow_shot_image_codec_resize_rgba8(
+    const uint8_t* source, uint32_t width, uint32_t height, uint8_t* destination,
+    uint32_t output_width, uint32_t output_height, void* cancel_context,
+    SnowShotImageCodecCancelCallback cancelled, char* error, uint64_t error_capacity);
+SNOW_SHOT_IMAGE_CODEC_API int32_t SNOW_SHOT_IMAGE_CODEC_CALL snow_shot_image_codec_decode_file_into(
+    const char* utf8_path, uint8_t* destination, uint32_t width, uint32_t height,
+    void* cancel_context, SnowShotImageCodecCancelCallback cancelled, char* error,
+    uint64_t error_capacity);
+SNOW_SHOT_IMAGE_CODEC_API int32_t SNOW_SHOT_IMAGE_CODEC_CALL
+snow_shot_image_codec_export_limits(uint32_t format, uint32_t* width, uint32_t* height);
+
 #ifdef __cplusplus
 }
 #endif

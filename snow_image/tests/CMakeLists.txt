@@ -27,6 +27,7 @@ else()
 endif()
 
 add_test(NAME snow_image_core_tests COMMAND snow_image_core_tests)
+add_test(NAME snow_image_heif_tests COMMAND snow_image_core_tests --heif-only)
 
 if(MSVC)
     # Regression coverage for the test CLI dialog guard (cmake/test-support):

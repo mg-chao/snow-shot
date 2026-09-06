@@ -305,6 +305,40 @@ void codecOptionsUseFastLosslessAndMaximumJpegQuality() {
     require(jxl.lossless && jxl.effort == 1 && avif.lossless && avif.effort == 1,
             "lossless JXL and AVIF saves must use the fastest effort");
 }
+
+void encodedFilesPublishAtomically() {
+    QTemporaryDir directory;
+    require(directory.isValid(), "encoded save directory unavailable");
+    const QString encoded = directory.filePath(QStringLiteral("encoded.png"));
+    const QString destination = directory.filePath(QStringLiteral("nested/output.png"));
+    require(ScreenshotImageFileService::write(image(), encoded, ScreenshotImageFileFormat::Png)
+                .succeeded(),
+            "encoded save fixture failed");
+    require(ScreenshotImageFileService::writeEncodedFile(encoded, destination,
+                                                         ScreenshotImageFileFormat::Png)
+                .succeeded(),
+            "encoded save must create missing directories");
+    auto readDestination = [&] {
+        QFile file(destination);
+        require(file.open(QIODevice::ReadOnly), "encoded output unavailable");
+        return file.readAll();
+    };
+    const QByteArray original = readDestination();
+    int cancellationChecks = 0;
+    const auto cancelled = ScreenshotImageFileService::writeEncodedFile(
+        encoded, destination, ScreenshotImageFileFormat::Png,
+        [&] { return ++cancellationChecks >= 3; });
+    require(!cancelled.succeeded() && !cancelled.error.isEmpty() && readDestination() == original,
+            "cancellation before commit must preserve the existing destination");
+    QFile empty(directory.filePath(QStringLiteral("empty.png")));
+    require(empty.open(QIODevice::WriteOnly), "empty encoded fixture unavailable");
+    empty.close();
+    require(!ScreenshotImageFileService::writeEncodedFile(empty.fileName(), destination,
+                                                          ScreenshotImageFileFormat::Png)
+                    .succeeded() &&
+                readDestination() == original,
+            "an empty encoded source must never replace an existing file");
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -319,6 +353,7 @@ int main(int argc, char** argv) {
         saveDialogPrefersTheLastExistingDirectory();
         retriesNextDirectoryAndPublishesFileOnlyClipboardData();
         codecOptionsUseFastLosslessAndMaximumJpegQuality();
+        encodedFilesPublishAtomically();
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return EXIT_FAILURE;

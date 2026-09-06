@@ -644,6 +644,13 @@ const QVector<ConfigurationSchemaEntry> kEntries = {
      defaultOutputDirectory(QStandardPaths::PicturesLocation), ConfigurationValueKind::String},
     {QStringLiteral("screenshot/last_manual_save_directory"), QString(),
      ConfigurationValueKind::String},
+    {QStringLiteral("screenshot/save_as_file_dialog"),
+     QStringLiteral("system"),
+     ConfigurationValueKind::String,
+     std::nullopt,
+     {QStringLiteral("system"), QStringLiteral("snow_shot")}},
+    {QStringLiteral("screenshot/save_path_shortcuts"), QJsonArray(),
+     ConfigurationValueKind::Structured},
     {QStringLiteral("screenshot/image_format"),
      QStringLiteral("png"),
      ConfigurationValueKind::String,
@@ -1078,6 +1085,25 @@ ConfigurationNormalization ConfigurationSchema::normalize(const QString& key,
     }
     if (key == QStringLiteral("screenshot_selection/selection_rect_presets")) {
         return normalizePresets(value);
+    }
+    if (key == QStringLiteral("screenshot/save_path_shortcuts")) {
+        if (!value.isArray()) {
+            return {};
+        }
+        QJsonArray result;
+        QSet<QString> names;
+        for (const auto& item : value.toArray()) {
+            const auto object = item.toObject();
+            const QString name = object.value(QStringLiteral("name")).toString().trimmed();
+            const QString path = object.value(QStringLiteral("path")).toString().trimmed();
+            if (name.isEmpty() || path.isEmpty() || names.contains(name.toCaseFolded())) {
+                continue;
+            }
+            names.insert(name.toCaseFolded());
+            result.append(
+                QJsonObject{{QStringLiteral("name"), name}, {QStringLiteral("path"), path}});
+        }
+        return {result, true, result != value.toArray()};
     }
     if (key == QStringLiteral("screenshot_toolbar/layout")) {
         return normalizeToolbarLayout(value);

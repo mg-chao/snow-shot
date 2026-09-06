@@ -571,6 +571,18 @@ SettingsItemDefinition screenshotImageFormatItem() {
          {QStringLiteral("avif"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "AVIF"))}});
 }
 
+SettingsItemDefinition screenshotSaveAsFileDialogItem() {
+    return fixedSelectItem(
+        QStringLiteral("screenshot.save-as-file-dialog"),
+        QT_TRANSLATE_NOOP("SettingsCatalog", "Save as file dialog"),
+        QT_TRANSLATE_NOOP("SettingsCatalog", "Choose the dialog used for manual screenshot saves"),
+        QStringLiteral("screenshot/save_as_file_dialog"),
+        SettingsSelectBinding::ScreenshotSaveAsFileDialog,
+        {{QStringLiteral("system"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "System"))},
+         {QStringLiteral("snow_shot"),
+          settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Snow Shot"))}});
+}
+
 QVector<SettingsItemDefinition> screenshotOutputItems() {
     return {
         directoryPathItem(
@@ -1333,7 +1345,8 @@ QVector<SettingsPageDefinition> builtInPages() {
                     SettingsSectionReset::ScreenshotSettings,
                     {smartSelectionItem(), screenshotOcrActionItem(),
                      screenshotDoubleClickActionItem(), screenshotMiddleClickActionItem(),
-                     screenshotAutoSaveAfterCopyItem(), screenshotCopyFileItem()},
+                     screenshotAutoSaveAfterCopyItem(), screenshotCopyFileItem(),
+                     screenshotSaveAsFileDialogItem()},
                 },
                 {
                     QStringLiteral("pin-to-screen-settings"),
@@ -2243,6 +2256,9 @@ QStringList SettingsCatalog::validationErrors() const {
                         break;
                     case SettingsSelectBinding::ScreenshotImageFormat:
                         expectedKey = QStringLiteral("screenshot/image_format");
+                        break;
+                    case SettingsSelectBinding::ScreenshotSaveAsFileDialog:
+                        expectedKey = QStringLiteral("screenshot/save_as_file_dialog");
                         break;
                     case SettingsSelectBinding::TrayLeftClickAction:
                         expectedKey = QStringLiteral("tray/left_click_action");

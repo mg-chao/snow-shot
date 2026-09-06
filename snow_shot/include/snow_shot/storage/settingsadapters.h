@@ -9,6 +9,13 @@
 #include <QMetaType>
 
 namespace snow_shot::storage {
+struct ScreenshotSavePathShortcut {
+    QString name;
+    QString path;
+    friend bool operator==(const ScreenshotSavePathShortcut&,
+                           const ScreenshotSavePathShortcut&) = default;
+};
+
 struct ScreenshotToolbarLayout {
     QVector<QStringList> positions;
     QStringList hidden;
@@ -96,6 +103,10 @@ class ScreenshotSettings final {
     bool setImageSaveDirectory(const QString& directory) const;
     [[nodiscard]] QString lastManualSaveDirectory() const;
     bool setLastManualSaveDirectory(const QString& directory) const;
+    [[nodiscard]] QString saveAsFileDialog() const;
+    bool setSaveAsFileDialog(const QString& dialog) const;
+    [[nodiscard]] QVector<ScreenshotSavePathShortcut> savePathShortcuts() const;
+    bool setSavePathShortcuts(const QVector<ScreenshotSavePathShortcut>& shortcuts) const;
     [[nodiscard]] QString imageFormat() const;
     bool setImageFormat(const QString& format) const;
     [[nodiscard]] QString manualSaveFilenameFormat() const;

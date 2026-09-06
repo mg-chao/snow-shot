@@ -176,6 +176,8 @@ QVariant BuiltInSettingsBackend::selectValue(SettingsSelectBinding binding) cons
         return storage::RecordingSettings().encodingPreset();
     case SettingsSelectBinding::ScreenshotImageFormat:
         return storage::ScreenshotSettings().imageFormat();
+    case SettingsSelectBinding::ScreenshotSaveAsFileDialog:
+        return storage::ScreenshotSettings().saveAsFileDialog();
     case SettingsSelectBinding::TrayLeftClickAction:
         return storage::TraySettings().leftClickAction();
     }
@@ -265,6 +267,8 @@ bool BuiltInSettingsBackend::applySelectValue(SettingsSelectBinding binding,
         return storage::RecordingSettings().setEncodingPreset(value.toString());
     case SettingsSelectBinding::ScreenshotImageFormat:
         return storage::ScreenshotSettings().setImageFormat(value.toString());
+    case SettingsSelectBinding::ScreenshotSaveAsFileDialog:
+        return storage::ScreenshotSettings().setSaveAsFileDialog(value.toString());
     case SettingsSelectBinding::TrayLeftClickAction:
         return storage::TraySettings().setLeftClickAction(value.toString());
     }
@@ -788,6 +792,9 @@ bool BuiltInSettingsBackend::resetSection(SettingsSectionReset reset) {
                        QStringLiteral("screenshot_selection/smart_selection"))
                        .toBool()) &&
                storage::ApplicationStorage::instance().configuration().setValues({
+                   {QStringLiteral("screenshot/save_as_file_dialog"),
+                    storage::ConfigurationSchema::defaultValue(
+                        QStringLiteral("screenshot/save_as_file_dialog"))},
                    {QStringLiteral("screenshot/auto_execute_after_text_recognition"),
                     storage::ConfigurationSchema::defaultValue(
                         QStringLiteral("screenshot/auto_execute_after_text_recognition"))},

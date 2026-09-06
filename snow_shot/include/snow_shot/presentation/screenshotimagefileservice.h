@@ -13,6 +13,7 @@
 #include <snow/image/format.h>
 
 #include <optional>
+#include <functional>
 
 class QClipboard;
 
@@ -54,7 +55,11 @@ class ScreenshotImageFileService final {
     [[nodiscard]] static ScreenshotImageFileFormat
     formatForDialogSelection(const QString& path, const QString& selectedFilter);
     [[nodiscard]] static snow::image::Format snowImageFormat(ScreenshotImageFileFormat format);
-    [[nodiscard]] static snow::image::EncodeOptions encodeOptions(ScreenshotImageFileFormat format);
+    [[nodiscard]] static snow::image::EncodeOptions encodeOptions(ScreenshotImageFileFormat format,
+                                                                  int quality = 100);
+    [[nodiscard]] static ScreenshotImageFileSaveResult
+    writeEncodedFile(const QString& encodedFile, const QString& path,
+                     ScreenshotImageFileFormat format, std::function<bool()> cancelled = {});
 
     [[nodiscard]] static ScreenshotImageFileSaveResult
     write(const QImage& image, const QString& path, ScreenshotImageFileFormat format);

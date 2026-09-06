@@ -784,6 +784,7 @@ set(PROJECT_HEADERS
     include/snow_shot/presentation/screenshotselectionparams.h
     include/snow_shot/presentation/screenshotselectionresizemodalcontent.h
     include/snow_shot/presentation/screenshotselectionresizeworkflow.h
+    include/snow_shot/presentation/screenshotsaveasfiledialog.h
     include/snow_shot/presentation/screenshotselectionsettingsstore.h
     include/snow_shot/presentation/screenshotsourceimagecomposer.h
     include/snow_shot/presentation/screenshotselectiontoolbarwidget.h
@@ -907,6 +908,10 @@ set(PROJECT_CXX_SOURCES
     src/presentation/selection/screenshotselectionparams.cpp
     src/presentation/selection/screenshotselectionresizemodalcontent.cpp
     src/presentation/selection/screenshotselectionresizeworkflow.cpp
+    src/presentation/services/screenshotsaveasfiledialog.cpp
+    src/presentation/services/screenshotsaveexportpipeline.cpp
+    include/snow_shot/presentation/screenshotsavepreviewcanvas.h
+    src/presentation/services/screenshotsavepreviewcanvas.cpp
     src/presentation/selection/screenshotselectionsettingsstore.cpp
     src/presentation/selection/screenshotselectiontoolbarwidget.cpp
     src/presentation/selection/screenshotselectiontoolbarwidgets.cpp
@@ -2224,6 +2229,10 @@ if(SNOW_SHOT_BUILD_TESTS)
     add_executable(snow-shot-pinned-window-tests
         tests/screenshot_pinned_window_tests.cpp
         tests/original_image_translation_tests.cpp
+        include/snow_shot/presentation/screenshotsavepreviewcanvas.h
+        src/presentation/services/screenshotsaveasfiledialog.cpp
+        src/presentation/services/screenshotsaveexportpipeline.cpp
+        src/presentation/services/screenshotsavepreviewcanvas.cpp
         src/platform/physicalcursor.cpp
         include/snow_shot/presentation/screenshotfloatingtoolpalettewindow.h
         include/snow_shot/presentation/screenshotcanvascolorsampler.h
@@ -2323,6 +2332,9 @@ if(SNOW_SHOT_BUILD_TESTS)
         NAME snow-shot-pinned-window-tests
         COMMAND snow-shot-pinned-window-tests
     )
+    add_test(NAME snow-shot-pinned-save-dialog-tests
+        COMMAND snow-shot-pinned-window-tests --save-dialog-only)
+    set_tests_properties(snow-shot-pinned-save-dialog-tests PROPERTIES TIMEOUT 90)
     add_test(
         NAME snow-shot-pinned-toolbar-parity-tests
         COMMAND snow-shot-pinned-window-tests --toolbar-parity-only
@@ -2504,6 +2516,34 @@ if(SNOW_SHOT_BUILD_TESTS)
     set_tests_properties(snow-shot-export-coordinator-tests PROPERTIES
         ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    )
+
+    add_executable(snow-shot-export-dialog-workflow-tests
+        tests/screenshot_export_dialog_workflow_tests.cpp
+        include/snow_shot/presentation/screenshotsavepreviewcanvas.h
+        src/presentation/services/screenshotsaveasfiledialog.cpp
+        src/presentation/services/screenshotsaveexportpipeline.cpp
+        src/presentation/services/screenshotsavepreviewcanvas.cpp
+        src/presentation/overlay/screenshotselectionshadowrenderer.cpp
+        src/presentation/services/screenshotclipboardservice.cpp
+        src/presentation/services/screenshotexportartifact.cpp
+        src/presentation/services/screenshotimagefileservice.cpp
+        src/presentation/services/screenshotexportcoordinator.cpp
+        src/presentation/services/screenshotexportpinnedsource.cpp
+    )
+    target_include_directories(snow-shot-export-dialog-workflow-tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/image"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/presentation/services"
+    )
+    target_link_libraries(snow-shot-export-dialog-workflow-tests PRIVATE
+        snow_shot_image_codec snow_shot_settings snow_draw_engine_qt_canvas Qt6::Widgets
+    )
+    add_test(NAME snow-shot-export-dialog-workflow-tests
+        COMMAND snow-shot-export-dialog-workflow-tests)
+    set_tests_properties(snow-shot-export-dialog-workflow-tests PROPERTIES
+        TIMEOUT 180
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
     )
 
     add_executable(snow-shot-export-artifact-tests
