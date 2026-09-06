@@ -1041,6 +1041,19 @@ if(SNOW_SHOT_BUILD_IMAGE_CODEC_SMOKE_TEST AND NOT SNOW_SHOT_BUILD_TESTS)
 endif()
 
 if(SNOW_SHOT_BUILD_TESTS)
+    if(WIN32)
+        find_program(SNOW_SHOT_INSTALLER_TEST_POWERSHELL NAMES pwsh powershell REQUIRED)
+        add_test(NAME snow-shot-installer-running-app-tests
+            COMMAND "${SNOW_SHOT_INSTALLER_TEST_POWERSHELL}" -NoProfile -ExecutionPolicy Bypass
+                -File "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/test-snow-shot-installer.ps1")
+        set_tests_properties(snow-shot-installer-running-app-tests PROPERTIES
+            LABELS "unit;windows" TIMEOUT 180)
+        add_test(NAME snow-shot-installer-i18n-tests
+            COMMAND "${SNOW_SHOT_INSTALLER_TEST_POWERSHELL}" -NoProfile -ExecutionPolicy Bypass
+                -File "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/test-snow-shot-installer-i18n.ps1")
+        set_tests_properties(snow-shot-installer-i18n-tests PROPERTIES
+            LABELS "unit;windows" TIMEOUT 180)
+    endif()
     if(DEFINED CMAKE_RUNTIME_OUTPUT_DIRECTORY)
         set(_SNOW_SHOT_RUNTIME_OUTPUT_DIRECTORY_WAS_DEFINED TRUE)
         set(
