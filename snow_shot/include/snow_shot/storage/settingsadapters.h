@@ -75,6 +75,8 @@ class GlobalShortcutSettings final {
 
 class ScreenshotSettings final {
   public:
+    [[nodiscard]] bool restoreOriginalScreenColors() const;
+    bool setRestoreOriginalScreenColors(bool enabled) const;
     [[nodiscard]] int delaySeconds() const;
     bool setDelaySeconds(int seconds) const;
     [[nodiscard]] QString autoExecuteAfterTextRecognition() const;

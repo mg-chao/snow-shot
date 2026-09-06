@@ -283,6 +283,8 @@ bool BuiltInSettingsBackend::switchValue(SettingsSwitchBinding binding) const {
         return storage::TraySettings().enabled();
     case SettingsSwitchBinding::ScreenshotAutoSaveAfterCopy:
         return storage::ScreenshotSettings().autoSaveAfterCopy();
+    case SettingsSwitchBinding::ScreenshotRestoreOriginalScreenColors:
+        return storage::ScreenshotSettings().restoreOriginalScreenColors();
     case SettingsSwitchBinding::ScreenshotCopyImageFileToClipboard:
         return storage::ScreenshotSettings().copyImageFileToClipboard();
     case SettingsSwitchBinding::PinAutomaticTextRecognition:
@@ -308,6 +310,9 @@ bool BuiltInSettingsBackend::switchEnabled(SettingsSwitchBinding binding) const 
 }
 
 bool BuiltInSettingsBackend::applySwitchValue(SettingsSwitchBinding binding, bool value) {
+    if (binding == SettingsSwitchBinding::ScreenshotRestoreOriginalScreenColors) {
+        return storage::ScreenshotSettings().setRestoreOriginalScreenColors(value);
+    }
     if (binding == SettingsSwitchBinding::SmartSelection) {
         return storage::ApplicationStorage::instance().requestSmartSelection(value);
     }
@@ -364,6 +369,7 @@ bool BuiltInSettingsBackend::applySwitchValue(SettingsSwitchBinding binding, boo
     case SettingsSwitchBinding::SelectionTransitionAnimation:
     case SettingsSwitchBinding::TrayEnabled:
     case SettingsSwitchBinding::ScreenshotAutoSaveAfterCopy:
+    case SettingsSwitchBinding::ScreenshotRestoreOriginalScreenColors:
     case SettingsSwitchBinding::ScreenshotCopyImageFileToClipboard:
     case SettingsSwitchBinding::PinAutomaticTextRecognition:
     case SettingsSwitchBinding::PinAutoResizeWindow:
@@ -1008,6 +1014,11 @@ bool BuiltInSettingsBackend::resetSection(SettingsSectionReset reset) {
         return applyAutoStartAtBoot(
             storage::ConfigurationSchema::defaultValue(
                 QStringLiteral("system/auto_start_at_boot"))
+                .toBool());
+    case SettingsSectionReset::ScreenshotCapture:
+        return storage::ScreenshotSettings().setRestoreOriginalScreenColors(
+            storage::ConfigurationSchema::defaultValue(
+                QStringLiteral("screenshot/restore_original_screen_colors"))
                 .toBool());
     case SettingsSectionReset::Network:
         return applySelectValue(

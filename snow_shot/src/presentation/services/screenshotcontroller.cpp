@@ -984,6 +984,7 @@ bool ScreenshotController::Impl::ensureScrollingFeature() {
             m_displaySession,
             m_geometry,
             *m_overlayCoordinator,
+            [this]() { return m_captureState.restoreOriginalScreenColors; },
         },
         &owner);
     return m_scrollingCaptureController != nullptr;
@@ -1243,6 +1244,7 @@ void ScreenshotController::Impl::createCaptureWorkflow() {
                 static_cast<void>(m_selection.setCornerRadius(m_selectionSettings->cornerRadius()));
                 static_cast<void>(m_selection.setShadowWidth(m_selectionSettings->shadowWidth()));
             },
+            []() { return snow_shot::storage::ScreenshotSettings().restoreOriginalScreenColors(); },
         });
 }
 

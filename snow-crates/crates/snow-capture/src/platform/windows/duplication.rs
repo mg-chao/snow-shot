@@ -44,8 +44,10 @@ use super::surface::{self, StagingSampleDesc};
 fn surface_options(
     hdr_to_sdr: Option<HdrFrameContext>,
     output_pixel_format: CapturePixelFormat,
+    screen_color_transform: Option<crate::color_effect::ScreenColorTransform>,
 ) -> SurfaceConversionOptions {
     SurfaceConversionOptions {
+        screen_color_transform,
         hdr_to_sdr,
         force_opaque_alpha: true,
         output_pixel_format,
@@ -1073,6 +1075,7 @@ fn with_monitor_context<T>(
 const STAGING_SLOTS: usize = 3;
 
 struct StagingRing {
+    screen_color_transform: Option<crate::color_effect::ScreenColorTransform>,
     slots: [Option<ID3D11Texture2D>; STAGING_SLOTS],
     /// Cached `ID3D11Resource` for each slot -- avoids a COM
     /// `QueryInterface` (`cast()`) on every `submit_copy` call.
@@ -1104,6 +1107,9 @@ struct StagingRing {
 }
 
 impl StagingRing {
+    fn effective_screen_transform(&self) -> Option<crate::color_effect::ScreenColorTransform> {
+        self.screen_color_transform
+    }
     /// Initial spin count -- conservative starting point.
     const INITIAL_SPIN_POLLS: u32 = 4;
     /// Minimum spin count to avoid degenerating to pure blocking.
@@ -1118,6 +1124,7 @@ impl StagingRing {
 
     fn new() -> Self {
         Self {
+            screen_color_transform: None,
             slots: [None, None, None],
             slot_resources: [None, None, None],
             queries: [None, None, None],
@@ -1451,7 +1458,11 @@ impl StagingRing {
                 dirty_rects,
                 true,
                 hints,
-                surface_options(hdr_to_sdr, self.output_pixel_format),
+                surface_options(
+                    hdr_to_sdr,
+                    self.output_pixel_format,
+                    self.effective_screen_transform(),
+                ),
                 "failed to map staging texture (dirty regions)",
             ) {
                 Ok(converted) if converted > 0 => {
@@ -1465,7 +1476,11 @@ impl StagingRing {
                         staging_res,
                         desc,
                         frame,
-                        surface_options(hdr_to_sdr, self.output_pixel_format),
+                        surface_options(
+                            hdr_to_sdr,
+                            self.output_pixel_format,
+                            self.effective_screen_transform(),
+                        ),
                         "failed to map staging texture",
                     )?;
                     Ok(())
@@ -1478,7 +1493,11 @@ impl StagingRing {
                 staging_res,
                 desc,
                 frame,
-                surface_options(hdr_to_sdr, self.output_pixel_format),
+                surface_options(
+                    hdr_to_sdr,
+                    self.output_pixel_format,
+                    self.effective_screen_transform(),
+                ),
                 "failed to map staging texture",
             )?;
             Ok(())
@@ -1562,7 +1581,11 @@ impl StagingRing {
             Some(staging_res),
             desc,
             frame,
-            surface_options(hdr_to_sdr, self.output_pixel_format),
+            surface_options(
+                hdr_to_sdr,
+                self.output_pixel_format,
+                self.effective_screen_transform(),
+            ),
             "failed to map staging texture",
         )?;
         self.pending = false;
@@ -1786,6 +1809,7 @@ fn dxgi_frame_has_no_metadata(info: &DXGI_OUTDUPL_FRAME_INFO) -> bool {
 }
 
 struct OutputCapturer {
+    screen_color_transform: Option<crate::color_effect::ScreenColorTransform>,
     device: ID3D11Device,
     context: ID3D11DeviceContext,
     /// Active desktop-duplication access. The D3D environment stays warm,
@@ -1856,6 +1880,31 @@ struct OutputCapturer {
 }
 
 impl OutputCapturer {
+    fn effective_screen_transform(&self) -> Option<crate::color_effect::ScreenColorTransform> {
+        if self.hdr_to_sdr.is_none()
+            && self
+                .cached_src_desc
+                .is_some_and(|desc| desc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT)
+        {
+            self.screen_color_transform
+        } else {
+            None
+        }
+    }
+
+    fn set_screen_color_transform(
+        &mut self,
+        transform: Option<crate::color_effect::ScreenColorTransform>,
+    ) {
+        if self.screen_color_transform == transform {
+            return;
+        }
+        self.screen_color_transform = transform;
+        self.clear_full_frame_pipeline_state();
+        self.staging_ring.reset_pipeline();
+        self.region.reset();
+        self.last_present_time = 0;
+    }
     fn new(resolved: &ResolvedMonitor) -> CaptureResult<Self> {
         let (device, context) = d3d11::create_d3d11_device_for_adapter(&resolved.adapter, true)
             .map_err(CaptureError::platform)?;
@@ -1864,6 +1913,7 @@ impl OutputCapturer {
             .map_err(CaptureError::platform)?;
         let hdr_to_sdr = hdr_to_sdr_params(resolved.hdr_metadata);
         Ok(Self {
+            screen_color_transform: None,
             device,
             context,
             duplication: None,
@@ -2175,6 +2225,13 @@ impl OutputCapturer {
         D3D11_TEXTURE2D_DESC,
         Option<HdrFrameContext>,
     )> {
+        // HDR tone mapping is not invertible; only correct native SDR surfaces.
+        self.staging_ring.screen_color_transform =
+            if self.hdr_to_sdr.is_none() && src_desc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT {
+                self.screen_color_transform
+            } else {
+                None
+            };
         if src_desc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT {
             return Ok((desktop_texture.clone(), src_desc, self.hdr_to_sdr));
         }
@@ -2391,7 +2448,11 @@ impl OutputCapturer {
                     Some(staging_resource),
                     &source_desc,
                     out,
-                    surface_options(slot.hdr_to_sdr, self.output_pixel_format),
+                    surface_options(
+                        slot.hdr_to_sdr,
+                        self.output_pixel_format,
+                        self.effective_screen_transform(),
+                    ),
                     "failed to map DXGI region staging texture",
                 )?;
             } else {
@@ -2402,7 +2463,11 @@ impl OutputCapturer {
                     &source_desc,
                     out,
                     staging_blit,
-                    surface_options(slot.hdr_to_sdr, self.output_pixel_format),
+                    surface_options(
+                        slot.hdr_to_sdr,
+                        self.output_pixel_format,
+                        self.effective_screen_transform(),
+                    ),
                     "failed to map DXGI region staging texture",
                 )?;
             }
@@ -2425,7 +2490,11 @@ impl OutputCapturer {
                     &slot.dirty_rects,
                     true,
                     dirty_hints,
-                    surface_options(slot.hdr_to_sdr, self.output_pixel_format),
+                    surface_options(
+                        slot.hdr_to_sdr,
+                        self.output_pixel_format,
+                        self.effective_screen_transform(),
+                    ),
                     "failed to map DXGI region staging texture (dirty regions)",
                 )
             } else {
@@ -2440,7 +2509,11 @@ impl OutputCapturer {
                     blit.dst_y,
                     true,
                     dirty_hints,
-                    surface_options(slot.hdr_to_sdr, self.output_pixel_format),
+                    surface_options(
+                        slot.hdr_to_sdr,
+                        self.output_pixel_format,
+                        self.effective_screen_transform(),
+                    ),
                     "failed to map DXGI region staging texture (dirty regions)",
                 )
             };
@@ -2519,7 +2592,11 @@ impl OutputCapturer {
                 Some(staging_resource),
                 &source_desc,
                 out,
-                surface_options(slot.hdr_to_sdr, self.output_pixel_format),
+                surface_options(
+                    slot.hdr_to_sdr,
+                    self.output_pixel_format,
+                    self.effective_screen_transform(),
+                ),
                 "failed to map DXGI region staging texture",
             )?;
         } else {
@@ -2530,7 +2607,11 @@ impl OutputCapturer {
                 &source_desc,
                 out,
                 staging_blit,
-                surface_options(slot.hdr_to_sdr, self.output_pixel_format),
+                surface_options(
+                    slot.hdr_to_sdr,
+                    self.output_pixel_format,
+                    self.effective_screen_transform(),
+                ),
                 "failed to map DXGI region staging texture",
             )?;
         }
@@ -3473,6 +3554,7 @@ impl OutputCapturer {
 }
 
 pub(crate) struct WindowsMonitorCapturer {
+    screen_color_transform: Option<crate::color_effect::ScreenColorTransform>,
     monitor: MonitorId,
     resolver: Arc<MonitorResolver>,
     /// Created on demand and retained only until explicit idle cleanup.
@@ -3497,6 +3579,7 @@ impl WindowsMonitorCapturer {
         let com = super::com::CoInitGuard::init_multithreaded().map_err(CaptureError::platform)?;
         resolver.resolve_monitor(monitor)?;
         Ok(Self {
+            screen_color_transform: None,
             monitor: monitor.clone(),
             resolver,
             output: None,
@@ -3522,6 +3605,7 @@ impl WindowsMonitorCapturer {
         output.staging_ring.output_pixel_format = self.output_pixel_format;
         output.set_gpu_hdr_conversion(self.gpu_hdr_conversion_enabled);
         output.set_hdr_tonemap_lut(self.hdr_tonemap_lut_enabled);
+        output.set_screen_color_transform(self.screen_color_transform);
         #[cfg(feature = "stage-timing")]
         output.set_record_stage_timings(self.record_stage_timings);
         self.output = Some(output);
@@ -3543,6 +3627,16 @@ impl WindowsMonitorCapturer {
 }
 
 impl crate::backend::MonitorCapturer for WindowsMonitorCapturer {
+    fn set_screen_color_transform(
+        &mut self,
+        transform: Option<crate::color_effect::ScreenColorTransform>,
+    ) -> CaptureResult<()> {
+        self.screen_color_transform = transform;
+        if let Some(output) = self.output.as_mut() {
+            output.set_screen_color_transform(transform);
+        }
+        Ok(())
+    }
     fn backend_kind(&self) -> CaptureBackendKind {
         CaptureBackendKind::DxgiDuplication
     }
@@ -3726,6 +3820,7 @@ struct SendHmon(HMONITOR);
 unsafe impl Send for SendHmon {}
 
 pub(crate) struct WindowsDxgiWindowCapturer {
+    screen_color_transform: Option<crate::color_effect::ScreenColorTransform>,
     hwnd: SendHwnd,
     resolver: Arc<MonitorResolver>,
     /// Created on demand for the monitor the window is on.
@@ -3769,6 +3864,7 @@ impl WindowsDxgiWindowCapturer {
         let current_monitor_rect = monitor_rect(hmon)?;
 
         Ok(Self {
+            screen_color_transform: None,
             hwnd: SendHwnd(hwnd),
             resolver,
             output: None,
@@ -3817,6 +3913,8 @@ impl WindowsDxgiWindowCapturer {
         self.output_mut().set_capture_mode(capture_mode);
         self.output_mut().output_pixel_format = self.output_pixel_format;
         self.output_mut().staging_ring.output_pixel_format = self.output_pixel_format;
+        let transform = self.screen_color_transform;
+        self.output_mut().set_screen_color_transform(transform);
         self.output_mut()
             .set_gpu_hdr_conversion(gpu_hdr_conversion_enabled);
         self.output_mut()
@@ -3976,6 +4074,16 @@ impl WindowsDxgiWindowCapturer {
 }
 
 impl crate::backend::MonitorCapturer for WindowsDxgiWindowCapturer {
+    fn set_screen_color_transform(
+        &mut self,
+        transform: Option<crate::color_effect::ScreenColorTransform>,
+    ) -> CaptureResult<()> {
+        self.screen_color_transform = transform;
+        if let Some(output) = self.output.as_mut() {
+            output.set_screen_color_transform(transform);
+        }
+        Ok(())
+    }
     fn backend_kind(&self) -> CaptureBackendKind {
         CaptureBackendKind::DxgiDuplication
     }

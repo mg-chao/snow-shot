@@ -465,6 +465,8 @@ const QVector<ConfigurationSchemaEntry> kEntries = {
      ConfigurationIntegerRange{0, 256, 1}},
     {QStringLiteral("screenshot_selection/shadow_width"), 0, ConfigurationValueKind::Integer,
      ConfigurationIntegerRange{0, 64, 1}},
+    {QStringLiteral("screenshot/restore_original_screen_colors"), true,
+     ConfigurationValueKind::Boolean},
     {QStringLiteral("screenshot/delay_seconds"), 3, ConfigurationValueKind::Integer,
      ConfigurationIntegerRange{1, 10, 1}},
     {QStringLiteral("screenshot/auto_execute_after_text_recognition"),

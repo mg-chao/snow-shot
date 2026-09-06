@@ -12,6 +12,10 @@ use crate::region::MonitorLayout;
 
 #[derive(Clone, Copy, Debug)]
 pub struct CaptureOptions {
+    /// Opt-in reversal of supported full-screen Magnifier effects. Native WGC
+    /// and GDI window captures already contain original colors; DXGI HDR is
+    /// passed through because tone mapping prevents reliable matrix inversion.
+    pub color_correction: crate::color_effect::ColorCorrection,
     pub capture_retry_count: usize,
     pub workload: CaptureWorkload,
     pub gpu_hdr_conversion: bool,
@@ -39,6 +43,7 @@ pub struct CaptureOptions {
 impl Default for CaptureOptions {
     fn default() -> Self {
         Self {
+            color_correction: crate::color_effect::ColorCorrection::Disabled,
             capture_retry_count: 1,
             workload: CaptureWorkload::Snapshot,
             gpu_hdr_conversion: true,

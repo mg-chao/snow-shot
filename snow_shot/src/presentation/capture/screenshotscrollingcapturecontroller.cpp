@@ -157,10 +157,11 @@ class ScreenshotScrollingCaptureProducer final : public QObject {
     }
 
     void begin(quint64 generation, QRect selection, QRect physicalSelection,
-               AdaptiveScrollCadence::Config cadenceConfig = {}) {
+               bool restoreOriginalColors, AdaptiveScrollCadence::Config cadenceConfig = {}) {
         m_generation = generation;
         m_selection = selection;
         m_physicalSelection = physicalSelection;
+        m_restoreOriginalColors = restoreOriginalColors;
         m_cadence = AdaptiveScrollCadence(cadenceConfig);
         m_lastLoggedFps = -1;
         stopStream();
@@ -276,6 +277,7 @@ class ScreenshotScrollingCaptureProducer final : public QObject {
         config.pixel_format = SNOW_CAPTURE_PIXEL_FORMAT_RGBA8;
         config.adaptive_fps = 1;
         config.include_cursor = 0;
+        config.restore_original_colors = m_restoreOriginalColors ? 1 : 0;
         m_stream = snow_capture_stream_create_region(&config);
         if (m_stream != nullptr) {
             m_lastAppliedFps = 30;
@@ -437,6 +439,7 @@ class ScreenshotScrollingCaptureProducer final : public QObject {
     quint64 m_generation = 0;
     QRect m_selection;
     QRect m_physicalSelection;
+    bool m_restoreOriginalColors = false;
     AdaptiveScrollCadence m_cadence;
     int m_lastLoggedFps = -1;
     int m_lastAppliedFps = -1;
@@ -813,6 +816,7 @@ struct ScreenshotScrollingCaptureController::Impl {
         }
 
         canvasSelection = selection;
+        restoreOriginalColors = context.restoreOriginalScreenColors();
         mode = requestedMode;
         thumbnailHost = anchorOverlay;
         active = true;
@@ -834,8 +838,9 @@ struct ScreenshotScrollingCaptureController::Impl {
             canvasSelection.translated(context.geometry.canvasOrigin());
         const AdaptiveScrollCadence::Config requestCadenceConfig = cadenceConfig;
         postCaptureTask([requestGeneration, requestSelection, requestPhysicalSelection,
-                         requestCadenceConfig](ScreenshotScrollingCaptureProducer& target) mutable {
-            target.begin(requestGeneration, requestSelection, requestPhysicalSelection,
+                         requestCadenceConfig, correction = restoreOriginalColors](
+                            ScreenshotScrollingCaptureProducer& target) mutable {
+            target.begin(requestGeneration, requestSelection, requestPhysicalSelection, correction,
                          requestCadenceConfig);
         });
         const ScreenshotScrollingRecognitionMode requestMode = mode;
@@ -885,8 +890,9 @@ struct ScreenshotScrollingCaptureController::Impl {
             logicalSelection.translated(-thumbnailHost->geometry().topLeft()), mode);
 
         postCaptureTask([requestGeneration, requestSelection, requestPhysicalSelection,
-                         requestCadenceConfig](ScreenshotScrollingCaptureProducer& target) mutable {
-            target.begin(requestGeneration, requestSelection, requestPhysicalSelection,
+                         requestCadenceConfig, correction = restoreOriginalColors](
+                            ScreenshotScrollingCaptureProducer& target) mutable {
+            target.begin(requestGeneration, requestSelection, requestPhysicalSelection, correction,
                          requestCadenceConfig);
         });
         const ScreenshotScrollingRecognitionMode requestMode = mode;
@@ -1295,6 +1301,7 @@ struct ScreenshotScrollingCaptureController::Impl {
     ScreenshotScrollingCaptureController& owner;
     ScreenshotScrollingCaptureControllerContext context;
     AdaptiveScrollCadence::Config cadenceConfig;
+    bool restoreOriginalColors = false;
     std::shared_ptr<ScrollFrameMailbox> mailbox = std::make_shared<ScrollFrameMailbox>();
     QThread* captureThread = nullptr;
     ScreenshotScrollingCaptureProducer* producer = nullptr;

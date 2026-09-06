@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/screenshottoolbarpresenter.h"
+#include "screenshottoolbarplacement.h"
 
 #include "../capture/screenshotcaptureperfinstrumentation.h"
 #include "snow_shot/presentation/screenshotdisplaysession.h"
@@ -10,8 +11,6 @@
 
 #include <QSize>
 #include <QTimer>
-
-#include <algorithm>
 
 namespace {
 constexpr int kSelectionToolbarGap = 4;
@@ -164,26 +163,10 @@ void ScreenshotToolbarPresenter::moveToolbar(const ScreenshotToolbarPresentation
         return;
     }
 
-    const ScreenshotHalfOpenRect selectionRect = ScreenshotHalfOpenRect::fromRect(selection);
-    const double shadowWidth = static_cast<double>(std::max(0, state.shadowWidth));
-    const ScreenshotHalfOpenRect renderedSelectionRect = ScreenshotHalfOpenRect::fromEdges(
-        selectionRect.left - shadowWidth, selectionRect.top - shadowWidth,
-        selectionRect.right + shadowWidth, selectionRect.bottom + shadowWidth);
-    const QPoint bottomRightAnchor =
-        display != nullptr
-            ? logicalPositionForCanvasPoint(*display, renderedSelectionRect.bottomRight())
-            : renderedSelectionRect.bottomRight().toPoint();
-    const QPoint topRightAnchor =
-        display != nullptr ? logicalPositionForCanvasPoint(
-                                 *display, QPointF(renderedSelectionRect.right,
-                                                   renderedSelectionRect.top))
-                           : QPointF(renderedSelectionRect.right,
-                                     renderedSelectionRect.top)
-                                 .toPoint();
     const ScreenshotAnchoredToolbarPlacement placement =
-        ScreenshotGeometryMapper::anchoredToolbarPlacement(
-            bottomRightAnchor, topRightAnchor, toolbarGeometry.bottom, toolbarGeometry.top,
-            placementGeometry.logicalBounds, kSelectionToolbarGap);
+        snow_shot::presentation::screenshotToolbarPlacement(
+            state, m_geometry, display, toolbarGeometry, placementGeometry.logicalBounds,
+            kSelectionToolbarGap);
 
     m_overlayCoordinator.attachToolbarToOverlay(overlay);
     toolbar->setStyleToolbarAboveMain(placement.usesTopRightPlacement);

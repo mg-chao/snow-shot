@@ -136,6 +136,7 @@ impl RegressionMetric {
 
 #[derive(Clone, Debug)]
 struct Config {
+    restore_colors: bool,
     backend: CaptureBackendKind,
     warmup_frames: usize,
     measure_frames: usize,
@@ -441,6 +442,11 @@ fn run_backend(kind: CaptureBackendKind, config: &Config) -> Result<ScreenshotBe
         .open_session(
             CaptureTarget::PrimaryMonitor,
             CaptureOptions {
+                color_correction: if config.restore_colors {
+                    snow_capture::color_effect::ColorCorrection::CurrentMagnifier
+                } else {
+                    snow_capture::color_effect::ColorCorrection::Disabled
+                },
                 record_stage_timings: true,
                 // A quiet desktop may present no new frame within the DXGI
                 // snapshot acquisition budget; a session-level retry (which
@@ -965,6 +971,7 @@ Options:
   --frames <n>             measured warm-reuse captures (default {DEFAULT_MEASURE_FRAMES})
   --cold-frames <n>        measured cold-snapshot captures via capture_once (default {DEFAULT_COLD_FRAMES})
   --prewarm                additionally measure a prewarm_environment phase
+  --restore-colors         reverse the current supported Magnifier color effect
   --settle-ms <n>          idle settle time before the settled memory sample (default {DEFAULT_SETTLE_MS})
   --csv <path>             write a single-row CSV of all metrics
   --save-baseline <path>   write the CSV row for later --baseline comparison
@@ -1004,6 +1011,7 @@ fn parse_f64_arg(flag: &str, raw: Option<&str>) -> Result<f64> {
 }
 
 fn parse_config() -> Result<Config> {
+    let mut restore_colors = false;
     let mut backend = None;
     let mut warmup_frames = DEFAULT_WARMUP_FRAMES;
     let mut measure_frames = DEFAULT_MEASURE_FRAMES;
@@ -1050,6 +1058,10 @@ fn parse_config() -> Result<Config> {
             }
             "--prewarm" => {
                 prewarm = true;
+                i += 1;
+            }
+            "--restore-colors" => {
+                restore_colors = true;
                 i += 1;
             }
             "--settle-ms" => {
@@ -1120,6 +1132,7 @@ fn parse_config() -> Result<Config> {
     }
 
     Ok(Config {
+        restore_colors,
         backend,
         warmup_frames,
         measure_frames,

@@ -327,7 +327,8 @@ fn run_continuous_stream(
         pixel_format: PIXEL_FORMAT_RGBA8,
         adaptive_fps: 1,
         include_cursor: 0,
-        reserved: [0; 27],
+        restore_original_colors: 0,
+        reserved: [0; 26],
     };
     let stream = Stream(unsafe { snow_capture_stream_create_region(&config) });
     if stream.0.is_null() {

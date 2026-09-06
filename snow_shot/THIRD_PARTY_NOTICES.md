@@ -15,6 +15,10 @@ share/snow-shot/licenses/third-party/
 license file. The bundle includes the Ant Design Icons MIT notice from
 `ant_design_qt/THIRD_PARTY_NOTICES.md`.
 
+Screen color restoration uses nalgebra (Apache-2.0) for fixed-size matrix
+inversion and validation. Its license and resolved dependencies are included
+in the generated Rust dependency notice bundle.
+
 The generated bundle is authoritative for a particular binary because its
 contents are produced from that build environment. Dependency licenses and
 copyright notices remain the property of their respective owners.

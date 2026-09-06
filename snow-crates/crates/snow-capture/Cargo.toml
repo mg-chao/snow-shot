@@ -12,6 +12,7 @@ rustc-hash.workspace = true
 half.workspace = true
 rayon.workspace = true
 num_cpus.workspace = true
+nalgebra = { version = "0.33.3", default-features = false, features = ["std"] }
 crossbeam-channel.workspace = true
 windows = { workspace = true, features = [
     "Foundation",
@@ -37,6 +38,7 @@ windows = { workspace = true, features = [
     "Win32_System_Threading",
     "Win32_Storage_Xps",
     "Win32_UI",
+    "Win32_UI_Magnification",
     "Win32_UI_WindowsAndMessaging",
     "Win32_System_Performance",
 ] }

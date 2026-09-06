@@ -1,3 +1,4 @@
+mod color_effect;
 mod f16;
 mod parallel;
 mod scalar;
@@ -145,6 +146,8 @@ impl Default for HdrFrameContext {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SurfaceConversionOptions {
+    /// Inverse effect for native 8-bit SDR sources; ignored for RGBA16Float.
+    pub screen_color_transform: Option<crate::color_effect::ScreenColorTransform>,
     pub hdr_to_sdr: Option<HdrFrameContext>,
     pub force_opaque_alpha: bool,
     pub output_pixel_format: CapturePixelFormat,
@@ -280,6 +283,7 @@ struct SurfaceFormatPlan {
 
 #[derive(Clone, Copy)]
 pub(crate) struct SurfaceRowConverter {
+    screen_color_transform: Option<crate::color_effect::ScreenColorTransform>,
     format: SurfacePixelFormat,
     output_pixel_format: CapturePixelFormat,
     plan: SurfaceFormatPlan,
@@ -288,6 +292,9 @@ pub(crate) struct SurfaceRowConverter {
 }
 
 impl SurfaceRowConverter {
+    pub(crate) fn has_screen_color_transform(self) -> bool {
+        self.screen_color_transform.is_some()
+    }
     #[inline]
     pub(crate) fn new(format: SurfacePixelFormat, options: SurfaceConversionOptions) -> Self {
         let hdr_params = if format == SurfacePixelFormat::Rgba16Float {
@@ -296,6 +303,11 @@ impl SurfaceRowConverter {
             None
         };
         Self {
+            screen_color_transform: if format == SurfacePixelFormat::Rgba16Float {
+                None
+            } else {
+                options.screen_color_transform
+            },
             format,
             output_pixel_format: options.output_pixel_format,
             plan: surface_format_plan(format, options),
@@ -347,6 +359,20 @@ impl SurfaceRowConverter {
     ) {
         let layout = SurfaceLayout::new(src, src_pitch, dst, dst_pitch, width, height);
         if layout.is_empty() {
+            return;
+        }
+
+        if let Some(transform) = self.screen_color_transform {
+            unsafe {
+                color_effect::convert_surface(
+                    layout,
+                    self.format,
+                    self.output_pixel_format,
+                    self.force_opaque_alpha,
+                    transform,
+                    allow_parallel,
+                );
+            }
             return;
         }
 
@@ -529,6 +555,19 @@ pub fn convert_row_to_rgba_with_options(
     pixel_count: usize,
     options: SurfaceConversionOptions,
 ) {
+    if options.screen_color_transform.is_some() && format != SurfacePixelFormat::Rgba16Float {
+        convert_surface_to_rgba(
+            format,
+            src_row,
+            pixel_count * 4,
+            dst_row,
+            pixel_count * 4,
+            pixel_count,
+            1,
+            options,
+        );
+        return;
+    }
     match format {
         SurfacePixelFormat::Bgra8 => {
             if options.output_pixel_format == CapturePixelFormat::Bgra8 {
@@ -1282,6 +1321,22 @@ pub(crate) unsafe fn convert_surface_to_rgba_unchecked(
     options: SurfaceConversionOptions,
 ) {
     if layout.is_empty() {
+        return;
+    }
+
+    if format != SurfacePixelFormat::Rgba16Float
+        && let Some(transform) = options.screen_color_transform
+    {
+        unsafe {
+            color_effect::convert_surface(
+                layout,
+                format,
+                options.output_pixel_format,
+                options.force_opaque_alpha,
+                transform,
+                true,
+            );
+        }
         return;
     }
 

@@ -122,6 +122,8 @@ fn copy_region_rgba(src: &Frame, blit: CaptureBlitRegion, dst: &mut Frame) -> Ca
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct CaptureSessionConfig {
+    color_correction: crate::color_effect::ColorCorrection,
+    screen_color_transform: Option<crate::color_effect::ScreenColorTransform>,
     pub(crate) capture_retry_count: usize,
     /// Capture intent used to tune backend behavior for screenshot
     /// vs. continuous recording workloads.
@@ -144,6 +146,8 @@ pub(crate) struct CaptureSessionConfig {
 impl Default for CaptureSessionConfig {
     fn default() -> Self {
         Self {
+            color_correction: crate::color_effect::ColorCorrection::Disabled,
+            screen_color_transform: None,
             capture_retry_count: 1,
             mode: CaptureMode::Snapshot,
             gpu_hdr_conversion: true,
@@ -159,6 +163,8 @@ impl Default for CaptureSessionConfig {
 impl From<CaptureOptions> for CaptureSessionConfig {
     fn from(value: CaptureOptions) -> Self {
         Self {
+            color_correction: value.color_correction,
+            screen_color_transform: None,
             capture_retry_count: value.capture_retry_count,
             mode: value.workload,
             gpu_hdr_conversion: value.gpu_hdr_conversion,
@@ -465,7 +471,11 @@ where
         F: FnOnce() -> CaptureResult<Box<dyn MonitorCapturer>>,
     {
         match self.capturers.entry(key) {
-            std::collections::hash_map::Entry::Occupied(entry) => Ok(entry.into_mut()),
+            std::collections::hash_map::Entry::Occupied(entry) => {
+                let capturer = entry.into_mut();
+                capturer.set_screen_color_transform(config.screen_color_transform)?;
+                Ok(capturer)
+            }
             std::collections::hash_map::Entry::Vacant(entry) => {
                 let mut capturer = create_capturer()?;
                 capturer.set_wgc_update_mode(config.wgc_update_mode)?;
@@ -473,6 +483,7 @@ where
                 capturer.set_hdr_tonemap_lut(config.hdr_tonemap_lut)?;
                 capturer.set_output_pixel_format(config.output_pixel_format)?;
                 capturer.set_capture_mode(config.mode)?;
+                capturer.set_screen_color_transform(config.screen_color_transform)?;
                 #[cfg(feature = "stage-timing")]
                 capturer.set_record_stage_timings(config.record_stage_timings)?;
                 Ok(entry.insert(capturer))
@@ -889,6 +900,11 @@ impl CaptureSession {
         self.capture_with_cursor(None).map(|(frame, _)| frame)
     }
 
+    /// Change correction policy without rebuilding the capture backend.
+    pub fn set_color_correction(&mut self, correction: crate::color_effect::ColorCorrection) {
+        self.config.color_correction = correction;
+    }
+
     pub fn capture_reuse(&mut self, frame: Frame) -> CaptureResult<Frame> {
         self.capture_with_cursor(Some(frame))
             .map(|(frame, _)| frame)
@@ -1282,6 +1298,26 @@ impl CaptureSession {
     }
 
     fn do_capture(&mut self, reuse: Option<Frame>) -> CaptureResult<Frame> {
+        let transform = self.config.color_correction.resolve();
+        if transform != self.config.screen_color_transform {
+            self.config.screen_color_transform = transform;
+            // A new transform invalidates converted history, not the raw capture surfaces.
+            match &mut self.runtime {
+                CaptureSessionRuntime::Monitor(runtime) => {
+                    runtime.output.last_output_sequence.clear();
+                    runtime.output.cached_frames.clear();
+                }
+                CaptureSessionRuntime::Window(runtime) => {
+                    runtime.output.last_output_sequence.clear();
+                    runtime.output.cached_frames.clear();
+                }
+                CaptureSessionRuntime::Region(runtime) => {
+                    runtime.output_history_seq = None;
+                    runtime.output_frame = None;
+                    runtime.fallback_frames.clear();
+                }
+            }
+        }
         match self.target.clone() {
             CaptureTarget::PrimaryMonitor | CaptureTarget::Monitor(_) => {
                 self.do_capture_monitor(reuse)
@@ -2454,6 +2490,38 @@ mod tests {
         let recorded = history_hints.lock().unwrap().clone();
         assert_eq!(recorded, vec![false, true, true]);
         assert!(session.monitor_output_cache_is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn color_effect_changes_invalidate_only_converted_history() -> CaptureResult<()> {
+        use crate::color_effect::{ColorCorrection, ScreenColorTransform};
+        let hints = Arc::new(Mutex::new(Vec::new()));
+        let backend: Arc<dyn CaptureBackend> = Arc::new(MockBackend::new(Arc::clone(&hints)));
+        let mut session = CaptureSession::builder()
+            .target(CaptureTarget::PrimaryMonitor)
+            .with_backend(backend)
+            .build()?;
+        let mut frame = Frame::empty();
+        session.capture_into(&mut frame)?;
+        session.capture_into(&mut frame)?;
+        let mut matrix = [0.; 25];
+        for i in 0..5 {
+            matrix[i * 6] = if i < 3 { -1. } else { 1. };
+        }
+        matrix[20..23].fill(1.);
+        session.set_color_correction(ColorCorrection::Snapshot(
+            ScreenColorTransform::from_magnifier_matrix(&matrix),
+        ));
+        session.capture_into(&mut frame)?;
+        session.capture_into(&mut frame)?;
+        session.set_color_correction(ColorCorrection::Snapshot(None));
+        session.capture_into(&mut frame)?;
+        session.capture_into(&mut frame)?;
+        assert_eq!(
+            *hints.lock().unwrap(),
+            vec![false, true, false, true, false, true]
+        );
         Ok(())
     }
 

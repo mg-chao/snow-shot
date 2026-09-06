@@ -931,7 +931,34 @@ void captureSessionsApplyTheCurrentSmartSelectionSetting() {
 }
 } // namespace
 
+void captureSnapshotsScreenColorSetting() {
+    ScreenshotCaptureState state;
+    state.sessionState = ScreenshotSessionState::IdlePrepared;
+    ScreenshotDisplaySession displays;
+    ScreenshotGeometryMapper geometry;
+    ScreenshotInteractionState interaction;
+    ScreenshotSelectionModel selection;
+    ScreenshotIntelligentSelectionModel intelligentSelection;
+    CaptureRuntime runtime;
+    bool enabled = false;
+    ScreenshotCaptureWorkflowContext context{
+        state, runtime, geometry, displays, interaction, selection, intelligentSelection, {}};
+    context.restoreOriginalScreenColors = [&enabled]() { return enabled; };
+    ScreenshotCaptureWorkflow workflow(context);
+    workflow.startCapture();
+    require(!runtime.lastCaptureRequest.restoreOriginalScreenColors &&
+                !state.restoreOriginalScreenColors,
+            "capture must propagate the disabled color setting");
+    enabled = true;
+    require(!state.restoreOriginalScreenColors, "active capture must retain its setting snapshot");
+    workflow.startCapture();
+    require(runtime.lastCaptureRequest.restoreOriginalScreenColors &&
+                state.restoreOriginalScreenColors,
+            "the next capture must observe the changed color setting");
+}
+
 int main() {
+    captureSnapshotsScreenColorSetting();
     captureRestoresSelectionEffectsAfterReset();
     idlePrewarmDoesNotInitializeSelector();
     endingScreenshotReprewarmsOverlaySurfaces();

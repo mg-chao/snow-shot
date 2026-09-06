@@ -138,6 +138,12 @@ impl Default for CaptureSampleMetadata {
 }
 
 pub(crate) trait MonitorCapturer: Send {
+    fn set_screen_color_transform(
+        &mut self,
+        _transform: Option<crate::color_effect::ScreenColorTransform>,
+    ) -> CaptureResult<()> {
+        Ok(())
+    }
     /// Identifies the backend that will service the next capture.
     ///
     /// Automatic capturers update this value after selecting a concrete

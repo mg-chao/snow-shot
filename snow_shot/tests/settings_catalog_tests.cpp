@@ -94,8 +94,17 @@ void builtInCatalogIsCompleteAndValid() {
             }
         }
     }
-    require(sectionCount == 27 && itemCount == 111,
-            "catalog must contain the expected twenty-seven sections and one hundred eleven items");
+    require(sectionCount == 28 && itemCount == 112,
+            "catalog must contain the expected twenty-eight sections and one hundred twelve items");
+    const auto* colorRestoration =
+        catalog.item({QStringLiteral("system-settings"), QStringLiteral("screenshot-capture"),
+                      QStringLiteral("screenshot.restore-original-screen-colors")});
+    require(colorRestoration != nullptr &&
+                colorRestoration->configurationKey ==
+                    QStringLiteral("screenshot/restore_original_screen_colors") &&
+                std::get<settings::SettingsSwitchDefinition>(colorRestoration->payload).binding ==
+                    settings::SettingsSwitchBinding::ScreenshotRestoreOriginalScreenColors,
+            "screen color restoration must be a system screenshot switch");
     const auto* functionPage = catalog.page(QStringLiteral("function-settings"));
     const auto* smartSelection =
         catalog.item({QStringLiteral("function-settings"), QStringLiteral("screenshot-settings"),
@@ -195,18 +204,20 @@ void builtInCatalogIsCompleteAndValid() {
     const auto* proxySelect =
         proxy != nullptr ? std::get_if<settings::SettingsSelectDefinition>(&proxy->payload)
                          : nullptr;
-    require(systemPage != nullptr && systemPage->sections.size() == 4 &&
-                systemPage->sections.at(0).id == QStringLiteral("system-general") &&
-                systemPage->sections.at(1).id == QStringLiteral("network") &&
-                systemPage->sections.at(2).id == QStringLiteral("text-recognition") &&
-                systemPage->sections.at(3).id == QStringLiteral("core") && proxy != nullptr &&
-                proxy->configurationKey == QStringLiteral("network/proxy") &&
-                proxySelect != nullptr &&
-                proxySelect->binding == settings::SettingsSelectBinding::Proxy &&
-                proxySelect->options.size() == 2 &&
-                proxySelect->options.at(0).value == QStringLiteral("none") &&
-                proxySelect->options.at(1).value == QStringLiteral("system"),
-            "System settings must place the Network proxy selector below General");
+    require(
+        systemPage != nullptr && systemPage->sections.size() == 5 &&
+            systemPage->sections.at(0).id == QStringLiteral("system-general") &&
+            systemPage->sections.at(1).id == QStringLiteral("screenshot-capture") &&
+            systemPage->sections.at(1).reset == settings::SettingsSectionReset::ScreenshotCapture &&
+            systemPage->sections.at(2).id == QStringLiteral("network") &&
+            systemPage->sections.at(3).id == QStringLiteral("text-recognition") &&
+            systemPage->sections.at(4).id == QStringLiteral("core") && proxy != nullptr &&
+            proxy->configurationKey == QStringLiteral("network/proxy") && proxySelect != nullptr &&
+            proxySelect->binding == settings::SettingsSelectBinding::Proxy &&
+            proxySelect->options.size() == 2 &&
+            proxySelect->options.at(0).value == QStringLiteral("none") &&
+            proxySelect->options.at(1).value == QStringLiteral("system"),
+        "System settings must place the Network proxy selector below General");
 
     const auto* settingsGroup =
         std::get_if<settings::SettingsNavigationGroupDefinition>(&catalog.navigation().at(2));
@@ -758,8 +769,8 @@ void invalidCatalogReportsAllConformanceErrors() {
 
 void searchIndexIsGeneratedAndRanked() {
     settings::SettingsSearchIndex index(settings::builtInSettingsRegistry());
-    require(index.entries().size() == 145 && index.search(QString()).size() == 145,
-            "search must generate all one hundred forty-five catalog nodes in catalog order");
+    require(index.entries().size() == 147 && index.search(QString()).size() == 147,
+            "search must generate all one hundred forty-seven catalog nodes in catalog order");
 
     int pages = 0;
     int sections = 0;
@@ -786,7 +797,7 @@ void searchIndexIsGeneratedAndRanked() {
             break;
         }
     }
-    require(pages == 7 && sections == 27 && items == 111,
+    require(pages == 7 && sections == 28 && items == 112,
             "search node counts must match catalog page, section, and item counts");
 
     const auto theme = index.search(QStringLiteral("theme"));
@@ -881,7 +892,7 @@ void addingCatalogNodesAutomaticallyExpandsSearch() {
     const auto registry = settings::SettingsRegistry::fromCatalog(
         expanded, QStringLiteral("search-substring"));
     settings::SettingsSearchIndex index(registry);
-    require(index.entries().size() == 148,
+    require(index.entries().size() == 150,
             "adding one page, section, and item must automatically add three search entries");
     require(index.search(QStringLiteral("extra item")).constFirst().location ==
                 settings::SettingsLocation{QStringLiteral("extra-page"),
@@ -915,8 +926,10 @@ void searchIndexPreservesInteriorSubstringMatches() {
         expanded, QStringLiteral("search-extra"));
     settings::SettingsSearchIndex index(registry);
     const auto result = index.search(QStringLiteral("store"));
-    require(!result.isEmpty() && result.constFirst().location.itemId ==
-                QStringLiteral("substring.item"),
+    require(std::any_of(result.cbegin(), result.cend(),
+                        [](const auto& entry) {
+                            return entry.location.itemId == QStringLiteral("substring.item");
+                        }),
             "indexed search must retain interior substring matches that are not prefixes");
     const auto punctuationResult = index.search(QStringLiteral("idd"));
     const bool descriptionMatch = std::any_of(

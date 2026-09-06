@@ -151,11 +151,36 @@ fn use_gdi_nt_bgra_conversion(
 unsafe fn convert_gdi_bgra_surface_to_rgba(
     src: *const u8,
     dst: *mut u8,
-    pixel_count: usize,
+    dimensions: (usize, usize),
     mode: CaptureMode,
     destination_has_history: bool,
     output_pixel_format: CapturePixelFormat,
+    screen_color_transform: Option<crate::color_effect::ScreenColorTransform>,
 ) {
+    let (width, height) = dimensions;
+    let pixel_count = width * height;
+    if screen_color_transform.is_some() {
+        unsafe {
+            convert::SurfaceRowConverter::new(
+                convert::SurfacePixelFormat::Bgra8,
+                convert::SurfaceConversionOptions {
+                    screen_color_transform,
+                    output_pixel_format,
+                    force_opaque_alpha: true,
+                    ..Default::default()
+                },
+            )
+            .convert_rows_maybe_parallel_unchecked(
+                src,
+                width * 4,
+                dst,
+                width * 4,
+                width,
+                height,
+            );
+        }
+        return;
+    }
     if output_pixel_format == CapturePixelFormat::Bgra8 {
         unsafe {
             std::ptr::copy_nonoverlapping(src, dst, pixel_count * 4);
@@ -1151,6 +1176,7 @@ fn build_window_capture_attempts(
 }
 
 struct GdiResources {
+    screen_color_transform: Option<crate::color_effect::ScreenColorTransform>,
     screen_dc: HDC,
     screen_dc_owned: bool,
     mem_dc: HDC,
@@ -1177,6 +1203,21 @@ struct GdiResources {
 }
 
 impl GdiResources {
+    fn row_converter(&self) -> convert::SurfaceRowConverter {
+        if self.screen_color_transform.is_none() {
+            return bgra_row_converter();
+        }
+        convert::SurfaceRowConverter::new(
+            convert::SurfacePixelFormat::Bgra8,
+            convert::SurfaceConversionOptions {
+                screen_color_transform: self.screen_color_transform,
+                output_pixel_format: self.output_pixel_format,
+                force_opaque_alpha: true,
+                ..Default::default()
+            },
+        )
+    }
+
     fn new() -> CaptureResult<Self> {
         let screen_dc = unsafe { GetDC(None) };
         if screen_dc.0.is_null() {
@@ -1208,6 +1249,7 @@ impl GdiResources {
         }
 
         Ok(Self {
+            screen_color_transform: None,
             screen_dc,
             screen_dc_owned,
             mem_dc,
@@ -1795,7 +1837,7 @@ impl GdiResources {
         dst_pitch: usize,
         width: usize,
     ) -> CaptureResult<()> {
-        let converter = bgra_row_converter();
+        let converter = self.row_converter();
         let src_base = self.bits.cast_const();
         let dst_addr = dst_ptr as usize;
 
@@ -1831,7 +1873,7 @@ impl GdiResources {
         dst_ptr: *mut u8,
         dst_pitch: usize,
     ) -> CaptureResult<()> {
-        let converter = bgra_row_converter();
+        let converter = self.row_converter();
         let src_base = self.bits.cast_const();
         let dst_addr = dst_ptr as usize;
 
@@ -2058,10 +2100,11 @@ impl GdiResources {
             convert_gdi_bgra_surface_to_rgba(
                 self.bits.cast_const(),
                 frame.as_mut_rgba_ptr(),
-                pixel_count,
+                (width, height),
                 mode,
                 destination_has_history,
                 self.output_pixel_format,
+                self.screen_color_transform,
             )
         }
         stage_record_since("gdi.convert", convert_begin);
@@ -2249,10 +2292,11 @@ impl GdiResources {
                 convert_gdi_bgra_surface_to_rgba(
                     self.bits.cast_const(),
                     dst_ptr,
-                    pixel_count,
+                    (copy_w, copy_h),
                     mode,
                     destination_has_history,
                     self.output_pixel_format,
+                    self.screen_color_transform,
                 )
             }
         } else {
@@ -2270,6 +2314,7 @@ impl GdiResources {
                         copy_h,
                     ),
                     convert::SurfaceConversionOptions {
+                        screen_color_transform: self.screen_color_transform,
                         force_opaque_alpha: true,
                         output_pixel_format: self.output_pixel_format,
                         ..convert::SurfaceConversionOptions::default()
@@ -2569,7 +2614,10 @@ impl WindowsMonitorCapturer {
                 Ok(resources) => (resources, true),
                 Err(_) => (GdiResources::new()?, false),
             };
+        let transform = self.resources.screen_color_transform;
         self.resources = resources;
+        self.resources.screen_color_transform = transform;
+        self.resources.output_pixel_format = self.output_pixel_format;
         self.monitor_source_dc_local = monitor_source_dc_local;
         Ok(())
     }
@@ -2591,6 +2639,18 @@ impl WindowsMonitorCapturer {
 }
 
 impl crate::backend::MonitorCapturer for WindowsMonitorCapturer {
+    fn set_screen_color_transform(
+        &mut self,
+        transform: Option<crate::color_effect::ScreenColorTransform>,
+    ) -> CaptureResult<()> {
+        if self.resources.screen_color_transform != transform {
+            self.resources.screen_color_transform = transform;
+            self.resources.history_surface_valid = false;
+            self.resources.bgra_history.clear();
+            self.resources.incremental_duplicate_hint = false;
+        }
+        Ok(())
+    }
     fn backend_kind(&self) -> CaptureBackendKind {
         CaptureBackendKind::Gdi
     }
@@ -2928,6 +2988,60 @@ impl MonitorCapturer for WindowsWindowCapturer {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn color_effect_incremental_rows_preserve_unchanged_pixels() -> crate::error::CaptureResult<()>
+    {
+        use crate::color_effect::ScreenColorTransform;
+        let mut matrix = [0.; 25];
+        for i in 0..5 {
+            matrix[i * 6] = if i < 3 { -1. } else { 1. };
+        }
+        matrix[20..23].fill(1.);
+        let mut resources = super::GdiResources::new()?;
+        resources.ensure_surface(800, 400)?;
+        resources.screen_color_transform = ScreenColorTransform::from_magnifier_matrix(&matrix);
+        let raw = [100u8, 120, 140, 255].repeat(800 * 400);
+        unsafe {
+            std::ptr::copy_nonoverlapping(raw.as_ptr(), resources.bits, raw.len());
+        }
+        let first = resources.read_surface_to_rgba(
+            800,
+            400,
+            None,
+            super::CaptureMode::Continuous,
+            false,
+        )?;
+        assert_eq!(&first.as_rgba_bytes()[..4], &[115, 135, 155, 255]);
+        unsafe {
+            std::ptr::copy_nonoverlapping(raw.as_ptr(), resources.bits, raw.len());
+        }
+        let duplicate = resources.read_surface_to_rgba(
+            800,
+            400,
+            Some(first),
+            super::CaptureMode::Continuous,
+            true,
+        )?;
+        assert!(duplicate.metadata.is_duplicate);
+        assert_eq!(&duplicate.as_rgba_bytes()[..4], &[115, 135, 155, 255]);
+        unsafe {
+            *resources.bits.add(200 * 800 * 4 + 20 * 4) = 50;
+        }
+        let changed = resources.read_surface_to_rgba(
+            800,
+            400,
+            Some(duplicate),
+            super::CaptureMode::Continuous,
+            true,
+        )?;
+        assert_eq!(&changed.as_rgba_bytes()[..4], &[115, 135, 155, 255]);
+        let offset = 200 * 800 * 4 + 20 * 4;
+        assert_eq!(
+            &changed.as_rgba_bytes()[offset..offset + 4],
+            &[115, 135, 205, 255]
+        );
+        Ok(())
+    }
     use super::*;
 
     #[test]

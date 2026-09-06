@@ -87,6 +87,7 @@ void ScreenshotCaptureWorkflow::startCapture(ScreenshotCapturePresentationMode p
     const quint64 sessionId = ++m_state.sessionId;
     m_presentationMode = presentationMode;
     m_focusedWindowHandle = focusedWindowHandle;
+    m_state.restoreOriginalScreenColors = m_context.restoreOriginalScreenColors();
     m_state.sessionState = ScreenshotSessionState::Capturing;
     m_state.captureInProgress = true;
     clearCapturePresentationReadiness();
@@ -323,7 +324,8 @@ void ScreenshotCaptureWorkflow::beginCapturePreparation(quint64 sessionId) {
             m_context.refreshCanvasCreationStyles();
         }
         m_context.runtime.captureAsync(
-            ScreenshotCaptureRequest{sessionId, m_state.layoutDirty, m_focusedWindowHandle});
+            ScreenshotCaptureRequest{sessionId, m_state.layoutDirty, m_focusedWindowHandle,
+                                     m_state.restoreOriginalScreenColors});
         return;
     }
     const bool preCapturePrepared =
@@ -335,8 +337,9 @@ void ScreenshotCaptureWorkflow::beginCapturePreparation(quint64 sessionId) {
     // Once Snow Shot's windows are excluded, start native acquisition at
     // once. The capture worker can initialize lazy GPU resources while the
     // UI thread prepares selector and presentation state.
-    m_context.runtime.captureAsync(
-        ScreenshotCaptureRequest{sessionId, m_state.layoutDirty, m_focusedWindowHandle});
+    m_context.runtime.captureAsync(ScreenshotCaptureRequest{sessionId, m_state.layoutDirty,
+                                                            m_focusedWindowHandle,
+                                                            m_state.restoreOriginalScreenColors});
     SNOW_SHOT_CAPTURE_PERF_MILESTONE("capture.async_dispatched");
     if (sessionId != m_state.sessionId || !m_state.captureInProgress) {
         return;

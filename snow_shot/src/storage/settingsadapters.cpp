@@ -347,6 +347,14 @@ bool GlobalShortcutSettings::setDisableOnFocusedFullscreenWindow(bool disabled) 
         QStringLiteral("global_shortcuts/disable_on_focused_fullscreen_window"), disabled);
 }
 
+bool ScreenshotSettings::restoreOriginalScreenColors() const {
+    return cache().value(QStringLiteral("screenshot/restore_original_screen_colors")).toBool();
+}
+
+bool ScreenshotSettings::setRestoreOriginalScreenColors(bool enabled) const {
+    return cache().setValue(QStringLiteral("screenshot/restore_original_screen_colors"), enabled);
+}
+
 int ScreenshotSettings::delaySeconds() const {
     return cache().value(QStringLiteral("screenshot/delay_seconds")).toInt();
 }

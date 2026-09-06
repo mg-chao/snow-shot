@@ -1,6 +1,7 @@
 #include "snow_shot/presentation/screenshotdisplaysession.h"
 #include "snow_shot/presentation/screenshotgeometry.h"
 #include "snow_shot/presentation/screenshotselectionmodel.h"
+#include "../src/presentation/toolbar/screenshottoolbarplacement.h"
 
 #include <QRectF>
 
@@ -235,9 +236,53 @@ void dragAnchorDoesNotReplaceTheActualCursorPosition() {
     require(cursorPosition != anchor.value(),
             "a handle anchor must remain distinct from the cursor position used for navigation");
 }
+
+void shadowWidthPreservesSelectionAndToolbarPlacement() {
+    const ScreenshotGeometryMapper geometry;
+    ScreenshotToolbarPlacementSnapshot toolbar;
+    toolbar.bottom.mainToolbarContentRect = QRect(0, 0, 300, 40);
+    toolbar.bottom.occupiedContentRect = QRect(0, 0, 300, 80);
+    toolbar.top.mainToolbarContentRect = QRect(0, 40, 300, 40);
+    toolbar.top.occupiedContentRect = QRect(0, 0, 300, 80);
+    for (const qreal scale : {1.0, 1.25, 1.5, 2.0}) {
+        CapturedDisplayModel display;
+        display.active = true;
+        display.logicalRect = QRect(-1200, 0, 1200, 900);
+        display.physicalRect =
+            QRect(-qRound(1200 * scale), 0, qRound(1200 * scale), qRound(900 * scale));
+        display.canvasRect = display.physicalRect;
+        for (const int bottom : {400, 800, 880}) {
+            ScreenshotSelectionModel selection;
+            selection.setSelectionRect(
+                QRectF(-900 * scale, 100 * scale, 600 * scale, (bottom - 100) * scale));
+            const QRectF originalSelection = selection.normalizedSelection();
+            const QRect originalPixels = selection.pixelSelection();
+            ScreenshotToolbarPresentationState state;
+            state.selectionPixels = originalPixels;
+            state.selectionCanvas = originalSelection;
+            const auto baseline = snow_shot::presentation::screenshotToolbarPlacement(
+                state, geometry, &display, toolbar, display.logicalRect, 4);
+            require(baseline.usesTopRightPlacement == (bottom == 880),
+                    "fixture must cover both bottom and top toolbar placement");
+            for (const int width : {1, 8, 32, 64, 0}) {
+                static_cast<void>(selection.setShadowWidth(width));
+                require(selection.normalizedSelection() == originalSelection &&
+                            selection.pixelSelection() == originalPixels,
+                        "shadow width must preserve the selection area and capture pixels");
+                state.shadowWidth = selection.shadowWidth();
+                const auto placement = snow_shot::presentation::screenshotToolbarPlacement(
+                    state, geometry, &display, toolbar, display.logicalRect, 4);
+                require(placement.contentPosition == baseline.contentPosition &&
+                            placement.usesTopRightPlacement == baseline.usesTopRightPlacement,
+                        "shadow width must not move the toolbar or change its placement side");
+            }
+        }
+    }
+}
 } // namespace
 
 int main() {
+    shadowWidthPreservesSelectionAndToolbarPlacement();
     lockedAspectRatioAppliesToEveryResizeHandle();
     lockedResizeStaysInsideBoundsWithoutDistorting();
     lockedResizeAllowsFlippingAcrossOppositeEdges();

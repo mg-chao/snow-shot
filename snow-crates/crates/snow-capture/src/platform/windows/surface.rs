@@ -512,7 +512,8 @@ unsafe fn convert_dirty_rects_trusted_direct_unchecked(
         DIRTY_RECT_PARALLEL_MIN_CHUNK_PIXELS,
         DIRTY_RECT_PARALLEL_MAX_WORKERS,
     );
-    let use_bgra_batch_kernel = format == SurfacePixelFormat::Bgra8;
+    let use_bgra_batch_kernel =
+        format == SurfacePixelFormat::Bgra8 && !converter.has_screen_color_transform();
     let can_parallel = converted >= DIRTY_RECT_PARALLEL_MIN_RECTS && should_parallelize;
 
     if can_parallel {

@@ -272,6 +272,59 @@ fn bench_surface_conversion(c: &mut Criterion) {
     hdr_group.finish();
 }
 
+fn bench_screen_colors(c: &mut Criterion) {
+    use snow_capture::{CapturePixelFormat, color_effect::ScreenColorTransform};
+    warmup();
+    let mut inverted = [0.; 25];
+    for i in 0..5 {
+        inverted[i * 6] = if i < 3 { -1. } else { 1. };
+    }
+    inverted[20..23].fill(1.);
+    let mut mixed = inverted;
+    mixed[0] = -0.8;
+    mixed[5] = 0.1;
+    let mut group = c.benchmark_group("screen_colors");
+    group.bench_function("query_current_matrix", |b| {
+        b.iter(|| black_box(snow_capture::color_effect::ColorCorrection::snapshot_current()));
+    });
+    for (width, height) in [(1920, 1080), (3840, 2160)] {
+        let src = vec![64; width * height * 4];
+        let mut dst = vec![0; src.len()];
+        for (name, matrix) in [
+            ("identity", None),
+            (
+                "inversion",
+                ScreenColorTransform::from_magnifier_matrix(&inverted),
+            ),
+            (
+                "matrix",
+                ScreenColorTransform::from_magnifier_matrix(&mixed),
+            ),
+        ] {
+            group.bench_function(format!("{width}x{height}/{name}"), |b| {
+                b.iter(|| {
+                    convert_surface_to_rgba(
+                        SurfacePixelFormat::Bgra8,
+                        black_box(&src),
+                        width * 4,
+                        black_box(&mut dst),
+                        width * 4,
+                        width,
+                        height,
+                        SurfaceConversionOptions {
+                            screen_color_transform: matrix,
+                            force_opaque_alpha: true,
+                            output_pixel_format: CapturePixelFormat::Bgra8,
+                            ..Default::default()
+                        },
+                    );
+                })
+            });
+        }
+    }
+    group.finish();
+}
+
 fn criterion_config() -> Criterion {
     Criterion::default()
         .warm_up_time(Duration::from_secs(1))
@@ -282,6 +335,6 @@ fn criterion_config() -> Criterion {
 criterion_group! {
     name = benches;
     config = criterion_config();
-    targets = bench_surface_conversion
+    targets = bench_surface_conversion, bench_screen_colors
 }
 criterion_main!(benches);

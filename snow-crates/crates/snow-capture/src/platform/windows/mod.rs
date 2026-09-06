@@ -104,6 +104,7 @@ struct AutomaticWindowsCapturer {
     hdr_tonemap_lut_enabled: bool,
     wgc_update_mode: WgcUpdateMode,
     output_pixel_format: CapturePixelFormat,
+    screen_color_transform: Option<crate::color_effect::ScreenColorTransform>,
     #[cfg(feature = "stage-timing")]
     record_stage_timings: bool,
 }
@@ -133,6 +134,7 @@ impl AutomaticWindowsCapturer {
             hdr_tonemap_lut_enabled: true,
             wgc_update_mode: WgcUpdateMode::Auto,
             output_pixel_format: CapturePixelFormat::Rgba8,
+            screen_color_transform: None,
             #[cfg(feature = "stage-timing")]
             record_stage_timings: false,
         }
@@ -169,6 +171,7 @@ impl AutomaticWindowsCapturer {
             capturer.set_capture_mode(self.capture_mode)?;
             #[cfg(feature = "stage-timing")]
             capturer.set_record_stage_timings(self.record_stage_timings)?;
+            capturer.set_screen_color_transform(self.screen_color_transform)?;
             self.candidates[index].capturer = Some(capturer);
         }
         self.candidates[index]
@@ -499,6 +502,17 @@ impl MonitorCapturer for AutomaticWindowsCapturer {
     fn set_output_pixel_format(&mut self, format: CapturePixelFormat) -> CaptureResult<()> {
         self.output_pixel_format = format;
         self.apply_to_prepared(|capturer| capturer.set_output_pixel_format(format))
+    }
+
+    fn set_screen_color_transform(
+        &mut self,
+        transform: Option<crate::color_effect::ScreenColorTransform>,
+    ) -> CaptureResult<()> {
+        if self.screen_color_transform == transform {
+            return Ok(());
+        }
+        self.screen_color_transform = transform;
+        self.apply_to_prepared(|capturer| capturer.set_screen_color_transform(transform))
     }
 
     #[cfg(feature = "stage-timing")]

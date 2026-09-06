@@ -152,6 +152,9 @@ void ScreenshotCaptureWorker::capture(const ScreenshotCaptureRequest& request,
     nativeRequest.struct_size = sizeof(nativeRequest);
     nativeRequest.flags =
         request.refreshLayout ? SNOW_CAPTURE_SCREENSHOT_REQUEST_REFRESH_LAYOUT : 0;
+    if (request.restoreOriginalScreenColors) {
+        nativeRequest.flags |= SNOW_CAPTURE_SCREENSHOT_REQUEST_RESTORE_ORIGINAL_COLORS;
+    }
     nativeRequest.focused_window = static_cast<intptr_t>(request.focusedWindowHandle);
     nativeRequest.cancellation_token = cancellationToken;
 

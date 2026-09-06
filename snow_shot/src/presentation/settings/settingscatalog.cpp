@@ -635,6 +635,16 @@ SettingsItemDefinition screenshotMiddleClickActionItem() {
         SettingsSelectBinding::ScreenshotMiddleClickAction, screenshotPointerActionOptions());
 }
 
+SettingsItemDefinition screenshotRestoreOriginalScreenColorsItem() {
+    return switchItem(
+        QStringLiteral("screenshot.restore-original-screen-colors"),
+        QT_TRANSLATE_NOOP("SettingsCatalog", "Restore original screen colors"),
+        QT_TRANSLATE_NOOP("SettingsCatalog",
+                          "Reverse supported full-screen color filters in screenshots."),
+        QStringLiteral("screenshot/restore_original_screen_colors"),
+        SettingsSwitchBinding::ScreenshotRestoreOriginalScreenColors);
+}
+
 SettingsItemDefinition screenshotAutoSaveAfterCopyItem() {
     return switchItem(
         QStringLiteral("screenshot.auto-save-after-copy"),
@@ -1335,8 +1345,8 @@ QVector<SettingsPageDefinition> builtInPages() {
                 {
                     QStringLiteral("screen-recording-settings"),
                     settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Screen recording")),
-                    settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
-                                                   "Screen recording and animated image export settings")),
+                    settingsText(QT_TRANSLATE_NOOP(
+                        "SettingsCatalog", "Screen recording and animated image export settings")),
                     SettingsSectionReset::ScreenRecording,
                     screenRecordingItems(),
                 },
@@ -1351,8 +1361,8 @@ QVector<SettingsPageDefinition> builtInPages() {
                 {
                     QStringLiteral("global-hotkeys"),
                     settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Global hotkeys")),
-                    settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
-                                                   "Global hotkey activation behavior")),
+                    settingsText(
+                        QT_TRANSLATE_NOOP("SettingsCatalog", "Global hotkey activation behavior")),
                     SettingsSectionReset::GlobalHotkeys,
                     {fullscreenHotkeySuppressionItem()},
                 },
@@ -1501,7 +1511,8 @@ QVector<SettingsPageDefinition> builtInPages() {
                                 "Remove the oldest screenshots when this limit is exceeded")),
                             QStringLiteral("capture_history/max_entries"),
                             SettingsIntegerBinding::HistoryMaxEntries, {},
-                            {settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Screenshot count"))}),
+                            {settingsText(
+                                QT_TRANSLATE_NOOP("SettingsCatalog", "Screenshot count"))}),
                         historyIntegerItem(
                             QStringLiteral("history.max-disk-mib"),
                             settingsText(
@@ -1523,8 +1534,7 @@ QVector<SettingsPageDefinition> builtInPages() {
                         "SettingsCatalog",
                         "App-wide storage usage, location, mode, errors, and cleanup")),
                     SettingsSectionReset::None,
-                    {storageStatusItem(), clearThumbnailCacheItem(),
-                     clearRecordingTempItem()},
+                    {storageStatusItem(), clearThumbnailCacheItem(), clearRecordingTempItem()},
                 },
             },
         },
@@ -1544,10 +1554,17 @@ QVector<SettingsPageDefinition> builtInPages() {
                     {autoStartItem()},
                 },
                 {
+                    QStringLiteral("screenshot-capture"),
+                    settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Screenshot")),
+                    settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Screen capture settings")),
+                    SettingsSectionReset::ScreenshotCapture,
+                    {screenshotRestoreOriginalScreenColorsItem()},
+                },
+                {
                     QStringLiteral("network"),
                     settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Network")),
-                    settingsText(QT_TRANSLATE_NOOP(
-                        "SettingsCatalog", "Configure proxy use for network requests")),
+                    settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
+                                                   "Configure proxy use for network requests")),
                     SettingsSectionReset::Network,
                     {proxyItem()},
                 },
@@ -1572,14 +1589,15 @@ QVector<SettingsPageDefinition> builtInPages() {
             QString::fromLatin1(HOTKEY_PAGE_ID),
             QStringLiteral("/settings/hotKeySettings"),
             settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Hotkey settings")),
-            settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
-                                           "Configure screenshot editor shortcut keys")),
+            settingsText(
+                QT_TRANSLATE_NOOP("SettingsCatalog", "Configure screenshot editor shortcut keys")),
             {
                 {
                     QStringLiteral("screenshot-shortcuts"),
                     settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Screenshot")),
                     settingsText(QT_TRANSLATE_NOOP(
-                        "SettingsCatalog", "Shortcut keys for screenshot tools and cursor movement")),
+                        "SettingsCatalog",
+                        "Shortcut keys for screenshot tools and cursor movement")),
                     SettingsSectionReset::ScreenshotEditorShortcuts,
                     screenshotShortcutItems(),
                     SettingsSectionItemLayout::TwoColumnGrid,
@@ -1587,8 +1605,8 @@ QVector<SettingsPageDefinition> builtInPages() {
                 {
                     QStringLiteral("drawing-shortcuts"),
                     settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Drawing")),
-                    settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
-                                                   "Shortcut keys for drawing tools")),
+                    settingsText(
+                        QT_TRANSLATE_NOOP("SettingsCatalog", "Shortcut keys for drawing tools")),
                     SettingsSectionReset::DrawingShortcuts,
                     drawingShortcutItems(),
                     SettingsSectionItemLayout::TwoColumnGrid,
@@ -1596,8 +1614,8 @@ QVector<SettingsPageDefinition> builtInPages() {
                 {
                     QStringLiteral("pin-to-screen-shortcuts"),
                     settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Pin to screen")),
-                    settingsText(QT_TRANSLATE_NOOP(
-                        "SettingsCatalog", "Shortcut keys for pinned-to-screen windows")),
+                    settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
+                                                   "Shortcut keys for pinned-to-screen windows")),
                     SettingsSectionReset::PinToScreenShortcuts,
                     pinToScreenShortcutItems(),
                     SettingsSectionItemLayout::TwoColumnGrid,
@@ -2270,6 +2288,9 @@ QStringList SettingsCatalog::validationErrors() const {
                         break;
                     case SettingsSwitchBinding::ScreenshotAutoSaveAfterCopy:
                         expectedKey = QStringLiteral("screenshot/auto_save_after_copy");
+                        break;
+                    case SettingsSwitchBinding::ScreenshotRestoreOriginalScreenColors:
+                        expectedKey = QStringLiteral("screenshot/restore_original_screen_colors");
                         break;
                     case SettingsSwitchBinding::ScreenshotCopyImageFileToClipboard:
                         expectedKey =

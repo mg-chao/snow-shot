@@ -8,6 +8,7 @@ struct ScreenshotCaptureState {
     quint64 sessionId = 0;
     bool captureInProgress = false;
     bool layoutDirty = false;
+    bool restoreOriginalScreenColors = true;
 };
 
 #endif // SNOW_SHOT_PRESENTATION_SCREENSHOTCAPTURESTATE_H

@@ -20,6 +20,7 @@ struct ScreenshotScrollingCaptureControllerContext {
     ScreenshotDisplaySession& displaySession;
     const ScreenshotGeometryMapper& geometry;
     ScreenshotOverlayCoordinator& overlayCoordinator;
+    std::function<bool()> restoreOriginalScreenColors = []() { return false; };
 };
 
 class ScreenshotScrollingCaptureController final : public QObject {

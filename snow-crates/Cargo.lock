@@ -2826,6 +2826,7 @@ dependencies = [
  "crossbeam-channel",
  "half",
  "image",
+ "nalgebra 0.33.3",
  "num_cpus",
  "proptest",
  "rayon",

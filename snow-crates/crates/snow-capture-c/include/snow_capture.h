@@ -123,7 +123,9 @@ typedef struct SnowCaptureStreamConfig {
     uint8_t adaptive_fps;
     /* Set to zero for scrolling captures to avoid cursor compositing work. */
     uint8_t include_cursor;
-    uint8_t reserved[27];
+    /* Opt in to reversal of supported full-screen Magnifier effects. */
+    uint8_t restore_original_colors;
+    uint8_t reserved[26];
 } SnowCaptureStreamConfig;
 
 typedef struct SnowCaptureStreamEvent {
@@ -194,6 +196,7 @@ typedef struct SnowCaptureWindowFrameInfo {
 
 #define SNOW_CAPTURE_SCREENSHOT_REQUEST_VERSION 1u
 #define SNOW_CAPTURE_SCREENSHOT_REQUEST_REFRESH_LAYOUT (1u << 0)
+#define SNOW_CAPTURE_SCREENSHOT_REQUEST_RESTORE_ORIGINAL_COLORS (1u << 1)
 
 typedef struct SnowCaptureScreenshotRequest {
     uint32_t version;

@@ -2,6 +2,7 @@
 
 pub mod backend;
 pub mod capture_session;
+pub mod color_effect;
 pub mod convert;
 pub mod error;
 pub mod frame;

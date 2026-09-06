@@ -633,6 +633,13 @@ void newSettingsAdaptersRoundTripAndRejectInvalidValues() {
     auto& applicationStorage = initialize(executable, temporary.path());
 
     const storage::ScreenshotSettings screenshot;
+    require(screenshot.restoreOriginalScreenColors(), "screen color restoration must default on");
+    require(screenshot.setRestoreOriginalScreenColors(false) &&
+                !storage::ScreenshotSettings().restoreOriginalScreenColors(),
+            "screen color restoration must persist when disabled");
+    require(screenshot.setRestoreOriginalScreenColors(true) &&
+                storage::ScreenshotSettings().restoreOriginalScreenColors(),
+            "screen color restoration must support re-enabling");
     require(screenshot.autoExecuteAfterTextRecognition() == QStringLiteral("no_action") &&
                 screenshot.doubleClickAction() == QStringLiteral("copy") &&
                 screenshot.middleMouseButtonAction() == QStringLiteral("pin") &&
