@@ -127,6 +127,27 @@ void ScreenshotOcrPresentation::prepareForRendering() {
     m_geometryPrepared = true;
 }
 
+void ScreenshotOcrPresentation::setLineText(int lineIndex, const QString& text) {
+    if (lineIndex < 0 || lineIndex >= lines.size() || lines.at(lineIndex).text == text) {
+        return;
+    }
+    lines[lineIndex].text = text;
+    const QVector<int> boundaries = graphemeBoundaries(text);
+    if (m_geometryPrepared && m_cachedLineGeometry.size() == lines.size()) {
+        m_cachedLineGeometry[lineIndex].graphemeBoundaries = boundaries;
+    }
+    const auto clampPosition = [lineIndex, &boundaries](ScreenshotOcrTextPosition& position) {
+        if (position.lineIndex == lineIndex) {
+            const auto after =
+                std::upper_bound(boundaries.cbegin(), boundaries.cend(), position.characterIndex);
+            position.characterIndex = after == boundaries.cbegin() ? 0 : *std::prev(after);
+        }
+    };
+    clampPosition(m_selectionAnchor);
+    clampPosition(m_selectionFocus);
+    ++m_selectionRevision;
+}
+
 bool ScreenshotOcrPresentation::empty() const {
     return lines.isEmpty();
 }

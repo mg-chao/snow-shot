@@ -95,8 +95,8 @@ void builtInCatalogIsCompleteAndValid() {
         }
     }
     require(
-        sectionCount == 28 && itemCount == 113,
-        "catalog must contain the expected twenty-eight sections and one hundred thirteen items");
+        sectionCount == 29 && itemCount == 114,
+        "catalog must contain the expected twenty-nine sections and one hundred fourteen items");
     const auto* apiMode =
         catalog.item({QStringLiteral("system-settings"), QStringLiteral("screenshot-capture"),
                       QStringLiteral("screenshot.api-mode")});
@@ -126,15 +126,27 @@ void builtInCatalogIsCompleteAndValid() {
                 std::get<settings::SettingsSwitchDefinition>(smartSelection->payload).binding ==
                     settings::SettingsSwitchBinding::SmartSelection,
             "Function settings must expose the persisted Smart selection switch");
-    require(
-        functionPage->sections.size() == 6 &&
-            functionPage->sections.at(0).id == QStringLiteral("screenshot-settings") &&
-            functionPage->sections.at(1).id == QStringLiteral("pin-to-screen-settings") &&
-            functionPage->sections.at(2).id == QStringLiteral("drawing-settings") &&
-            functionPage->sections.at(3).id == QStringLiteral("screen-recording-settings") &&
-            functionPage->sections.at(4).id == QStringLiteral("tray-settings") &&
-            functionPage->sections.at(5).id == QStringLiteral("global-hotkeys"),
-        "Function settings must order Pin to screen, Drawing, and Tray around existing sections");
+    require(functionPage->sections.size() == 7 &&
+                functionPage->sections.at(0).id == QStringLiteral("screenshot-settings") &&
+                functionPage->sections.at(1).id == QStringLiteral("pin-to-screen-settings") &&
+                functionPage->sections.at(2).id == QStringLiteral("translation-settings") &&
+                functionPage->sections.at(3).id == QStringLiteral("drawing-settings") &&
+                functionPage->sections.at(4).id == QStringLiteral("screen-recording-settings") &&
+                functionPage->sections.at(5).id == QStringLiteral("tray-settings") &&
+                functionPage->sections.at(6).id == QStringLiteral("global-hotkeys"),
+            "Function settings must place Translation immediately after Pin to screen");
+    const auto* translation =
+        catalog.item({QStringLiteral("function-settings"), QStringLiteral("translation-settings"),
+                      QStringLiteral("translation.original-image")});
+    require(translation != nullptr &&
+                translation->title.translated() == QStringLiteral("Original Image Translation") &&
+                translation->configurationKey ==
+                    QStringLiteral("screenshot_translation/original_image_translation") &&
+                std::get<settings::SettingsSwitchDefinition>(translation->payload).binding ==
+                    settings::SettingsSwitchBinding::OriginalImageTranslation &&
+                functionPage->sections.at(2).reset == settings::SettingsSectionReset::Translation &&
+                storage::ConfigurationSchema::defaultValue(translation->configurationKey).toBool(),
+            "Translation should expose its own default-on switch and section reset");
     const auto* encodingPreset = catalog.item({QStringLiteral("function-settings"),
                                                QStringLiteral("screen-recording-settings"),
                                                QStringLiteral("screen-recording.encoding-preset")});
@@ -754,8 +766,12 @@ void invalidCatalogReportsAllConformanceErrors() {
 
 void searchIndexIsGeneratedAndRanked() {
     settings::SettingsSearchIndex index(settings::builtInSettingsRegistry());
-    require(index.entries().size() == 148 && index.search(QString()).size() == 148,
-            "search must generate all one hundred forty-eight catalog nodes in catalog order");
+    require(index.entries().size() == 150 && index.search(QString()).size() == 150,
+            "search must generate all one hundred fifty catalog nodes in catalog order");
+    const auto translation = index.search(QStringLiteral("original image translation"));
+    require(!translation.isEmpty() && translation.constFirst().location.itemId ==
+                                          QStringLiteral("translation.original-image"),
+            "search should navigate directly to the original image translation toggle");
 
     int pages = 0;
     int sections = 0;
@@ -782,7 +798,7 @@ void searchIndexIsGeneratedAndRanked() {
             break;
         }
     }
-    require(pages == 7 && sections == 28 && items == 113,
+    require(pages == 7 && sections == 29 && items == 114,
             "search node counts must match catalog page, section, and item counts");
 
     const auto theme = index.search(QStringLiteral("theme"));

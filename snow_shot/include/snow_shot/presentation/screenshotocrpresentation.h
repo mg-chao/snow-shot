@@ -44,6 +44,7 @@ class ScreenshotOcrPresentation final {
     QVector<ScreenshotOcrLine> lines;
 
     void prepareForRendering();
+    void setLineText(int lineIndex, const QString& text);
     [[nodiscard]] bool empty() const;
     [[nodiscard]] int lineAt(const QPointF& canvasPosition) const;
     [[nodiscard]] ScreenshotOcrTextPosition textPositionAt(const QPointF& canvasPosition,

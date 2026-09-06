@@ -69,6 +69,8 @@
 #include <utility>
 #include <vector>
 
+void runPinnedOriginalImageTranslationTests();
+
 #if defined(Q_OS_WIN) || defined(_WIN32)
 #include <qt_windows.h>
 #endif
@@ -3998,6 +4000,10 @@ int main(int argc, char* argv[]) {
         IsolatedPinnedStorage processStorage;
         SnowCanvasRuntime sourceRuntime;
         require(sourceRuntime.isValid(), "source runtime creation failed");
+        if (app.arguments().contains(QStringLiteral("--translation-only"))) {
+            runPinnedOriginalImageTranslationTests();
+            return 0;
+        }
         if (app.arguments().contains(QStringLiteral("--pinned-shortcut-only"))) {
             pinnedConfiguredShortcutUpdatesImmediately(sourceRuntime);
             return 0;

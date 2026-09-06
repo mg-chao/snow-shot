@@ -104,6 +104,8 @@ const QVector<ConfigurationSchemaEntry> kEntries = {
       QStringLiteral("ru"), QStringLiteral("tr"), QStringLiteral("zh-Hans"),
       QStringLiteral("zh-Hant")}},
     {QStringLiteral("screenshot_translation/model"), QString(), ConfigurationValueKind::String},
+    {QStringLiteral("screenshot_translation/original_image_translation"), true,
+     ConfigurationValueKind::Boolean},
     {QStringLiteral("interface/sidebar_collapsed"), false, ConfigurationValueKind::Boolean},
     {QStringLiteral("global_shortcuts/screenshot"),
      QJsonArray{QStringLiteral("F1")},

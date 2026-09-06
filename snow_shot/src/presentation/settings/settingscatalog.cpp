@@ -772,6 +772,15 @@ SettingsItemDefinition pinAutoResizeItem() {
         SettingsSwitchBinding::PinAutoResizeWindow);
 }
 
+SettingsItemDefinition originalImageTranslationItem() {
+    return switchItem(
+        QStringLiteral("translation.original-image"),
+        QT_TRANSLATE_NOOP("SettingsCatalog", "Original Image Translation"),
+        QT_TRANSLATE_NOOP("SettingsCatalog", "Display translated text in the original image"),
+        QStringLiteral("screenshot_translation/original_image_translation"),
+        SettingsSwitchBinding::OriginalImageTranslation);
+}
+
 SettingsItemDefinition trayLeftClickItem() {
     return fixedSelectItem(
         QStringLiteral("tray.left-click-action"),
@@ -1315,6 +1324,14 @@ QVector<SettingsPageDefinition> builtInPages() {
                                                    "Pinned screenshot window appearance settings")),
                     SettingsSectionReset::PinToScreenBehavior,
                     {pinZoomModeItem(), pinAutomaticOcrItem(), pinAutoResizeItem()},
+                },
+                {
+                    QStringLiteral("translation-settings"),
+                    settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Translation")),
+                    settingsText(
+                        QT_TRANSLATE_NOOP("SettingsCatalog", "Screenshot translation settings")),
+                    SettingsSectionReset::Translation,
+                    {originalImageTranslationItem()},
                 },
                 {
                     QStringLiteral("drawing-settings"),
@@ -2281,6 +2298,10 @@ QStringList SettingsCatalog::validationErrors() const {
                         break;
                     case SettingsSwitchBinding::PinAutoResizeWindow:
                         expectedKey = QStringLiteral("pin_to_screen/auto_resize_window");
+                        break;
+                    case SettingsSwitchBinding::OriginalImageTranslation:
+                        expectedKey =
+                            QStringLiteral("screenshot_translation/original_image_translation");
                         break;
                     case SettingsSwitchBinding::ScreenRecordingHideToolbar:
                         expectedKey = QStringLiteral("screen_recording/hide_toolbar_in_recording");
