@@ -2409,6 +2409,22 @@ if(SNOW_SHOT_BUILD_TESTS)
         COMMAND snow-shot-pinned-window-tests --group-menu-only
     )
     add_test(
+        NAME snow-shot-pinned-cached-ocr-tests
+        COMMAND snow-shot-pinned-window-tests --cached-ocr-only
+    )
+    add_test(
+        NAME snow-shot-pinned-restored-ocr-tests
+        COMMAND snow-shot-pinned-window-tests --restored-ocr-only
+    )
+    add_test(NAME snow-shot-pinned-early-ocr-snapshot-tests
+        COMMAND snow-shot-pinned-window-tests --early-ocr-snapshot-only)
+    add_test(NAME snow-shot-pinned-invalid-ocr-restore-tests
+        COMMAND snow-shot-pinned-window-tests --invalid-ocr-restore-only)
+    add_test(NAME snow-shot-pinned-cached-ocr-provider-tests
+        COMMAND snow-shot-pinned-window-tests --cached-ocr-provider-only)
+    add_test(NAME snow-shot-pinned-transformed-ocr-tests
+        COMMAND snow-shot-pinned-window-tests --transformed-ocr-only)
+    add_test(
         NAME snow-shot-pinned-restore-wiring-tests
         COMMAND snow-shot-pinned-window-tests --restore-wiring-only
     )
@@ -2418,6 +2434,12 @@ if(SNOW_SHOT_BUILD_TESTS)
         snow-shot-pinned-async-presentation-tests
         snow-shot-pinned-window-pool-tests
         snow-shot-pinned-group-menu-tests
+        snow-shot-pinned-cached-ocr-tests
+        snow-shot-pinned-restored-ocr-tests
+        snow-shot-pinned-early-ocr-snapshot-tests
+        snow-shot-pinned-invalid-ocr-restore-tests
+        snow-shot-pinned-cached-ocr-provider-tests
+        snow-shot-pinned-transformed-ocr-tests
         snow-shot-pinned-restore-wiring-tests
         snow-shot-pinned-toolbar-parity-tests
         snow-shot-pinned-movement-shortcut-tests

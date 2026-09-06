@@ -248,7 +248,7 @@
         <translation>%1 cannot be used as a screenshot shortcut, try another key</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="317"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="323"/>
         <source>Invalid screenshot shortcut</source>
         <translation>Invalid screenshot shortcut</translation>
     </message>
@@ -308,32 +308,42 @@
         <translation>This key cannot be registered as a Windows global shortcut, try another key</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="681"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="672"/>
+        <source>Record Print Screen</source>
+        <translation>Record Print Screen</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="674"/>
+        <source>If you cannot trigger the screenshot on Windows, please disable the system screenshot tool and try again (Keyboard → Use the Print Screen key to open screen capture). If there is no response, try restarting.</source>
+        <translation>If you cannot trigger the screenshot on Windows, please disable the system screenshot tool and try again (Keyboard → Use the Print Screen key to open screen capture). If there is no response, try restarting.</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="740"/>
         <source>Please press a key</source>
         <translation>Please press a key</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="319"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="325"/>
         <source>Invalid drawing shortcut</source>
         <translation>Invalid drawing shortcut</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="322"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="327"/>
         <source>Invalid pinned window shortcut</source>
         <translation>Invalid pinned window shortcut</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="324"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="329"/>
         <source>Invalid global shortcut</source>
         <translation>Invalid global shortcut</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="533"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="542"/>
         <source>Add key config</source>
         <translation>Add key config</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="676"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="735"/>
         <source>Unsupported key</source>
         <translation>Unsupported key</translation>
     </message>
@@ -4334,99 +4344,99 @@
 <context>
     <name>ShortcutKeyRow</name>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1181"/>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1290"/>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1315"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1244"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1353"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1378"/>
         <source>Delay: %1 seconds</source>
         <translation>Delay: %1 seconds</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1408"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1471"/>
         <source>%1 (%2 s)</source>
         <translation>%1 (%2 s)</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1470"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1533"/>
         <source>Key configuration for &quot;%1&quot;</source>
         <translation>Key configuration for &quot;%1&quot;</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1476"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1539"/>
         <source>OK</source>
         <translation>OK</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1477"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1540"/>
         <source>Cancel</source>
         <translation>Cancel</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1581"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1644"/>
         <source>Unset</source>
         <translation>Unset</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1594"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1657"/>
         <source>Registered</source>
         <translation>Registered</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1597"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1660"/>
         <source>Partially registered</source>
         <translation>Partially registered</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1600"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1663"/>
         <source>Registration failed</source>
         <translation>Registration failed</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1603"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1666"/>
         <source>Not configured</source>
         <translation>Not configured</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1616"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1679"/>
         <source>Global shortcut status: %1</source>
         <translation>Global shortcut status: %1</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1641"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1704"/>
         <source>already used by another application or action</source>
         <translation>already used by another application or action</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1644"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1707"/>
         <source>not supported as a Windows global shortcut</source>
         <translation>not supported as a Windows global shortcut</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1647"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1710"/>
         <source>global shortcuts are not supported on this platform</source>
         <translation>global shortcuts are not supported on this platform</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1651"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1714"/>
         <source>the system rejected this shortcut</source>
         <translation>the system rejected this shortcut</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1652"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1715"/>
         <source>the system rejected this shortcut (error %1)</source>
         <translation>the system rejected this shortcut (error %1)</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1656"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1719"/>
         <source>registration did not complete</source>
         <translation>registration did not complete</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1659"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1722"/>
         <source>%1: %2</source>
         <translation>%1: %2</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1664"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1727"/>
         <source>Some shortcuts are unavailable
 Available: %1
 Unavailable: %2</source>
@@ -4435,7 +4445,7 @@ Available: %1
 Unavailable: %2</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1669"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1732"/>
         <source>No configured shortcut is available
 %1
 Change the shortcut and try again</source>

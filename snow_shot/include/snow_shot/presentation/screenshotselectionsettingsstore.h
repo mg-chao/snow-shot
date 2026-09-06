@@ -3,6 +3,7 @@
 
 #include "snow_shot/presentation/screenshotselectionexportworkflowports.h"
 #include "snow_shot/presentation/screenshotselectionparams.h"
+#include "snow_shot/presentation/screenshotintelligentselectionmodel.h"
 
 #include <QVector>
 
@@ -17,6 +18,9 @@ class ScreenshotSelectionSettingsStore final : public ScreenshotSelectionParamsS
     [[nodiscard]] int cornerRadius() const;
     [[nodiscard]] int shadowWidth() const;
     void setSelectionEffects(int cornerRadius, int shadowWidth);
+
+    [[nodiscard]] ScreenshotIntelligentSelectionTarget selectionTarget() const;
+    void setSelectionTarget(ScreenshotIntelligentSelectionTarget target);
 
     [[nodiscard]] QVector<ScreenshotSelectionPreset> presets() const;
     void setPresets(const QVector<ScreenshotSelectionPreset>& presets);
