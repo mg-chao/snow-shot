@@ -41,6 +41,7 @@ struct DirectCaptureFrame {
     quint8 backend = 0;
     QString error;
     QVector<DirectCaptureDisplay> displays;
+    QByteArray canonicalPng;
 
     [[nodiscard]] bool isValid() const {
         return error.isEmpty() && !image.isNull() && physicalBounds.size() == image.size();

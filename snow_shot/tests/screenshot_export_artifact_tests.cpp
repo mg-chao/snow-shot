@@ -1,5 +1,6 @@
 #include "snow_shot/presentation/screenshotexportartifact.h"
-#include "snow_shot/presentation/screenshotclipboardpolicy.h"
+#include <QTemporaryDir>
+#include <QFile>
 
 #include "snow_draw_engine_qt/snow_canvas_runtime.h"
 
@@ -19,33 +20,6 @@
 #if defined(Q_OS_WIN) || defined(_WIN32)
 #include <windows.h>
 #endif
-
-struct ScreenshotClipboardPayloadTestAccess {
-    static bool matchesFormat(const ScreenshotClipboardPayload& payload,
-                              ScreenshotClipboardFormatMode expected) {
-#if defined(Q_OS_WIN) || defined(_WIN32)
-        if (payload.m_formatMode != expected || payload.m_nativeHandle == nullptr) {
-            return false;
-        }
-        const auto handle = static_cast<HGLOBAL>(payload.m_nativeHandle);
-        const auto* header = static_cast<const BITMAPINFOHEADER*>(GlobalLock(handle));
-        if (header == nullptr) {
-            return false;
-        }
-        const bool matches = expected == ScreenshotClipboardFormatMode::CompatibleDib
-                                 ? header->biSize == sizeof(BITMAPINFOHEADER) &&
-                                       header->biHeight > 0 && header->biCompression == BI_RGB
-                                 : header->biSize == sizeof(BITMAPV5HEADER) &&
-                                       header->biHeight < 0 &&
-                                       header->biCompression == BI_BITFIELDS;
-        GlobalUnlock(handle);
-        return matches;
-#else
-        Q_UNUSED(expected);
-        return payload.isValid();
-#endif
-    }
-};
 
 namespace {
 void require(bool condition, const char* message) {
@@ -94,52 +68,124 @@ ScreenshotImageRowSource rowSourceFor(const QImage& source, std::function<bool()
     return rows;
 }
 
-void clipboardRequestsPreserveScenarioFormat() {
-    using Scenario = ScreenshotClipboardScenario;
-    using Format = ScreenshotClipboardFormatMode;
-    struct Case {
-        Scenario scenario;
-        ScreenshotResultStyle style;
-        Format expected;
-    };
-    const Case cases[] = {
-        {Scenario::OrdinarySelection, {}, Format::CompatibleDib},
-        {Scenario::OrdinarySelection, {8, 0, QColor()}, Format::DibV5},
-        {Scenario::ScrollingCapture, {}, Format::CompatibleDib},
-        {Scenario::CurrentMonitor, {}, Format::CompatibleDib},
-        {Scenario::Other, {}, Format::DibV5},
-    };
+void clipboardAndSaveShareCanonicalEncoding() {
     const QImage image = testImage();
     for (bool rowBacked : {false, true}) {
         std::atomic_int materializations = 0;
-        ScreenshotExportArtifact artifact(
-            rowBacked ? ScreenshotExportSource::fromProducer(
-                            [&materializations, image](const ScreenshotExportCancellation&) {
-                                ++materializations;
-                                return image;
-                            },
-                            [image](std::function<bool()> cancellation) {
-                                return rowSourceFor(image, std::move(cancellation));
-                            })
-                      : ScreenshotExportSource::fromImage(image));
+        std::atomic_int rowFactories = 0;
+        ScreenshotExportSource::RowSourceFactory factory;
+        if (rowBacked) {
+            factory = [&rowFactories, image](std::function<bool()> cancellation) {
+                ++rowFactories;
+                return rowSourceFor(image, std::move(cancellation));
+            };
+        }
+        ScreenshotExportArtifact artifact(ScreenshotExportSource::fromProducer(
+            [&materializations, image](const ScreenshotExportCancellation&) {
+                ++materializations;
+                return image;
+            },
+            factory));
+        QTemporaryDir directory;
+        require(directory.isValid(), "temporary save directory unavailable");
         QObject receiver;
         int callbacks = 0;
-        for (const auto& test : cases) {
-            require(
-                artifact.requestClipboard(
-                    &receiver,
-                    ScreenshotClipboardPolicy::formatForScenario(test.scenario, test.style),
-                    [&callbacks, expected = test.expected](ScreenshotExportClipboardResult result) {
-                        require(result.succeeded(), "artifact clipboard preparation failed");
-                        require(ScreenshotClipboardPayloadTestAccess::matchesFormat(result.payload,
-                                                                                    expected),
-                                "artifact changed the requested clipboard format or header");
+        QByteArray canonical;
+        QByteArray clipboard;
+        QString path;
+        require(artifact.requestCanonicalPng(&receiver,
+                                             [&](ScreenshotExportEncodingResult result) {
+                                                 require(result.succeeded(),
+                                                         "canonical PNG failed");
+                                                 canonical = result.image.bytes();
+                                                 ++callbacks;
+                                             }),
+                "canonical request rejected");
+        require(artifact.requestClipboard(&receiver,
+                                          [&](ScreenshotExportClipboardResult result) {
+                                              require(result.succeeded(),
+                                                      "clipboard preparation failed");
+                                              clipboard = result.payload.pngBytes();
+                                              ++callbacks;
+                                          }),
+                "clipboard request rejected");
+        require(artifact.requestAutomaticSave(
+                    &receiver, {directory.path()}, ScreenshotImageFileFormat::Png,
+                    QStringLiteral("shared"),
+                    [&](ScreenshotExportTaskResult result) {
+                        require(result.succeeded(), "automatic PNG save failed");
+                        path = result.savedPath;
                         ++callbacks;
                     }),
-                "artifact clipboard request was rejected");
+                "save request rejected");
+        processUntil([&] { return callbacks == 3; });
+        require(canonical.constData() == clipboard.constData(),
+                "clipboard did not reuse the canonical PNG buffer");
+        QFile saved(path);
+        require(saved.open(QIODevice::ReadOnly) && saved.readAll() == canonical,
+                "saved PNG differs from clipboard/history encoding");
+        require(materializations == (rowBacked ? 0 : 1),
+                "image source was materialized more than once");
+        // One source for encoding and one for the raw DIB fallback. Saving reads no pixels.
+        require(rowFactories == (rowBacked ? 2 : 0), "PNG was redundantly encoded for an output");
+        require(artifact.requestClipboard(&receiver,
+                                          [&](ScreenshotExportClipboardResult result) {
+                                              require(result.succeeded() &&
+                                                          result.payload.pngBytes().constData() ==
+                                                              canonical.constData(),
+                                                      "cached clipboard request re-encoded PNG");
+                                              ++callbacks;
+                                          }),
+                "cached clipboard request rejected");
+        processUntil([&] { return callbacks == 4; });
+        require(rowFactories == (rowBacked ? 3 : 0),
+                "cached PNG request encoded or materialized an image again");
+    }
+}
+
+void nonPngSaveReadsPixelsWithoutEncodingPng() {
+    const QImage image = testImage();
+    for (bool rowBacked : {false, true}) {
+        std::atomic_int imageCalls = 0;
+        std::atomic_int rowCalls = 0;
+        ScreenshotExportSource::RowSourceFactory factory;
+        if (rowBacked) {
+            factory = [&rowCalls, image](std::function<bool()> cancellation) {
+                ++rowCalls;
+                return rowSourceFor(image, std::move(cancellation));
+            };
         }
-        processUntil([&callbacks]() { return callbacks == 5; });
-        require(materializations == 0, "row-backed clipboard preparation materialized an image");
+        ScreenshotExportArtifact artifact(ScreenshotExportSource::fromProducer(
+            [&imageCalls, image](const ScreenshotExportCancellation&) {
+                ++imageCalls;
+                return image;
+            },
+            factory));
+        QTemporaryDir directory;
+        QObject receiver;
+        int callbacks = 0;
+        require(artifact.requestAutomaticSave(
+                    &receiver, {directory.path()}, ScreenshotImageFileFormat::Webp,
+                    QStringLiteral("pixels"),
+                    [&](ScreenshotExportTaskResult result) {
+                        require(result.succeeded() && QFile::exists(result.savedPath),
+                                "non-PNG save failed");
+                        ++callbacks;
+                    }),
+                "non-PNG save request rejected");
+        processUntil([&] { return callbacks == 1; });
+        require(rowCalls == (rowBacked ? 1 : 0) && imageCalls == (rowBacked ? 0 : 1),
+                "non-PNG save performed an extra encoding or materialization");
+        require(artifact.requestAutomaticSave(
+                    &receiver, {directory.path()}, ScreenshotImageFileFormat::Png,
+                    QStringLiteral("bad/name"),
+                    [&](ScreenshotExportTaskResult result) {
+                        require(!result.succeeded() && !result.error.isEmpty(),
+                                "invalid save filename did not report failure");
+                        ++callbacks;
+                    }),
+                "invalid save request must complete with an error");
+        processUntil([&] { return callbacks == 2; });
     }
 }
 
@@ -234,7 +280,15 @@ void encodingFailureFansOutOnce() {
     require(artifact.requestCanonicalPng(&receiver, completion) &&
                 artifact.requestCanonicalPng(&receiver, completion),
             "failed canonical encoding requests were rejected prematurely");
-    processUntil([&callbacks]() { return callbacks == 2; });
+    require(artifact.requestClipboard(&receiver,
+                                      [&](ScreenshotExportClipboardResult result) {
+                                          require(
+                                              !result.succeeded(),
+                                              "failed PNG encoding produced a clipboard payload");
+                                          ++callbacks;
+                                      }),
+            "clipboard failure request rejected");
+    processUntil([&callbacks]() { return callbacks == 3; });
     require(rowFactoryCount == 1, "encoding failure was recomputed for each subscriber");
 }
 
@@ -290,7 +344,8 @@ void pinnedViewportSourceRendersExpectedPixels() {
 int main(int argc, char** argv) {
     QCoreApplication application(argc, argv);
     try {
-        clipboardRequestsPreserveScenarioFormat();
+        clipboardAndSaveShareCanonicalEncoding();
+        nonPngSaveReadsPixelsWithoutEncodingPng();
         imageRequestsShareOneAsyncLoad();
         canonicalEncodingCoalescesAndPreservesBufferIdentity();
         encodingFailureFansOutOnce();

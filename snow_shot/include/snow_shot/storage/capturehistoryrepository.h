@@ -48,6 +48,8 @@ class CaptureHistoryRepository {
     displayAssets(const CaptureHistoryRecord& record) const = 0;
     [[nodiscard]] virtual std::optional<QImage>
     loadResultImage(const CaptureHistoryRecord& record) const = 0;
+    [[nodiscard]] virtual std::optional<PreparedPngImage>
+    loadResultPng(const CaptureHistoryRecord& record) const = 0;
     virtual void reportReadFailure(const CaptureHistoryRecord& record, const QString& reason) = 0;
     [[nodiscard]] virtual std::shared_future<StorageResult> remove(const QString& id) = 0;
     [[nodiscard]] virtual std::shared_future<StorageResult>

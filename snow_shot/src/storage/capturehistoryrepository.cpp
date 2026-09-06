@@ -532,6 +532,27 @@ class CaptureHistoryRepositoryImpl final : public CaptureHistoryRepository {
                          record.result->imageSize);
     }
 
+    std::optional<PreparedPngImage>
+    loadResultPng(const CaptureHistoryRecord& record) const override {
+        const auto stored = find(record);
+        if (!stored || !record.result)
+            return std::nullopt;
+        observe(CaptureHistoryOperation::PayloadRead);
+        const QString path = QDir(recordPath(record.id)).filePath(*stored->resultFileName);
+        QFile file(path);
+        if (!containedPath(m_root, path) || !file.open(QIODevice::ReadOnly) ||
+            file.size() != record.result->encodedBytes) {
+            readFailed(record);
+            return std::nullopt;
+        }
+        auto png = PreparedPngImage::fromBytes(record.result->imageSize, file.readAll());
+        if (file.error() != QFileDevice::NoError || !png.has_value()) {
+            readFailed(record);
+            return std::nullopt;
+        }
+        return png;
+    }
+
     void reportReadFailure(const CaptureHistoryRecord& record, const QString& reason) override {
         if (!find(record))
             return;

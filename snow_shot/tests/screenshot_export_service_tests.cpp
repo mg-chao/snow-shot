@@ -17,19 +17,6 @@
 #include <iostream>
 #include <utility>
 
-struct ScreenshotClipboardPayloadTestAccess {
-#if defined(Q_OS_WIN) || defined(_WIN32)
-    static bool hasDib(const ScreenshotClipboardPayload& payload) {
-        return payload.m_nativeHandle != nullptr &&
-               payload.m_formatMode == ScreenshotClipboardFormatMode::CompatibleDib;
-    }
-
-    static bool hasDibV5(const ScreenshotClipboardPayload& payload) {
-        return payload.m_nativeHandle != nullptr &&
-               payload.m_formatMode == ScreenshotClipboardFormatMode::DibV5;
-    }
-#endif
-};
 
 namespace {
 void require(bool condition, const char* message) {
@@ -172,7 +159,7 @@ QImage waitForPinnedResult(ScreenshotExportService& service,
     return image;
 }
 
-void styledClipboardResultRetainsDibV5() {
+void styledClipboardResultRetainsPngTransparency() {
     ExportFixture fixture;
     require(fixture.isValid(), "styled export fixture could not initialize the canvas runtime");
 
@@ -186,12 +173,8 @@ void styledClipboardResultRetainsDibV5() {
         },
         [](ScreenshotSelectionClipboardResult result) {
             require(result.isValid(), "styled clipboard export did not produce a valid payload");
-#if defined(Q_OS_WIN) || defined(_WIN32)
-            require(!ScreenshotClipboardPayloadTestAccess::hasDib(result.payload),
-                    "styled clipboard export unexpectedly prepared CF_DIB");
-            require(ScreenshotClipboardPayloadTestAccess::hasDibV5(result.payload),
-                    "styled clipboard export did not preserve CF_DIBV5");
-#endif
+            require(result.payload.isValid() && !result.payload.pngBytes().isEmpty(),
+                    "clipboard export must prepare PNG and its bitmap fallback");
             return std::move(result.image);
         });
     require(!resultImage.isNull(), "styled clipboard export produced no image");
@@ -199,7 +182,7 @@ void styledClipboardResultRetainsDibV5() {
             "styled clipboard export did not retain rounded-corner transparency");
 }
 
-void selectionClipboardFormatFollowsEffects() {
+void selectionClipboardPreservesEffects() {
     ExportFixture fixture;
     require(fixture.isValid(), "clipboard export fixture could not initialize the canvas runtime");
     const QRect selection(12, 8, 37, 29);
@@ -213,12 +196,8 @@ void selectionClipboardFormatFollowsEffects() {
                 },
                 [&](ScreenshotSelectionClipboardResult result) {
                     require(result.isValid(), "selection clipboard export has no payload");
-#if defined(Q_OS_WIN) || defined(_WIN32)
-                    require(radius == 0 && shadow == 0
-                                ? ScreenshotClipboardPayloadTestAccess::hasDib(result.payload)
-                                : ScreenshotClipboardPayloadTestAccess::hasDibV5(result.payload),
-                            "selection clipboard format did not follow its effects");
-#endif
+                    require(result.payload.isValid() && !result.payload.pngBytes().isEmpty(),
+                            "clipboard export must prepare PNG and its bitmap fallback");
                     return std::move(result.image);
                 });
             require(image.size() == selection.size() + QSize(shadow * 2, shadow * 2),
@@ -277,10 +256,8 @@ void pinnedSelectionMaterializesCompositedImage() {
         },
         [](ScreenshotSelectionClipboardResult result) {
             require(result.isValid(), "annotated selection did not prepare a clipboard payload");
-#if defined(Q_OS_WIN) || defined(_WIN32)
-            require(ScreenshotClipboardPayloadTestAccess::hasDib(result.payload),
-                    "annotations changed an effect-free selection to DIBV5");
-#endif
+            require(result.payload.isValid() && !result.payload.pngBytes().isEmpty(),
+                    "clipboard export must prepare PNG and its bitmap fallback");
             return std::move(result.image);
         });
     require(annotatedCopy.size() == selection.size() &&
@@ -317,8 +294,8 @@ void pinnedSelectionMaterializesCompositedImage() {
 
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
-    styledClipboardResultRetainsDibV5();
-    selectionClipboardFormatFollowsEffects();
+    styledClipboardResultRetainsPngTransparency();
+    selectionClipboardPreservesEffects();
     pinnedSelectionMaterializesCompositedImage();
     std::cout << "All screenshot export service tests passed\n";
     return EXIT_SUCCESS;

@@ -5,7 +5,6 @@
 #include "snow_shot/presentation/components/pagecontainerwidget.h"
 #include "snow_shot/presentation/components/themedheadericonbutton.h"
 #include "snow_shot/presentation/screenshotclipboardservice.h"
-#include "snow_shot/presentation/screenshotclipboardpolicy.h"
 
 #include "snow_shot/presentation/styles/thememanager.h"
 #include "snow_shot/storage/applicationstorage.h"
@@ -338,22 +337,34 @@ class ApplicationStorageHistoryDataSource final : public ScreenshotHistoryPageDa
             if (guarded == nullptr || cancellationToken->load(std::memory_order_acquire)) {
                 return;
             }
-            std::optional<QImage> image;
+            std::shared_ptr<ScreenshotClipboardPayload> payload;
             auto& applicationStorage = storage::ApplicationStorage::instance();
             if (applicationStorage.isInitialized()) {
-                image = applicationStorage.captureHistory().loadResultImage(record);
+                auto png = applicationStorage.captureHistory().loadResultPng(record);
+                if (png.has_value()) {
+                    // Decode once for the DIB fallback; publish the stored PNG unchanged.
+                    QImage image = snow_shot::image_codec::decode(
+                        png->bytes(), snow::image::Format::png, "history");
+                    if (!image.isNull() && image.size() == png->pixelSize()) {
+                        payload = std::make_shared<ScreenshotClipboardPayload>(
+                            ScreenshotClipboardService::prepareImage(image, png->bytes()));
+                    } else {
+                        applicationStorage.captureHistory().reportReadFailure(
+                            record, QStringLiteral("Unable to read a capture-history payload"));
+                    }
+                }
             }
             if (guarded == nullptr || cancellationToken->load(std::memory_order_acquire)) {
                 return;
             }
             QMetaObject::invokeMethod(
                 guarded,
-                [guarded, generation, recordId = record.id, image = std::move(image),
+                [guarded, generation, recordId = record.id, payload = std::move(payload),
                  cancellationToken]() mutable {
                     if (guarded != nullptr && !cancellationToken->load(std::memory_order_acquire)) {
                         emit guarded->resultImageReady(
                             generation,
-                            ScreenshotHistoryResultResolution{recordId, std::move(image)});
+                            ScreenshotHistoryResultResolution{recordId, std::move(payload)});
                     }
                 },
                 Qt::QueuedConnection);
@@ -1381,10 +1392,9 @@ void ScreenshotHistoryPageWidget::handleResultImageReady(
     if (entry != nullptr) {
         entry->setCopyEnabled(true);
     }
-    if (resolution.image.has_value() && !resolution.image->isNull()) {
-        static_cast<void>(ScreenshotClipboardService::publishImage(
-            QApplication::clipboard(), *resolution.image,
-            ScreenshotClipboardPolicy::formatForScenario(ScreenshotClipboardScenario::Other)));
+    if (resolution.payload != nullptr && resolution.payload->isValid()) {
+        static_cast<void>(ScreenshotClipboardService::publish(QApplication::clipboard(),
+                                                              std::move(*resolution.payload)));
     }
 }
 

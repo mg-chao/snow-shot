@@ -5,11 +5,11 @@
 #include "snow_shot/presentation/directcapturehistory.h"
 #include "snow_shot/presentation/directcaptureworkflow.h"
 #include "snow_shot/presentation/screenshotclipboardservice.h"
-#include "snow_shot/presentation/screenshotclipboardpolicy.h"
 #include "snow_shot/presentation/screenshotimagefileservice.h"
 #include "snow_shot/storage/applicationstorage.h"
 #include "snow_shot/storage/capturehistoryrepository.h"
 #include "snow_shot/storage/settingsadapters.h"
+#include "snowimageqtcodec.h"
 
 #include <QApplication>
 #include <QDebug>
@@ -43,15 +43,38 @@ class DirectCaptureController::Impl {
           workflow(DirectCapturePorts{
               [this](const auto& request, auto done) {
                   return submit<DirectCaptureFrame>(
-                      [request]() { return captureDirectTarget(request); }, std::move(done));
+                      [request]() {
+                          auto frame = captureDirectTarget(request);
+                          if (frame.isValid() &&
+                              (!request.copyFile || request.historyEnabled ||
+                               ScreenshotImageFileService::formatForKey(request.imageFormat) ==
+                                   ScreenshotImageFileFormat::Png)) {
+                              frame.canonicalPng =
+                                  image_codec::encodePng(image_codec::srgbRowSource(frame.image));
+                              if (frame.canonicalPng.isEmpty()) {
+                                  frame.error = DirectCaptureController::tr(
+                                      "The image could not be prepared for the clipboard");
+                              }
+                          }
+                          return frame;
+                      },
+                      std::move(done));
               },
               [this](const auto& request, const auto& frame, auto done) {
                   return submit<OutputResult>(
                       [request, frame]() {
-                          const auto saved = ScreenshotImageFileService::saveAutomatically(
-                              frame.image, request.directories,
-                              ScreenshotImageFileService::formatForKey(request.imageFormat),
-                              request.filenameFormat, request.requestedAt);
+                          const auto format =
+                              ScreenshotImageFileService::formatForKey(request.imageFormat);
+                          const auto png = storage::PreparedPngImage::fromBytes(frame.image.size(),
+                                                                                frame.canonicalPng);
+                          const auto saved =
+                              format == ScreenshotImageFileFormat::Png && png.has_value()
+                                  ? ScreenshotImageFileService::saveAutomatically(
+                                        *png, request.directories, request.filenameFormat,
+                                        request.requestedAt)
+                                  : ScreenshotImageFileService::saveAutomatically(
+                                        frame.image, request.directories, format,
+                                        request.filenameFormat, request.requestedAt);
                           return OutputResult{saved.error, saved.path, {}};
                       },
                       [done = std::move(done)](OutputResult result) {
@@ -125,8 +148,8 @@ class DirectCaptureController::Impl {
             Qt::QueuedConnection);
     }
 
-    bool copy(const DirectCaptureRequest& request, const DirectCaptureFrame& frame,
-              const QString& path, DirectCapturePorts::Completion done) {
+    bool copy(const DirectCaptureRequest&, const DirectCaptureFrame& frame, const QString& path,
+              DirectCapturePorts::Completion done) {
         if (!path.isEmpty()) {
             auto* mime = new QMimeData;
             mime->setUrls({QUrl::fromLocalFile(QFileInfo(path).absoluteFilePath())});
@@ -137,14 +160,10 @@ class DirectCaptureController::Impl {
                 });
             return clipboard.isValid();
         }
-        const auto format = ScreenshotClipboardPolicy::formatForScenario(
-            request.target == DirectCaptureTarget::CurrentMonitor
-                ? ScreenshotClipboardScenario::CurrentMonitor
-                : ScreenshotClipboardScenario::Other);
         return submit<OutputResult>(
-            [frame, format]() {
+            [frame]() {
                 auto payload = std::make_shared<ScreenshotClipboardPayload>(
-                    ScreenshotClipboardService::prepareImage(frame.image, format));
+                    ScreenshotClipboardService::prepareImage(frame.image, frame.canonicalPng));
                 return OutputResult{payload->isValid()
                                         ? QString()
                                         : DirectCaptureController::tr(

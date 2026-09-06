@@ -271,67 +271,37 @@ ValidationResult validateClipboard(const QImage& source) {
         return result;
     }
 
-    HANDLE dibV5Handle = GetClipboardData(CF_DIBV5);
-    const bool dibV5 = dibV5Handle != nullptr;
-    HANDLE handle = dibV5Handle;
+    HANDLE handle = GetClipboardData(RegisterClipboardFormatW(L"PNG"));
     if (handle == nullptr) {
-        handle = GetClipboardData(CF_DIB);
-        if (handle == nullptr) {
-            result.error =
-                QStringLiteral("Neither CF_DIBV5 nor CF_DIB was present after publication");
-            CloseClipboard();
-            return result;
-        }
-    }
-    const SIZE_T allocationBytes = GlobalSize(handle);
-    const void* memory = GlobalLock(handle);
-    if (memory == nullptr) {
-        result.error = QStringLiteral("GlobalLock failed during clipboard validation");
+        result.error = QStringLiteral("PNG was absent after publication");
         CloseClipboard();
         return result;
     }
-
-    const auto* header = static_cast<const BITMAPINFOHEADER*>(memory);
-    const quint64 headerBytes = dibV5 ? sizeof(BITMAPV5HEADER) : sizeof(BITMAPINFOHEADER);
-    const quint64 requiredBytes = headerBytes + static_cast<quint64>(expectedBytes);
-    bool validHeader = allocationBytes >= requiredBytes && header->biWidth == expected.width() &&
-                       header->biHeight == (dibV5 ? -expected.height() : expected.height()) &&
-                       header->biPlanes == 1 && header->biBitCount == 32 &&
-                       header->biSizeImage == static_cast<DWORD>(expectedBytes);
-    if (dibV5) {
-        const auto* v5Header = static_cast<const BITMAPV5HEADER*>(memory);
-        validHeader = validHeader && v5Header->bV5Size == sizeof(BITMAPV5HEADER) &&
-                      v5Header->bV5Compression == BI_BITFIELDS &&
-                      v5Header->bV5RedMask == 0x00ff0000 && v5Header->bV5GreenMask == 0x0000ff00 &&
-                      v5Header->bV5BlueMask == 0x000000ff && v5Header->bV5AlphaMask == 0xff000000;
-    } else {
-        validHeader = validHeader && header->biSize == sizeof(BITMAPINFOHEADER) &&
-                      header->biCompression == BI_RGB;
-    }
-    if (validHeader) {
-        const auto* payload = static_cast<const uchar*>(memory) + headerBytes;
-        if (!dibV5) {
-            QImage bottomUp(expected.size(), QImage::Format_ARGB32);
-            for (int row = 0; row < expected.height(); ++row) {
-                std::memcpy(bottomUp.scanLine(row),
-                            expected.constScanLine(expected.height() - 1 - row),
-                            static_cast<std::size_t>(expected.bytesPerLine()));
-            }
-            result.expectedChecksum = checksum(bottomUp.constBits(), bottomUp.sizeInBytes());
-        }
-        result.actualChecksum = checksum(payload, expectedBytes);
-        result.payloadBytes = expectedBytes;
-    }
-    GlobalUnlock(handle);
-    CloseClipboard();
-
-    if (!validHeader) {
-        result.error = QStringLiteral("clipboard DIB header or payload length was invalid");
+    const SIZE_T allocationBytes = GlobalSize(handle);
+    const void* memory = GlobalLock(handle);
+    if (memory == nullptr ||
+        allocationBytes > static_cast<SIZE_T>(std::numeric_limits<int>::max())) {
+        if (memory != nullptr)
+            GlobalUnlock(handle);
+        CloseClipboard();
+        result.error = QStringLiteral("PNG allocation could not be read");
         return result;
     }
+    const QByteArray png(static_cast<const char*>(memory), static_cast<qsizetype>(allocationBytes));
+    GlobalUnlock(handle);
+    CloseClipboard();
+    const QImage decoded = QImage::fromData(png, "PNG").convertToFormat(QImage::Format_ARGB32);
+    if (decoded.size() != expected.size()) {
+        result.error = QStringLiteral("PNG dimensions did not match the source");
+        return result;
+    }
+    result.expectedChecksum = checksum(expected.constBits(), expectedBytes);
+    result.actualChecksum = checksum(decoded.constBits(), decoded.sizeInBytes());
+    result.payloadBytes = png.size();
+
     if (result.actualChecksum != result.expectedChecksum) {
         result.error =
-            QStringLiteral("clipboard DIB pixel checksum did not match the source image");
+            QStringLiteral("clipboard PNG pixel checksum did not match the source image");
         return result;
     }
     result.success = true;
@@ -615,10 +585,7 @@ QJsonObject summarizeScenario(const Scenario& scenario, const QVector<Sample>& s
     for (const Sample& sample : samples) {
         const double bytes =
             static_cast<double>(sample.counters.value(QStringLiteral("clipboard.pixel_bytes")));
-        auto copy = sample.durations.constFind(QStringLiteral("clipboard.copy_pixels"));
-        if (copy == sample.durations.cend()) {
-            copy = sample.durations.constFind(QStringLiteral("clipboard.fused_rgba8888"));
-        }
+        const auto copy = sample.durations.constFind(QStringLiteral("clipboard.prepare_dib"));
         const auto preparation =
             sample.durations.constFind(QStringLiteral("clipboard.prepare_total"));
         const auto total = sample.durations.constFind(QStringLiteral("clipboard.publish_total"));
@@ -748,7 +715,7 @@ bool runSelfTest(Collector& collector) {
     const bool instrumented =
         sample.durations.contains(QStringLiteral("clipboard.prepare_total")) &&
         sample.durations.contains(QStringLiteral("clipboard.publish_total")) &&
-        sample.durations.contains(QStringLiteral("clipboard.copy_pixels")) &&
+        sample.durations.contains(QStringLiteral("clipboard.prepare_dib")) &&
         sample.counters.value(QStringLiteral("clipboard.success")) == 1;
     if (!sample.success || !instrumented) {
         std::cerr << "clipboard publication self-test failed: "
@@ -759,8 +726,7 @@ bool runSelfTest(Collector& collector) {
     const QImage rgb32 = patternedImage(QSize(64, 48), QImage::Format_RGB32, 11);
     const Sample rgb32Sample = runClipboardSample(rgb32, collector);
     if (!rgb32Sample.success ||
-        rgb32Sample.counters.value(QStringLiteral("clipboard.conversion_detached")) != 0 ||
-        rgb32Sample.counters.value(QStringLiteral("clipboard.fused_source")) != 1) {
+        rgb32Sample.counters.value(QStringLiteral("clipboard.png_encoded")) != 1) {
         std::cerr << "opaque RGB32 clipboard self-test failed: "
                   << rgb32Sample.error.toLocal8Bit().constData() << '\n';
         return false;
@@ -794,7 +760,7 @@ int main(int argc, char** argv) {
     parser.addOption({QStringLiteral("list"), QStringLiteral("List scenarios and exit")});
     parser.addOption(
         {QStringLiteral("self-test"),
-         QStringLiteral("Validate instrumentation, statistics, and native DIB output")});
+         QStringLiteral("Validate instrumentation, statistics, and PNG clipboard output")});
     parser.process(application);
 
     const QVector<Scenario> availableScenarios = scenarios();

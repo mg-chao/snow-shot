@@ -409,15 +409,74 @@ snapshotMimeDataInternal(const QMimeData* mimeData, qreal devicePixelRatio,
 }
 
 #if defined(Q_OS_WIN) || defined(_WIN32)
+QByteArray captureNativePng() {
+    const UINT format = RegisterClipboardFormatW(L"PNG");
+    if (format == 0 || !IsClipboardFormatAvailable(format) || !OpenClipboard(nullptr))
+        return {};
+    const auto handle = static_cast<HGLOBAL>(GetClipboardData(format));
+    const SIZE_T size = handle == nullptr ? 0 : GlobalSize(handle);
+    const void* memory = handle == nullptr ? nullptr : GlobalLock(handle);
+    QByteArray bytes;
+    if (memory != nullptr && size > 0 && size <= static_cast<SIZE_T>(kMaximumEncodedImageBytes)) {
+        bytes = QByteArray(static_cast<const char*>(memory), static_cast<qsizetype>(size));
+    }
+    if (memory != nullptr)
+        GlobalUnlock(handle);
+    CloseClipboard();
+    return bytes;
+}
+
+qint64 nativeDibPixelOffset(const QByteArray& bytes, const BITMAPINFOHEADER& header,
+                            qint64 pixelBytes) {
+    const qint64 headerSize = header.biSize;
+    const qint64 colorTableSize = static_cast<qint64>(header.biClrUsed) * sizeof(RGBQUAD);
+    const qint64 tableEnd = headerSize + colorTableSize;
+    if (header.biCompression != BI_BITFIELDS)
+        return tableEnd;
+    constexpr qint64 masksSize = 3 * sizeof(DWORD);
+    if (headerSize < sizeof(BITMAPV4HEADER)) {
+        return tableEnd + masksSize;
+    }
+    qint64 payloadEnd = bytes.size();
+    if (headerSize >= sizeof(BITMAPV5HEADER)) {
+        const auto* v5 = reinterpret_cast<const BITMAPV5HEADER*>(bytes.constData());
+        if (v5->bV5ProfileSize != 0) {
+            const qint64 profileStart = v5->bV5ProfileData;
+            if (profileStart < tableEnd || profileStart + v5->bV5ProfileSize > bytes.size()) {
+                return -1;
+            }
+            payloadEnd = profileStart;
+        }
+    }
+    if (tableEnd > payloadEnd || pixelBytes > payloadEnd - tableEnd)
+        return -1;
+    // Qt/WIC can repeat masks after the embedded V4/V5 masks. Accept this
+    // undeclared table only when it exactly accounts for the extra payload;
+    // matching pixel values alone cannot identify a table.
+    if (colorTableSize == 0 && payloadEnd - headerSize - pixelBytes == masksSize) {
+        DWORD headerMasks[3]{};
+        DWORD trailingMasks[3]{};
+        std::memcpy(headerMasks, bytes.constData() + sizeof(BITMAPINFOHEADER), sizeof(headerMasks));
+        std::memcpy(trailingMasks, bytes.constData() + headerSize, sizeof(trailingMasks));
+        // WIC emits BGR order here; other producers repeat the header's RGB order.
+        if ((trailingMasks[0] == headerMasks[0] && trailingMasks[1] == headerMasks[1] &&
+             trailingMasks[2] == headerMasks[2]) ||
+            (trailingMasks[0] == headerMasks[2] && trailingMasks[1] == headerMasks[1] &&
+             trailingMasks[2] == headerMasks[0])) {
+            return headerSize + masksSize;
+        }
+    }
+    return tableEnd;
+}
+
 std::optional<ScreenshotClipboardNativeDib> captureNativeDib() {
     if (!OpenClipboard(nullptr)) {
         return std::nullopt;
     }
     const auto closeClipboard = []() { static_cast<void>(CloseClipboard()); };
-    const UINT format = IsClipboardFormatAvailable(CF_DIBV5) ? CF_DIBV5
-                                                               : (IsClipboardFormatAvailable(CF_DIB)
-                                                                      ? CF_DIB
-                                                                      : 0);
+    const UINT format = IsClipboardFormatAvailable(CF_DIBV5)
+                            ? CF_DIBV5
+                            : (IsClipboardFormatAvailable(CF_DIB) ? CF_DIB : 0);
     if (format == 0) {
         closeClipboard();
         return std::nullopt;
@@ -442,18 +501,15 @@ std::optional<ScreenshotClipboardNativeDib> captureNativeDib() {
         (header->biCompression != BI_RGB && header->biCompression != BI_BITFIELDS)) {
         return std::nullopt;
     }
-    const qint64 height = header->biHeight < 0
-                              ? -static_cast<qint64>(header->biHeight)
-                              : static_cast<qint64>(header->biHeight);
+    const qint64 height = header->biHeight < 0 ? -static_cast<qint64>(header->biHeight)
+                                               : static_cast<qint64>(header->biHeight);
     const qint64 width = header->biWidth;
     const qint64 stride = ((width * 4) + 3) & ~qint64(3);
-    const qint64 pixelOffset = static_cast<qint64>(header->biSize) +
-                               (header->biCompression == BI_BITFIELDS &&
-                                        header->biSize < sizeof(BITMAPV4HEADER)
-                                    ? 12
-                                    : 0);
-    if (width <= 0 || height <= 0 || width * height > kMaximumClipboardImagePixels ||
-        stride <= 0 || pixelOffset < 0 || pixelOffset + stride * height > bytes.size()) {
+    if (width * height > kMaximumClipboardImagePixels)
+        return std::nullopt;
+    const qint64 pixelOffset = nativeDibPixelOffset(bytes, *header, stride * height);
+    if (width <= 0 || height <= 0 || width * height > kMaximumClipboardImagePixels || stride <= 0 ||
+        pixelOffset < 0 || pixelOffset + stride * height > bytes.size()) {
         return std::nullopt;
     }
     SNOW_SHOT_PIN_PERF_COUNTER("clipboard.native_dib_bytes", bytes.size());
@@ -534,11 +590,7 @@ QImage decodeNativeDib(const ScreenshotClipboardNativeDib& native) {
     const qint64 rowBytes = width * 4;
     if (rowBytes > std::numeric_limits<qint64>::max() - 3) return {};
     const qint64 stride = (rowBytes + 3) & ~qint64(3);
-    const qint64 pixelOffset = static_cast<qint64>(header->biSize) +
-                               (header->biCompression == BI_BITFIELDS &&
-                                        header->biSize < sizeof(BITMAPV4HEADER)
-                                    ? 12
-                                    : 0);
+    const qint64 pixelOffset = nativeDibPixelOffset(native.bytes, *header, stride * height);
     if (pixelOffset < 0 || pixelOffset > native.bytes.size() ||
         height > (native.bytes.size() - pixelOffset) / stride ||
         native.size != QSize(static_cast<int>(width), static_cast<int>(height))) {
@@ -558,9 +610,8 @@ QImage decodeNativeDib(const ScreenshotClipboardNativeDib& native) {
         blueMask = masks[2];
         alphaMask = 0;
         if (header->biSize >= sizeof(BITMAPV4HEADER)) {
-            if (native.bytes.size() < static_cast<int>(sizeof(BITMAPV5HEADER))) return {};
-            const auto* v5 = reinterpret_cast<const BITMAPV5HEADER*>(native.bytes.constData());
-            alphaMask = v5->bV5AlphaMask;
+            const auto* v4 = reinterpret_cast<const BITMAPV4HEADER*>(native.bytes.constData());
+            alphaMask = v4->bV4AlphaMask;
         }
     }
     const DibChannelMetadata red = makeDibChannelMetadata(redMask);
@@ -648,6 +699,12 @@ ScreenshotClipboardContentReader::snapshot(QClipboard* clipboard, qreal devicePi
         snapshot->baseColor = baseColor;
     }
 #if defined(Q_OS_WIN) || defined(_WIN32)
+    if (snapshot.has_value() && snapshot->encodedImages.isEmpty()) {
+        QByteArray png = captureNativePng();
+        if (!png.isEmpty()) {
+            snapshot->encodedImages.push_back({std::move(png), QStringLiteral("image/png")});
+        }
+    }
     if (snapshot.has_value()) {
         if (auto native = captureNativeDib(); native.has_value()) {
             SNOW_SHOT_PIN_PERF_MILESTONE("clipboard.native_dib_copied");
@@ -658,8 +715,8 @@ ScreenshotClipboardContentReader::snapshot(QClipboard* clipboard, qreal devicePi
     if (snapshot.has_value() && !snapshot->nativeDib.has_value()) {
         // Providers that expose only QMimeData::imageData() remain supported.
         SNOW_SHOT_PIN_PERF_COUNTER("clipboard.native_dib_fallback", 1);
-        auto fallback = snapshotMimeDataInternal(clipboard->mimeData(), devicePixelRatio, baseColor,
-                                                 true);
+        auto fallback =
+            snapshotMimeDataInternal(clipboard->mimeData(), devicePixelRatio, baseColor, true);
         if (fallback.has_value()) {
             snapshot->detachedImage = std::move(fallback->detachedImage);
         }

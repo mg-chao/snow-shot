@@ -1143,7 +1143,7 @@ if(SNOW_SHOT_BUILD_TESTS)
     target_include_directories(snow-shot-storage-status-widget-tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
     )
-    target_link_libraries(snow-shot-storage-status-widget-tests PRIVATE
+    target_link_libraries(snow-shot-storage-status-widget-tests PRIVATE snow_shot_image_codec
         snow_shot_settings
         ant_design_qt
         Qt6::Widgets
@@ -1175,7 +1175,7 @@ if(SNOW_SHOT_BUILD_TESTS)
     target_include_directories(snow-shot-screenshot-history-page-tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
     )
-    target_link_libraries(snow-shot-screenshot-history-page-tests PRIVATE
+    target_link_libraries(snow-shot-screenshot-history-page-tests PRIVATE snow_shot_image_codec
         snow_shot_settings
         ant_design_qt
         Qt6::Widgets
@@ -1217,25 +1217,11 @@ if(SNOW_SHOT_BUILD_TESTS)
             -P ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_storage_boundary.cmake
     )
 
-    add_executable(snow-shot-screenshot-clipboard-policy-tests
-        tests/screenshot_clipboard_policy_tests.cpp
-        include/snow_shot/presentation/screenshotclipboardpolicy.h
-        src/presentation/overlay/screenshotselectionshadowrenderer.cpp
-    )
-    target_include_directories(snow-shot-screenshot-clipboard-policy-tests PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/include"
-    )
-    target_link_libraries(snow-shot-screenshot-clipboard-policy-tests PRIVATE Qt6::Widgets)
-    add_test(NAME snow-shot-screenshot-clipboard-policy-tests
-             COMMAND snow-shot-screenshot-clipboard-policy-tests)
-
     add_executable(snow-shot-screenshot-result-compositor-tests
         tests/screenshot_result_compositor_tests.cpp
-        include/snow_shot/presentation/screenshotclipboardservice.h
         include/snow_shot/presentation/screenshotresultcompositor.h
         include/snow_shot/presentation/screenshotselectionshadowrenderer.h
         src/presentation/overlay/screenshotselectionshadowrenderer.cpp
-        src/presentation/services/screenshotclipboardservice.cpp
     )
     target_include_directories(snow-shot-screenshot-result-compositor-tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
@@ -1243,9 +1229,6 @@ if(SNOW_SHOT_BUILD_TESTS)
     target_link_libraries(snow-shot-screenshot-result-compositor-tests PRIVATE
         Qt6::Widgets
     )
-    if(WIN32)
-        target_link_libraries(snow-shot-screenshot-result-compositor-tests PRIVATE user32)
-    endif()
     add_test(NAME snow-shot-screenshot-result-compositor-tests
              COMMAND snow-shot-screenshot-result-compositor-tests)
 
@@ -1266,7 +1249,7 @@ if(SNOW_SHOT_BUILD_TESTS)
     target_include_directories(snow-shot-screenshot-export-service-tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
     )
-    target_link_libraries(snow-shot-screenshot-export-service-tests PRIVATE
+    target_link_libraries(snow-shot-screenshot-export-service-tests PRIVATE snow_shot_image_codec
         Qt6::Widgets
         snow_draw_engine_qt_canvas
     )
@@ -1691,7 +1674,7 @@ if(SNOW_SHOT_BUILD_TESTS)
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/presentation/capture"
         "${SNOW_SHOT_CAPTURE_CRATES_DIR}/crates/snow-capture-c/include")
-    target_link_libraries(snow-shot-direct-capture-native-tests PRIVATE
+    target_link_libraries(snow-shot-direct-capture-native-tests PRIVATE snow_shot_storage
         snow_shot_image_codec Qt6::Gui)
     add_test(NAME snow-shot-direct-capture-native-tests COMMAND snow-shot-direct-capture-native-tests)
 
@@ -1847,7 +1830,7 @@ if(SNOW_SHOT_BUILD_TESTS)
     target_include_directories(snow-shot-selection-export-workflow-tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
     )
-    target_link_libraries(snow-shot-selection-export-workflow-tests PRIVATE Qt6::Gui)
+    target_link_libraries(snow-shot-selection-export-workflow-tests PRIVATE snow_shot_image_codec Qt6::Gui)
     if(WIN32)
         target_link_libraries(snow-shot-selection-export-workflow-tests PRIVATE user32)
     endif()
@@ -2295,7 +2278,7 @@ if(SNOW_SHOT_BUILD_TESTS)
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/image"
     )
-    target_link_libraries(snow-shot-screenshot-image-file-service-tests PRIVATE
+    target_link_libraries(snow-shot-screenshot-image-file-service-tests PRIVATE snow_shot_storage
         snow_shot_image_codec
         Qt6::Gui
     )
@@ -2326,9 +2309,36 @@ if(SNOW_SHOT_BUILD_TESTS)
     add_test(NAME snow-shot-clipboard-content-tests
              COMMAND snow-shot-clipboard-content-tests)
     set_tests_properties(snow-shot-clipboard-content-tests PROPERTIES
+        RUN_SERIAL TRUE
         ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
     )
+    if(WIN32)
+        add_executable(snow-shot-clipboard-roundtrip-tests
+            tests/screenshot_clipboard_roundtrip_tests.cpp
+            src/presentation/services/screenshotclipboardservice.cpp
+            src/presentation/services/screenshotclipboardcontent.cpp
+            src/presentation/services/screenshotclipboarddibdecoder_avx2.cpp
+        )
+        target_include_directories(snow-shot-clipboard-roundtrip-tests PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/image"
+        )
+        target_link_libraries(snow-shot-clipboard-roundtrip-tests PRIVATE
+            snow_shot_image_codec Qt6::Widgets user32
+        )
+        add_test(NAME snow-shot-clipboard-roundtrip-tests
+                 COMMAND snow-shot-clipboard-roundtrip-tests)
+        # This exercises the real Windows clipboard without showing any windows.
+        set_tests_properties(snow-shot-clipboard-roundtrip-tests PROPERTIES
+            LABELS "unit;windows"
+            RUN_SERIAL TRUE
+            TIMEOUT 30
+            ENVIRONMENT "QT_QPA_PLATFORM=windows"
+            ENVIRONMENT_MODIFICATION
+                "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+        )
+    endif()
     add_test(
         NAME snow-shot-pinned-async-presentation-tests
         COMMAND snow-shot-pinned-window-tests --async-presentation-only
@@ -2378,7 +2388,7 @@ if(SNOW_SHOT_BUILD_TESTS)
     target_include_directories(snow-shot-export-coordinator-tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
     )
-    target_link_libraries(snow-shot-export-coordinator-tests PRIVATE Qt6::Widgets)
+    target_link_libraries(snow-shot-export-coordinator-tests PRIVATE snow_shot_image_codec Qt6::Widgets)
     if(WIN32)
         target_link_libraries(snow-shot-export-coordinator-tests PRIVATE user32)
     endif()
@@ -2398,6 +2408,7 @@ if(SNOW_SHOT_BUILD_TESTS)
         src/presentation/overlay/screenshotselectionshadowrenderer.cpp
         src/presentation/services/screenshotclipboardservice.cpp
         src/presentation/services/screenshotexportartifact.cpp
+        src/presentation/services/screenshotimagefileservice.cpp
         src/presentation/services/screenshotexportcoordinator.cpp
         src/presentation/services/screenshotexportpinnedsource.cpp
     )
@@ -3437,7 +3448,7 @@ if(WIN32 AND SNOW_SHOT_BUILD_BENCHMARKS)
     target_include_directories(snow-shot-clipboard-performance-benchmark PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
     )
-    target_link_libraries(snow-shot-clipboard-performance-benchmark PRIVATE
+    target_link_libraries(snow-shot-clipboard-performance-benchmark PRIVATE snow_shot_image_codec
         Qt6::Widgets
         snow_draw_engine_qt_canvas
         Psapi

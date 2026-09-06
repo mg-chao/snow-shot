@@ -2,7 +2,6 @@
 
 #include "snow_shot/presentation/screenshotdisplaysession.h"
 #include "snow_shot/presentation/screenshotclipboardservice.h"
-#include "snow_shot/presentation/screenshotclipboardpolicy.h"
 #include "snow_shot/presentation/screenshotdefaultstyles.h"
 #include "snow_shot/presentation/screenshotresultcompositor.h"
 
@@ -108,17 +107,11 @@ preparePinnedSelectionRequest(const ScreenshotDisplaySession& displaySession,
     return request;
 }
 
-enum class ScreenshotExportOutputMode {
-    ClipboardCompatible,
-    PinnedSurface,
-};
-
 class ScreenshotExportWorker final : public QObject {
   public:
-    QImage renderSelection(
-        const QByteArray& documentSession, const QRect& selection,
-        const ScreenshotResultStyle& style, const QList<CanvasExportSource>& sources,
-        ScreenshotExportOutputMode outputMode = ScreenshotExportOutputMode::ClipboardCompatible) {
+    QImage renderSelection(const QByteArray& documentSession, const QRect& selection,
+                           const ScreenshotResultStyle& style,
+                           const QList<CanvasExportSource>& sources) {
         // The pin trace needs the export baseline even though these stages are
         // shared with the clipboard-copy flows; the sink drops records whenever
         // no pin sample is active.
@@ -144,14 +137,6 @@ class ScreenshotExportWorker final : public QObject {
         if (image.isNull()) {
             return {};
         }
-#if defined(Q_OS_WIN) || defined(_WIN32)
-        if (outputMode == ScreenshotExportOutputMode::ClipboardCompatible &&
-            image.format() != QImage::Format_ARGB32 && image.format() != QImage::Format_RGB32) {
-            SNOW_SHOT_CLIPBOARD_PERF_SCOPE("export.convert_argb32");
-            SNOW_SHOT_PIN_PERF_SCOPE("export.convert_argb32");
-            image = image.convertToFormat(QImage::Format_ARGB32);
-        }
-#endif
         SNOW_SHOT_PIN_PERF_COUNTER("export.output_bytes", image.sizeInBytes());
         SNOW_SHOT_CLIPBOARD_PERF_COUNTER("export.output_width", image.width());
         SNOW_SHOT_CLIPBOARD_PERF_COUNTER("export.output_height", image.height());
@@ -165,11 +150,8 @@ class ScreenshotExportWorker final : public QObject {
                               const ScreenshotResultStyle& style,
                               const QList<CanvasExportSource>& sources) {
         ScreenshotSelectionClipboardResult result;
-        result.image = renderSelection(documentSession, selection, style, sources,
-                                       ScreenshotExportOutputMode::ClipboardCompatible);
-        result.payload = ScreenshotClipboardService::prepareImage(
-            result.image, ScreenshotClipboardPolicy::formatForScenario(
-                              ScreenshotClipboardScenario::OrdinarySelection, style));
+        result.image = renderSelection(documentSession, selection, style, sources);
+        result.payload = ScreenshotClipboardService::prepareImage(result.image);
         return result;
     }
 
@@ -394,8 +376,7 @@ bool ScreenshotExportService::schedulePinnedSelection(ScreenshotPinnedSelectionR
             }
             SNOW_SHOT_PIN_PERF_MILESTONE("export.render_started");
             QImage image =
-                guardedWorker->renderSelection(documentSession, selection, style, sources,
-                                               ScreenshotExportOutputMode::PinnedSurface);
+                guardedWorker->renderSelection(documentSession, selection, style, sources);
             SNOW_SHOT_PIN_PERF_MILESTONE("export.render_finished");
             SNOW_SHOT_PIN_PERF_MILESTONE("export.result_published");
             const bool succeeded = !image.isNull();

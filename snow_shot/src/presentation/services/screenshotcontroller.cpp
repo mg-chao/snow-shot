@@ -9,7 +9,6 @@
 #include "snow_shot/presentation/screenshotcanvascolorsampler.h"
 #include "snow_shot/presentation/screenshotcanvascolorsamplerwindow.h"
 #include "snow_shot/presentation/screenshotclipboardservice.h"
-#include "snow_shot/presentation/screenshotclipboardpolicy.h"
 #include "snow_shot/presentation/screenshotclipboardcontent.h"
 #include "snow_shot/presentation/screenshotcolorpickercontroller.h"
 #include "snow_shot/presentation/screenshotdisplayconfigurationobserver.h"
@@ -342,7 +341,6 @@ struct ScreenshotController::Impl final : public ScreenshotToolbarCommandSink,
     void copySelectionToClipboard() override;
     void copySelectionToClipboardWithSource(snow_shot::storage::CaptureHistorySource historySource);
     void saveImageForCopy(QImage image, quint64 generation, bool copyFileToClipboard,
-                          ScreenshotClipboardFormatMode clipboardFormat,
                           snow_shot::storage::CaptureHistorySource historySource,
                           std::shared_ptr<std::optional<ScreenshotHistoryEntry>> historyCandidate,
                           bool scrolling);
@@ -350,9 +348,12 @@ struct ScreenshotController::Impl final : public ScreenshotToolbarCommandSink,
         ScreenshotScrollingSnapshot snapshot, quint64 generation, bool copyFileToClipboard,
         snow_shot::storage::CaptureHistorySource historySource,
         std::shared_ptr<std::optional<ScreenshotHistoryEntry>> historyCandidate);
+    void saveArtifactForCopy(
+        std::shared_ptr<ScreenshotExportArtifact> artifact, quint64 generation,
+        bool copyFileToClipboard, snow_shot::storage::CaptureHistorySource historySource,
+        std::shared_ptr<std::optional<ScreenshotHistoryEntry>> historyCandidate, bool scrolling);
     void copyArtifactToClipboard(
         std::shared_ptr<ScreenshotExportArtifact> artifact, quint64 generation,
-        ScreenshotClipboardFormatMode clipboardFormat,
         snow_shot::storage::CaptureHistorySource historySource,
         std::shared_ptr<std::optional<ScreenshotHistoryEntry>> historyCandidate, bool scrolling,
         std::optional<ScreenshotSelectionParams> selectionToPersist = std::nullopt);
@@ -431,7 +432,7 @@ struct ScreenshotController::Impl final : public ScreenshotToolbarCommandSink,
     QHash<quint64, quint64> m_imageExportCaptureEpochs;
     quint64 m_captureEpoch = 0;
     ScreenshotExportJobHandle m_exportJob;
-    ScreenshotExportJobHandle m_backgroundSaveJob;
+    std::vector<std::weak_ptr<ScreenshotExportArtifact>> m_saveArtifacts;
     ScreenshotClipboardCommitHandle m_clipboardCommit;
     std::vector<ScreenshotExportJobHandle> m_exportJobs;
     std::vector<ScreenshotClipboardCommitHandle> m_clipboardCommits;
@@ -2808,8 +2809,6 @@ void ScreenshotController::Impl::copySelectionToClipboardWithSource(
                     ScreenshotExportSource::fromScrollingSnapshot(std::move(snapshot)));
                 receiver->m_impl->copyArtifactToClipboard(
                     std::move(artifact), generation,
-                    ScreenshotClipboardPolicy::formatForScenario(
-                        ScreenshotClipboardScenario::ScrollingCapture),
                     historySource, std::move(historyCandidate), true);
             });
         if (!scheduled) {
@@ -2836,20 +2835,17 @@ void ScreenshotController::Impl::copySelectionToClipboardWithSource(
     if (materializeImage) {
         const ScreenshotResultStyle style{m_selection.cornerRadius(), m_selection.shadowWidth(),
                                           m_selection.shadowColor()};
-        const ScreenshotClipboardFormatMode clipboardFormat =
-            ScreenshotClipboardPolicy::formatForScenario(
-                ScreenshotClipboardScenario::OrdinarySelection, style);
         const bool scheduled = m_exportService->requestSelectionResult(
             m_selection.pixelSelection(), style, &owner,
-            [receiver, generation = *exportGeneration, copyFileToClipboard, clipboardFormat,
-             historyCandidate, historySource](QImage image) mutable {
+            [receiver, generation = *exportGeneration, copyFileToClipboard, historyCandidate,
+             historySource](QImage image) mutable {
                 if (receiver.isNull() || receiver->m_impl == nullptr ||
                     !receiver->m_impl->imageExportCurrent(generation)) {
                     return;
                 }
                 receiver->m_impl->saveImageForCopy(std::move(image), generation,
-                                                   copyFileToClipboard, clipboardFormat,
-                                                   historySource, historyCandidate, false);
+                                                   copyFileToClipboard, historySource,
+                                                   historyCandidate, false);
             });
         if (!scheduled) {
             static_cast<void>(finishImageExport(*exportGeneration));
@@ -2867,9 +2863,6 @@ void ScreenshotController::Impl::copySelectionToClipboardWithSource(
     }
     const ScreenshotResultStyle style{m_selection.cornerRadius(), m_selection.shadowWidth(),
                                       m_selection.shadowColor()};
-    const ScreenshotClipboardFormatMode clipboardFormat =
-        ScreenshotClipboardPolicy::formatForScenario(ScreenshotClipboardScenario::OrdinarySelection,
-                                                     style);
     const QRect selectionBounds =
         ScreenshotHalfOpenRect::fromRectF(m_geometry.canvasBounds()).toAlignedQRect();
     const std::optional<ScreenshotSelectionParams> savedSelection =
@@ -2878,7 +2871,7 @@ void ScreenshotController::Impl::copySelectionToClipboardWithSource(
             : std::optional<ScreenshotSelectionParams>(m_selection.params(selectionBounds));
     const bool scheduled = m_exportService->requestSelectionResult(
         m_selection.pixelSelection(), style, &owner,
-        [receiver, generation = *exportGeneration, clipboardFormat, historyCandidate, historySource,
+        [receiver, generation = *exportGeneration, historyCandidate, historySource,
          savedSelection](QImage image) mutable {
             if (receiver.isNull() || receiver->m_impl == nullptr ||
                 !receiver->m_impl->imageExportCurrent(generation)) {
@@ -2886,9 +2879,9 @@ void ScreenshotController::Impl::copySelectionToClipboardWithSource(
             }
             auto artifact = std::make_shared<ScreenshotExportArtifact>(
                 ScreenshotExportSource::fromImage(std::move(image)));
-            receiver->m_impl->copyArtifactToClipboard(
-                std::move(artifact), generation, clipboardFormat, historySource,
-                std::move(historyCandidate), false, savedSelection);
+            receiver->m_impl->copyArtifactToClipboard(std::move(artifact), generation,
+                                                      historySource, std::move(historyCandidate),
+                                                      false, savedSelection);
         });
     if (!scheduled) {
         static_cast<void>(finishImageExport(*exportGeneration));
@@ -2906,431 +2899,112 @@ void ScreenshotController::Impl::copySelectionToClipboardWithSource(
 
 void ScreenshotController::Impl::saveImageForCopy(
     QImage image, quint64 generation, bool copyFileToClipboard,
-    ScreenshotClipboardFormatMode clipboardFormat,
     snow_shot::storage::CaptureHistorySource historySource,
     std::shared_ptr<std::optional<ScreenshotHistoryEntry>> historyCandidate, bool scrolling) {
-    const snow_shot::storage::ScreenshotSettings outputSettings;
-    const QStringList outputDirectories =
-        ScreenshotImageFileService::automaticDirectories(outputSettings.imageSaveDirectory());
-    const ScreenshotImageFileFormat outputFormat =
-        ScreenshotImageFileService::formatForKey(outputSettings.imageFormat());
-    const QString outputFilenameFormat = outputSettings.autoSaveFilenameFormat();
-    const QPointer<ScreenshotController> receiver(&owner);
-    auto artifact =
-        std::make_shared<ScreenshotExportArtifact>(ScreenshotExportSource::fromImage(image));
-    if (!copyFileToClipboard) {
-        m_backgroundSaveJob = ScreenshotExportCoordinator::shared().submit(
-            &owner, ScreenshotExportCoordinator::Priority::Background,
-            [image, outputDirectories, outputFormat,
-             outputFilenameFormat](const ScreenshotExportCancellation& cancellation) mutable {
-                if (cancellation.isCancellationRequested()) {
-                    return ScreenshotExportTaskResult::failure(
-                        ScreenshotExportFailureStage::Cancelled,
-                        QStringLiteral("The automatic screenshot save was cancelled"));
-                }
-                const ScreenshotImageFileSaveResult saved =
-                    ScreenshotImageFileService::saveAutomatically(
-                        image, outputDirectories, outputFormat, outputFilenameFormat);
-                if (!saved.succeeded()) {
-                    return ScreenshotExportTaskResult::failure(ScreenshotExportFailureStage::File,
-                                                               saved.error);
-                }
-                ScreenshotExportTaskResult result;
-                result.savedPath = saved.path;
-                return result;
-            },
-            [receiver, generation](ScreenshotExportTaskResult result) {
-                if (!receiver.isNull() && receiver->m_impl != nullptr && !result.succeeded() &&
-                    result.failureStage != ScreenshotExportFailureStage::Cancelled &&
-                    receiver->m_impl->imageExportNotificationCurrent(generation)) {
-                    receiver->m_impl->m_messages->warning(
-                        QString::fromLatin1(kSaveMessageKey),
-                        QCoreApplication::translate("ScreenshotController",
-                                                    "Automatic screenshot saving failed: %1")
-                            .arg(result.error));
-                }
-            });
-        trackExportJob(m_backgroundSaveJob);
-        if (!m_backgroundSaveJob.isValid()) {
-            m_messages->warning(
-                QString::fromLatin1(kSaveMessageKey),
-                QCoreApplication::translate(
-                    "ScreenshotController",
-                    "The screenshot will be copied, but automatic saving could not be queued"));
-        }
-    }
-    m_exportJob = ScreenshotExportCoordinator::shared().submit(
-        &owner, ScreenshotExportCoordinator::Priority::Foreground,
-        [copyFileToClipboard, clipboardFormat, outputDirectories, outputFormat,
-         outputFilenameFormat,
-         image = std::move(image)](const ScreenshotExportCancellation& cancellation) mutable {
-            if (cancellation.isCancellationRequested() || image.isNull()) {
-                return ScreenshotExportTaskResult::failure(
-                    cancellation.isCancellationRequested() ? ScreenshotExportFailureStage::Cancelled
-                                                           : ScreenshotExportFailureStage::Source,
-                    cancellation.isCancellationRequested()
-                        ? QStringLiteral("The screenshot copy was cancelled")
-                        : QStringLiteral("The screenshot image is empty"));
-            }
-            if (!copyFileToClipboard) {
-                auto payload = std::make_shared<ScreenshotClipboardPayload>(
-                    ScreenshotClipboardService::prepareImage(image, clipboardFormat));
-                if (!payload->isValid()) {
-                    return ScreenshotExportTaskResult::failure(
-                        ScreenshotExportFailureStage::Clipboard,
-                        QStringLiteral("The screenshot could not be prepared for the clipboard"));
-                }
-                ScreenshotExportTaskResult result;
-                result.clipboardPayload = std::move(payload);
-                return result;
-            }
-            const ScreenshotImageFileSaveResult fileResult =
-                ScreenshotImageFileService::saveAutomatically(image, outputDirectories,
-                                                              outputFormat, outputFilenameFormat);
-            if (!fileResult.succeeded()) {
-                return ScreenshotExportTaskResult::failure(ScreenshotExportFailureStage::File,
-                                                           fileResult.error);
-            }
-            ScreenshotExportTaskResult result;
-            result.savedPath = fileResult.path;
-            return result;
-        },
-        [receiver, generation, copyFileToClipboard, historySource, artifact,
-         historyCandidate = std::move(historyCandidate),
-         scrolling](ScreenshotExportTaskResult result) mutable {
-            if (receiver.isNull() || receiver->m_impl == nullptr ||
-                !receiver->m_impl->imageExportCurrent(generation)) {
-                return;
-            }
-            if (!result.succeeded()) {
-                const QString reason =
-                    result.error.isEmpty()
-                        ? QCoreApplication::translate("ScreenshotController",
-                                                      "The clipboard did not accept the screenshot")
-                        : result.error;
-                if (receiver->m_impl->imageExportNotificationCurrent(generation)) {
-                    receiver->m_impl->m_messages->error(
-                        QString::fromLatin1(kCopyMessageKey),
-                        QCoreApplication::translate("ScreenshotController",
-                                                    "The screenshot could not be copied: %1")
-                            .arg(reason));
-                }
-                receiver->m_impl->completeCopyExport(false, generation, historySource,
-                                                     historyCandidate, scrolling, artifact);
-                return;
-            }
-
-            if (copyFileToClipboard) {
-                auto* mimeData = new QMimeData();
-                mimeData->setUrls(
-                    {QUrl::fromLocalFile(QFileInfo(result.savedPath).absoluteFilePath())});
-                receiver->m_impl->m_clipboardCommit = ScreenshotClipboardService::commitMimeData(
-                    QApplication::clipboard(), receiver, mimeData,
-                    [receiver, generation, historySource, historyCandidate, scrolling,
-                     artifact](ScreenshotClipboardCommitResult commit) mutable {
-                        if (receiver.isNull() || receiver->m_impl == nullptr ||
-                            !receiver->m_impl->imageExportCurrent(generation)) {
-                            return;
-                        }
-                        if (!commit.succeeded() &&
-                            receiver->m_impl->imageExportNotificationCurrent(generation)) {
-                            receiver->m_impl->m_messages->error(
-                                QString::fromLatin1(kCopyMessageKey),
-                                QCoreApplication::translate("ScreenshotController",
-                                                            "The screenshot file could not be "
-                                                            "copied: the clipboard did not "
-                                                            "accept the file"));
-                        }
-                        receiver->m_impl->completeCopyExport(commit.succeeded(), generation,
-                                                             historySource, historyCandidate,
-                                                             scrolling, artifact);
-                    });
-                receiver->m_impl->trackClipboardCommit(receiver->m_impl->m_clipboardCommit);
-                if (!receiver->m_impl->m_clipboardCommit.isValid()) {
-                    receiver->m_impl->completeCopyExport(false, generation, historySource,
-                                                         historyCandidate, scrolling, artifact);
-                }
-                return;
-            }
-
-            receiver->m_impl->m_exportJob = {};
-            if (result.clipboardPayload == nullptr) {
-                if (receiver->m_impl->imageExportNotificationCurrent(generation)) {
-                    receiver->m_impl->m_messages->error(
-                        QString::fromLatin1(kCopyMessageKey),
-                        QCoreApplication::translate(
-                            "ScreenshotController",
-                            "The screenshot clipboard image is unavailable"));
-                }
-                receiver->m_impl->completeCopyExport(false, generation, historySource,
-                                                     historyCandidate, scrolling, artifact);
-                return;
-            }
-            receiver->m_impl->m_clipboardCommit = ScreenshotClipboardService::commit(
-                QApplication::clipboard(), receiver, std::move(*result.clipboardPayload),
-                [receiver, generation, historySource, historyCandidate, scrolling,
-                 artifact](ScreenshotClipboardCommitResult commit) mutable {
-                    if (receiver.isNull() || receiver->m_impl == nullptr ||
-                        !receiver->m_impl->imageExportCurrent(generation)) {
-                        return;
-                    }
-                    if (!commit.succeeded()) {
-                        if (receiver->m_impl->imageExportNotificationCurrent(generation)) {
-                            receiver->m_impl->m_messages->error(
-                                QString::fromLatin1(kCopyMessageKey),
-                                QCoreApplication::translate(
-                                    "ScreenshotController",
-                                    "The screenshot could not be copied: %1")
-                                    .arg(commit.errorString()));
-                        }
-                    }
-                    receiver->m_impl->completeCopyExport(commit.succeeded(), generation,
-                                                         historySource, historyCandidate, scrolling,
-                                                         artifact);
-                });
-            receiver->m_impl->trackClipboardCommit(receiver->m_impl->m_clipboardCommit);
-            if (!receiver->m_impl->m_clipboardCommit.isValid()) {
-                if (receiver->m_impl->imageExportNotificationCurrent(generation)) {
-                    receiver->m_impl->m_messages->error(
-                        QString::fromLatin1(kCopyMessageKey),
-                        QCoreApplication::translate(
-                            "ScreenshotController",
-                            "The screenshot clipboard operation could not be started"));
-                }
-                receiver->m_impl->completeCopyExport(false, generation, historySource,
-                                                     historyCandidate, scrolling, artifact);
-            }
-        });
-    trackExportJob(m_exportJob);
-    if (!m_exportJob.isValid()) {
-        if (imageExportNotificationCurrent(generation)) {
-            m_messages->error(QString::fromLatin1(kCopyMessageKey),
-                              QCoreApplication::translate("ScreenshotController",
-                                                          "The screenshot export queue is full"));
-        }
-        completeCopyExport(false, generation, historySource, std::move(historyCandidate), scrolling,
-                           artifact);
-    }
+    saveArtifactForCopy(std::make_shared<ScreenshotExportArtifact>(
+                            ScreenshotExportSource::fromImage(std::move(image))),
+                        generation, copyFileToClipboard, historySource, std::move(historyCandidate),
+                        scrolling);
 }
 
 void ScreenshotController::Impl::saveScrollingSnapshotForCopy(
     ScreenshotScrollingSnapshot snapshot, quint64 generation, bool copyFileToClipboard,
     snow_shot::storage::CaptureHistorySource historySource,
     std::shared_ptr<std::optional<ScreenshotHistoryEntry>> historyCandidate) {
-    const snow_shot::storage::ScreenshotSettings outputSettings;
-    const QStringList outputDirectories =
-        ScreenshotImageFileService::automaticDirectories(outputSettings.imageSaveDirectory());
-    const ScreenshotImageFileFormat outputFormat =
-        ScreenshotImageFileService::formatForKey(outputSettings.imageFormat());
-    const QString outputFilenameFormat = outputSettings.autoSaveFilenameFormat();
+    saveArtifactForCopy(std::make_shared<ScreenshotExportArtifact>(
+                            ScreenshotExportSource::fromScrollingSnapshot(std::move(snapshot))),
+                        generation, copyFileToClipboard, historySource, std::move(historyCandidate),
+                        true);
+}
+
+void ScreenshotController::Impl::saveArtifactForCopy(
+    std::shared_ptr<ScreenshotExportArtifact> artifact, quint64 generation,
+    bool copyFileToClipboard, snow_shot::storage::CaptureHistorySource historySource,
+    std::shared_ptr<std::optional<ScreenshotHistoryEntry>> historyCandidate, bool scrolling) {
+    const snow_shot::storage::ScreenshotSettings settings;
     const QPointer<ScreenshotController> receiver(&owner);
-    auto artifact = std::make_shared<ScreenshotExportArtifact>(
-        ScreenshotExportSource::fromScrollingSnapshot(snapshot));
-    if (!copyFileToClipboard) {
-        const ScreenshotScrollingSnapshot saveSnapshot = snapshot;
-        m_backgroundSaveJob = ScreenshotExportCoordinator::shared().submit(
-            &owner, ScreenshotExportCoordinator::Priority::Background,
-            [saveSnapshot, outputDirectories, outputFormat,
-             outputFilenameFormat](const ScreenshotExportCancellation& cancellation) mutable {
-                const ScreenshotImageRowSource source = saveSnapshot.rowSource(
-                    [&cancellation]() { return cancellation.isCancellationRequested(); });
-                if (!source.isValid()) {
-                    return ScreenshotExportTaskResult::failure(
-                        ScreenshotExportFailureStage::Source,
-                        QStringLiteral("The scrolling screenshot is unavailable"));
-                }
-                const ScreenshotImageFileSaveResult saved =
-                    ScreenshotImageFileService::saveAutomatically(
-                        source, outputDirectories, outputFormat, outputFilenameFormat);
-                if (!saved.succeeded()) {
-                    return ScreenshotExportTaskResult::failure(
-                        cancellation.isCancellationRequested()
-                            ? ScreenshotExportFailureStage::Cancelled
-                            : ScreenshotExportFailureStage::File,
-                        saved.error);
-                }
-                ScreenshotExportTaskResult result;
-                result.savedPath = saved.path;
-                return result;
-            },
-            [receiver, generation](ScreenshotExportTaskResult result) {
-                if (!receiver.isNull() && receiver->m_impl != nullptr && !result.succeeded() &&
-                    result.failureStage != ScreenshotExportFailureStage::Cancelled &&
-                    receiver->m_impl->imageExportNotificationCurrent(generation)) {
-                    receiver->m_impl->m_messages->warning(
+    std::erase_if(m_saveArtifacts, [](const auto& weak) { return weak.expired(); });
+    m_saveArtifacts.push_back(artifact);
+    const bool scheduled = artifact->requestAutomaticSave(
+        &owner, ScreenshotImageFileService::automaticDirectories(settings.imageSaveDirectory()),
+        ScreenshotImageFileService::formatForKey(settings.imageFormat()),
+        settings.autoSaveFilenameFormat(),
+        [receiver, artifact, generation, copyFileToClipboard, historySource, historyCandidate,
+         scrolling](ScreenshotExportTaskResult result) mutable {
+            if (receiver.isNull() || receiver->m_impl == nullptr)
+                return;
+            auto& impl = *receiver->m_impl;
+            if (!copyFileToClipboard) {
+                if (!result.succeeded() && impl.imageExportNotificationCurrent(generation)) {
+                    impl.m_messages->warning(
                         QString::fromLatin1(kSaveMessageKey),
                         QCoreApplication::translate("ScreenshotController",
                                                     "Automatic screenshot saving failed: %1")
                             .arg(result.error));
                 }
-            });
-        trackExportJob(m_backgroundSaveJob);
-        if (!m_backgroundSaveJob.isValid()) {
-            m_messages->warning(
-                QString::fromLatin1(kSaveMessageKey),
-                QCoreApplication::translate(
-                    "ScreenshotController",
-                    "The screenshot will be copied, but automatic saving could not be queued"));
-        }
-    }
-    m_exportJob = ScreenshotExportCoordinator::shared().submit(
-        &owner, ScreenshotExportCoordinator::Priority::Foreground,
-        [snapshot = std::move(snapshot), copyFileToClipboard, outputDirectories, outputFormat,
-         outputFilenameFormat](const ScreenshotExportCancellation& cancellation) mutable {
-            const ScreenshotImageRowSource source = snapshot.rowSource(
-                [&cancellation]() { return cancellation.isCancellationRequested(); });
-            if (!source.isValid()) {
-                return ScreenshotExportTaskResult::failure(
-                    ScreenshotExportFailureStage::Source,
-                    QStringLiteral("The scrolling screenshot is unavailable"));
-            }
-            if (!copyFileToClipboard) {
-                auto payload = std::make_shared<ScreenshotClipboardPayload>(
-                    ScreenshotClipboardService::prepare(
-                        source, ScreenshotClipboardPolicy::formatForScenario(
-                                    ScreenshotClipboardScenario::ScrollingCapture)));
-                if (!payload->isValid()) {
-                    return ScreenshotExportTaskResult::failure(
-                        ScreenshotExportFailureStage::Clipboard,
-                        QStringLiteral("The screenshot could not be prepared for the clipboard"));
-                }
-                ScreenshotExportTaskResult result;
-                result.clipboardPayload = std::move(payload);
-                return result;
-            }
-            const ScreenshotImageFileSaveResult fileResult =
-                ScreenshotImageFileService::saveAutomatically(source, outputDirectories,
-                                                              outputFormat, outputFilenameFormat);
-            if (!fileResult.succeeded()) {
-                return ScreenshotExportTaskResult::failure(
-                    cancellation.isCancellationRequested() ? ScreenshotExportFailureStage::Cancelled
-                                                           : ScreenshotExportFailureStage::File,
-                    fileResult.error);
-            }
-            ScreenshotExportTaskResult result;
-            result.savedPath = fileResult.path;
-            return result;
-        },
-        [receiver, generation, copyFileToClipboard, historySource, artifact,
-         historyCandidate =
-             std::move(historyCandidate)](ScreenshotExportTaskResult result) mutable {
-            if (receiver.isNull() || receiver->m_impl == nullptr ||
-                !receiver->m_impl->imageExportCurrent(generation)) {
                 return;
             }
+            if (!impl.imageExportCurrent(generation))
+                return;
             if (!result.succeeded()) {
-                const QString reason =
-                    result.error.isEmpty()
-                        ? QCoreApplication::translate("ScreenshotController",
-                                                      "The clipboard did not accept the screenshot")
-                        : result.error;
-                if (receiver->m_impl->imageExportNotificationCurrent(generation)) {
-                    receiver->m_impl->m_messages->error(
+                if (impl.imageExportNotificationCurrent(generation)) {
+                    impl.m_messages->error(
                         QString::fromLatin1(kCopyMessageKey),
                         QCoreApplication::translate("ScreenshotController",
                                                     "The screenshot could not be copied: %1")
-                            .arg(reason));
+                            .arg(result.error));
                 }
-                receiver->m_impl->completeCopyExport(false, generation, historySource,
-                                                     historyCandidate, true, artifact);
+                impl.completeCopyExport(false, generation, historySource, historyCandidate,
+                                        scrolling, artifact);
                 return;
             }
-            if (copyFileToClipboard) {
-                auto* mimeData = new QMimeData();
-                mimeData->setUrls(
-                    {QUrl::fromLocalFile(QFileInfo(result.savedPath).absoluteFilePath())});
-                receiver->m_impl->m_clipboardCommit = ScreenshotClipboardService::commitMimeData(
-                    QApplication::clipboard(), receiver, mimeData,
-                    [receiver, generation, historySource, historyCandidate,
-                     artifact](ScreenshotClipboardCommitResult commit) mutable {
-                        if (receiver.isNull() || receiver->m_impl == nullptr ||
-                            !receiver->m_impl->imageExportCurrent(generation)) {
-                            return;
-                        }
-                        if (!commit.succeeded() &&
-                            receiver->m_impl->imageExportNotificationCurrent(generation)) {
-                            receiver->m_impl->m_messages->error(
-                                QString::fromLatin1(kCopyMessageKey),
-                                QCoreApplication::translate("ScreenshotController",
-                                                            "The screenshot file could not be "
-                                                            "copied: the clipboard did not "
-                                                            "accept the file"));
-                        }
-                        receiver->m_impl->completeCopyExport(commit.succeeded(), generation,
-                                                             historySource, historyCandidate, true,
-                                                             artifact);
-                    });
-                receiver->m_impl->trackClipboardCommit(receiver->m_impl->m_clipboardCommit);
-                if (!receiver->m_impl->m_clipboardCommit.isValid()) {
-                    receiver->m_impl->completeCopyExport(false, generation, historySource,
-                                                         historyCandidate, true, artifact);
-                }
-                return;
-            }
-
-            receiver->m_impl->m_exportJob = {};
-            if (result.clipboardPayload == nullptr) {
-                if (receiver->m_impl->imageExportNotificationCurrent(generation)) {
-                    receiver->m_impl->m_messages->error(
-                        QString::fromLatin1(kCopyMessageKey),
-                        QCoreApplication::translate(
-                            "ScreenshotController",
-                            "The screenshot clipboard image is unavailable"));
-                }
-                receiver->m_impl->completeCopyExport(false, generation, historySource,
-                                                     historyCandidate, true, artifact);
-                return;
-            }
-            receiver->m_impl->m_clipboardCommit = ScreenshotClipboardService::commit(
-                QApplication::clipboard(), receiver, std::move(*result.clipboardPayload),
-                [receiver, generation, historySource, historyCandidate,
-                 artifact](ScreenshotClipboardCommitResult commit) mutable {
+            auto* mime = new QMimeData();
+            mime->setUrls({QUrl::fromLocalFile(QFileInfo(result.savedPath).absoluteFilePath())});
+            impl.m_clipboardCommit = ScreenshotClipboardService::commitMimeData(
+                QApplication::clipboard(), receiver, mime,
+                [receiver, artifact, generation, historySource, historyCandidate,
+                 scrolling](ScreenshotClipboardCommitResult commit) mutable {
                     if (receiver.isNull() || receiver->m_impl == nullptr ||
-                        !receiver->m_impl->imageExportCurrent(generation)) {
+                        !receiver->m_impl->imageExportCurrent(generation))
                         return;
-                    }
-                    if (!commit.succeeded()) {
-                        if (receiver->m_impl->imageExportNotificationCurrent(generation)) {
-                            receiver->m_impl->m_messages->error(
-                                QString::fromLatin1(kCopyMessageKey),
-                                QCoreApplication::translate(
-                                    "ScreenshotController",
-                                    "The scrolling screenshot could not be copied: %1")
-                                    .arg(commit.errorString()));
-                        }
+                    if (!commit.succeeded() &&
+                        receiver->m_impl->imageExportNotificationCurrent(generation)) {
+                        receiver->m_impl->m_messages->error(
+                            QString::fromLatin1(kCopyMessageKey),
+                            QCoreApplication::translate("ScreenshotController",
+                                                        "The screenshot could not be copied: %1")
+                                .arg(commit.errorString()));
                     }
                     receiver->m_impl->completeCopyExport(commit.succeeded(), generation,
-                                                         historySource, historyCandidate, true,
+                                                         historySource, historyCandidate, scrolling,
                                                          artifact);
                 });
-            receiver->m_impl->trackClipboardCommit(receiver->m_impl->m_clipboardCommit);
-            if (!receiver->m_impl->m_clipboardCommit.isValid()) {
-                if (receiver->m_impl->imageExportNotificationCurrent(generation)) {
-                    receiver->m_impl->m_messages->error(
-                        QString::fromLatin1(kCopyMessageKey),
-                        QCoreApplication::translate(
-                            "ScreenshotController",
-                            "The screenshot clipboard operation could not be started"));
-                }
-                receiver->m_impl->completeCopyExport(false, generation, historySource,
-                                                     historyCandidate, true, artifact);
+            impl.trackClipboardCommit(impl.m_clipboardCommit);
+            if (!impl.m_clipboardCommit.isValid()) {
+                impl.completeCopyExport(false, generation, historySource, historyCandidate,
+                                        scrolling, artifact);
             }
         });
-    trackExportJob(m_exportJob);
-    if (!m_exportJob.isValid()) {
-        if (imageExportNotificationCurrent(generation)) {
-            m_messages->error(QString::fromLatin1(kCopyMessageKey),
-                              QCoreApplication::translate("ScreenshotController",
-                                                          "The screenshot export queue is full"));
+    if (!scheduled) {
+        if (copyFileToClipboard) {
+            completeCopyExport(false, generation, historySource, historyCandidate, scrolling,
+                               artifact);
+            return;
         }
-        completeCopyExport(false, generation, historySource, std::move(historyCandidate), true,
-                           artifact);
+        m_messages->warning(
+            QString::fromLatin1(kSaveMessageKey),
+            QCoreApplication::translate(
+                "ScreenshotController",
+                "The screenshot will be copied, but automatic saving could not be queued"));
+    }
+    if (!copyFileToClipboard) {
+        copyArtifactToClipboard(std::move(artifact), generation, historySource,
+                                std::move(historyCandidate), scrolling);
     }
 }
 
 void ScreenshotController::Impl::copyArtifactToClipboard(
     std::shared_ptr<ScreenshotExportArtifact> artifact, quint64 generation,
-    ScreenshotClipboardFormatMode clipboardFormat,
     snow_shot::storage::CaptureHistorySource historySource,
     std::shared_ptr<std::optional<ScreenshotHistoryEntry>> historyCandidate, bool scrolling,
     std::optional<ScreenshotSelectionParams> selectionToPersist) {
@@ -3341,10 +3015,9 @@ void ScreenshotController::Impl::copyArtifactToClipboard(
         return;
     }
     const bool started = artifact->requestClipboard(
-        &owner, clipboardFormat,
-        [receiver, artifact, generation, historySource, historyCandidate, scrolling,
-         selectionToPersist =
-             std::move(selectionToPersist)](ScreenshotExportClipboardResult result) mutable {
+        &owner, [receiver, artifact, generation, historySource, historyCandidate, scrolling,
+                 selectionToPersist = std::move(selectionToPersist)](
+                    ScreenshotExportClipboardResult result) mutable {
             if (receiver.isNull() || receiver->m_impl == nullptr ||
                 !receiver->m_impl->imageExportCurrent(generation)) {
                 return;
@@ -3880,8 +3553,11 @@ void ScreenshotController::Impl::shutdown() {
     }
     m_exportJob.cancel();
     m_exportJob = {};
-    m_backgroundSaveJob.cancel();
-    m_backgroundSaveJob = {};
+    for (const auto& weak : m_saveArtifacts) {
+        if (auto artifact = weak.lock())
+            artifact->cancel();
+    }
+    m_saveArtifacts.clear();
     m_clipboardCommit.cancel();
     m_clipboardCommit = {};
     if (m_selectionExportUiServices != nullptr) {

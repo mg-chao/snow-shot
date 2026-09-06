@@ -136,11 +136,16 @@ void directImagesPersistWithoutTouchingTheEditor(
     QImage image = solidImage(physicalBounds.size(), qRgb(24, 50, 70));
     image.setPixel(5, 5, qRgb(210, 90, 30));
     DirectCaptureFrame frame{image, physicalBounds, QStringLiteral("target:123"), 2, {}};
+    frame.canonicalPng = snow_shot::image_codec::encodePng(image);
     frame.displays.push_back({image, physicalBounds, frame.identity, frame.identity});
     QString id;
     {
         auto repository = storage::makeCaptureHistoryRepository(root);
         auto draft = directCaptureHistoryDraft(request, frame);
+        require(draft.preparedResultImage.has_value() &&
+                    draft.preparedResultImage->bytes().constData() ==
+                        frame.canonicalPng.constData(),
+                "direct capture history did not reuse the clipboard PNG");
         // Preserve coverage for image-only records written before desktop retention was restored.
         draft.contentKind = storage::CaptureHistoryContentKind::Image;
         draft.canvasBounds = physicalBounds;

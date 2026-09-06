@@ -11,6 +11,7 @@
 #include <QFile>
 #include <QFileDevice>
 #include <QBuffer>
+#include <QColorSpace>
 #include <QIODevice>
 
 namespace snow_shot::image_codec {
@@ -481,6 +482,45 @@ QByteArray encodePng(const QImage& image) {
     snow::image::EncodeOptions options;
     options.compression_level = 1;
     return encodeImage(image, snow::image::Format::png, options, nullptr);
+}
+
+ScreenshotImageRowSource srgbRowSource(const QImage& image) {
+    const QColorSpace srgb(QColorSpace::SRgb);
+    QImage rgba = image.colorSpace().isValid() && image.colorSpace() != srgb
+                      ? image.convertedToColorSpace(srgb, QImage::Format_RGBA8888)
+                      : image.convertToFormat(QImage::Format_RGBA8888);
+    if (rgba.isNull()) {
+        return {};
+    }
+    ScreenshotImageRowSource source;
+    source.size = rgba.size();
+    source.readRows = [rgba](int first, int count, qsizetype stride, uchar* destination,
+                             qsizetype capacity) {
+        const qsizetype rowBytes = static_cast<qsizetype>(rgba.width()) * 4;
+        if (first < 0 || count <= 0 || first > rgba.height() || count > rgba.height() - first ||
+            destination == nullptr || stride < rowBytes || capacity < rowBytes ||
+            count - 1 > (capacity - rowBytes) / stride) {
+            return false;
+        }
+        for (int row = 0; row < count; ++row) {
+            std::memcpy(destination + row * stride, rgba.constScanLine(first + row),
+                        static_cast<std::size_t>(rowBytes));
+        }
+        return true;
+    };
+    return source;
+}
+
+QByteArray encodePng(const ScreenshotImageRowSource& source) {
+    QByteArray bytes;
+    QBuffer buffer(&bytes);
+    snow::image::EncodeOptions options;
+    options.compression_level = 1;
+    if (!buffer.open(QIODevice::WriteOnly) ||
+        !encodeToDevice(source, &buffer, snow::image::Format::png, options)) {
+        return {};
+    }
+    return bytes;
 }
 
 QByteArray encodeWebp(const QImage& image, int quality) {

@@ -31,6 +31,10 @@ storage::CaptureHistoryDraft directCaptureHistoryDraft(const DirectCaptureReques
         *display.sourceCanvasOrigin += canvasOffset;
     }
     draft.resultImage = frame.image;
+    if (!frame.canonicalPng.isEmpty()) {
+        draft.preparedResultImage =
+            storage::PreparedPngImage::fromBytes(frame.image.size(), frame.canonicalPng);
+    }
     draft.source = request.target == DirectCaptureTarget::FocusedWindow
                        ? storage::CaptureHistorySource::FocusedWindow
                        : storage::CaptureHistorySource::CurrentMonitor;

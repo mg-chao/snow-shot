@@ -250,6 +250,9 @@ void preparedResultBytesAreCommittedWithoutReplacement() {
     const auto loaded = repository->loadResultImage(published.record);
     require(loaded.has_value() && loaded->pixelColor(4, 6) == result.pixelColor(4, 6),
             "prepared history result did not round-trip");
+    const auto loadedPng = repository->loadResultPng(published.record);
+    require(loadedPng.has_value() && loadedPng->bytes() == *sharedBytes,
+            "history clipboard read must preserve the stored PNG bytes");
 }
 
 void quickCaptureSourcesRoundTrip() {

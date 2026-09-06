@@ -3,6 +3,7 @@
 
 #include "snow_shot/presentation/screenshotimagerowsource.h"
 
+#include <QByteArray>
 #include <QImage>
 #include <QString>
 
@@ -13,61 +14,10 @@
 #include <memory>
 #include <utility>
 
-class ScreenshotClipboardPixelSource final {
-  public:
-    enum class Format {
-        Unsupported,
-        Argb32,
-        Argb32Premultiplied,
-        Rgb32,
-        Rgba8888,
-    };
-
-    ScreenshotClipboardPixelSource() = default;
-    explicit ScreenshotClipboardPixelSource(QImage image) : m_image(std::move(image)) {}
-
-    [[nodiscard]] bool isValid() const {
-        return !m_image.isNull() && m_image.width() > 0 && m_image.height() > 0 &&
-               m_image.constBits() != nullptr;
-    }
-    [[nodiscard]] Format format() const {
-        switch (m_image.format()) {
-        case QImage::Format_ARGB32:
-            return Format::Argb32;
-        case QImage::Format_ARGB32_Premultiplied:
-            return Format::Argb32Premultiplied;
-        case QImage::Format_RGB32:
-            return Format::Rgb32;
-        case QImage::Format_RGBA8888:
-            return Format::Rgba8888;
-        default:
-            return Format::Unsupported;
-        }
-    }
-    [[nodiscard]] const QImage& image() const {
-        return m_image;
-    }
-    // RGB32 and ARGB32 share the little-endian BGRA packing used by CF_DIB /
-    // CF_DIBV5. Opaque capture frames are wrapped as RGB32 so Qt can take the
-    // non-alpha blit; clipboard export can memcpy them as ARGB32.
-    [[nodiscard]] bool usesPackedBgraLayout() const {
-        const Format packed = format();
-        return packed == Format::Argb32 || packed == Format::Rgb32;
-    }
-
-  private:
-    QImage m_image;
-};
-
 class QClipboard;
 class QMimeData;
 class QObject;
 struct ScreenshotClipboardPayloadTestAccess;
-
-enum class ScreenshotClipboardFormatMode {
-    CompatibleDib,
-    DibV5,
-};
 
 class ScreenshotClipboardPayload final {
   public:
@@ -80,6 +30,9 @@ class ScreenshotClipboardPayload final {
     ScreenshotClipboardPayload& operator=(ScreenshotClipboardPayload&& other) noexcept;
 
     [[nodiscard]] bool isValid() const;
+    [[nodiscard]] const QByteArray& pngBytes() const {
+        return m_pngBytes;
+    }
 
   private:
     friend class ScreenshotClipboardService;
@@ -88,11 +41,10 @@ class ScreenshotClipboardPayload final {
     void reset() noexcept;
 
 #if defined(Q_OS_WIN) || defined(_WIN32)
-    void* m_nativeHandle = nullptr;
-    ScreenshotClipboardFormatMode m_formatMode = ScreenshotClipboardFormatMode::DibV5;
-#else
-    QImage m_image;
+    void* m_dibHandle = nullptr;
+    void* m_pngHandle = nullptr;
 #endif
+    QByteArray m_pngBytes;
 };
 
 enum class ScreenshotClipboardCommitFailure {
@@ -137,15 +89,12 @@ class ScreenshotClipboardService final {
 
     [[nodiscard]] static PublicationId reservePublication();
 
+    // A supplied PNG must encode the same sRGB pixels as the source. Export artifacts
+    // pass their cached canonical bytes here; preparation never decodes that PNG.
+    [[nodiscard]] static ScreenshotClipboardPayload prepare(const ScreenshotImageRowSource& source,
+                                                            const QByteArray& canonicalPng = {});
     [[nodiscard]] static ScreenshotClipboardPayload
-    prepare(ScreenshotClipboardPixelSource source,
-            ScreenshotClipboardFormatMode formatMode = ScreenshotClipboardFormatMode::DibV5);
-    [[nodiscard]] static ScreenshotClipboardPayload
-    prepare(const ScreenshotImageRowSource& source,
-            ScreenshotClipboardFormatMode formatMode = ScreenshotClipboardFormatMode::DibV5);
-    [[nodiscard]] static ScreenshotClipboardPayload
-    prepareImage(const QImage& image,
-                 ScreenshotClipboardFormatMode formatMode = ScreenshotClipboardFormatMode::DibV5);
+    prepareImage(const QImage& image, const QByteArray& canonicalPng = {});
     [[nodiscard]] static ScreenshotClipboardCommitHandle commit(QClipboard* clipboard,
                                                                 QObject* receiver,
                                                                 ScreenshotClipboardPayload payload,
@@ -160,9 +109,7 @@ class ScreenshotClipboardService final {
     commitMimeData(QClipboard* clipboard, QObject* receiver, QMimeData* mimeData,
                    PublicationId publicationId, CommitCompletion completion);
     [[nodiscard]] static bool publish(QClipboard* clipboard, ScreenshotClipboardPayload payload);
-    [[nodiscard]] static bool
-    publishImage(QClipboard* clipboard, const QImage& image,
-                 ScreenshotClipboardFormatMode formatMode = ScreenshotClipboardFormatMode::DibV5);
+    [[nodiscard]] static bool publishImage(QClipboard* clipboard, const QImage& image);
 };
 
 #endif // SNOW_SHOT_PRESENTATION_SCREENSHOTCLIPBOARDSERVICE_H
