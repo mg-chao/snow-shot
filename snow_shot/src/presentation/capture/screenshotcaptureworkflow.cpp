@@ -122,6 +122,9 @@ void ScreenshotCaptureWorkflow::cancelCapture() {
     m_state.sessionState = ScreenshotSessionState::Releasing;
     m_state.captureInProgress = false;
     m_refreshAfterCapture = false;
+    // Renderer and canvas resets queue full-surface paints. Conceal the overlay first so the
+    // compositor cannot publish the canvas fallback color between reset and native teardown.
+    m_context.runtime.hideOverlayWindowsImmediately(m_context.displaySession);
     resetCaptureModels();
     resetCanvasRuntimeState();
     finishCaptureSession();
