@@ -104,14 +104,15 @@ QByteArray serializeRecognitionResults(const ScreenshotRecognitionResults& resul
     stream << results.key << quint8(results.text.has_value() ? 1 : 0)
            << quint8(results.table.has_value() ? 1 : 0) << quint8(results.qr.has_value() ? 1 : 0);
     if (results.text.has_value() && results.text->presentation != nullptr) {
+        // Keep the count 64-bit to match existing payloads written with Qt 6's qsizetype.
         stream << results.text->error << results.text->presentation->selection
-               << results.text->presentation->lines.size();
+               << qint64(results.text->presentation->lines.size());
         for (const ScreenshotOcrLine& line : results.text->presentation->lines) {
             stream << line.text << line.confidence << line.quad
                    << quint8(line.direction == ScreenshotOcrTextDirection::Vertical ? 1 : 0);
         }
     } else if (results.text.has_value()) {
-        stream << QString() << QRect() << 0;
+        stream << QString() << QRect() << qint64(0);
     }
     if (results.table.has_value()) {
         stream << results.table->html << results.table->error << results.table->code
@@ -136,7 +137,7 @@ ScreenshotRecognitionResults deserializeRecognitionResults(const QByteArray& byt
     }
     if (hasText) {
         auto presentation = std::make_shared<ScreenshotOcrPresentation>();
-        int lineCount = 0;
+        qint64 lineCount = 0;
         QString textError;
         stream >> textError >> presentation->selection >> lineCount;
         if (lineCount < 0 || lineCount > 10000) {
@@ -153,6 +154,7 @@ ScreenshotRecognitionResults deserializeRecognitionResults(const QByteArray& byt
         presentation->prepareForRendering();
         ScreenshotOcrRecognitionResult text;
         text.presentation = std::move(presentation);
+        text.error = std::move(textError);
         results.text = std::move(text);
     }
     if (hasTable) {
@@ -165,7 +167,8 @@ ScreenshotRecognitionResults deserializeRecognitionResults(const QByteArray& byt
         stream >> qr.contents >> qr.error;
         results.qr = std::move(qr);
     }
-    return stream.status() == QDataStream::Ok ? results : ScreenshotRecognitionResults{};
+    return stream.status() == QDataStream::Ok && stream.atEnd() ? results
+                                                                : ScreenshotRecognitionResults{};
 }
 
 namespace native = screenshot_pinned_window_native;
@@ -1016,7 +1019,7 @@ snow_shot::storage::PinnedWindowRecord ScreenshotPinnedWindow::persistenceRecord
     record.resultStyle = serializeResultStyle(m_resultStyle);
     record.canvasSession = m_runtime.serializeDocumentSession();
     record.recognitionResults =
-        m_recognitionSession != nullptr
+        m_recognitionTargetReady && m_recognitionSession != nullptr
             ? serializeRecognitionResults(m_recognitionSession->cachedRecognitionResults())
             : serializeRecognitionResults(m_recognitionResults);
     record.updatedUtc = QDateTime::currentDateTimeUtc();
@@ -1920,12 +1923,12 @@ bool ScreenshotPinnedWindow::present(const Config& config,
                 }
             },
             [this](bool available, bool translating, bool streaming, bool canUndo, bool canRedo,
-                   bool canReset) {
+                   bool canReset, bool originalImage) {
                 if (m_editController != nullptr && m_editController->toolbarWindow() != nullptr) {
                     if (ScreenshotToolPalette* toolbar =
                             m_editController->toolbarWindow()->palette()) {
                         toolbar->setTextTranslationState(available, translating, streaming, canUndo,
-                                                         canRedo, canReset);
+                                                         canRedo, canReset, originalImage);
                     }
                 }
             },
@@ -2008,19 +2011,24 @@ bool ScreenshotPinnedWindow::present(const Config& config,
                     m_screenshotRenderer->setOcrFilteredImage(std::move(filteredImage), canvasRect);
                 }
             },
+            [this](int lineIndex, const QString& text) {
+                if (m_originalOcrPresentation != nullptr) {
+                    m_originalOcrPresentation->setLineText(lineIndex, text);
+                }
+                if (m_displayOcrPresentation != nullptr) {
+                    m_displayOcrPresentation->setLineText(lineIndex, text);
+                }
+                if (m_recognitionContent != nullptr) {
+                    m_recognitionContent->updateOcrText(lineIndex, text);
+                }
+            },
         },
         this);
     connect(m_recognitionSession.get(), &ScreenshotRecognitionSessionController::textResultChanged,
             this, [this](bool available) {
                 m_ocrReady = available;
                 refreshContextMenu();
-                if (m_editController != nullptr && m_editController->toolbarWindow() != nullptr) {
-                    if (ScreenshotToolPalette* toolbar =
-                            m_editController->toolbarWindow()->palette()) {
-                        toolbar->setOcrEnabled(m_formattedTextAvailable ||
-                                               (m_ocrSupported && m_recognition != nullptr));
-                    }
-                }
+                updateRecognitionToolbarState();
                 if (available && m_translateAfterRecognition && m_recognitionSession != nullptr &&
                     m_recognitionSession->active() &&
                     m_recognitionSession->mode() ==
@@ -2033,8 +2041,11 @@ bool ScreenshotPinnedWindow::present(const Config& config,
     connect(m_recognitionSession.get(), &ScreenshotRecognitionSessionController::textDraftChanged,
             this, [this](const QString&) { schedulePersistence(); });
     connect(m_recognitionSession.get(),
-            &ScreenshotRecognitionSessionController::recognitionResultsChanged, this,
-            [this]() { schedulePersistence(); });
+            &ScreenshotRecognitionSessionController::recognitionResultsChanged, this, [this]() {
+                refreshContextMenu();
+                updateRecognitionToolbarState();
+                schedulePersistence();
+            });
     SNOW_SHOT_PIN_PERF_MILESTONE("window.recognition_session_ready");
     SNOW_SHOT_PIN_PERF_MILESTONE("window.pinned_toolbar_deferred");
     // Recognition availability is derived from the recognition pointers, and the
@@ -2705,19 +2716,20 @@ void ScreenshotPinnedWindow::refreshContextMenu() {
     rebuildGroupMenu();
     updateShowMainInterfaceAction();
     if (m_ocrAction != nullptr) {
+        const bool textAvailable = recognitionModeAvailable(
+            static_cast<int>(ScreenshotRecognitionSessionController::Mode::Text));
         const bool activeText =
             m_recognitionSession != nullptr && m_recognitionSession->active() &&
             m_recognitionSession->mode() == ScreenshotRecognitionSessionController::Mode::Text;
         setActionDisplayText(m_ocrAction,
-                             !m_ocrSupported
+                             !m_ocrSupported && !textAvailable
                                  ? tr(kOcrTooLargeDescription)
                                  : (m_recognitionSession != nullptr &&
                                             m_recognitionSession->busy(
                                                 ScreenshotRecognitionSessionController::Mode::Text)
                                         ? tr("Recognizing text")
                                         : tr("Display text recognition results")));
-        m_ocrAction->setEnabled(m_formattedTextAvailable ||
-                                (m_ocrSupported && m_recognition != nullptr));
+        m_ocrAction->setEnabled(textAvailable);
         const QSignalBlocker blocker(m_ocrAction);
         m_ocrAction->setChecked(activeText);
     }
@@ -2746,7 +2758,9 @@ void ScreenshotPinnedWindow::refreshContextMenu() {
         }
     }
     if (m_scaleMenuAction != nullptr) {
-        m_scaleMenuAction->setEnabled(!m_ocrMode);
+        m_scaleMenuAction->setEnabled(!m_ocrMode ||
+                                      (m_recognitionSession != nullptr &&
+                                       m_recognitionSession->originalImageTranslationActive()));
     }
     if (m_scaleReadoutAction != nullptr) {
         m_scaleReadoutAction->setText(tr("Current: %1%").arg(qRound(m_scalePercent)));
@@ -2847,6 +2861,7 @@ void ScreenshotPinnedWindow::updateCanvasViewport() {
     m_viewportZoom = zoom > 0.0 ? zoom : 1.0;
     m_viewportCenter = m_resultSurfaceCanvasRect.center();
     m_canvas->setViewportCamera(m_viewportCenter.x(), m_viewportCenter.y(), m_viewportZoom);
+    updateRecognitionContentGeometry();
 }
 
 void ScreenshotPinnedWindow::updateControlsGeometry() {
@@ -3370,7 +3385,10 @@ void ScreenshotPinnedWindow::updateRecognitionContentGeometry() {
     if (m_recognitionContent == nullptr || m_canvas == nullptr) {
         return;
     }
-    m_recognitionContent->setGeometry(m_canvas->geometry());
+    const QRectF viewport = m_canvas->canvasToViewTransform().inverted().mapRect(
+        QRectF(QPointF(), QSizeF(m_canvas->size())));
+    static_cast<void>(
+        m_recognitionContent->updateSelectionGeometry(m_canvas->geometry(), viewport));
     m_recognitionContent->raise();
     if (m_borderFrame != nullptr) {
         m_borderFrame->raise();
@@ -3383,10 +3401,7 @@ void ScreenshotPinnedWindow::activateRecognitionMode(int mode) {
     }
     ensureRecognitionProviders();
     const auto selectedMode = static_cast<ScreenshotRecognitionSessionController::Mode>(mode);
-    const bool canUseFormattedText =
-        selectedMode == ScreenshotRecognitionSessionController::Mode::Text &&
-        m_formattedTextAvailable;
-    if (!m_ocrSupported && !canUseFormattedText) {
+    if (!recognitionModeAvailable(mode)) {
         return;
     }
     if (m_originalImage.isNull()) {
@@ -3442,16 +3457,40 @@ void ScreenshotPinnedWindow::deactivateRecognition() {
     refreshContextMenu();
 }
 
+bool ScreenshotPinnedWindow::recognitionModeAvailable(int mode) const {
+    const auto results = m_recognitionTargetReady && m_recognitionSession != nullptr
+                             ? m_recognitionSession->cachedRecognitionResults()
+                             : m_recognitionResults;
+    const bool hasCacheKey = !results.key.isEmpty();
+    switch (static_cast<ScreenshotRecognitionSessionController::Mode>(mode)) {
+    case ScreenshotRecognitionSessionController::Mode::Text:
+        return m_formattedTextAvailable ||
+               (hasCacheKey && results.text.has_value() && results.text->error.isEmpty() &&
+                results.text->presentation != nullptr) ||
+               (m_ocrSupported && m_recognition != nullptr);
+    case ScreenshotRecognitionSessionController::Mode::Table:
+        return (hasCacheKey && results.table.has_value() && results.table->succeeded()) ||
+               (m_ocrSupported && m_tableRecognition != nullptr);
+    case ScreenshotRecognitionSessionController::Mode::Qr:
+        return (hasCacheKey && results.qr.has_value() && results.qr->error.isEmpty() &&
+                !results.qr->contents.isEmpty()) ||
+               (m_ocrSupported && m_qrRecognition != nullptr);
+    }
+    return false;
+}
+
 void ScreenshotPinnedWindow::updateRecognitionToolbarState() {
     if (m_recognitionSession == nullptr || m_editController == nullptr ||
         m_editController->toolbarWindow() == nullptr) {
         return;
     }
     if (ScreenshotToolPalette* toolbar = m_editController->toolbarWindow()->palette()) {
-        toolbar->setOcrEnabled(m_formattedTextAvailable ||
-                               (m_ocrSupported && m_recognition != nullptr));
-        toolbar->setTableEnabled(m_ocrSupported && m_tableRecognition != nullptr);
-        toolbar->setQrEnabled(m_ocrSupported && m_qrRecognition != nullptr);
+        toolbar->setOcrEnabled(recognitionModeAvailable(
+            static_cast<int>(ScreenshotRecognitionSessionController::Mode::Text)));
+        toolbar->setTableEnabled(recognitionModeAvailable(
+            static_cast<int>(ScreenshotRecognitionSessionController::Mode::Table)));
+        toolbar->setQrEnabled(recognitionModeAvailable(
+            static_cast<int>(ScreenshotRecognitionSessionController::Mode::Qr)));
         toolbar->setOcrBusy(
             m_recognitionSession->busy(ScreenshotRecognitionSessionController::Mode::Text));
         toolbar->setTableBusy(
@@ -3982,6 +4021,7 @@ void ScreenshotPinnedWindow::resetImageTransform() {
         static_cast<void>(applyWindowGeometry(nativeTarget, GeometryMutation::ImageTransform));
     }
     updateCanvasViewport();
+    schedulePersistence();
 }
 
 void ScreenshotPinnedWindow::rebuildTransformedImage() {
@@ -4018,7 +4058,9 @@ void ScreenshotPinnedWindow::rebuildTransformedImage() {
 }
 
 void ScreenshotPinnedWindow::applyScale(int percent) {
-    if (m_ocrMode || percent < kMinimumScalePercent || percent > kMaximumScalePercent) {
+    if ((m_ocrMode && (m_recognitionSession == nullptr ||
+                       !m_recognitionSession->originalImageTranslationActive())) ||
+        percent < kMinimumScalePercent || percent > kMaximumScalePercent) {
         return;
     }
     restoreFromThumbnailImmediately();
@@ -4044,7 +4086,9 @@ void ScreenshotPinnedWindow::applyScale(int percent) {
 }
 
 void ScreenshotPinnedWindow::applyWheelScale(int percent, const QPointF& nativeCursor) {
-    if (m_ocrMode || percent < kMinimumScalePercent || percent > kMaximumScalePercent) {
+    if ((m_ocrMode && (m_recognitionSession == nullptr ||
+                       !m_recognitionSession->originalImageTranslationActive())) ||
+        percent < kMinimumScalePercent || percent > kMaximumScalePercent) {
         return;
     }
     restoreFromThumbnailImmediately();
@@ -4113,11 +4157,12 @@ bool ScreenshotPinnedWindow::handleScaleWheel(QObject* watched, QWheelEvent* eve
     if (event == nullptr || m_closing) {
         return false;
     }
-    if (m_ocrMode) {
+    if (m_ocrMode && (m_recognitionSession == nullptr ||
+                      !m_recognitionSession->originalImageTranslationActive())) {
         event->accept();
         return true;
     }
-    if (m_editController != nullptr && m_editController->editMode()) {
+    if (!m_ocrMode && m_editController != nullptr && m_editController->editMode()) {
         return false;
     }
 

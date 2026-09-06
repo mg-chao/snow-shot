@@ -297,6 +297,8 @@ bool BuiltInSettingsBackend::switchValue(SettingsSwitchBinding binding) const {
         return storage::PinToScreenSettings().automaticTextRecognition();
     case SettingsSwitchBinding::PinAutoResizeWindow:
         return storage::PinToScreenSettings().autoResizeWindow();
+    case SettingsSwitchBinding::OriginalImageTranslation:
+        return storage::ScreenshotTranslationSettings().originalImageTranslationEnabled();
     case SettingsSwitchBinding::ScreenRecordingHideToolbar:
         return storage::RecordingSettings().hideToolbarInRecording();
     case SettingsSwitchBinding::DisableHotkeysOnFocusedFullscreen:
@@ -353,6 +355,9 @@ bool BuiltInSettingsBackend::applySwitchValue(SettingsSwitchBinding binding, boo
     if (binding == SettingsSwitchBinding::PinAutoResizeWindow) {
         return storage::PinToScreenSettings().setAutoResizeWindow(value);
     }
+    if (binding == SettingsSwitchBinding::OriginalImageTranslation) {
+        return storage::ScreenshotTranslationSettings().setOriginalImageTranslationEnabled(value);
+    }
     if (binding == SettingsSwitchBinding::ScreenRecordingHideToolbar) {
         return storage::RecordingSettings().setHideToolbarInRecording(value);
     }
@@ -379,6 +384,7 @@ bool BuiltInSettingsBackend::applySwitchValue(SettingsSwitchBinding binding, boo
     case SettingsSwitchBinding::ScreenshotCopyImageFileToClipboard:
     case SettingsSwitchBinding::PinAutomaticTextRecognition:
     case SettingsSwitchBinding::PinAutoResizeWindow:
+    case SettingsSwitchBinding::OriginalImageTranslation:
     case SettingsSwitchBinding::ScreenRecordingHideToolbar:
     case SettingsSwitchBinding::DisableHotkeysOnFocusedFullscreen:
     case SettingsSwitchBinding::AutoStartAtBoot:
@@ -935,6 +941,11 @@ bool BuiltInSettingsBackend::resetSection(SettingsSectionReset reset) {
              storage::ConfigurationSchema::defaultValue(
                  QStringLiteral("pin_to_screen/auto_resize_window"))},
         });
+    case SettingsSectionReset::Translation:
+        return storage::ScreenshotTranslationSettings().setOriginalImageTranslationEnabled(
+            storage::ConfigurationSchema::defaultValue(
+                QStringLiteral("screenshot_translation/original_image_translation"))
+                .toBool());
     case SettingsSectionReset::Tray:
         return storage::ApplicationStorage::instance().configuration().setValues({
             {QStringLiteral("tray/enabled"),

@@ -959,6 +959,17 @@ ScreenshotToolbarLayout ScreenshotToolbarSettings::layout() const {
             stringList(object.value(QStringLiteral("hidden")))};
 }
 
+bool ScreenshotTranslationSettings::originalImageTranslationEnabled() const {
+    return cache()
+        .value(QStringLiteral("screenshot_translation/original_image_translation"))
+        .toBool();
+}
+
+bool ScreenshotTranslationSettings::setOriginalImageTranslationEnabled(bool enabled) const {
+    return cache().setValue(QStringLiteral("screenshot_translation/original_image_translation"),
+                            enabled);
+}
+
 ScreenshotTranslationConfiguration ScreenshotTranslationSettings::configuration() const {
     return {cache().value(QStringLiteral("screenshot_translation/source_language")).toString(),
             cache().value(QStringLiteral("screenshot_translation/target_language")).toString(),

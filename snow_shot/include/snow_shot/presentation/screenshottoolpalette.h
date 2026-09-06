@@ -211,7 +211,8 @@ class ScreenshotToolPalette final : public QWidget {
     void setTextEditingState(bool available, bool editing, bool canUndo = false,
                              bool canRedo = false);
     void setTextTranslationState(bool available, bool translating, bool streaming,
-                                 bool canUndo = false, bool canRedo = false, bool canReset = false);
+                                 bool canUndo = false, bool canRedo = false, bool canReset = false,
+                                 bool originalImage = false);
     void setTextTransformSelections(const QString& formatting, const QString& punctuation);
     [[nodiscard]] bool ensureActionFamily(ActionFamily family);
     [[nodiscard]] bool ensureStyleFamily(Tool tool);
@@ -608,6 +609,7 @@ class ScreenshotToolPalette final : public QWidget {
     bool m_textEditing = false;
     bool m_textTranslating = false;
     bool m_textTranslationStreaming = false;
+    bool m_textTranslationInImage = false;
     bool m_textCanUndo = false;
     bool m_textCanRedo = false;
     bool m_textCanReset = false;

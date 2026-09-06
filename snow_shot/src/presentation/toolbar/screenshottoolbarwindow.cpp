@@ -408,23 +408,23 @@ void ScreenshotToolbarWindow::setTableEditingState(bool available, bool canUndo,
 }
 
 void ScreenshotToolbarWindow::setTextEditingState(bool available, bool editing, bool canUndo,
-                                                   bool canRedo) {
+                                                  bool canRedo) {
     if (ScreenshotToolPalette* toolPalette = palette()) {
         toolPalette->setTextEditingState(available, editing, canUndo, canRedo);
     }
 }
 
 void ScreenshotToolbarWindow::setTextTranslationState(bool available, bool translating,
-                                                       bool streaming, bool canUndo,
-                                                       bool canRedo, bool canReset) {
+                                                      bool streaming, bool canUndo, bool canRedo,
+                                                      bool canReset, bool originalImage) {
     if (ScreenshotToolPalette* toolPalette = palette()) {
         toolPalette->setTextTranslationState(available, translating, streaming, canUndo, canRedo,
-                                             canReset);
+                                             canReset, originalImage);
     }
 }
 
 void ScreenshotToolbarWindow::setTextTransformSelections(const QString& formatting,
-                                                          const QString& punctuation) {
+                                                         const QString& punctuation) {
     if (ScreenshotToolPalette* toolPalette = palette()) {
         toolPalette->setTextTransformSelections(formatting, punctuation);
     }

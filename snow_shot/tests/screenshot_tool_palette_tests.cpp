@@ -32,6 +32,7 @@
 #include <QLineEdit>
 #include <QListView>
 #include <QMouseEvent>
+#include <QKeyEvent>
 #include <QPainter>
 #include <QStandardItem>
 #include <QStandardItemModel>
@@ -1565,6 +1566,32 @@ void ocrControlReflectsLoadingState() {
     require(!translationButton->busy(),
             "text translation should stop loading after translation completes");
 
+    ocrButton->click();
+    palette.setTextEditingState(true, false);
+    palette.setTextTranslationState(true, false, true);
+    require(translationButton->busy() && !ocrButton->busy() &&
+                palette.activeToolForTests() == ScreenshotToolPalette::Tool::Ocr,
+            "background translation must stay busy without changing the active OCR tool");
+    const QPointF center = translationButton->rect().center();
+    const QPointF globalCenter = translationButton->mapToGlobal(center.toPoint());
+    QMouseEvent press(QEvent::MouseButtonPress, center, globalCenter, Qt::LeftButton,
+                      Qt::LeftButton, Qt::NoModifier);
+    QMouseEvent release(QEvent::MouseButtonRelease, center, globalCenter, Qt::LeftButton,
+                        Qt::NoButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(translationButton, &press);
+    QCoreApplication::sendEvent(translationButton, &release);
+    require(palette.activeToolForTests() == ScreenshotToolPalette::Tool::TextTranslation &&
+                translationButton->busy(),
+            "busy translation must remain accessible by mouse");
+    ocrButton->click();
+    QKeyEvent keyPress(QEvent::KeyPress, Qt::Key_Space, Qt::NoModifier);
+    QKeyEvent keyRelease(QEvent::KeyRelease, Qt::Key_Space, Qt::NoModifier);
+    QCoreApplication::sendEvent(translationButton, &keyPress);
+    QCoreApplication::sendEvent(translationButton, &keyRelease);
+    require(palette.activeToolForTests() == ScreenshotToolPalette::Tool::TextTranslation,
+            "busy translation must remain accessible by keyboard");
+    palette.setTextTranslationState(true, true, false);
+
     auto* tableButton =
         qobject_cast<adqt::widgets::AdButton*>(controlWithTooltip(palette, "Table recognition"));
     require(tableButton != nullptr, "table recognition should be an independent toolbar control");
@@ -1776,6 +1803,10 @@ void ocrToolReplacesSelectionActionToolbarContents() {
                 edit->accentRole() == adqt::widgets::AdButton::AccentRole::Primary &&
                 reset->isEnabled(),
             "Edit Reset should remain enabled after translation state is published");
+    palette.setTextTranslationState(true, false, true);
+    require(reset->isEnabled() && formattingSelect->isEnabled() && punctuationSelect->isEnabled(),
+            "background translation must not lock source OCR editing controls");
+    palette.setTextTranslationState(true, false, false);
     auto* ocrToolButton =
         qobject_cast<adqt::widgets::AdButton*>(controlWithTooltip(palette, "Text recognition"));
     require(ocrToolButton != nullptr &&
@@ -1795,6 +1826,12 @@ void ocrToolReplacesSelectionActionToolbarContents() {
     require(reset->isEnabled() && undo->isEnabled() && !redo->isEnabled() &&
                 formattingSelect->isEnabled() && punctuationSelect->isEnabled(),
             "completed translation should expose Reset, history, and text formatting");
+    palette.setTextTranslationState(true, true, false, false, false, false, true);
+    require(edit->isEnabled() && translate->isEnabled() && settings->isEnabled() &&
+                !reset->isEnabled() && !undo->isEnabled() && !redo->isEnabled() &&
+                !formattingSelect->isEnabled() && !punctuationSelect->isEnabled(),
+            "overlay translation should retain source Edit and settings without translation "
+            "editing controls");
     palette.setTextTranslationState(true, false, false, false, false, false);
     require(edit->buttonStyle() == adqt::widgets::AdButton::ButtonStyle::Text &&
                 edit->accentRole() == adqt::widgets::AdButton::AccentRole::Neutral &&

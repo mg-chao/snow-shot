@@ -1,5 +1,6 @@
 #include "snow_shot/presentation/screenshotocrpresentation.h"
 #include "snow_shot/presentation/screenshotrecognitionsessioncontroller.h"
+#include "snow_shot/storage/applicationstorage.h"
 
 #include "widgets/modal.h"
 #include "widgets/select.h"
@@ -12,10 +13,14 @@
 #include <QString>
 #include <QStringList>
 #include <QTimer>
+#include <QTemporaryDir>
+#include <QDir>
 
 #include <iostream>
 #include <memory>
 #include <utility>
+
+void runOriginalImageTranslationTests();
 
 namespace {
 void require(bool condition, const char* message) {
@@ -243,9 +248,23 @@ void translationLanguageSelectsUseCodePrefixGroups() {
 
 int main(int argc, char** argv) {
     QApplication application(argc, argv);
+    QTemporaryDir temporary;
+    require(temporary.isValid(), "create isolated recognition test storage");
+    const QString executable = QDir(temporary.path()).filePath(QStringLiteral("bin"));
+    require(QDir().mkpath(executable), "create test executable directory");
+    require(snow_shot::storage::ApplicationStorage::instance()
+                .initialize({executable, temporary.path(), 60000})
+                .success,
+            "initialize recognition test storage");
+    runOriginalImageTranslationTests();
+    if (application.arguments().contains(QStringLiteral("--translation-only"))) {
+        snow_shot::storage::ApplicationStorage::instance().shutdown();
+        return 0;
+    }
     translationLanguageSelectsUseCodePrefixGroups();
     cachedVerificationStaysSilent();
     liveDownloadsStillSurfaceThePrompt();
     prefetchVerificationStaysSilentWhileDownloadsSurface();
+    snow_shot::storage::ApplicationStorage::instance().shutdown();
     return 0;
 }

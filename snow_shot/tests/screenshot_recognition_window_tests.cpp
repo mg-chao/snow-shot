@@ -18,6 +18,7 @@
 #include <QFocusEvent>
 #include <QGuiApplication>
 #include <QGraphicsItem>
+#include <QGraphicsScene>
 #include <QGraphicsTextItem>
 #include <QGraphicsView>
 #include <QImage>
@@ -125,14 +126,18 @@ void embeddedRecognitionWindowPreservesParentSurfaceWithVisibleTextLayer() {
     presentation->selection = host.rect();
     ScreenshotOcrLine line;
     line.text = QStringLiteral("Embedded OCR");
-    line.quad = QPolygonF({QPointF(45.0, 35.0), QPointF(115.0, 35.0),
-                           QPointF(115.0, 55.0), QPointF(45.0, 55.0)});
+    line.quad = QPolygonF(
+        {QPointF(45.0, 35.0), QPointF(115.0, 35.0), QPointF(115.0, 55.0), QPointF(45.0, 55.0)});
     presentation->lines.push_back(line);
+    ScreenshotOcrLine secondLine;
+    secondLine.text = QStringLiteral("stable");
+    secondLine.quad =
+        QPolygonF({QPointF(120, 65), QPointF(150, 65), QPointF(150, 80), QPointF(120, 80)});
+    presentation->lines.push_back(secondLine);
     presentation->prepareForRendering();
-    recognition.setOcrPresentation(std::move(presentation));
+    recognition.setOcrPresentation(presentation);
     QApplication::processEvents();
-    auto* textLayer = recognition.findChild<QGraphicsView*>(
-        QStringLiteral("snowShotOcrTextLayer"));
+    auto* textLayer = recognition.findChild<QGraphicsView*>(QStringLiteral("snowShotOcrTextLayer"));
     require(textLayer != nullptr && textLayer->isVisible(),
             "the embedded recognition text layer should participate in composition");
 
@@ -144,6 +149,23 @@ void embeddedRecognitionWindowPreservesParentSurfaceWithVisibleTextLayer() {
 
     require(rendered.pixelColor(QPoint(10, 10)) == background,
             "an embedded recognition surface must not replace its parent's painted pixels");
+    const auto items = textLayer->scene()->items();
+    presentation->beginTextSelection(ScreenshotOcrTextPosition{1, 0});
+    presentation->updateTextSelection(ScreenshotOcrTextPosition{1, 3});
+    presentation->finishTextSelection();
+    recognition.updateOcrText(0, QString::fromUcs4(U"\u7ffb\u8bd1\u6587\u5b57\U0001f642"));
+    QApplication::processEvents();
+    require(textLayer->scene()->items() == items &&
+                presentation->selectedText() == QStringLiteral("sta"),
+            "incremental translation should preserve graphics items and unrelated selection");
+    QImage translated(host.size(), QImage::Format_ARGB32_Premultiplied);
+    translated.fill(Qt::transparent);
+    QPainter translatedPainter(&translated);
+    host.render(&translatedPainter, QPoint(), QRegion(), QWidget::DrawChildren);
+    translatedPainter.end();
+    require(translated.pixelColor(QPoint(10, 10)) == background &&
+                translated.copy(QRect(45, 35, 70, 20)) != rendered.copy(QRect(45, 35, 70, 20)),
+            "streamed text should repaint its box while retaining the parent background");
 }
 
 void recognitionWindowCanExtendBeyondItsDpiScreen() {
