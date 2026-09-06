@@ -12,18 +12,15 @@ struct ScreenshotSelectorLookupPolicy {
     SnowUiSelectorHitTestMode mode = SNOW_UI_SELECTOR_HIT_TEST_MODE_UI_ELEMENT;
 };
 
-inline ScreenshotSelectorLookupPolicy screenshotSelectorLookupPolicy(
-    bool smartSelectionEnabled, const QByteArray& configuredBackend) {
-    if (smartSelectionEnabled) {
-        return {SNOW_UI_SELECTOR_BACKEND_MSAA, SNOW_UI_SELECTOR_HIT_TEST_MODE_UI_ELEMENT};
-    }
-
+inline ScreenshotSelectorLookupPolicy
+screenshotSelectorLookupPolicy(bool smartSelectionEnabled, const QByteArray& configuredBackend) {
     const QByteArray backend = configuredBackend.trimmed().toLower();
     SnowUiSelectorBackend selectedBackend = SNOW_UI_SELECTOR_BACKEND_MSAA;
     if (backend == "uia" || backend == "ui_automation" || backend == "ui-automation") {
         selectedBackend = SNOW_UI_SELECTOR_BACKEND_UIA;
     }
-    return {selectedBackend, SNOW_UI_SELECTOR_HIT_TEST_MODE_WINDOW};
+    return {selectedBackend, smartSelectionEnabled ? SNOW_UI_SELECTOR_HIT_TEST_MODE_UI_ELEMENT
+                                                   : SNOW_UI_SELECTOR_HIT_TEST_MODE_WINDOW};
 }
 
 inline SnowUiSelectorHitTestMode

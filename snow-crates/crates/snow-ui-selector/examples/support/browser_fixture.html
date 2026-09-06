@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Snow UIA Benchmark Fixture</title>
+<style>
+body { margin: 24px; font: 16px Arial, sans-serif; color: #222; background: white; }
+main { display: grid; grid-template-columns: repeat(4, 180px); gap: 12px; }
+fieldset { margin: 0; padding: 12px; border: 1px solid #888; }
+button { display: block; width: 140px; height: 36px; margin: 8px 0; }
+</style>
+<main id="controls"></main>
+<script>
+const controls = document.querySelector('#controls');
+for (let group = 0; group < 250; group++) {
+  const fieldset = document.createElement('fieldset');
+  const legend = document.createElement('legend');
+  legend.textContent = `Group ${group}`;
+  fieldset.append(legend);
+  for (let item = 0; item < 4; item++) {
+    const button = document.createElement('button');
+    button.textContent = `Control ${group}:${item}`;
+    fieldset.append(button);
+  }
+  controls.append(fieldset);
+}
+</script>
+</html>

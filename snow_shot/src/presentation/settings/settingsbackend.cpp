@@ -146,6 +146,8 @@ QVariant BuiltInSettingsBackend::selectValue(SettingsSelectBinding binding) cons
         return storage::NetworkSettings().proxy();
     case SettingsSelectBinding::ScreenshotApiMode:
         return storage::ScreenshotSettings().apiMode();
+    case SettingsSelectBinding::WindowElementApi:
+        return storage::ScreenshotSettings().windowElementApi();
     case SettingsSelectBinding::ScreenshotToolbarSize:
         return storage::ScreenshotUiSettings().toolbarSize();
     case SettingsSelectBinding::ColorPickerDisplayMode:
@@ -233,6 +235,8 @@ bool BuiltInSettingsBackend::applySelectValue(SettingsSelectBinding binding,
         return storage::NetworkSettings().setProxy(value.toString());
     case SettingsSelectBinding::ScreenshotApiMode:
         return storage::ScreenshotSettings().setApiMode(value.toString());
+    case SettingsSelectBinding::WindowElementApi:
+        return storage::ScreenshotSettings().setWindowElementApi(value.toString());
     case SettingsSelectBinding::ScreenshotToolbarSize:
         return storage::ScreenshotUiSettings().setToolbarSize(value.toString());
     case SettingsSelectBinding::ColorPickerDisplayMode:
@@ -1007,6 +1011,9 @@ bool BuiltInSettingsBackend::resetSection(SettingsSectionReset reset) {
         return storage::ApplicationStorage::instance().configuration().setValues({
             {QStringLiteral("screenshot/api_mode"),
              storage::ConfigurationSchema::defaultValue(QStringLiteral("screenshot/api_mode"))},
+            {QStringLiteral("screenshot/window_element_api"),
+             storage::ConfigurationSchema::defaultValue(
+                 QStringLiteral("screenshot/window_element_api"))},
             {QStringLiteral("screenshot/restore_original_screen_colors"),
              storage::ConfigurationSchema::defaultValue(
                  QStringLiteral("screenshot/restore_original_screen_colors"))},

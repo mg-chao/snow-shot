@@ -442,6 +442,24 @@ SettingsItemDefinition screenshotApiModeItem() {
     };
 }
 
+SettingsItemDefinition windowElementApiItem() {
+    SettingsSelectDefinition payload;
+    payload.binding = SettingsSelectBinding::WindowElementApi;
+    payload.options = {
+        {QStringLiteral("msaa"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "MSAA"))},
+        {QStringLiteral("uia"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "UIA"))},
+    };
+    return {
+        QStringLiteral("screenshot.window-element-api"),
+        settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Window Element API")),
+        settingsText(QT_TRANSLATE_NOOP(
+            "SettingsCatalog", "API used to control obtaining child elements of the window")),
+        {settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Child elements"))},
+        QStringLiteral("screenshot/window_element_api"),
+        payload,
+    };
+}
+
 SettingsItemDefinition historyEnabledItem() {
     return {
         QStringLiteral("history.enabled"),
@@ -1558,7 +1576,8 @@ QVector<SettingsPageDefinition> builtInPages() {
                     settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Screenshot")),
                     settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Screen capture settings")),
                     SettingsSectionReset::ScreenshotCapture,
-                    {screenshotApiModeItem(), screenshotRestoreOriginalScreenColorsItem()},
+                    {screenshotApiModeItem(), windowElementApiItem(),
+                     screenshotRestoreOriginalScreenColorsItem()},
                 },
                 {
                     QStringLiteral("network"),
@@ -2178,6 +2197,9 @@ QStringList SettingsCatalog::validationErrors() const {
                         break;
                     case SettingsSelectBinding::ScreenshotApiMode:
                         expectedKey = QStringLiteral("screenshot/api_mode");
+                        break;
+                    case SettingsSelectBinding::WindowElementApi:
+                        expectedKey = QStringLiteral("screenshot/window_element_api");
                         break;
                     case SettingsSelectBinding::ScreenshotToolbarSize:
                         expectedKey = QStringLiteral("screenshot_ui/toolbar_size");

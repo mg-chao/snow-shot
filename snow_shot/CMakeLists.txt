@@ -1441,6 +1441,31 @@ if(SNOW_SHOT_BUILD_TESTS)
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
     )
 
+    add_executable(snow-shot-window-element-api-tests
+        tests/window_element_api_tests.cpp
+        include/snow_shot/presentation/screenshotselectorcoordinator.h
+        src/presentation/selector/screenshotselectorcoordinator.cpp
+        src/presentation/selector/screenshotselectorserviceclient.cpp
+        src/presentation/services/screenshotclipboardservice.cpp
+    )
+    target_include_directories(snow-shot-window-element-api-tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/image"
+        "${SNOW_SHOT_CAPTURE_CRATES_DIR}/crates/snow-ui-selector-c/include"
+    )
+    target_link_libraries(snow-shot-window-element-api-tests PRIVATE
+        snow_shot_settings
+        Qt6::Widgets
+    )
+    add_test(NAME snow-shot-window-element-api-tests
+             COMMAND snow-shot-window-element-api-tests)
+    snow_shot_import_offscreen_platform(snow-shot-window-element-api-tests)
+    set_tests_properties(snow-shot-window-element-api-tests PROPERTIES
+        ENVIRONMENT
+            "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"
+        ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    )
+
     add_executable(snow-shot-system-tray-controller-tests
         tests/system_tray_controller_tests.cpp
         include/snow_shot/presentation/languagemanager.h
@@ -3593,6 +3618,23 @@ target_compile_definitions(snow_shot PRIVATE
 add_dependencies(snow_shot snow_ocr_process)
 
 if(WIN32 AND SNOW_SHOT_BUILD_BENCHMARKS)
+    add_executable(snow-shot-uia-qt-performance-fixture
+        tests/screenshot_uia_qt_performance_fixture.cpp
+    )
+    target_link_libraries(snow-shot-uia-qt-performance-fixture PRIVATE Qt6::Widgets user32)
+    target_compile_definitions(snow-shot-uia-qt-performance-fixture PRIVATE NOMINMAX)
+
+    add_custom_target(snow-shot-uia-performance-benchmark
+        COMMAND "${CMAKE_COMMAND}" -E env
+            "CARGO_TARGET_DIR=${SNOW_RUST_CARGO_TARGET_DIR}"
+            "${CARGO_EXECUTABLE}" build --locked --release
+            --target x86_64-pc-windows-msvc
+            --package snow-ui-selector --example hit_bench
+        WORKING_DIRECTORY "${SNOW_SHOT_CAPTURE_CRATES_DIR}"
+        USES_TERMINAL
+        VERBATIM
+    )
+
     add_executable(snow-shot-pin-to-screen-performance-benchmark
         tests/screenshot_pin_to_screen_performance_benchmark.cpp
     )

@@ -1,4 +1,4 @@
-use rstar::{AABB, Envelope, RTree, RTreeObject};
+use rstar::{AABB, RTree, RTreeObject};
 
 /// Window counts below this threshold use a linear scan instead of an R-tree.
 /// Typical desktops have 10-30 visible windows; the R-tree overhead only pays
@@ -18,6 +18,14 @@ impl RTreeObject for IndexedWindow {
 
     fn envelope(&self) -> Self::Envelope {
         self.envelope
+    }
+}
+
+impl IndexedWindow {
+    fn contains_point(&self, point: [i32; 2]) -> bool {
+        let lower = self.envelope.lower();
+        let upper = self.envelope.upper();
+        point[0] >= lower[0] && point[0] < upper[0] && point[1] >= lower[1] && point[1] < upper[1]
     }
 }
 
@@ -50,7 +58,7 @@ impl WindowSpatialIndex {
             Self::Small(windows) => {
                 let mut best: Option<&IndexedWindow> = None;
                 for w in windows {
-                    if w.envelope.contains_point(&point) {
+                    if w.contains_point(point) {
                         match best {
                             Some(b) if w.z_order < b.z_order => best = Some(w),
                             None => best = Some(w),
@@ -63,7 +71,7 @@ impl WindowSpatialIndex {
             Self::Tree(tree) => {
                 let point_box = AABB::from_point(point);
                 tree.locate_in_envelope_intersecting(&point_box)
-                    .filter(|w| w.envelope.contains_point(&point))
+                    .filter(|w| w.contains_point(point))
                     .min_by_key(|w| w.z_order)
             }
         }
@@ -85,5 +93,27 @@ mod tests {
         assert!(index.window_at_point([5, 5]).is_some());
         index.release_cache();
         assert!(index.window_at_point([5, 5]).is_none());
+    }
+
+    #[test]
+    fn adjacent_window_edges_match_half_open_element_geometry() {
+        for count in [2, 20] {
+            let index = WindowSpatialIndex::build(
+                (0..count)
+                    .map(|i| IndexedWindow {
+                        envelope: AABB::from_corners(
+                            [i as i32 * 10, -10],
+                            [(i as i32 + 1) * 10, 10],
+                        ),
+                        cache_index: i,
+                        z_order: i,
+                    })
+                    .collect(),
+            );
+            assert_eq!(index.window_at_point([10, 0]).unwrap().cache_index, 1);
+            assert_eq!(index.window_at_point([9, 0]).unwrap().cache_index, 0);
+            assert!(index.window_at_point([5, 10]).is_none());
+            assert!(index.window_at_point([count as i32 * 10, 0]).is_none());
+        }
     }
 }

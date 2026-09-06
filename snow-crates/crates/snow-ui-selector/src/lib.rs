@@ -137,8 +137,9 @@ impl BackendImpl {
 /// interfaces (UIA / MSAA) are apartment-bound.  Create and use it on the same
 /// thread.
 pub struct ElementRegionService {
-    _com: com::ComApartment,
     backend: BackendImpl,
+    // Fields drop in declaration order: release every backend COM object before the apartment.
+    _com: com::ComApartment,
     /// Prevent `Send` and `Sync` — COM pointers are apartment-bound.
     _not_send: PhantomData<*mut ()>,
 }

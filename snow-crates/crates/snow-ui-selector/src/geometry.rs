@@ -146,4 +146,29 @@ mod tests {
             (-5, 20, 30, 60)
         );
     }
+
+    #[test]
+    fn monitor_snapshot_clips_across_displays_and_rejects_invisible_rectangles() {
+        let monitors = MonitorCache {
+            rects: vec![rect(-1920, 0, 0, 1080), rect(0, -200, 2560, 1440)],
+        };
+        assert_eq!(
+            monitors.clip_rect_to_visible_area(rect(-2000, -400, 3000, 2000)),
+            Some(rect(-1920, -200, 2560, 1440))
+        );
+        assert_eq!(
+            monitors.clip_rect_to_visible_area(rect(-2000, 100, -1800, 200)),
+            Some(rect(-1920, 100, -1800, 200))
+        );
+        assert!(
+            monitors
+                .clip_rect_to_visible_area(rect(2560, 0, 2700, 200))
+                .is_none()
+        );
+        assert!(
+            monitors
+                .clip_rect_to_visible_area(rect(10, 0, 10, 100))
+                .is_none()
+        );
+    }
 }
