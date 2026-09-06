@@ -112,6 +112,7 @@ class ScreenshotRecognitionWindow final : public QWidget {
     void clearQrContents();
 
     [[nodiscard]] bool copyVisibleContentToClipboard();
+    [[nodiscard]] bool isOcrBackgroundAt(const QPointF& localPosition) const;
 
   signals:
     void embeddedContextMenuRequested(const QPoint& globalPosition);
