@@ -38,8 +38,8 @@ class ScreenshotToolbarWindow final : public ScreenshotFloatingToolPaletteWindow
     void setTextEditingState(bool available, bool editing, bool canUndo = false,
                              bool canRedo = false);
     void setTextTranslationState(bool available, bool translating, bool streaming,
-                                 bool canUndo = false, bool canRedo = false,
-                                 bool canReset = false);
+                                 bool canUndo = false, bool canRedo = false, bool canReset = false,
+                                 bool originalImage = false);
     void setTextTransformSelections(const QString& formatting, const QString& punctuation);
     void setPlacementContext(QScreen* screen, const QRect& logicalBounds,
                              const QRect& physicalBounds = QRect());

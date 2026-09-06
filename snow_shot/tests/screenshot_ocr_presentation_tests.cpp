@@ -172,6 +172,34 @@ CapturedDisplayModel display(const QRect& canvasRect, const QColor& color, bool 
     return output;
 }
 
+void incrementalTextUpdatesPreserveGeometryAndGraphemeSelection() {
+    ScreenshotOcrPresentation presentation;
+    presentation.lines = {line(QStringLiteral("original"), 0, 0),
+                          line(QStringLiteral("unchanged"), 0, 20)};
+    presentation.prepareForRendering();
+    const QPolygonF quad = presentation.lines[0].quad;
+    presentation.beginTextSelection(ScreenshotOcrTextPosition{1, 0});
+    presentation.updateTextSelection(ScreenshotOcrTextPosition{1, 4});
+    presentation.finishTextSelection();
+    const QString unicode = QString::fromUcs4(U"A\U0001f642B");
+    presentation.setLineText(0, unicode);
+    require(presentation.selectedText() == QStringLiteral("unch") &&
+                presentation.lines[0].quad == quad,
+            "updating one box should preserve other selections and box geometry");
+    require(presentation.textPositionAt(QPointF(55, 5)).characterIndex == 3,
+            "text replacement must refresh cached grapheme hit testing");
+    presentation.beginTextSelection(ScreenshotOcrTextPosition{0, 2});
+    presentation.updateTextSelection(ScreenshotOcrTextPosition{0, 4});
+    presentation.setLineText(0, QString::fromUcs4(U"A\U0001f642"));
+    require(presentation.selectionAnchor().characterIndex == 1 &&
+                presentation.selectionFocus().characterIndex == 3 &&
+                presentation.selectedText() == QString::fromUcs4(U"\U0001f642"),
+            "streamed replacement must clamp selection endpoints to complete graphemes");
+    presentation.setLineText(0, QString());
+    require(!presentation.hasTextSelection() && presentation.lineAt(QPointF(5, 5)) == 0,
+            "empty replacement should clamp selection without changing spatial indexing");
+}
+
 void sourceComposerUsesOnlyCapturedDisplayPixels() {
     ScreenshotDisplaySession displays;
     displays.appendDisplay(display(QRect(0, 0, 4, 2), Qt::red));
@@ -372,7 +400,8 @@ void translationHistoryEstablishesSuccessfulAndPartialBaselines() {
     session.establishHistory(QStringLiteral("partial retry"));
     require(session.text() == QStringLiteral("partial retry") && !session.canUndo() &&
                 session.originalText() == QStringLiteral("streamed translation"),
-            "a failed partial stream should be editable without replacing the last successful baseline");
+            "a failed partial stream should be editable without replacing the last successful "
+            "baseline");
     require(session.replaceText(QStringLiteral("partial retry fixed")) && session.canUndo(),
             "a partial translation should gain independent edit history after streaming stops");
 }
@@ -438,6 +467,7 @@ int main(int argc, char** argv) {
     lineSelectionPreservesSupplementaryCharacters();
     verticalLineHitTestingFollowsTopToBottomGraphemes();
     preparedGeometryAndSelectionRevisionsAvoidRepeatedWork();
+    incrementalTextUpdatesPreserveGeometryAndGraphemeSelection();
     sourceComposerUsesOnlyCapturedDisplayPixels();
     textTransformsUseOriginalPunctuationAndLineRules();
     textEditingHistoryPreservesNativeEditsAndAtomicTransforms();

@@ -88,6 +88,7 @@ class ScreenshotRecognitionWindow final : public QWidget {
                                                const QRectF& canvasSelection);
 
     void setOcrPresentation(std::shared_ptr<ScreenshotOcrPresentation> presentation);
+    void updateOcrText(int lineIndex, const QString& text);
     void clearOcrPresentation();
     void showFormattedText(std::shared_ptr<QTextDocument> document);
     void clearFormattedText();

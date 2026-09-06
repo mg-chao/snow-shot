@@ -352,6 +352,13 @@ void ScreenshotRecognitionWindow::setOcrPresentation(
     setFocus(Qt::OtherFocusReason);
 }
 
+void ScreenshotRecognitionWindow::updateOcrText(int lineIndex, const QString& text) {
+    if (m_ocrPresentation != nullptr) {
+        m_ocrPresentation->setLineText(lineIndex, text);
+        m_textLayer->updateLineText(lineIndex);
+    }
+}
+
 void ScreenshotRecognitionWindow::clearOcrPresentation() {
     m_ocrPresentation.reset();
     m_textLayer->clearPresentation();

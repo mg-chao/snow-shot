@@ -532,6 +532,8 @@ void screenshotTranslationSettingsRoundTripSupportedValues() {
     static_cast<void>(initialize(executable, temporary.path()));
 
     const storage::ScreenshotTranslationSettings translation;
+    require(translation.originalImageTranslationEnabled(),
+            "original image translation should default to enabled for existing configurations");
     require(translation.configuration() ==
                 storage::ScreenshotTranslationConfiguration{QStringLiteral("auto"), {}, {}},
             "translation settings should default to Auto source and runtime-derived target/model");
@@ -539,6 +541,16 @@ void screenshotTranslationSettingsRoundTripSupportedValues() {
         QStringLiteral("ja"), QStringLiteral("zh-Hant"), QStringLiteral("model-a")};
     require(translation.setConfiguration(selected) && translation.configuration() == selected,
             "translation language and model selections should persist together");
+    require(translation.setOriginalImageTranslationEnabled(false) &&
+                !translation.originalImageTranslationEnabled() &&
+                translation.configuration() == selected,
+            "the display toggle must persist independently of language and model settings");
+    require(storage::ApplicationStorage::instance().flushNow().success,
+            "flush translation configuration before restarting storage");
+    static_cast<void>(initialize(executable, temporary.path()));
+    require(!translation.originalImageTranslationEnabled() &&
+                translation.configuration() == selected,
+            "an explicitly disabled display toggle must survive restart");
 
     const auto unsupportedTarget = storage::ConfigurationSchema::normalize(
         QStringLiteral("screenshot_translation/target_language"), QStringLiteral("auto"));

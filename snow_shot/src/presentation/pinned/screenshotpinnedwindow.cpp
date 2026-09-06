@@ -1920,12 +1920,12 @@ bool ScreenshotPinnedWindow::present(const Config& config,
                 }
             },
             [this](bool available, bool translating, bool streaming, bool canUndo, bool canRedo,
-                   bool canReset) {
+                   bool canReset, bool originalImage) {
                 if (m_editController != nullptr && m_editController->toolbarWindow() != nullptr) {
                     if (ScreenshotToolPalette* toolbar =
                             m_editController->toolbarWindow()->palette()) {
                         toolbar->setTextTranslationState(available, translating, streaming, canUndo,
-                                                         canRedo, canReset);
+                                                         canRedo, canReset, originalImage);
                     }
                 }
             },
@@ -2006,6 +2006,17 @@ bool ScreenshotPinnedWindow::present(const Config& config,
                             ? filteredImageCanvasRect.normalized()
                             : m_backgroundCanvasRect;
                     m_screenshotRenderer->setOcrFilteredImage(std::move(filteredImage), canvasRect);
+                }
+            },
+            [this](int lineIndex, const QString& text) {
+                if (m_originalOcrPresentation != nullptr) {
+                    m_originalOcrPresentation->setLineText(lineIndex, text);
+                }
+                if (m_displayOcrPresentation != nullptr) {
+                    m_displayOcrPresentation->setLineText(lineIndex, text);
+                }
+                if (m_recognitionContent != nullptr) {
+                    m_recognitionContent->updateOcrText(lineIndex, text);
                 }
             },
         },
@@ -2746,7 +2757,9 @@ void ScreenshotPinnedWindow::refreshContextMenu() {
         }
     }
     if (m_scaleMenuAction != nullptr) {
-        m_scaleMenuAction->setEnabled(!m_ocrMode);
+        m_scaleMenuAction->setEnabled(!m_ocrMode ||
+                                      (m_recognitionSession != nullptr &&
+                                       m_recognitionSession->originalImageTranslationActive()));
     }
     if (m_scaleReadoutAction != nullptr) {
         m_scaleReadoutAction->setText(tr("Current: %1%").arg(qRound(m_scalePercent)));
@@ -4018,7 +4031,9 @@ void ScreenshotPinnedWindow::rebuildTransformedImage() {
 }
 
 void ScreenshotPinnedWindow::applyScale(int percent) {
-    if (m_ocrMode || percent < kMinimumScalePercent || percent > kMaximumScalePercent) {
+    if ((m_ocrMode && (m_recognitionSession == nullptr ||
+                       !m_recognitionSession->originalImageTranslationActive())) ||
+        percent < kMinimumScalePercent || percent > kMaximumScalePercent) {
         return;
     }
     restoreFromThumbnailImmediately();
@@ -4044,7 +4059,9 @@ void ScreenshotPinnedWindow::applyScale(int percent) {
 }
 
 void ScreenshotPinnedWindow::applyWheelScale(int percent, const QPointF& nativeCursor) {
-    if (m_ocrMode || percent < kMinimumScalePercent || percent > kMaximumScalePercent) {
+    if ((m_ocrMode && (m_recognitionSession == nullptr ||
+                       !m_recognitionSession->originalImageTranslationActive())) ||
+        percent < kMinimumScalePercent || percent > kMaximumScalePercent) {
         return;
     }
     restoreFromThumbnailImmediately();
@@ -4113,11 +4130,12 @@ bool ScreenshotPinnedWindow::handleScaleWheel(QObject* watched, QWheelEvent* eve
     if (event == nullptr || m_closing) {
         return false;
     }
-    if (m_ocrMode) {
+    if (m_ocrMode && (m_recognitionSession == nullptr ||
+                      !m_recognitionSession->originalImageTranslationActive())) {
         event->accept();
         return true;
     }
-    if (m_editController != nullptr && m_editController->editMode()) {
+    if (!m_ocrMode && m_editController != nullptr && m_editController->editMode()) {
         return false;
     }
 

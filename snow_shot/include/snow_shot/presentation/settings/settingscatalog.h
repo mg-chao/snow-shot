@@ -105,6 +105,7 @@ enum class SettingsSwitchBinding {
     ScreenshotCopyImageFileToClipboard,
     PinAutomaticTextRecognition,
     PinAutoResizeWindow,
+    OriginalImageTranslation,
     ScreenRecordingHideToolbar,
     DisableHotkeysOnFocusedFullscreen,
     AutoStartAtBoot,
@@ -346,6 +347,7 @@ enum class SettingsSectionReset {
     Network,
     SystemSettings,
     TextRecognition,
+    Translation,
 };
 
 enum class SettingsSectionItemLayout {

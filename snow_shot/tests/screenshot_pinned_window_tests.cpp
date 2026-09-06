@@ -59,6 +59,8 @@
 #include <utility>
 #include <vector>
 
+void runPinnedOriginalImageTranslationTests();
+
 #if defined(Q_OS_WIN) || defined(_WIN32)
 #include <qt_windows.h>
 #endif
@@ -1675,14 +1677,13 @@ void pinnedMovementShortcutsMoveIdleWindow() {
     require(screen != nullptr, "a primary screen is required");
     QImage background(240, 140, QImage::Format_ARGB32_Premultiplied);
     background.fill(Qt::white);
-    auto* pinnedWindow =
-        new ScreenshotPinnedWindow(ScreenshotPinnedWindow::RuntimeMode::NoDocument);
+    auto* pinnedWindow = new ScreenshotPinnedWindow;
     pinnedWindow->setAttribute(Qt::WA_DontShowOnScreen);
     QPointer<ScreenshotPinnedWindow> guardedWindow(pinnedWindow);
     ScreenshotPinnedWindow::Config config;
     config.nativeGeometry = physicalPinGeometry(*screen, QPoint(120, 120), background.size());
     config.canvasSourceRect = QRectF(QPointF(), QSizeF(background.size()));
-    config.backgroundImage = background;
+    config.imageSource = ScreenshotImageSource::fromImage(background, config.canvasSourceRect);
     config.screen = screen;
     config.automaticTextRecognition = false;
     require(pinnedWindow->present(config), "keyboard movement pin presentation failed");
@@ -1848,13 +1849,12 @@ void pinnedSystemMoveLoopAcceptsMovementShortcuts() {
     const CursorPositionRestorer restoreCursor;
     QImage background(240, 140, QImage::Format_ARGB32_Premultiplied);
     background.fill(Qt::white);
-    auto* pinnedWindow =
-        new ScreenshotPinnedWindow(ScreenshotPinnedWindow::RuntimeMode::NoDocument);
+    auto* pinnedWindow = new ScreenshotPinnedWindow;
     QPointer<ScreenshotPinnedWindow> guardedWindow(pinnedWindow);
     ScreenshotPinnedWindow::Config config;
     config.nativeGeometry = physicalPinGeometry(*screen, QPoint(120, 120), background.size());
     config.canvasSourceRect = QRectF(QPointF(), QSizeF(background.size()));
-    config.backgroundImage = background;
+    config.imageSource = ScreenshotImageSource::fromImage(background, config.canvasSourceRect);
     config.screen = screen;
     config.automaticTextRecognition = false;
     require(pinnedWindow->present(config), "system move loop pin presentation failed");
@@ -3478,6 +3478,10 @@ int main(int argc, char* argv[]) {
         IsolatedPinnedStorage processStorage;
         SnowCanvasRuntime sourceRuntime;
         require(sourceRuntime.isValid(), "source runtime creation failed");
+        if (app.arguments().contains(QStringLiteral("--translation-only"))) {
+            runPinnedOriginalImageTranslationTests();
+            return 0;
+        }
         if (app.arguments().contains(QStringLiteral("--pinned-shortcut-only"))) {
             pinnedConfiguredShortcutUpdatesImmediately(sourceRuntime);
             return 0;

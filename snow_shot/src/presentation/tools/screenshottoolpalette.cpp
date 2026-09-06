@@ -31,6 +31,8 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLayout>
+#include <QKeyEvent>
+#include <QMouseEvent>
 #include <QPaintEvent>
 #include <QPainter>
 #include <QOperatingSystemVersion>
@@ -1640,7 +1642,7 @@ void ScreenshotToolPalette::setTextEditingState(bool available, bool editing, bo
         applyMainToolbarToolActiveStyle(m_textEditButton, editing);
     }
     if (m_textTranslateButton != nullptr) {
-        m_textTranslateButton->setEnabled(available && !m_textTranslationStreaming);
+        m_textTranslateButton->setEnabled(available);
     }
     if (m_textFormattingSelect != nullptr) {
         m_textFormattingSelect->setEnabled(available && !m_textTranslating);
@@ -1651,16 +1653,18 @@ void ScreenshotToolPalette::setTextEditingState(bool available, bool editing, bo
     if (m_textResetButton != nullptr) {
         m_textResetButton->setEnabled(available &&
                                       (editing || (m_textTranslating && m_textCanReset)) &&
-                                      !m_textTranslationStreaming);
+                                      !(m_textTranslating && m_textTranslationStreaming));
     }
     updateHistoryActionAvailability();
 }
 
 void ScreenshotToolPalette::setTextTranslationState(bool available, bool translating,
                                                     bool streaming, bool canUndo, bool canRedo,
-                                                    bool canReset) {
+                                                    bool canReset, bool originalImage) {
     m_textTranslating = translating;
     m_textTranslationStreaming = streaming;
+    m_textTranslationInImage = translating && originalImage;
+    const bool editingLocked = m_textTranslationInImage || (translating && streaming);
     m_textEditingAvailable = available && (translating || m_textEditing);
     if (translating) {
         m_textCanUndo = canUndo;
@@ -1676,13 +1680,13 @@ void ScreenshotToolPalette::setTextTranslationState(bool available, bool transla
                                         available && !translating && m_textEditing);
     }
     if (m_textFormattingSelect != nullptr) {
-        m_textFormattingSelect->setEnabled(available && !streaming);
+        m_textFormattingSelect->setEnabled(available && !editingLocked);
     }
     if (m_textPunctuationSelect != nullptr) {
-        m_textPunctuationSelect->setEnabled(available && !streaming);
+        m_textPunctuationSelect->setEnabled(available && !editingLocked);
     }
     if (m_textResetButton != nullptr) {
-        m_textResetButton->setEnabled(available && !streaming &&
+        m_textResetButton->setEnabled(available && !editingLocked &&
                                       (translating ? canReset : m_textEditing));
     }
     if (m_textSettingsButton != nullptr) {
@@ -2678,6 +2682,39 @@ bool ScreenshotToolPalette::handleToolbarWheel(QWheelEvent* event) {
 }
 
 bool ScreenshotToolPalette::eventFilter(QObject* watched, QEvent* event) {
+    // Translation remains a navigation action while its background requests are busy.
+    if (event != nullptr && watched == m_textTranslationButton &&
+        m_textTranslationButton->isEnabled() && m_textTranslationButton->busy()) {
+        if (event->type() == QEvent::MouseButtonPress ||
+            event->type() == QEvent::MouseButtonRelease) {
+            const auto* mouse = static_cast<QMouseEvent*>(event);
+            if (mouse->button() == Qt::LeftButton) {
+                const bool pressed = event->type() == QEvent::MouseButtonPress;
+                const bool activate =
+                    !pressed && m_textTranslationButton->isDown() &&
+                    m_textTranslationButton->rect().contains(mouse->position().toPoint());
+                m_textTranslationButton->setDown(pressed);
+                if (activate) {
+                    activateToolFromToolbar(Tool::TextTranslation);
+                }
+                return true;
+            }
+        } else if (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease) {
+            const auto* key = static_cast<QKeyEvent*>(event);
+            if (key->key() == Qt::Key_Space || key->key() == Qt::Key_Return ||
+                key->key() == Qt::Key_Enter) {
+                if (!key->isAutoRepeat()) {
+                    const bool pressed = event->type() == QEvent::KeyPress;
+                    const bool activate = !pressed && m_textTranslationButton->isDown();
+                    m_textTranslationButton->setDown(pressed);
+                    if (activate) {
+                        activateToolFromToolbar(Tool::TextTranslation);
+                    }
+                }
+                return true;
+            }
+        }
+    }
     if (event != nullptr &&
         (event->type() == QEvent::Enter || event->type() == QEvent::HoverEnter)) {
         auto* trigger = qobject_cast<adqt::widgets::AdButton*>(watched);
@@ -3483,8 +3520,8 @@ void ScreenshotToolPalette::updateTextRecognitionBusy() {
         m_ocrButton->setBusy(m_ocrBusy && !translationActive);
     }
     if (m_textTranslationButton != nullptr) {
-        m_textTranslationButton->setBusy(translationActive &&
-                                         (m_ocrBusy || m_textTranslationStreaming));
+        m_textTranslationButton->setBusy(m_textTranslationStreaming ||
+                                         (translationActive && m_ocrBusy));
     }
 }
 
@@ -3610,6 +3647,7 @@ bool ScreenshotToolPalette::addMainSecondaryButtons(const Options& options, QBox
         applyScreenshotShortcutTooltip(m_textTranslationButton, QStringLiteral("Text translation"),
                                        QStringLiteral("text_translation"));
         m_textTranslationButton->setObjectName(QStringLiteral("screenshotTextTranslationButton"));
+        m_textTranslationButton->installEventFilter(this);
         m_textTranslationButton->setBusyIndicatorPresentation(
             adqt::widgets::AdButton::BusyIndicatorPresentation::IsolatedSurface);
         addButton(m_textTranslationButton);
@@ -4422,7 +4460,7 @@ void ScreenshotToolPalette::createTextRecognitionActionFamily() {
             });
     setTextEditingState(m_textEditingAvailable, m_textEditing, m_textCanUndo, m_textCanRedo);
     setTextTranslationState(m_textEditingAvailable, m_textTranslating, m_textTranslationStreaming,
-                            m_textCanUndo, m_textCanRedo, m_textCanReset);
+                            m_textCanUndo, m_textCanRedo, m_textCanReset, m_textTranslationInImage);
     setTextTransformSelections(m_textFormattingSelection, m_textPunctuationSelection);
 }
 

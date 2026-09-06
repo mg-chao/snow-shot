@@ -133,10 +133,10 @@ ScreenshotOcrController::ScreenshotOcrController(ScreenshotOcrControllerContext 
                 }
             },
             [this](bool available, bool translating, bool streaming, bool canUndo, bool canRedo,
-                   bool canReset) {
+                   bool canReset, bool originalImage) {
                 if (ScreenshotToolbarWindow* toolbar = m_context.overlayCoordinator.toolbar()) {
                     toolbar->setTextTranslationState(available, translating, streaming, canUndo,
-                                                     canRedo, canReset);
+                                                     canRedo, canReset, originalImage);
                 }
             },
             [this](bool available, bool canUndo, bool canRedo, bool canMerge, bool canSplit,
@@ -198,6 +198,11 @@ ScreenshotOcrController::ScreenshotOcrController(ScreenshotOcrControllerContext 
                    QRectF filteredImageCanvasRect) {
                 applyOcrBackgroundToOverlays(presentation, std::move(filteredImage),
                                              filteredImageCanvasRect);
+            },
+            [this](int lineIndex, const QString& text) {
+                if (m_recognitionWindow != nullptr) {
+                    m_recognitionWindow->updateOcrText(lineIndex, text);
+                }
             },
         },
         this);

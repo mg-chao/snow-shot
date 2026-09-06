@@ -1383,6 +1383,23 @@ if(SNOW_SHOT_BUILD_TESTS)
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
     )
 
+    add_executable(snow-shot-translation-settings-tests
+        tests/translation_settings_tests.cpp
+        src/presentation/services/screenshotclipboardservice.cpp
+    )
+    target_link_libraries(snow-shot-translation-settings-tests PRIVATE
+        snow_shot_settings
+        snow_shot_image_codec
+    )
+    add_test(NAME snow-shot-translation-settings-tests COMMAND snow-shot-translation-settings-tests)
+    set_tests_properties(snow-shot-translation-settings-tests PROPERTIES
+        TIMEOUT 30
+        ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"
+        ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    )
+    snow_shot_import_offscreen_platform(snow-shot-translation-settings-tests)
+
     add_executable(snow-shot-settings-runtime-session-tests
         tests/settings_runtime_session_tests.cpp
         include/snow_shot/presentation/settings/settingsruntimesession.h
@@ -2181,6 +2198,7 @@ if(SNOW_SHOT_BUILD_TESTS)
 
     add_executable(snow-shot-pinned-window-tests
         tests/screenshot_pinned_window_tests.cpp
+        tests/original_image_translation_tests.cpp
         src/platform/physicalcursor.cpp
         include/snow_shot/presentation/screenshotfloatingtoolpalettewindow.h
         include/snow_shot/presentation/screenshotcanvascolorsampler.h
@@ -2255,6 +2273,7 @@ if(SNOW_SHOT_BUILD_TESTS)
     )
     target_compile_definitions(snow-shot-pinned-window-tests PRIVATE
         SNOW_SHOT_TEST_HOOKS=1
+        SNOW_SHOT_TEST_PINNED_TRANSLATION=1
     )
     target_link_libraries(snow-shot-pinned-window-tests PRIVATE
         adqt_icon_core
@@ -2283,6 +2302,8 @@ if(SNOW_SHOT_BUILD_TESTS)
         NAME snow-shot-pinned-toolbar-parity-tests
         COMMAND snow-shot-pinned-window-tests --toolbar-parity-only
     )
+    add_test(NAME snow-shot-pinned-translation-tests
+        COMMAND snow-shot-pinned-window-tests --translation-only)
     add_test(
         NAME snow-shot-pinned-movement-shortcut-tests
         COMMAND snow-shot-pinned-window-tests --movement-shortcut-only
@@ -2393,6 +2414,7 @@ if(SNOW_SHOT_BUILD_TESTS)
     )
     set(_snow_shot_pinned_window_test_names
         snow-shot-pinned-window-tests
+        snow-shot-pinned-translation-tests
         snow-shot-pinned-async-presentation-tests
         snow-shot-pinned-window-pool-tests
         snow-shot-pinned-group-menu-tests
@@ -3119,6 +3141,7 @@ if(SNOW_SHOT_BUILD_TESTS)
 
     add_executable(snow-shot-recognition-session-controller-tests
         tests/screenshot_recognition_session_controller_tests.cpp
+        tests/original_image_translation_tests.cpp
         include/snow_shot/network/snowshotapiclient.h
         include/snow_shot/presentation/languagemanager.h
         include/snow_shot/presentation/screenshotocrpresentation.h
@@ -3179,6 +3202,16 @@ if(SNOW_SHOT_BUILD_TESTS)
                 "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"
         )
     endif()
+
+    add_test(NAME snow-shot-original-image-translation-tests
+        COMMAND snow-shot-recognition-session-controller-tests --translation-only)
+    set_tests_properties(snow-shot-original-image-translation-tests PROPERTIES
+        TIMEOUT 120
+        ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"
+        ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    )
+    snow_shot_import_offscreen_platform(snow-shot-recognition-session-controller-tests)
 
     add_executable(snow-shot-qr-recognition-service-tests
         tests/screenshot_qr_recognition_service_tests.cpp

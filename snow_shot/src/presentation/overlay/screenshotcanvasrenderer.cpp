@@ -1314,6 +1314,17 @@ void ScreenshotOcrTextLayer::synchronize(const QTransform& canvasToViewTransform
     }
 }
 
+void ScreenshotOcrTextLayer::updateLineText(int lineIndex) {
+    if (!m_synchronized || lineIndex < 0 || lineIndex >= static_cast<int>(m_textItems.size())) {
+        return;
+    }
+    synchronizeTextItem(m_textItems.at(static_cast<std::size_t>(lineIndex)),
+                        m_canvasToViewTransform);
+    // A text replacement can change selection ranges even when both endpoints stay put.
+    m_selectionRevision = std::numeric_limits<quint64>::max();
+    updateSelection();
+}
+
 void ScreenshotOcrTextLayer::updateSelection() {
     if (m_presentation == nullptr || m_selectionRevision == m_presentation->selectionRevision()) {
         return;

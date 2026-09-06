@@ -585,7 +585,13 @@ void SnowShotApiClient::finishTranslation(RequestToken token, SnowShotTranslatio
     m_requests.erase(it);
     const QPointer<QObject> receiver = request->receiver;
     TranslationCompletion completion = std::move(request->translationCompletion);
+    const QPointer<QNetworkReply> reply = request->reply;
     delete request;
+    // An SSE error can arrive before HTTP completion. Release its connection before
+    // the consumer starts another request in the newly available queue slot.
+    if (reply != nullptr && reply->isRunning()) {
+        reply->abort();
+    }
     if (receiver != nullptr && completion) {
         completion(std::move(result));
     }
