@@ -295,6 +295,8 @@ bool BuiltInSettingsBackend::switchValue(SettingsSwitchBinding binding) const {
         return storage::TraySettings().enabled();
     case SettingsSwitchBinding::ScreenshotAutoSaveAfterCopy:
         return storage::ScreenshotSettings().autoSaveAfterCopy();
+    case SettingsSwitchBinding::ScreenshotCaptureCursor:
+        return storage::ScreenshotSettings().captureCursor();
     case SettingsSwitchBinding::ScreenshotRestoreOriginalScreenColors:
         return storage::ScreenshotSettings().restoreOriginalScreenColors();
     case SettingsSwitchBinding::ScreenshotCopyImageFileToClipboard:
@@ -324,6 +326,9 @@ bool BuiltInSettingsBackend::switchEnabled(SettingsSwitchBinding binding) const 
 }
 
 bool BuiltInSettingsBackend::applySwitchValue(SettingsSwitchBinding binding, bool value) {
+    if (binding == SettingsSwitchBinding::ScreenshotCaptureCursor) {
+        return storage::ScreenshotSettings().setCaptureCursor(value);
+    }
     if (binding == SettingsSwitchBinding::ScreenshotRestoreOriginalScreenColors) {
         return storage::ScreenshotSettings().setRestoreOriginalScreenColors(value);
     }
@@ -386,6 +391,7 @@ bool BuiltInSettingsBackend::applySwitchValue(SettingsSwitchBinding binding, boo
     case SettingsSwitchBinding::SelectionTransitionAnimation:
     case SettingsSwitchBinding::TrayEnabled:
     case SettingsSwitchBinding::ScreenshotAutoSaveAfterCopy:
+    case SettingsSwitchBinding::ScreenshotCaptureCursor:
     case SettingsSwitchBinding::ScreenshotRestoreOriginalScreenColors:
     case SettingsSwitchBinding::ScreenshotCopyImageFileToClipboard:
     case SettingsSwitchBinding::PinAutomaticTextRecognition:
@@ -1080,6 +1086,9 @@ bool BuiltInSettingsBackend::resetSection(SettingsSectionReset reset) {
             {QStringLiteral("screenshot/restore_original_screen_colors"),
              storage::ConfigurationSchema::defaultValue(
                  QStringLiteral("screenshot/restore_original_screen_colors"))},
+            {QStringLiteral("screenshot/capture_cursor"),
+             storage::ConfigurationSchema::defaultValue(
+                 QStringLiteral("screenshot/capture_cursor"))},
         });
     case SettingsSectionReset::Network:
         return applySelectValue(

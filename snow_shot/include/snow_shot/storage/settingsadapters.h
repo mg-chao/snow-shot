@@ -74,6 +74,8 @@ class GlobalShortcutSettings final {
 
 class ScreenshotSettings final {
   public:
+    [[nodiscard]] bool captureCursor() const;
+    bool setCaptureCursor(bool enabled) const;
     [[nodiscard]] bool restoreOriginalScreenColors() const;
     bool setRestoreOriginalScreenColors(bool enabled) const;
     [[nodiscard]] QString apiMode() const;

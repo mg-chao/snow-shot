@@ -615,6 +615,23 @@ void settingsAdaptersRoundTripAndRejectInvalidValues() {
     auto& applicationStorage = initialize(executable, temporary.path());
 
     const storage::ScreenshotSettings screenshot;
+    require(!screenshot.captureCursor(), "cursor capture must default off");
+    require(screenshot.setCaptureCursor(true) && storage::ScreenshotSettings().captureCursor(),
+            "cursor capture must persist when enabled");
+    require(applicationStorage.configuration().flushNow().success,
+            "enabled cursor capture must be flushable");
+    applicationStorage.shutdown();
+    static_cast<void>(initialize(executable, temporary.path()));
+    require(storage::ScreenshotSettings().captureCursor(),
+            "enabled cursor capture must survive storage restart");
+    require(screenshot.setCaptureCursor(false) && !storage::ScreenshotSettings().captureCursor(),
+            "cursor capture must support disabling");
+    require(applicationStorage.configuration().flushNow().success,
+            "disabled cursor capture must be flushable");
+    applicationStorage.shutdown();
+    static_cast<void>(initialize(executable, temporary.path()));
+    require(!storage::ScreenshotSettings().captureCursor(),
+            "disabled cursor capture must survive storage restart");
     require(screenshot.restoreOriginalScreenColors(), "screen color restoration must default on");
     require(screenshot.setRestoreOriginalScreenColors(false) &&
                 !storage::ScreenshotSettings().restoreOriginalScreenColors(),
@@ -625,7 +642,8 @@ void settingsAdaptersRoundTripAndRejectInvalidValues() {
     require(screenshot.autoExecuteAfterTextRecognition() == QStringLiteral("no_action") &&
                 screenshot.doubleClickAction() == QStringLiteral("copy") &&
                 screenshot.middleMouseButtonAction() == QStringLiteral("pin") &&
-                !screenshot.autoSaveAfterCopy() && !screenshot.copyImageFileToClipboard() &&
+                !screenshot.captureCursor() && !screenshot.autoSaveAfterCopy() &&
+                !screenshot.copyImageFileToClipboard() &&
                 screenshot.imageFormat() == QStringLiteral("png") &&
                 screenshot.manualSaveFilenameFormat() ==
                     QStringLiteral("SnowShot_{YYYY-MM-DD_HH-mm-ss}") &&
@@ -877,6 +895,25 @@ void settingsAdaptersRoundTripAndRejectInvalidValues() {
     require(screenshot.imageSaveDirectory() == QStringLiteral("D:/Captures") &&
                 recording.videoSaveDirectory() == QStringLiteral("D:/Recordings"),
             "custom save directories must survive reload without being replaced by defaults");
+}
+
+void invalidCaptureCursorConfigurationFallsBackToDisabled() {
+    QTemporaryDir temporary;
+    require(temporary.isValid(), "failed to create invalid cursor setting directory");
+    const QString config = QDir(temporary.path()).filePath(QStringLiteral("config.json"));
+    writeBytes(config, QByteArrayLiteral("{\n"
+                                         "  \"storage\": {\"schema_version\": 1},\n"
+                                         "  \"screenshot\": {\"capture_cursor\": \"enabled\"}\n"
+                                         "}\n"));
+    storage::ConfigurationStore store(config, true, true, 60000);
+    require(!store.value(QStringLiteral("screenshot/capture_cursor")).toBool() && store.isDirty() &&
+                store.flushNow().success &&
+                !readObject(config)
+                     .value(QStringLiteral("screenshot"))
+                     .toObject()
+                     .value(QStringLiteral("capture_cursor"))
+                     .toBool(),
+            "invalid stored cursor capture values must be replaced with disabled");
 }
 
 void smartSelectionAccessorAndSignal() {
@@ -1194,6 +1231,7 @@ int main(int argc, char** argv) {
     screenshotUiAdaptersRoundTripTypedValues();
     screenshotTranslationSettingsRoundTripSupportedValues();
     settingsAdaptersRoundTripAndRejectInvalidValues();
+    invalidCaptureCursorConfigurationFallsBackToDisabled();
     smartSelectionAccessorAndSignal();
     unknownFieldsArePreserved();
     malformedConfigurationIsCopiedAndReplaced();

@@ -44,8 +44,12 @@ void settingsPersistAndResetToMsaa(const QString& configurationPath) {
     snow_shot::presentation::GlobalShortcutManager shortcuts;
     settings::BuiltInSettingsBackend backend(shortcuts);
     constexpr auto binding = settings::SettingsSelectBinding::WindowElementApi;
+    constexpr auto cursorBinding = settings::SettingsSwitchBinding::ScreenshotCaptureCursor;
     require(backend.selectValue(binding) == QStringLiteral("msaa"),
             "Window Element API must initially select MSAA");
+    require(!backend.switchValue(cursorBinding) && backend.applySwitchValue(cursorBinding, true) &&
+                backend.switchValue(cursorBinding),
+            "the settings backend must apply and read cursor capture");
     require(backend.applySelectValue(binding, QStringLiteral("uia")) &&
                 backend.selectValue(binding) == QStringLiteral("uia"),
             "the settings backend must apply and read UIA");
@@ -59,8 +63,9 @@ void settingsPersistAndResetToMsaa(const QString& configurationPath) {
                 QStringLiteral("uia"),
             "window element API must survive a configuration reload");
     require(backend.resetSection(settings::SettingsSectionReset::ScreenshotCapture) &&
-                backend.selectValue(binding) == QStringLiteral("msaa"),
-            "resetting system Screenshot settings must restore MSAA");
+                backend.selectValue(binding) == QStringLiteral("msaa") &&
+                !backend.switchValue(cursorBinding),
+            "resetting system Screenshot settings must restore MSAA and disable cursor capture");
     const auto invalid = storage::ConfigurationSchema::normalize(
         QStringLiteral("screenshot/window_element_api"), QStringLiteral("unknown"));
     require(!invalid.valid, "the schema must reject unsupported window element APIs");
