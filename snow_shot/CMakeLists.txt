@@ -642,6 +642,7 @@ target_link_libraries(snow_shot_settings_search PUBLIC
 set(SNOW_SHOT_SETTINGS_SOURCES
     include/snow_shot/platform/windows/autostartregistration.h
     include/snow_shot/platform/windows/focusedfullscreenwindow.h
+    include/snow_shot/platform/windows/printscreenshortcutrecorder.h
     include/snow_shot/presentation/globalshortcutmanager.h
     include/snow_shot/presentation/globalshortcuttypes.h
     include/snow_shot/presentation/components/drawingtoolbareditorsettingswidget.h
@@ -678,6 +679,7 @@ set(SNOW_SHOT_SETTINGS_SOURCES
     src/presentation/styles/thememanager.cpp
     src/platform/windows/autostartregistration.cpp
     src/platform/windows/focusedfullscreenwindow.cpp
+    src/platform/windows/printscreenshortcutrecorder.cpp
 )
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/src/presentation/components/screenshothistorypagewidget.cpp"
      _snow_shot_history_source)
@@ -1564,6 +1566,7 @@ if(SNOW_SHOT_BUILD_TESTS)
 
     add_executable(snow-shot-shortcut-key-row-tests
         tests/shortcut_key_row_tests.cpp
+        src/platform/windows/printscreenshortcutrecorder.cpp
         include/snow_shot/presentation/components/infotooltipicon.h
         include/snow_shot/presentation/components/shortcutkeyrow.h
         include/snow_shot/presentation/styles/buttonborder.h
@@ -1587,6 +1590,9 @@ if(SNOW_SHOT_BUILD_TESTS)
         ant_design_qt
         Qt6::Widgets
     )
+    if(WIN32)
+        target_link_libraries(snow-shot-shortcut-key-row-tests PRIVATE user32)
+    endif()
     add_test(
         NAME snow-shot-shortcut-key-row-tests
         COMMAND snow-shot-shortcut-key-row-tests
@@ -1597,6 +1603,19 @@ if(SNOW_SHOT_BUILD_TESTS)
         ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
     )
+    if(WIN32)
+        add_test(
+            NAME snow-shot-shortcut-key-row-native-tests
+            COMMAND snow-shot-shortcut-key-row-tests --native-print-screen-only
+        )
+        set_tests_properties(snow-shot-shortcut-key-row-native-tests PROPERTIES
+            LABELS "interactive;windows"
+            RUN_SERIAL TRUE
+            ENVIRONMENT "QT_QPA_PLATFORM=windows"
+            ENVIRONMENT_MODIFICATION
+                "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+        )
+    endif()
 
     add_executable(snow-shot-screenshot-shortcut-hints-tests
         tests/screenshot_shortcut_hints_tests.cpp
