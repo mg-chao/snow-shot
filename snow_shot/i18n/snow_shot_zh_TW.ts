@@ -248,7 +248,7 @@
         <translation>%1 不能用作截圖快速鍵，請嘗試其他按鍵</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="317"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="323"/>
         <source>Invalid screenshot shortcut</source>
         <translation>無效的截圖快速鍵</translation>
     </message>
@@ -308,32 +308,42 @@
         <translation>無法將此按鍵註冊為 Windows 全域快速鍵，請嘗試其他按鍵</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="681"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="672"/>
+        <source>Record Print Screen</source>
+        <translation>錄入 Print Screen</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="674"/>
+        <source>If you cannot trigger the screenshot on Windows, please disable the system screenshot tool and try again (Keyboard → Use the Print Screen key to open screen capture). If there is no response, try restarting.</source>
+        <translation>如果在 Windows 上無法觸發螢幕擷取，請關閉系統螢幕擷取工具後重試（鍵盤 → 使用 Print Screen 鍵開啟螢幕擷取）。如果沒有反應，請嘗試重新啟動。</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="740"/>
         <source>Please press a key</source>
         <translation>請按下按鍵</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="319"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="325"/>
         <source>Invalid drawing shortcut</source>
         <translation>無效的繪圖快速鍵</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="322"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="327"/>
         <source>Invalid pinned window shortcut</source>
         <translation>無效的釘選視窗快速鍵</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="324"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="329"/>
         <source>Invalid global shortcut</source>
         <translation>無效的全域快速鍵</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="533"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="542"/>
         <source>Add key config</source>
         <translation>新增按鍵設定</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="676"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="735"/>
         <source>Unsupported key</source>
         <translation>不支援的按鍵</translation>
     </message>
@@ -4310,99 +4320,99 @@
 <context>
     <name>ShortcutKeyRow</name>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1181"/>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1290"/>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1315"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1244"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1353"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1378"/>
         <source>Delay: %1 seconds</source>
         <translation>延遲：%1 秒</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1408"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1471"/>
         <source>%1 (%2 s)</source>
         <translation>%1（%2 秒）</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1470"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1533"/>
         <source>Key configuration for &quot;%1&quot;</source>
         <translation>「%1」的按鍵設定</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1476"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1539"/>
         <source>OK</source>
         <translation>確定</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1477"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1540"/>
         <source>Cancel</source>
         <translation>取消</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1581"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1644"/>
         <source>Unset</source>
         <translation>未設定</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1594"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1657"/>
         <source>Registered</source>
         <translation>已註冊</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1597"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1660"/>
         <source>Partially registered</source>
         <translation>部分已註冊</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1600"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1663"/>
         <source>Registration failed</source>
         <translation>註冊失敗</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1603"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1666"/>
         <source>Not configured</source>
         <translation>未設定</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1616"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1679"/>
         <source>Global shortcut status: %1</source>
         <translation>全域快速鍵狀態：%1</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1641"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1704"/>
         <source>already used by another application or action</source>
         <translation>已被其他應用程式或動作使用</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1644"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1707"/>
         <source>not supported as a Windows global shortcut</source>
         <translation>不支援作為 Windows 全域快速鍵</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1647"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1710"/>
         <source>global shortcuts are not supported on this platform</source>
         <translation>此平台不支援全域快速鍵</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1651"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1714"/>
         <source>the system rejected this shortcut</source>
         <translation>系統拒絕了此快速鍵</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1652"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1715"/>
         <source>the system rejected this shortcut (error %1)</source>
         <translation>系統拒絕了此快速鍵（錯誤 %1）</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1656"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1719"/>
         <source>registration did not complete</source>
         <translation>註冊未完成</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1659"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1722"/>
         <source>%1: %2</source>
         <translation>%1：%2</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1664"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1727"/>
         <source>Some shortcuts are unavailable
 Available: %1
 Unavailable: %2</source>
@@ -4411,7 +4421,7 @@ Unavailable: %2</source>
 不可用：%2</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1669"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1732"/>
         <source>No configured shortcut is available
 %1
 Change the shortcut and try again</source>
@@ -4436,58 +4446,58 @@ Change the shortcut and try again</source>
 <context>
     <name>SnowShotApiClient</name>
     <message>
-        <location filename="../src/network/snowshotapiclient.cpp" line="235"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="257"/>
         <source>Table recognition response is too large</source>
         <translation>表格辨識回應過大</translation>
     </message>
     <message>
-        <location filename="../src/network/snowshotapiclient.cpp" line="244"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="266"/>
         <source>Table recognition request timed out</source>
         <translation>表格辨識請求逾時</translation>
     </message>
     <message>
-        <location filename="../src/network/snowshotapiclient.cpp" line="258"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="280"/>
         <source>Invalid table recognition response</source>
         <translation>表格辨識回應無效</translation>
     </message>
     <message>
-        <location filename="../src/network/snowshotapiclient.cpp" line="264"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="286"/>
         <source>Table recognition returned no table</source>
         <translation>表格辨識未傳回表格</translation>
     </message>
     <message>
-        <location filename="../src/network/snowshotapiclient.cpp" line="269"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="291"/>
         <source>Table recognition failed</source>
         <translation>表格辨識失敗</translation>
     </message>
     <message>
-        <location filename="../src/network/snowshotapiclient.cpp" line="318"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="340"/>
         <source>Translation service response is too large</source>
         <translation>翻譯服務回應過大</translation>
     </message>
     <message>
-        <location filename="../src/network/snowshotapiclient.cpp" line="324"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="346"/>
         <source>Invalid translation service response</source>
         <translation>無效的翻譯服務回應</translation>
     </message>
     <message>
-        <location filename="../src/network/snowshotapiclient.cpp" line="341"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="363"/>
         <source>No translation services are available</source>
         <translation>沒有可用的翻譯服務</translation>
     </message>
     <message>
-        <location filename="../src/network/snowshotapiclient.cpp" line="451"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="473"/>
         <source>Translation failed</source>
         <translation>翻譯失敗</translation>
     </message>
     <message>
-        <location filename="../src/network/snowshotapiclient.cpp" line="463"/>
-        <location filename="../src/network/snowshotapiclient.cpp" line="498"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="485"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="520"/>
         <source>Invalid translation stream response</source>
         <translation>無效的翻譯串流回應</translation>
     </message>
     <message>
-        <location filename="../src/network/snowshotapiclient.cpp" line="500"/>
+        <location filename="../src/network/snowshotapiclient.cpp" line="522"/>
         <source>Translation stream ended unexpectedly</source>
         <translation>翻譯串流意外結束</translation>
     </message>
