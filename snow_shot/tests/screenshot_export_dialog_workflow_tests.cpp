@@ -32,6 +32,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
@@ -42,6 +43,7 @@
 #include <QTranslator>
 #include <QTemporaryDir>
 #include <QThread>
+#include <QTimer>
 #include <QWheelEvent>
 #include <atomic>
 #include <cmath>
@@ -391,7 +393,7 @@ void canvasInteraction() {
     QImage output(original.size(), original.format());
     output.fill(Qt::green);
     canvas.setSource(original, original.size());
-    canvas.setOutput(output, output.size());
+    canvas.setOutput(output);
     canvas.show();
     flush();
     const auto screenshot = canvas.grab().toImage();
@@ -430,7 +432,7 @@ void canvasInteraction() {
             QLineF(point, (cursor - QRectF(canvas.rect()).center() - canvas.pan()) / canvas.zoom())
                     .length() < .001,
         "zoom must preserve the image point under the cursor");
-    require(child<QLabel>(&canvas, "savePreviewZoom")->text() == QStringLiteral("115%"),
+    require(child<QLabel>(&canvas, "savePreviewZoom")->text() == QStringLiteral("Scale: 115%"),
             "zoom readout did not update");
     const QPointF pan = canvas.pan();
     QMouseEvent down(QEvent::MouseButtonPress, QPointF(100, 100), QPointF(100, 100), Qt::LeftButton,
@@ -443,6 +445,175 @@ void canvasInteraction() {
     QApplication::sendEvent(&canvas, &move);
     QApplication::sendEvent(&canvas, &up);
     require(canvas.pan() == pan + QPointF(25, 20), "canvas dragging did not pan");
+}
+
+void canvasZoomHint() {
+    ScreenshotSavePreviewCanvas canvas;
+    canvas.resize(600, 400);
+    canvas.setSource(fixture(), QSize(160, 100));
+    canvas.show();
+    flush();
+    auto* hint = child<QLabel>(&canvas, "savePreviewZoom");
+    require(hint->isHidden(), "initial preview fitting must not show the zoom hint");
+    auto* timer = child<QTimer>(&canvas, "savePreviewZoomTimer");
+    require(timer->isSingleShot() && timer->interval() == 1000 && !timer->isActive(),
+            "zoom hint must use the pinned-window one-second dismissal interval");
+    const auto expire = [&] {
+        timer->stop();
+        require(QMetaObject::invokeMethod(timer, "timeout", Qt::DirectConnection),
+                "zoom hint timeout could not be delivered");
+        require(hint->isHidden(), "zoom hint must disappear when its timer expires");
+    };
+    const auto pressKey = [&](int key) {
+        QKeyEvent event(QEvent::KeyPress, key, Qt::NoModifier);
+        QApplication::sendEvent(&canvas, &event);
+    };
+    pressKey(Qt::Key_Plus);
+    require(hint->isVisible() && timer->isActive() &&
+                hint->text() == QStringLiteral("Scale: 115%") && hint->x() == 8 &&
+                canvas.height() - hint->geometry().bottom() - 1 == 8 &&
+                hint->size() == hint->sizeHint(),
+            "zoom hint must match the pinned-window text, fitted size, and inset");
+    require(hint->styleSheet().contains(QStringLiteral("rgba(0, 0, 0, 150)")) &&
+                hint->styleSheet().contains(QStringLiteral("padding: 3px 6px")) &&
+                hint->testAttribute(Qt::WA_TransparentForMouseEvents),
+            "zoom hint must match the pinned-window appearance without intercepting input");
+    const int firstTimerId = timer->timerId();
+    pressKey(Qt::Key_Plus);
+    require(timer->isActive() && timer->timerId() != firstTimerId,
+            "continued zooming must restart the hint dismissal timer");
+    expire();
+    canvas.setOutput(fixture(QSize(80, 50)));
+    canvas.resize(640, 440);
+    require(hint->isHidden() && !timer->isActive(),
+            "output and layout changes must not show the zoom hint");
+    pressKey(Qt::Key_Home);
+    require(hint->isVisible() && timer->isActive(),
+            "user-requested fitting must show zoom changes");
+    expire();
+    pressKey(Qt::Key_Home);
+    require(hint->isHidden(), "fitting at the same zoom must not show the hint");
+    for (int i = 0; i < 30; ++i)
+        pressKey(Qt::Key_Plus);
+    require(canvas.zoom() == 8.0, "zoom upper bound fixture failed");
+    expire();
+    pressKey(Qt::Key_Plus);
+    require(hint->isHidden() && !timer->isActive(),
+            "zoom input clamped to the current value must not show the hint");
+}
+
+void canvasOriginalSizeBaseline() {
+    ScreenshotSavePreviewCanvas canvas;
+    canvas.resize(600, 400);
+    QImage original(QSize(400, 200), QImage::Format_RGBA8888);
+    original.fill(Qt::red);
+    QImage output(original.size(), original.format());
+    output.fill(Qt::green);
+    const QSize sourcePixels(1000, 500);
+    canvas.setSource(original, sourcePixels);
+    canvas.setOutput(output);
+    canvas.show();
+    flush();
+    const auto frame = [&] {
+        const QImage image = canvas.grab().toImage();
+        return image.copy(0, 0, image.width(), qRound(340 * image.devicePixelRatio()));
+    };
+    const auto requireStableOutput = [&] {
+        const double zoom = canvas.zoom();
+        const QPointF pan = canvas.pan();
+        const QImage before = frame();
+        for (const QSize size : {QSize(500, 250), QSize(2000, 1000), QSize(1000, 300)}) {
+            canvas.setOutput(output.scaled(size));
+            require(canvas.zoom() == zoom && canvas.pan() == pan,
+                    "output resizing must preserve zoom and pan from the original size");
+            require(frame() == before,
+                    "both comparison images must stay aligned to the original canvas bounds");
+        }
+    };
+    requireStableOutput();
+    QWheelEvent wheel(QPointF(450, 150), canvas.mapToGlobal(QPoint(450, 150)), {}, QPoint(0, 120),
+                      Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+    QApplication::sendEvent(&canvas, &wheel);
+    requireStableOutput();
+    canvas.fitImage();
+    canvas.resize(800, 600);
+    flush();
+    require(qAbs(canvas.zoom() - 0.76) < 0.000001,
+            "layout refitting must still use original pixels after output resizing");
+}
+
+void unchangedPreviewEdits(QWidget& owner) {
+    auto* modal = openDialog(owner, fixture());
+    const auto closeDialog = qScopeGuard([modal] {
+        modal->reject();
+        flush();
+    });
+    auto* content = modal->contentWidget();
+    auto* busy = child<QLabel>(content, "savePreviewStatus");
+    auto* width = child<AdInputNumber>(content, "saveWidthInput");
+    auto* height = child<AdInputNumber>(content, "saveHeightInput");
+    auto* lock = child<AdButton>(content, "saveAspectLockButton");
+    auto* quality = child<AdSlider>(content, "saveQualitySlider");
+    auto* format = child<AdSelect>(content, "saveFormatSelect");
+    processUntil([&] { return content->property("previewGeneration").toULongLong() > 0; });
+    const quint64 generation = content->property("previewGeneration").toULongLong();
+    snapshot(modal, QStringLiteral("export-preview-idle"));
+    auto* canvas = child<ScreenshotSavePreviewCanvas>(content, "savePreviewCanvas");
+    const QPoint cursor = canvas->rect().center();
+    QWheelEvent wheel(cursor, canvas->mapToGlobal(cursor), {}, QPoint(0, 120), Qt::NoButton,
+                      Qt::NoModifier, Qt::NoScrollPhase, false);
+    QApplication::sendEvent(canvas, &wheel);
+    snapshot(modal, QStringLiteral("export-preview-zoom"));
+    lock->click();
+    lock->click();
+    require(busy->isHidden(), "relocking unchanged dimensions must not schedule preview rendering");
+    require(QMetaObject::invokeMethod(width, "valueChanged", Qt::DirectConnection,
+                                      Q_ARG(double, 160.1)),
+            "rounded dimension signal could not be delivered");
+    require(busy->isHidden(), "equivalent rounded dimensions must not schedule preview rendering");
+    quality->setValue(80);
+    require(busy->isHidden(), "PNG quality changes must not recalculate unchanged pixels");
+    width->setValue(80);
+    require(!busy->isHidden(), "different output dimensions must schedule a preview");
+    width->setValue(160);
+    require(busy->isHidden(), "returning to the displayed output must reuse its preview");
+    width->clear();
+    require(!modal->acceptButton()->isEnabled(), "empty dimensions must still invalidate Save");
+    width->setValue(160);
+    require(busy->isHidden() && modal->acceptButton()->isEnabled(),
+            "restoring valid displayed dimensions must revalidate without recalculation");
+    bool settled = false;
+    QTimer::singleShot(200, content, [&] { settled = true; });
+    processUntil([&] { return settled; });
+    require(content->property("previewGeneration").toULongLong() == generation,
+            "equivalent edits must not complete redundant preview jobs");
+    width->setValue(80);
+    lock->click();
+    lock->click();
+    processUntil([&] { return content->property("previewGeneration").toULongLong() > generation; });
+    require(height->value() == 50, "aspect lock must continue to update the paired dimension");
+    const quint64 resizedGeneration = content->property("previewGeneration").toULongLong();
+    format->setCurrentValue(QStringLiteral("jpeg"));
+    processUntil(
+        [&] { return content->property("previewGeneration").toULongLong() > resizedGeneration; });
+    const quint64 jpegGeneration = content->property("previewGeneration").toULongLong();
+    quality->setValue(70);
+    require(!busy->isHidden(), "JPEG quality changes must still render a new preview");
+    processUntil(
+        [&] { return content->property("previewGeneration").toULongLong() > jpegGeneration; });
+    const quint64 qualityGeneration = content->property("previewGeneration").toULongLong();
+    width->setValue(4096);
+    processUntil(
+        [&] { return content->property("previewGeneration").toULongLong() > qualityGeneration; });
+    width->setValue(8192);
+    require(busy->isHidden() && height->value() == 5120,
+            "different export sizes with identical bounded preview pixels must reuse rendering");
+    width->setValue(1000000);
+    require(!modal->acceptButton()->isEnabled() && busy->isHidden(),
+            "original export limits must be validated before comparing bounded preview options");
+    width->setValue(8192);
+    require(modal->acceptButton()->isEnabled() && busy->isHidden(),
+            "restoring equivalent bounded pixels must reuse the last valid preview");
 }
 
 void shortcutPopupInteraction(QWidget& owner, const QTemporaryDir& temp) {
@@ -860,6 +1031,16 @@ void shortcutWrappingAndLanguageChange(QWidget& owner, const QTemporaryDir& temp
                 child<AdLineEdit>(editor->contentWidget(), "savePathNameInput")->accessibleName() ==
                     QStringLiteral("Translated Name"),
             "open dialogs must retranslate captions and accessible names");
+    auto* quality = child<AdSlider>(content, "saveQualitySlider");
+    require(
+        quality->marks().size() == 2 &&
+            quality->marks().value(quality->minimum()).label == QStringLiteral("Translated 0%") &&
+            quality->marks().value(quality->maximum()).label == QStringLiteral("Translated 100%"),
+        "quality endpoint descriptions must retranslate through the slider marks");
+    auto* zoomHint = child<QLabel>(content, "savePreviewZoom");
+    require(zoomHint->text().startsWith(QStringLiteral("Translated Scale: ")) &&
+                zoomHint->isHidden(),
+            "zoom hint must retranslate without becoming visible");
     const auto* form = qobject_cast<AdForm*>(editor->contentWidget());
     require(form->itemForName(QStringLiteral("name"))
                 ->errorMessages()
@@ -943,12 +1124,23 @@ void rowBackedDialogAndStalePreview(QWidget& owner, const QTemporaryDir& temp) {
     auto* width = child<AdInputNumber>(content, "saveWidthInput");
     width->setValue(32);
     processUntil([&] { return ScreenshotExportCoordinator::shared().pendingJobCount() == 3; });
+    auto* lock = child<AdButton>(content, "saveAspectLockButton");
+    lock->click();
+    lock->click();
+    width->setValue(64);
+    require(child<QLabel>(content, "savePreviewStatus")->isHidden() &&
+                content->property("previewGeneration").toULongLong() == previous,
+            "returning to the completed preview must cancel queued work and reuse its pixels");
     width->setValue(48);
+    require(child<QLabel>(content, "savePreviewStatus")->isHidden(),
+            "queued cancellation must also reuse equivalent bounded preview dimensions");
+    width->setValue(24);
     *gate.released = true;
     processUntil(
         [&] { return content->property("previewGeneration").toULongLong() >= previous + 2; });
-    require(child<AdInputNumber>(content, "saveHeightInput")->value() == 2250,
+    require(child<AdInputNumber>(content, "saveHeightInput")->value() == 1125,
             "stale preview must never replace latest dimensions");
+    width->setValue(48);
     child<AdLineEdit>(content, "saveDirectoryInput")->setText(temp.filePath("scrolling"));
     child<AdLineEdit>(content, "saveFilenameInput")->setText(QStringLiteral("scroll.png"));
     modal->acceptButton()->click();
@@ -976,6 +1168,8 @@ int main(int argc, char* argv[]) {
                 "test storage initialization failed");
         if (app.arguments().contains(QStringLiteral("--canvas"))) {
             canvasInteraction();
+            canvasZoomHint();
+            canvasOriginalSizeBaseline();
             ScreenshotExportCoordinator::shared().shutdown();
             storage::ApplicationStorage::instance().shutdown();
             std::cout << "Export preview canvas tests passed\n";
@@ -991,6 +1185,23 @@ int main(int argc, char* argv[]) {
         QWidget owner;
         owner.resize(1200, 800);
         owner.show();
+        if (app.arguments().contains(QStringLiteral("--zoom-hint")) ||
+            app.arguments().contains(QStringLiteral("--canvas-baseline")) ||
+            app.arguments().contains(QStringLiteral("--unchanged-edits")) ||
+            app.arguments().contains(QStringLiteral("--row-backed-preview"))) {
+            if (app.arguments().contains(QStringLiteral("--zoom-hint")))
+                canvasZoomHint();
+            if (app.arguments().contains(QStringLiteral("--canvas-baseline")))
+                canvasOriginalSizeBaseline();
+            if (app.arguments().contains(QStringLiteral("--unchanged-edits")))
+                unchangedPreviewEdits(owner);
+            if (app.arguments().contains(QStringLiteral("--row-backed-preview")))
+                rowBackedDialogAndStalePreview(owner, temp);
+            ScreenshotExportCoordinator::shared().shutdown();
+            storage::ApplicationStorage::instance().shutdown();
+            std::cout << "Export preview regression tests passed\n";
+            return 0;
+        }
         if (app.arguments().contains(QStringLiteral("--preview-and-save"))) {
             previewAndSave(owner, temp);
             ScreenshotExportCoordinator::shared().shutdown();
@@ -1005,6 +1216,9 @@ int main(int argc, char* argv[]) {
         stateRules(temp);
         encodingAndBoundedSources();
         canvasInteraction();
+        canvasZoomHint();
+        canvasOriginalSizeBaseline();
+        unchangedPreviewEdits(owner);
         shortcutsAndCancellation(owner, temp);
         previewAndSave(owner, temp);
         overwriteRequiresConfirmation(owner, temp);

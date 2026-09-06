@@ -7,12 +7,15 @@
 #include <QPainter>
 #include <QPolygonF>
 #include <QResizeEvent>
+#include <QTimer>
 #include <QWheelEvent>
 
 #include <algorithm>
 #include <cmath>
 
 namespace {
+constexpr int kZoomReadoutInset = 8;
+constexpr int kZoomReadoutDurationMs = 1000;
 constexpr qreal kSplitHitHalfWidth = 15.0;
 constexpr qreal kSplitTrackWidth = 8.0;
 constexpr qreal kSplitThumbRadius = 24.0;
@@ -36,10 +39,16 @@ ScreenshotSavePreviewCanvas::ScreenshotSavePreviewCanvas(QWidget* parent) : QWid
     m_readout = new QLabel(this);
     m_readout->setObjectName(QStringLiteral("savePreviewZoom"));
     m_readout->setAlignment(Qt::AlignCenter);
-    m_readout->setFixedSize(92, 28);
     m_readout->setAttribute(Qt::WA_TransparentForMouseEvents);
-    m_readout->setStyleSheet(
-        QStringLiteral("color: white; background: rgba(0,0,0,160); border-radius: 4px;"));
+    m_readout->setStyleSheet(QStringLiteral("QLabel#savePreviewZoom { "
+                                            "color: white; background-color: rgba(0, 0, 0, 150); "
+                                            "padding: 3px 6px; border-radius: 4px; }"));
+    m_readout->hide();
+    m_readoutTimer = new QTimer(this);
+    m_readoutTimer->setObjectName(QStringLiteral("savePreviewZoomTimer"));
+    m_readoutTimer->setSingleShot(true);
+    m_readoutTimer->setInterval(kZoomReadoutDurationMs);
+    connect(m_readoutTimer, &QTimer::timeout, m_readout, &QWidget::hide);
     m_busy = new QLabel(this);
     m_busy->setObjectName(QStringLiteral("savePreviewStatus"));
     m_busy->setStyleSheet(QStringLiteral(
@@ -50,15 +59,14 @@ ScreenshotSavePreviewCanvas::ScreenshotSavePreviewCanvas(QWidget* parent) : QWid
 }
 void ScreenshotSavePreviewCanvas::setSource(QImage image, QSize pixels) {
     m_original = std::move(image);
-    m_pixels = pixels;
+    m_output = {};
+    m_sourcePixels = pixels;
+    m_readoutTimer->stop();
+    m_readout->hide();
     fitImage();
 }
-void ScreenshotSavePreviewCanvas::setOutput(QImage image, QSize pixels) {
+void ScreenshotSavePreviewCanvas::setOutput(QImage image) {
     m_output = std::move(image);
-    m_pixels = pixels;
-    if (m_fit)
-        fitImage();
-    updateReadout();
     update();
 }
 void ScreenshotSavePreviewCanvas::setSplitRatio(double value) {
@@ -66,19 +74,24 @@ void ScreenshotSavePreviewCanvas::setSplitRatio(double value) {
     setProperty("splitRatio", m_split);
     update();
 }
-void ScreenshotSavePreviewCanvas::fitImage() {
-    if (m_pixels.isEmpty())
+void ScreenshotSavePreviewCanvas::fitImage(bool showZoomReadout) {
+    if (m_sourcePixels.isEmpty())
         return;
+    const double previousZoom = m_zoom;
     m_fit = true;
     m_pan = {};
-    m_zoom = std::min({1.0, std::max(1, width() - 40) / double(m_pixels.width()),
-                       std::max(1, height() - 40) / double(m_pixels.height())});
+    m_zoom = std::min({1.0, std::max(1, width() - 40) / double(m_sourcePixels.width()),
+                       std::max(1, height() - 40) / double(m_sourcePixels.height())});
     updateReadout();
+    if (showZoomReadout && !qFuzzyCompare(previousZoom, m_zoom))
+        showReadout();
     update();
 }
 void ScreenshotSavePreviewCanvas::updateReadout() {
-    m_readout->setText(tr("%1%").arg(m_zoom * 100, 0, 'f', m_zoom < 0.1 ? 1 : 0));
-    m_readout->move(12, std::max(0, height() - m_readout->height() - 12));
+    m_readout->setText(tr("Scale: %1%").arg(m_zoom * 100, 0, 'f', m_zoom < 0.1 ? 1 : 0));
+    m_readout->adjustSize();
+    m_readout->move(kZoomReadoutInset,
+                    std::max(0, height() - m_readout->height() - kZoomReadoutInset));
     m_readout->setAccessibleName(tr("Current zoom"));
     m_busy->setText(tr("Rendering preview"));
     m_busy->adjustSize();
@@ -86,15 +99,20 @@ void ScreenshotSavePreviewCanvas::updateReadout() {
     setAccessibleName(tr("Export comparison preview"));
     setProperty("zoom", m_zoom);
 }
+void ScreenshotSavePreviewCanvas::showReadout() {
+    m_readout->show();
+    m_readout->raise();
+    m_readoutTimer->start();
+}
 void ScreenshotSavePreviewCanvas::setBusy(bool busy) {
     m_busy->setVisible(busy);
 }
 void ScreenshotSavePreviewCanvas::paintEvent(QPaintEvent*) {
     QPainter painter(this);
     painter.fillRect(rect(), QBrush(m_checkerboard));
-    if (m_pixels.isEmpty() || m_original.isNull())
+    if (m_sourcePixels.isEmpty() || m_original.isNull())
         return;
-    const QSizeF dimensions(m_pixels.width() * m_zoom, m_pixels.height() * m_zoom);
+    const QSizeF dimensions(m_sourcePixels.width() * m_zoom, m_sourcePixels.height() * m_zoom);
     const QPointF center = QRectF(rect()).center() + m_pan;
     const QRectF bounds(center.x() - dimensions.width() / 2, center.y() - dimensions.height() / 2,
                         dimensions.width(), dimensions.height());
@@ -193,15 +211,18 @@ void ScreenshotSavePreviewCanvas::leaveEvent(QEvent* event) {
     QWidget::leaveEvent(event);
 }
 void ScreenshotSavePreviewCanvas::mouseDoubleClickEvent(QMouseEvent*) {
-    fitImage();
+    fitImage(true);
 }
 void ScreenshotSavePreviewCanvas::zoomAt(double value, QPointF position) {
     const double zoom = std::clamp(value, 0.001, 8.0);
+    if (m_sourcePixels.isEmpty() || qFuzzyCompare(zoom, m_zoom))
+        return;
     const QPointF offset = position - QRectF(rect()).center();
     m_pan = offset - (offset - m_pan) * (zoom / m_zoom);
     m_zoom = zoom;
     m_fit = false;
     updateReadout();
+    showReadout();
     update();
 }
 bool ScreenshotSavePreviewCanvas::splitHandleContains(QPointF position) const {
@@ -223,7 +244,7 @@ void ScreenshotSavePreviewCanvas::keyPressEvent(QKeyEvent* event) {
     else if (event->key() == Qt::Key_Right)
         setSplitRatio(m_split + 0.02);
     else if (event->key() == Qt::Key_Home)
-        fitImage();
+        fitImage(true);
     else if (event->key() == Qt::Key_Plus || event->key() == Qt::Key_Equal)
         zoomAt(m_zoom * 1.15, QRectF(rect()).center());
     else if (event->key() == Qt::Key_Minus)

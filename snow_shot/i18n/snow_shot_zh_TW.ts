@@ -407,89 +407,89 @@
 <context>
     <name>ScreenshotController</name>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2538"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2539"/>
         <source>Save screenshot</source>
         <translation>儲存截圖</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2811"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2818"/>
         <location filename="../src/presentation/pinned/screenshotpinnedwindow.cpp" line="3920"/>
         <location filename="../src/presentation/pinned/screenshotpinnedwindow.cpp" line="3930"/>
         <source>The screenshot could not be saved: %1</source>
         <translation>無法儲存截圖：%1</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2079"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2138"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2948"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2080"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2139"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2955"/>
         <source>The scrolling screenshot could not be prepared</source>
         <translation>無法準備滾動截圖</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2061"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2106"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2126"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2062"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2107"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2127"/>
         <source>The scrolling screenshot could not be pinned</source>
         <translation>無法釘選滾動截圖</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2309"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2310"/>
         <source>The clipboard does not contain content that can be pinned</source>
         <translation>剪貼簿中沒有可釘選的內容</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2419"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2420"/>
         <source>The clipboard content could not be pinned</source>
         <translation>無法釘選剪貼簿內容</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2466"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2467"/>
         <source>The clipboard content could not be pinned: %1</source>
         <translation>無法釘選剪貼簿內容：%1</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2427"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2498"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2428"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2499"/>
         <source>The clipboard pin could not be presented</source>
         <translation>無法顯示已釘選的剪貼簿內容</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2507"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2508"/>
         <source>The clipboard pin queue is full</source>
         <translation>剪貼簿內容釘選佇列已滿</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2599"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2600"/>
         <source>The screenshot could not be prepared for saving</source>
         <translation>無法準備要儲存的截圖</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2903"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2910"/>
         <location filename="../src/presentation/pinned/screenshotpinnedwindow.cpp" line="3654"/>
         <source>No recognized result is available to copy</source>
         <translation>沒有可複製的辨識結果</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3072"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3079"/>
         <source>Automatic screenshot saving failed: %1</source>
         <translation>自動儲存截圖失敗：%1</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3127"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3134"/>
         <source>The screenshot will be copied, but automatic saving could not be queued</source>
         <translation>仍會複製截圖，但無法將自動儲存工作加入佇列</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3084"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3105"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3160"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3181"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3091"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3112"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3167"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3188"/>
         <source>The screenshot could not be copied: %1</source>
         <translation>無法複製截圖：%1</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3199"/>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3210"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3206"/>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="3217"/>
         <source>The screenshot clipboard operation could not be started</source>
         <translation>無法啟動截圖剪貼簿操作</translation>
     </message>
@@ -1184,253 +1184,253 @@
 <context>
     <name>ScreenshotSaveAsFileDialog</name>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="109"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="352"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="112"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="374"/>
         <source>Select save directory</source>
         <translation>選擇儲存目錄</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="260"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="397"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="267"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="419"/>
         <source>Replace file</source>
         <translation>取代檔案</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="262"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="398"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="269"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="420"/>
         <source>Replace the existing file &quot;%1&quot;?</source>
         <translation>是否取代現有檔案「%1」？</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="264"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="400"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="271"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="422"/>
         <source>Replace</source>
         <translation>取代</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="265"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="351"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="401"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="408"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="523"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="272"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="373"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="423"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="430"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="555"/>
         <source>Cancel</source>
         <translation>取消</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="349"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="371"/>
         <source>Save as file</source>
         <translation>儲存為檔案</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="350"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="372"/>
         <source>Save</source>
         <translation>儲存</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="353"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="375"/>
         <source>Lock aspect ratio</source>
         <translation>鎖定長寬比</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="606"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="835"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="638"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="893"/>
         <source>0%</source>
         <translation>0%</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="609"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="641"/>
         <source>Lossless</source>
         <translation>無損</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="355"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="829"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="377"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="887"/>
         <source>Save path</source>
         <translation>儲存路徑</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="356"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="830"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="378"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="888"/>
         <source>File name</source>
         <translation>檔案名稱</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="357"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="831"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="379"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="889"/>
         <source>Image format</source>
         <translation>影像格式</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="358"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="832"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="380"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="890"/>
         <source>Width</source>
         <translation>寬度</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="359"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="833"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="381"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="891"/>
         <source>Height</source>
         <translation>高度</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="360"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="834"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="382"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="892"/>
         <source>Quality</source>
         <translation>品質</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="392"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="494"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="414"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="526"/>
         <source>Edit</source>
         <translation>編輯</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="393"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="495"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="415"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="527"/>
         <source>Delete</source>
         <translation>刪除</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="405"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="517"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="427"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="549"/>
         <source>Edit save path</source>
         <translation>編輯儲存路徑</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="406"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="468"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="517"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="428"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="490"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="549"/>
         <source>Add save path</source>
         <translation>新增儲存路徑</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="407"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="522"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="429"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="554"/>
         <source>OK</source>
         <translation>確定</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="411"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="414"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="537"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="433"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="436"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="569"/>
         <source>Name</source>
         <translation>名稱</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="412"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="416"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="538"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="434"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="438"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="570"/>
         <source>Path</source>
         <translation>路徑</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="449"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="471"/>
         <source>Edit or delete save path</source>
         <translation>編輯或刪除儲存路徑</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="459"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="481"/>
         <source>App directory</source>
         <translation>應用程式目錄</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="460"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="482"/>
         <source>Desktop</source>
         <translation>桌面</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="504"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="563"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="536"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="595"/>
         <source>The save paths could not be stored</source>
         <translation>無法儲存路徑設定</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="579"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="611"/>
         <source>Please enter a name</source>
         <translation>請輸入名稱</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="583"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="615"/>
         <source>A save path with this name already exists</source>
         <translation>已存在同名的儲存路徑</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="585"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="880"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="617"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="937"/>
         <source>Please enter an absolute directory path</source>
         <translation>請輸入絕對目錄路徑</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="609"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="836"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="641"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="894"/>
         <source>100%</source>
         <translation>100%</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="665"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="726"/>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="794"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="710"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="779"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="848"/>
         <source>The screenshot export queue is full</source>
         <translation>擷取畫面匯出佇列已滿</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="668"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="713"/>
         <source>The screenshot could not be prepared</source>
         <translation>無法準備擷取畫面</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="672"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="717"/>
         <source>The screenshot could not be prepared: %1</source>
         <translation>無法準備擷取畫面：%1</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="713"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="761"/>
         <source>The export could not be prepared: %1</source>
         <translation>無法準備匯出：%1</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="720"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="771"/>
         <source>The encoded preview could not be displayed: %1</source>
         <translation>無法顯示編碼預覽：%1</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="780"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="834"/>
         <source>The screenshot could not be saved: %1</source>
         <translation>無法儲存擷取畫面：%1</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="837"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="895"/>
         <source>PNG</source>
         <translation>PNG</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="838"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="896"/>
         <source>JPEG</source>
         <translation>JPEG</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="839"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="897"/>
         <source>WebP</source>
         <translation>WebP</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="840"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="898"/>
         <source>JPEG XL</source>
         <translation>JPEG XL</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="841"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="899"/>
         <source>AVIF</source>
         <translation>AVIF</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="890"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="947"/>
         <source>Please enter a valid file name</source>
         <translation>請輸入有效的檔案名稱</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="899"/>
-        <location filename="../src/presentation/services/screenshotsaveexportpipeline.cpp" line="172"/>
+        <location filename="../src/presentation/services/screenshotsaveasfiledialog.cpp" line="956"/>
+        <location filename="../src/presentation/services/screenshotsaveexportpipeline.cpp" line="180"/>
         <source>The dimensions are not supported by this image format</source>
         <translation>此影像格式不支援指定的尺寸</translation>
     </message>
@@ -1447,7 +1447,7 @@
     <message>
         <location filename="../src/presentation/services/screenshotsaveexportpipeline.cpp" line="110"/>
         <location filename="../src/presentation/services/screenshotsaveexportpipeline.cpp" line="134"/>
-        <location filename="../src/presentation/services/screenshotsaveexportpipeline.cpp" line="195"/>
+        <location filename="../src/presentation/services/screenshotsaveexportpipeline.cpp" line="200"/>
         <source>The screenshot pixels could not be read</source>
         <translation>無法讀取擷取畫面像素</translation>
     </message>
@@ -1455,22 +1455,22 @@
 <context>
     <name>ScreenshotSavePreviewCanvas</name>
     <message>
-        <location filename="../src/presentation/services/screenshotsavepreviewcanvas.cpp" line="69"/>
-        <source>%1%</source>
-        <translation>%1%</translation>
+        <location filename="../src/presentation/services/screenshotsavepreviewcanvas.cpp" line="91"/>
+        <source>Scale: %1%</source>
+        <translation>縮放：%1%</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsavepreviewcanvas.cpp" line="71"/>
+        <location filename="../src/presentation/services/screenshotsavepreviewcanvas.cpp" line="95"/>
         <source>Current zoom</source>
         <translation>目前縮放比例</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsavepreviewcanvas.cpp" line="72"/>
+        <location filename="../src/presentation/services/screenshotsavepreviewcanvas.cpp" line="96"/>
         <source>Rendering preview</source>
         <translation>正在繪製預覽</translation>
     </message>
     <message>
-        <location filename="../src/presentation/services/screenshotsavepreviewcanvas.cpp" line="75"/>
+        <location filename="../src/presentation/services/screenshotsavepreviewcanvas.cpp" line="99"/>
         <source>Export comparison preview</source>
         <translation>匯出比較預覽</translation>
     </message>

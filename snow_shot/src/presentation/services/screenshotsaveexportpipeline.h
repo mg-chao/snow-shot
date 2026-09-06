@@ -32,6 +32,7 @@ struct Encoded {
 };
 [[nodiscard]] Source prepare(const ScreenshotImageRowSource& rows,
                              const ScreenshotExportCancellation& cancellation, QString* error);
+[[nodiscard]] ScreenshotSaveExportOptions previewOptions(ScreenshotSaveExportOptions options);
 [[nodiscard]] std::shared_ptr<Encoded> render(const Source& source,
                                               const ScreenshotSaveExportOptions& options,
                                               const ScreenshotExportCancellation& cancellation,

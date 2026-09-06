@@ -161,6 +161,14 @@ QSize encoderLimits(ScreenshotImageFileFormat format) {
     return {int(qMin(width, uint32_t(std::numeric_limits<int>::max() / 4))),
             int(qMin(height, uint32_t(std::numeric_limits<int>::max() / 4)))};
 }
+ScreenshotSaveExportOptions previewOptions(ScreenshotSaveExportOptions options) {
+    if (options.size.width() > 2048 || options.size.height() > 2048)
+        options.size.scale(2048, 2048, Qt::KeepAspectRatio);
+    options.size = options.size.expandedTo(QSize(1, 1));
+    options.quality =
+        options.format == ScreenshotImageFileFormat::Png ? 100 : qBound(1, options.quality, 100);
+    return options;
+}
 std::shared_ptr<Encoded> render(const Source& source, const ScreenshotSaveExportOptions& options,
                                 const ScreenshotExportCancellation& cancellation, QString* error,
                                 bool previewOnly) {
@@ -173,10 +181,7 @@ std::shared_ptr<Encoded> render(const Source& source, const ScreenshotSaveExport
             "ScreenshotSaveAsFileDialog", "The dimensions are not supported by this image format");
         return {};
     }
-    QSize outputSize = options.size;
-    if (previewOnly && (outputSize.width() > 2048 || outputSize.height() > 2048))
-        outputSize.scale(2048, 2048, Qt::KeepAspectRatio);
-    outputSize = outputSize.expandedTo(QSize(1, 1));
+    const QSize outputSize = previewOnly ? previewOptions(options).size : options.size;
     auto rows = previewOnly ? snow_shot::image_codec::srgbRowSource(source.preview) : source.rows;
     std::shared_ptr<MappedRaster> raster;
     std::array<char, 1024> backendError{};

@@ -39,6 +39,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 
 namespace {
 using namespace adqt::widgets;
@@ -181,7 +182,7 @@ class SaveContent final : public QWidget {
                 });
 
         m_debounce.setSingleShot(true);
-        m_debounce.setInterval(140);
+        m_debounce.setInterval(512);
         connect(&m_debounce, &QTimer::timeout, this, [this] { startRender(); });
         m_menuCloseTimer.setSingleShot(true);
         m_menuCloseTimer.setInterval(150);
@@ -645,11 +646,24 @@ class SaveContent final : public QWidget {
         updateControls();
         if (m_closed || !m_source.rows.isValid())
             return;
+        validateFields();
+        const QString error = m_state.imageValidationError();
+        const auto options = error.isEmpty()
+                                 ? std::make_optional(pipeline::previewOptions(m_state.output))
+                                 : std::nullopt;
+        if (options && options == m_requestedPreviewOptions)
+            return;
+        m_requestedPreviewOptions = options;
         ++m_generation;
         m_job.cancel();
-        validateFields();
-        showError({});
-        m_preview->setOutput(m_source.preview, m_state.output.size);
+        m_debounce.stop();
+        showError(error);
+        if (!options || options == m_renderedPreviewOptions) {
+            if (options)
+                m_preview->setOutput(m_renderedPreview);
+            m_preview->setBusy(false);
+            return;
+        }
         m_preview->setBusy(true);
         m_debounce.start();
     }
@@ -705,6 +719,8 @@ class SaveContent final : public QWidget {
     void startRender() {
         if (m_closed || m_saving || !m_source.rows.isValid())
             return;
+        if (!m_requestedPreviewOptions || m_requestedPreviewOptions == m_renderedPreviewOptions)
+            return;
         if (m_renderRunning)
             return;
         const QString error = m_state.imageValidationError();
@@ -716,7 +732,7 @@ class SaveContent final : public QWidget {
             return;
         }
         const quint64 generation = m_generation;
-        const auto options = m_state.output;
+        const auto options = *m_requestedPreviewOptions;
         auto encoded = std::make_shared<std::shared_ptr<pipeline::Encoded>>();
         m_renderRunning = true;
         m_job = ScreenshotExportCoordinator::shared().submit(
@@ -729,7 +745,7 @@ class SaveContent final : public QWidget {
                     result.failureStage = ScreenshotExportFailureStage::Render;
                 return result;
             },
-            [this, generation, encoded](ScreenshotExportTaskResult result) {
+            [this, generation, options, encoded](ScreenshotExportTaskResult result) {
                 m_renderRunning = false;
                 m_job = {};
                 if (m_closed)
@@ -741,19 +757,25 @@ class SaveContent final : public QWidget {
                 }
                 m_preview->setBusy(false);
                 if (!result.succeeded() || !*encoded) {
+                    m_requestedPreviewOptions.reset();
                     saveFailed(tr("The export could not be prepared: %1").arg(result.error));
                     return;
                 }
                 const auto& current = *encoded;
-                if (!current->preview.isNull())
-                    m_preview->setOutput(current->preview, m_state.output.size);
-                else
+                if (!current->preview.isNull()) {
+                    m_renderedPreviewOptions = options;
+                    m_renderedPreview = current->preview;
+                    m_preview->setOutput(m_renderedPreview);
+                } else {
+                    m_requestedPreviewOptions.reset();
                     showError(tr("The encoded preview could not be displayed: %1")
                                   .arg(current->previewError));
+                }
                 setProperty("previewGeneration", QVariant::fromValue(generation));
             });
         if (!m_job.isValid()) {
             m_renderRunning = false;
+            m_requestedPreviewOptions.reset();
             saveFailed(tr("The screenshot export queue is full"));
         }
     }
@@ -768,6 +790,7 @@ class SaveContent final : public QWidget {
         m_debounce.stop();
         ++m_generation;
         m_job.cancel();
+        m_requestedPreviewOptions.reset();
         writeFile();
     }
     void saveFailed(const QString& error) {
@@ -830,6 +853,9 @@ class SaveContent final : public QWidget {
     ScreenshotSaveAsFileDialog::Saved m_saved;
     ScreenshotSaveDialogState m_state;
     pipeline::Source m_source;
+    std::optional<ScreenshotSaveExportOptions> m_requestedPreviewOptions;
+    std::optional<ScreenshotSaveExportOptions> m_renderedPreviewOptions;
+    QImage m_renderedPreview;
     ScreenshotExportJobHandle m_job;
     ScreenshotExportJobHandle m_saveJob;
     QTimer m_debounce;

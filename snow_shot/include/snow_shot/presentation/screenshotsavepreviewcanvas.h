@@ -5,13 +5,14 @@
 #include <QWidget>
 
 class QLabel;
+class QTimer;
 
 class ScreenshotSavePreviewCanvas final : public QWidget {
     Q_OBJECT
   public:
     explicit ScreenshotSavePreviewCanvas(QWidget* parent = nullptr);
     void setSource(QImage image, QSize pixels);
-    void setOutput(QImage image, QSize pixels);
+    void setOutput(QImage image);
     void setSplitRatio(double value);
     [[nodiscard]] double splitRatio() const {
         return m_split;
@@ -22,7 +23,7 @@ class ScreenshotSavePreviewCanvas final : public QWidget {
     [[nodiscard]] QPointF pan() const {
         return m_pan;
     }
-    void fitImage();
+    void fitImage(bool showReadout = false);
     void setBusy(bool busy);
 
   protected:
@@ -39,12 +40,13 @@ class ScreenshotSavePreviewCanvas final : public QWidget {
 
   private:
     void updateReadout();
+    void showReadout();
     void zoomAt(double value, QPointF position);
     [[nodiscard]] bool splitHandleContains(QPointF position) const;
     QImage m_original;
     QImage m_output;
     QPixmap m_checkerboard;
-    QSize m_pixels;
+    QSize m_sourcePixels;
     QPointF m_pan;
     QPointF m_last;
     double m_split = 0.5;
@@ -54,5 +56,6 @@ class ScreenshotSavePreviewCanvas final : public QWidget {
     bool m_splitHovered = false;
     bool m_fit = true;
     QLabel* m_readout = nullptr;
+    QTimer* m_readoutTimer = nullptr;
     QLabel* m_busy = nullptr;
 };
