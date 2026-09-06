@@ -260,6 +260,33 @@ ScreenshotRecognitionSessionController::cachedRecognitionResults() const {
     return results;
 }
 
+ScreenshotRecognitionResults
+ScreenshotRecognitionSessionController::displayedRecognitionResults() const {
+    ScreenshotRecognitionResults results = cachedRecognitionResults();
+    if (!m_active || m_mode != Mode::Text || editing() || m_textCacheKey.isEmpty()) {
+        return results;
+    }
+    const auto entry = m_textCache.constFind(m_textCacheKey);
+    if (entry == m_textCache.cend()) {
+        return results;
+    }
+    std::shared_ptr<ScreenshotOcrPresentation> presentation = m_presentation;
+    if (originalImageTranslationActive() && entry->overlayTranslation.presentation != nullptr) {
+        presentation = entry->overlayTranslation.presentation;
+    }
+    if (presentation != nullptr) {
+        ScreenshotOcrRecognitionResult text;
+        // A pin owns the text visible at activation, independent of later streaming updates.
+        text.presentation = std::make_shared<ScreenshotOcrPresentation>();
+        text.presentation->selection = presentation->selection;
+        text.presentation->lines = presentation->lines;
+        text.presentation->prepareForRendering();
+        results.key = m_target.key;
+        results.text = std::move(text);
+    }
+    return results;
+}
+
 bool ScreenshotRecognitionSessionController::hasTarget() const {
     return m_target.isValid();
 }

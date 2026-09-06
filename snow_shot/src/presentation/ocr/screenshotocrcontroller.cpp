@@ -429,6 +429,10 @@ ScreenshotRecognitionResults ScreenshotOcrController::cachedRecognitionResults()
     return m_session->cachedRecognitionResults();
 }
 
+ScreenshotRecognitionResults ScreenshotOcrController::displayedRecognitionResults() const {
+    return m_session->displayedRecognitionResults();
+}
+
 void ScreenshotOcrController::setTextDraft(const QString& text) {
     m_session->setTextDraft(text);
 }

@@ -2416,6 +2416,8 @@ if(SNOW_SHOT_BUILD_TESTS)
         NAME snow-shot-pinned-restored-ocr-tests
         COMMAND snow-shot-pinned-window-tests --restored-ocr-only
     )
+    add_test(NAME snow-shot-pinned-initial-ocr-tests
+        COMMAND snow-shot-pinned-window-tests --initial-ocr-only)
     add_test(NAME snow-shot-pinned-early-ocr-snapshot-tests
         COMMAND snow-shot-pinned-window-tests --early-ocr-snapshot-only)
     add_test(NAME snow-shot-pinned-invalid-ocr-restore-tests
@@ -2436,6 +2438,7 @@ if(SNOW_SHOT_BUILD_TESTS)
         snow-shot-pinned-group-menu-tests
         snow-shot-pinned-cached-ocr-tests
         snow-shot-pinned-restored-ocr-tests
+        snow-shot-pinned-initial-ocr-tests
         snow-shot-pinned-early-ocr-snapshot-tests
         snow-shot-pinned-invalid-ocr-restore-tests
         snow-shot-pinned-cached-ocr-provider-tests

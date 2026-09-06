@@ -58,6 +58,7 @@ struct PinnedWindowRecord final {
     QByteArray resultStyle;
     QByteArray canvasSession;
     QByteArray recognitionResults;
+    bool recognitionVisible = false;
     QDateTime updatedUtc;
 };
 

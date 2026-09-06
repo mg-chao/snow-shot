@@ -105,6 +105,7 @@ class ScreenshotPinnedWindow final : public QWidget {
         SnowShotApiClient* tableRecognition = nullptr;
         std::function<ScreenshotPinnedRecognitionProviders()> recognitionProvider;
         ScreenshotRecognitionResults recognitionResults;
+        bool recognitionVisible = false;
         QString persistenceId;
         bool restorePersistentState = false;
         double persistedFirstCreationTextDpi = 1.0;
@@ -115,6 +116,7 @@ class ScreenshotPinnedWindow final : public QWidget {
         QRect persistedPreThumbnailNativeGeometry;
         QByteArray persistedCanvasSession;
         QByteArray persistedRecognitionResults;
+        bool persistedRecognitionVisible = false;
         std::function<void(const snow_shot::storage::PinnedWindowRecord&)> persistenceWriter;
         std::function<void(const QString&)> persistenceRemover;
         snow_shot::presentation::PinnedWindowGroupManager* groupManager = nullptr;
@@ -207,7 +209,7 @@ class ScreenshotPinnedWindow final : public QWidget {
     void stopRecognition();
     void updateOcrPresentation();
     void updateRecognitionContentGeometry();
-    void activateRecognitionMode(int mode);
+    void activateRecognitionMode(int mode, bool showToolbar = true);
     void ensureRecognitionProviders();
     void deactivateRecognition();
     void updateRecognitionToolbarState();
@@ -267,6 +269,7 @@ class ScreenshotPinnedWindow final : public QWidget {
     bool startWindowMove();
     void finishWindowMove();
     bool windowDragEnabled() const;
+    bool windowDragEnabledAt(const QPoint& position) const;
     void updateWindowDragCursor(const QPoint& position);
     void setWindowDragCursor(Qt::CursorShape shape);
     void clearWindowDragCursor();
@@ -370,6 +373,7 @@ class ScreenshotPinnedWindow final : public QWidget {
     bool m_ocrSupported = false;
     bool m_formattedTextAvailable = false;
     bool m_ocrMode = false;
+    bool m_initialRecognitionVisible = false;
     bool m_translateAfterRecognition = false;
     bool m_automaticTextRecognition = true;
     bool m_editingEnabled = true;

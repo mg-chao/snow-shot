@@ -3,6 +3,7 @@
 #include "snow_shot/storage/settingsadapters.h"
 
 #include <QCoreApplication>
+#include <QClipboard>
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QJsonArray>
@@ -288,6 +289,11 @@ void queueStreamsIndividualBoxesAndKeepsOriginals() {
                 session.displayed->lines[1].text == QStringLiteral("source 1") &&
                 session.displayed->lines[5].text == QStringLiteral("source 5"),
             "streaming and queued boxes should retain independent display content");
+    const auto snapshot = session.controller->displayedRecognitionResults();
+    require(snapshot.text.has_value() && snapshot.text->presentation != session.displayed &&
+                snapshot.text->presentation->lines[2].text == QStringLiteral("third") &&
+                snapshot.text->presentation->lines[1].text == QStringLiteral("source 1"),
+            "a pin snapshot must freeze partial translation and untouched source boxes");
     session.displayed->beginTextSelection(ScreenshotOcrTextPosition{0, 1});
     session.displayed->updateTextSelection(ScreenshotOcrTextPosition{0, 4});
     session.displayed->finishTextSelection();
@@ -296,6 +302,8 @@ void queueStreamsIndividualBoxesAndKeepsOriginals() {
     server.delta(2, QStringLiteral(" box"));
     server.finish(2);
     server.waitForStreams(5);
+    require(snapshot.text->presentation->lines[2].text == QStringLiteral("third"),
+            "later translation deltas must not modify a previously captured pin snapshot");
     require(session.displayed->selectedText() == QStringLiteral("irs") &&
                 session.backgrounds == backgrounds,
             "stream updates should preserve unrelated selection and the OCR background");
@@ -321,6 +329,9 @@ void queueStreamsIndividualBoxesAndKeepsOriginals() {
             "editor commands must not change overlay translation");
     session.controller->endTextEditing();
     require(session.displayed == session.source, "leaving translation restores source OCR");
+    const auto sourceSnapshot = session.controller->displayedRecognitionResults();
+    require(sourceSnapshot.text->presentation->lines[0].text == QStringLiteral("source 0"),
+            "leaving the translated overlay must snapshot source OCR again");
     session.controller->beginTextTranslation();
     require(!session.streaming && server.streams.size() == 6, "reuse completed image translation");
     session.controller->endTextEditing();
@@ -720,6 +731,9 @@ void runPinnedOriginalImageTranslationTests() {
                 controller->recognitionClipboardMimeData()->text() ==
                     QStringLiteral("translated\nsource 1"),
             "pinned overlay must update existing text items and copy translated display text");
+    const auto partialRecord = pinned->persistenceSnapshot();
+    require(partialRecord.recognitionVisible && !partialRecord.recognitionResults.isEmpty(),
+            "a translating pin must persist the visible partial overlay");
     auto* canvas = pinned->findChild<SnowCanvasWidget*>();
     require(canvas != nullptr, "find pinned canvas for wheel zoom");
     const QSize beforeZoom = pinned->currentNativeGeometry().size();
@@ -754,5 +768,35 @@ void runPinnedOriginalImageTranslationTests() {
     pinned->close();
     waitUntil([&]() { return guarded.isNull(); },
               "closing the pin should release its translation owner");
+    config.restorePersistentState = true;
+    config.persistedRecognitionResults = partialRecord.recognitionResults;
+    config.persistedRecognitionVisible = partialRecord.recognitionVisible;
+    config.recognitionResults = {};
+    config.tableRecognition = nullptr;
+    for (const bool visible : {true, false}) {
+        config.persistedRecognitionVisible = visible;
+        auto* restored = new ScreenshotPinnedWindow;
+        QPointer<ScreenshotPinnedWindow> restoredGuard(restored);
+        require(restored->present(config), "recreate a saved translation pin");
+        auto* session = restored->findChild<ScreenshotRecognitionSessionController*>();
+        waitUntil([&]() { return session->hasTextResult(); }, "restore cached translated text");
+        require(session->active() == visible &&
+                    restored->persistenceSnapshot().recognitionVisible == visible,
+                "saved overlay visibility must survive recreation");
+        require(session->cachedRecognitionResults().text->presentation->lines[0].text ==
+                    QStringLiteral("translated"),
+                "restoration must use the saved partial text, not later translation deltas");
+        if (visible) {
+            auto* restoredContent = restored->findChild<ScreenshotRecognitionWindow*>();
+            require(
+                restoredContent != nullptr && restoredContent->isVisible() &&
+                    restoredContent->copyVisibleContentToClipboard() &&
+                    QApplication::clipboard()->text() == QStringLiteral("translated\nsource 1"),
+                "a restored translated overlay must be visible and copyable without new requests");
+        }
+        require(server.streams.size() == 2, "restoration must not restart translation");
+        restored->close();
+        waitUntil([&]() { return restoredGuard.isNull(); }, "close restored translation pin");
+    }
 }
 #endif

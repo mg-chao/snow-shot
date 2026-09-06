@@ -99,6 +99,7 @@ class ScreenshotRecognitionSessionController final : public QObject {
                       SnowShotApiClient* tableRecognition);
     void seedRecognitionResults(ScreenshotRecognitionResults results);
     [[nodiscard]] ScreenshotRecognitionResults cachedRecognitionResults() const;
+    [[nodiscard]] ScreenshotRecognitionResults displayedRecognitionResults() const;
     [[nodiscard]] bool hasTarget() const;
     void prefetchText();
     void renderTextBackground();

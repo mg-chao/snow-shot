@@ -973,6 +973,12 @@ void ScreenshotRecognitionWindow::mousePressEvent(QMouseEvent* event) {
     QWidget::mousePressEvent(event);
 }
 
+bool ScreenshotRecognitionWindow::isOcrBackgroundAt(const QPointF& localPosition) const {
+    return m_ocrPresentation != nullptr && m_stack->currentWidget() == m_textLayer &&
+           !m_ocrPresentation->textSelectionActive() && rect().contains(localPosition.toPoint()) &&
+           !m_textLayer->textPositionAt(canvasPositionForLocalPoint(localPosition), false).valid();
+}
+
 void ScreenshotRecognitionWindow::mouseMoveEvent(QMouseEvent* event) {
     if (handleSelectionResizeEvent(this, event)) {
         return;

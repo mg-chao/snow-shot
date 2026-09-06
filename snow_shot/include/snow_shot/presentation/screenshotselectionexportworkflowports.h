@@ -170,6 +170,7 @@ struct ScreenshotPinnedSelectionRequest {
     QSize fullResolutionScaleBasis;
     QPointer<QScreen> screen;
     ScreenshotRecognitionResults recognitionResults;
+    bool recognitionVisible = false;
 
     [[nodiscard]] bool isPrepared() const {
         return !selection.isEmpty() && geometry.nativeGeometry.isValid() &&
