@@ -29,6 +29,33 @@
 namespace {
 constexpr auto kRecognitionMessageKey = "screenshot-recognition-session";
 
+std::shared_ptr<ScreenshotOcrPresentation>
+copyTextPresentation(const std::shared_ptr<ScreenshotOcrPresentation>& presentation) {
+    if (presentation == nullptr) {
+        return {};
+    }
+    auto copy = std::make_shared<ScreenshotOcrPresentation>();
+    copy->selection = presentation->selection;
+    copy->lines = presentation->lines;
+    copy->prepareForRendering();
+    return copy;
+}
+
+bool translationMatchesSource(const ScreenshotOcrPresentation& translation,
+                              const ScreenshotOcrPresentation& source) {
+    if (translation.selection != source.selection ||
+        translation.lines.size() != source.lines.size()) {
+        return false;
+    }
+    for (int index = 0; index < source.lines.size(); ++index) {
+        if (translation.lines[index].quad != source.lines[index].quad ||
+            translation.lines[index].direction != source.lines[index].direction) {
+            return false;
+        }
+    }
+    return true;
+}
+
 struct TranslationLanguage {
     const char* code;
     const char* name;
@@ -186,6 +213,15 @@ void ScreenshotRecognitionSessionController::seedRecognitionResults(
         entry.recognitionResult.filteredImage = {};
         entry.presentation = results.text->presentation;
         entry.editingSession = std::move(editingSession);
+        if (results.translatedText != nullptr &&
+            translationMatchesSource(*results.translatedText, *entry.presentation)) {
+            entry.overlayTranslation.presentation = copyTextPresentation(results.translatedText);
+            entry.overlayTranslation.status = TextCacheEntry::TranslationStatus::Completed;
+            entry.overlayTranslation.captured = true;
+            entry.translationConfiguration =
+                snow_shot::storage::ScreenshotTranslationSettings().configuration();
+            entry.hasTranslationConfiguration = true;
+        }
         m_textCache.insert(m_target.key, std::move(entry));
         textInserted = true;
     }
@@ -261,28 +297,14 @@ ScreenshotRecognitionSessionController::cachedRecognitionResults() const {
 }
 
 ScreenshotRecognitionResults
-ScreenshotRecognitionSessionController::displayedRecognitionResults() const {
+ScreenshotRecognitionSessionController::recognitionResultsSnapshot() const {
     ScreenshotRecognitionResults results = cachedRecognitionResults();
-    if (!m_active || m_mode != Mode::Text || editing() || m_textCacheKey.isEmpty()) {
-        return results;
+    if (results.text.has_value()) {
+        results.text->presentation = copyTextPresentation(results.text->presentation);
     }
-    const auto entry = m_textCache.constFind(m_textCacheKey);
-    if (entry == m_textCache.cend()) {
-        return results;
-    }
-    std::shared_ptr<ScreenshotOcrPresentation> presentation = m_presentation;
-    if (originalImageTranslationActive() && entry->overlayTranslation.presentation != nullptr) {
-        presentation = entry->overlayTranslation.presentation;
-    }
-    if (presentation != nullptr) {
-        ScreenshotOcrRecognitionResult text;
-        // A pin owns the text visible at activation, independent of later streaming updates.
-        text.presentation = std::make_shared<ScreenshotOcrPresentation>();
-        text.presentation->selection = presentation->selection;
-        text.presentation->lines = presentation->lines;
-        text.presentation->prepareForRendering();
-        results.key = m_target.key;
-        results.text = std::move(text);
+    if (const auto entry = m_textCache.constFind(m_target.key); entry != m_textCache.cend()) {
+        // Freeze partial translation independently of the source session's live requests.
+        results.translatedText = copyTextPresentation(entry->overlayTranslation.presentation);
     }
     return results;
 }
@@ -604,6 +626,14 @@ void ScreenshotRecognitionSessionController::beginTextTranslation() {
     if (!m_active || m_mode != Mode::Text || !hasTextResult() || m_translating) {
         return;
     }
+    const auto cached = m_textCache.constFind(m_target.key);
+    if (cached != m_textCache.cend() && cached->overlayTranslation.captured &&
+        (!cached->hasTranslationConfiguration ||
+         cached->translationConfiguration ==
+             snow_shot::storage::ScreenshotTranslationSettings().configuration()) &&
+        activateCachedTextTranslation()) {
+        return;
+    }
     m_editing = false;
     m_translating = true;
     m_editingKey = m_textCacheKey.isEmpty() ? m_target.key : m_textCacheKey;
@@ -658,6 +688,42 @@ void ScreenshotRecognitionSessionController::beginTextTranslation() {
     updateTextState();
     if (it->translationStatus == TextCacheEntry::TranslationStatus::Absent) {
         startTranslation();
+    }
+}
+
+bool ScreenshotRecognitionSessionController::activateCachedTextTranslation() {
+    if (!m_active || m_mode != Mode::Text) {
+        return false;
+    }
+    auto entry = m_textCache.find(m_target.key);
+    if (entry == m_textCache.end() || !entry->overlayTranslation.captured ||
+        entry->overlayTranslation.presentation == nullptr) {
+        return false;
+    }
+    if (originalImageTranslationActive()) {
+        return true;
+    }
+    m_editing = false;
+    m_translating = true;
+    m_translationInImage = true;
+    m_editingKey = m_target.key;
+    m_translationKey = m_target.key;
+    m_textDocument = nullptr;
+    entry->editing = false;
+    applyPresentation(entry->overlayTranslation.presentation);
+    startTextRender();
+    emit textEditingChanged(false);
+    synchronizeUiState();
+    return true;
+}
+
+void ScreenshotRecognitionSessionController::synchronizeUiState() const {
+    if (m_active && m_actions.setActiveMode) {
+        m_actions.setActiveMode(static_cast<int>(m_mode));
+    }
+    updateTextState();
+    if (m_active && m_mode == Mode::Table && content() != nullptr) {
+        updateTableState(content()->tableCommandState());
     }
 }
 
@@ -1316,6 +1382,7 @@ void ScreenshotRecognitionSessionController::invalidateCurrentTranslation(bool r
         startTextRender();
     }
     updateTextState();
+    emit recognitionResultsChanged();
     if (restartIfVisible) {
         startTranslation();
     }

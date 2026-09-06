@@ -2152,8 +2152,9 @@ void ScreenshotController::Impl::pinSelectionToScreen() {
         m_ocrController->mode() == ScreenshotOcrController::Mode::Text &&
         m_ocrController->hasTextResult() && !m_ocrController->editing();
     const ScreenshotRecognitionResults recognitionResults =
-        m_ocrController != nullptr ? m_ocrController->displayedRecognitionResults()
+        m_ocrController != nullptr ? m_ocrController->recognitionResultsSnapshot()
                                    : ScreenshotRecognitionResults{};
+    const bool translationVisible = recognitionVisible && m_ocrController->translating();
     deactivateRecognition();
     SNOW_SHOT_PIN_PERF_MILESTONE("controller.ocr_deactivated");
     const std::optional<quint64> exportGeneration = beginImageExport();
@@ -2182,6 +2183,7 @@ void ScreenshotController::Impl::pinSelectionToScreen() {
     }
     request->recognitionResults = recognitionResults;
     request->recognitionVisible = recognitionVisible;
+    request->translationVisible = translationVisible;
     ScreenshotPinnedSelectionResultHandle resultHandle;
     const bool renderScheduled = m_exportService->schedulePinnedSelection(
         *request, &owner,

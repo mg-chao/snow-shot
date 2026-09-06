@@ -106,6 +106,7 @@ class ScreenshotPinnedWindow final : public QWidget {
         std::function<ScreenshotPinnedRecognitionProviders()> recognitionProvider;
         ScreenshotRecognitionResults recognitionResults;
         bool recognitionVisible = false;
+        bool translationVisible = false;
         QString persistenceId;
         bool restorePersistentState = false;
         double persistedFirstCreationTextDpi = 1.0;
@@ -117,6 +118,7 @@ class ScreenshotPinnedWindow final : public QWidget {
         QByteArray persistedCanvasSession;
         QByteArray persistedRecognitionResults;
         bool persistedRecognitionVisible = false;
+        bool persistedTranslationVisible = false;
         std::function<void(const snow_shot::storage::PinnedWindowRecord&)> persistenceWriter;
         std::function<void(const QString&)> persistenceRemover;
         snow_shot::presentation::PinnedWindowGroupManager* groupManager = nullptr;
@@ -374,6 +376,7 @@ class ScreenshotPinnedWindow final : public QWidget {
     bool m_formattedTextAvailable = false;
     bool m_ocrMode = false;
     bool m_initialRecognitionVisible = false;
+    bool m_initialTranslationVisible = false;
     bool m_translateAfterRecognition = false;
     bool m_automaticTextRecognition = true;
     bool m_editingEnabled = true;

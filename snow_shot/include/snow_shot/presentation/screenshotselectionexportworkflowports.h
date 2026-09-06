@@ -171,6 +171,7 @@ struct ScreenshotPinnedSelectionRequest {
     QPointer<QScreen> screen;
     ScreenshotRecognitionResults recognitionResults;
     bool recognitionVisible = false;
+    bool translationVisible = false;
 
     [[nodiscard]] bool isPrepared() const {
         return !selection.isEmpty() && geometry.nativeGeometry.isValid() &&

@@ -99,7 +99,7 @@ class ScreenshotRecognitionSessionController final : public QObject {
                       SnowShotApiClient* tableRecognition);
     void seedRecognitionResults(ScreenshotRecognitionResults results);
     [[nodiscard]] ScreenshotRecognitionResults cachedRecognitionResults() const;
-    [[nodiscard]] ScreenshotRecognitionResults displayedRecognitionResults() const;
+    [[nodiscard]] ScreenshotRecognitionResults recognitionResultsSnapshot() const;
     [[nodiscard]] bool hasTarget() const;
     void prefetchText();
     void renderTextBackground();
@@ -124,6 +124,8 @@ class ScreenshotRecognitionSessionController final : public QObject {
 
     void beginTextEditing();
     void beginTextTranslation();
+    [[nodiscard]] bool activateCachedTextTranslation();
+    void synchronizeUiState() const;
     void endTextEditing();
     void openTranslationSettings();
     void resetTextEditing();
@@ -159,6 +161,7 @@ class ScreenshotRecognitionSessionController final : public QObject {
             QVector<TranslationUnit> units;
             TranslationStatus status = TranslationStatus::Absent;
             bool failureReported = false;
+            bool captured = false;
         };
         ScreenshotOcrRecognitionResult recognitionResult;
         std::shared_ptr<ScreenshotOcrPresentation> presentation;

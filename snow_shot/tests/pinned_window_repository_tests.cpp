@@ -250,30 +250,36 @@ void recognitionVisibilityRoundTripsAndDefaultsToHidden() {
     {
         storage::PinnedWindowRepository repository(directory.path());
         record.recognitionVisible = true;
+        record.translationVisible = true;
         require(repository.upsert(record).success && repository.flush().success,
                 "visible recognition state should be saved");
-        require(repository.loadRecord(id)->recognitionVisible,
+        require(repository.loadRecord(id)->recognitionVisible &&
+                    repository.loadRecord(id)->translationVisible,
                 "visible recognition state should survive payload demotion");
         record.recognitionVisible = false;
+        record.translationVisible = false;
         require(repository.updateState(record).success && repository.flush().success,
                 "hidden recognition state should be saved");
     }
     {
         storage::PinnedWindowRepository repository(directory.path());
         const auto loaded = repository.loadRecord(id);
-        require(loaded.has_value() && !loaded->recognitionVisible,
+        require(loaded.has_value() && !loaded->recognitionVisible && !loaded->translationVisible,
                 "hidden recognition state should survive reopening");
         record.recognitionVisible = true;
+        record.translationVisible = true;
         require(repository.updateState(record).success && repository.flush().success,
                 "recognition can be made visible again");
     }
     auto root = QJsonDocument::fromJson(readBytes(manifest)).object();
     auto records = root.value(QStringLiteral("records")).toArray();
     require(records.size() == 1 &&
-                records[0].toObject().value(QStringLiteral("recognition_visible")).toBool(),
+                records[0].toObject().value(QStringLiteral("recognition_visible")).toBool() &&
+                records[0].toObject().value(QStringLiteral("translation_visible")).toBool(),
             "the manifest must explicitly store visible recognition");
     auto legacyRecord = records[0].toObject();
     legacyRecord.remove(QStringLiteral("recognition_visible"));
+    legacyRecord.remove(QStringLiteral("translation_visible"));
     records[0] = legacyRecord;
     root.insert(QStringLiteral("records"), records);
     QFile file(manifest);
@@ -283,7 +289,7 @@ void recognitionVisibilityRoundTripsAndDefaultsToHidden() {
     file.close();
     storage::PinnedWindowRepository legacy(directory.path());
     const auto loaded = legacy.loadRecord(id);
-    require(loaded.has_value() && !loaded->recognitionVisible,
+    require(loaded.has_value() && !loaded->recognitionVisible && !loaded->translationVisible,
             "records without recognition visibility must default to hidden");
 }
 } // namespace
