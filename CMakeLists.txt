@@ -2,7 +2,11 @@ cmake_minimum_required(VERSION 4.2)
 
 project(snow_apps VERSION 0.2.0 LANGUAGES CXX)
 
-set(SNOW_SHOT_VERSION "${PROJECT_VERSION}")
+set(SNOW_SHOT_VERSION "0.8.0-dev")
+if(NOT SNOW_SHOT_VERSION MATCHES "^([0-9]+\\.[0-9]+\\.[0-9]+)(-[0-9A-Za-z.-]+)?$")
+    message(FATAL_ERROR "SNOW_SHOT_VERSION must be a semantic version such as 0.8.0-dev")
+endif()
+set(SNOW_SHOT_VERSION_NUMERIC "${CMAKE_MATCH_1}")
 set(SNOW_SHOT_PRODUCT_NAME "Snow Shot")
 set(SNOW_SHOT_EXECUTABLE_NAME "snow_shot")
 set(SNOW_SHOT_VENDOR "Snow Apps")
@@ -371,10 +375,10 @@ if(SNOW_APPS_PACKAGE_SNOW_SHOT)
     set(CPACK_NSIS_MODIFY_PATH OFF)
     set(CPACK_NSIS_MANIFEST_DPI_AWARE ON)
     string(CONCAT CPACK_NSIS_DEFINES
-        "VIProductVersion \"${SNOW_SHOT_VERSION}.0\"\n"
+        "VIProductVersion \"${SNOW_SHOT_VERSION_NUMERIC}.0\"\n"
         "VIAddVersionKey /LANG=1033 \"CompanyName\" \"${SNOW_SHOT_VENDOR}\"\n"
         "VIAddVersionKey /LANG=1033 \"FileDescription\" \"${SNOW_SHOT_PRODUCT_NAME} installer\"\n"
-        "VIAddVersionKey /LANG=1033 \"FileVersion\" \"${SNOW_SHOT_VERSION}.0\"\n"
+        "VIAddVersionKey /LANG=1033 \"FileVersion\" \"${SNOW_SHOT_VERSION_NUMERIC}.0\"\n"
         "VIAddVersionKey /LANG=1033 \"InternalName\" \"snow-shot-installer\"\n"
         "VIAddVersionKey /LANG=1033 \"LegalCopyright\" \"${SNOW_SHOT_COPYRIGHT}\"\n"
         "VIAddVersionKey /LANG=1033 \"OriginalFilename\" \"${CPACK_PACKAGE_FILE_NAME}.exe\"\n"

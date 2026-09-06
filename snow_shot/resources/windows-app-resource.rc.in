@@ -28,7 +28,7 @@ BEGIN
             VALUE "LegalCopyright", "@SNOW_SHOT_COPYRIGHT@\0"
             VALUE "OriginalFilename", "@SNOW_SHOT_EXECUTABLE_NAME@.exe\0"
             VALUE "ProductName", "@SNOW_SHOT_PRODUCT_NAME@\0"
-            VALUE "ProductVersion", "@PROJECT_VERSION@\0"
+            VALUE "ProductVersion", "@SNOW_SHOT_VERSION@\0"
         END
     END
     BLOCK "VarFileInfo"
