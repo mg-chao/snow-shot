@@ -1,5 +1,6 @@
 #include "snow_shot/presentation/components/shortcutkeyrow.h"
 
+#include "snow_shot/platform/windows/printscreenshortcutrecorder.h"
 #include "snow_shot/presentation/components/infotooltipicon.h"
 #include "snow_shot/presentation/components/icons/iconrenderutils.h"
 #include "snow_shot/presentation/components/icons/snowshoticons.h"
@@ -307,18 +308,11 @@ class ShortcutConfigInfoButton final : public adqt::widgets::AdButton {
   public:
     explicit ShortcutConfigInfoButton(
         const snow_shot::presentation::styles::ThemeAliasMetricToken& metric,
-        const QString& tooltipObjectName, QWidget* parent = nullptr)
+        ShortcutKeyRowConfig::ValidationScope validationScope, QWidget* parent = nullptr)
         : adqt::widgets::AdButton(parent), m_infoGap(metric.marginXS),
           m_info(new InfoTooltipIcon(metric.fontSize, this)) {
-        m_info->setObjectName(tooltipObjectName);
+        m_info->setObjectName(QStringLiteral("shortcutConfigValidationTooltipTrigger"));
         m_info->setProperty("inlineGap", m_infoGap);
-    }
-
-    explicit ShortcutConfigInfoButton(
-        const snow_shot::presentation::styles::ThemeAliasMetricToken& metric,
-        ShortcutKeyRowConfig::ValidationScope validationScope, QWidget* parent = nullptr)
-        : ShortcutConfigInfoButton(metric, QStringLiteral("shortcutConfigValidationTooltipTrigger"),
-                                   parent) {
         if (validationScope == ShortcutKeyRowConfig::ValidationScope::ScreenshotShortcut) {
             m_info->setAccessibleName(QObject::tr("Invalid screenshot shortcut"));
         } else if (validationScope == ShortcutKeyRowConfig::ValidationScope::DrawingShortcut) {
@@ -332,10 +326,6 @@ class ShortcutConfigInfoButton final : public adqt::widgets::AdButton {
 
     void setTooltipText(const QString& text) {
         m_info->setTooltipText(text);
-    }
-
-    void setTooltipAccessibleName(const QString& name) {
-        m_info->setAccessibleName(name);
     }
 
     QSize sizeHint() const override {
@@ -552,35 +542,6 @@ class ShortcutKeyConfigContent final : public QWidget {
 
         connect(m_addButton, &QAbstractButton::clicked, this, [this]() { addKeyConfig(); });
 
-#ifdef Q_OS_WIN
-        if (m_validationScope == ShortcutKeyRowConfig::ValidationScope::GlobalShortcut) {
-            m_printScreenButton = new ShortcutConfigInfoButton(
-                metric, QStringLiteral("shortcutConfigPrintScreenTooltipTrigger"), this);
-            m_printScreenButton->setObjectName(QStringLiteral("shortcutConfigPrintScreenButton"));
-            m_printScreenButton->setButtonStyle(adqt::widgets::AdButton::ButtonStyle::Outline);
-            m_printScreenButton->setFixedHeight(metric.controlHeight);
-            m_printScreenButton->setCursor(Qt::PointingHandCursor);
-            rootLayout->addWidget(m_printScreenButton);
-
-            retranslatePrintScreenButton();
-            connect(m_printScreenButton, &QAbstractButton::clicked, this, [this]() {
-                if (m_recordingConfigIndex < 0) {
-                    addKeyConfig();
-                }
-                if (m_recordingConfigIndex < 0) {
-                    return;
-                }
-                const QKeyEvent event(QEvent::KeyPress, Qt::Key_Print, Qt::NoModifier);
-                recordKeyEvent(event);
-                if (!m_pendingShortcut.isEmpty()) {
-                    applyPendingShortcut();
-                } else {
-                    rebuildKeyConfigRows();
-                }
-            });
-        }
-#endif
-
         for (const QString& shortcutPart : currentShortcuts) {
             if (m_keyConfigs.size() >= m_maxShortcutCount) {
                 break;
@@ -637,26 +598,24 @@ class ShortcutKeyConfigContent final : public QWidget {
     std::function<void(bool)> acceptanceAvailabilityChanged;
 
   protected:
-    void changeEvent(QEvent* event) override {
-        QWidget::changeEvent(event);
-        if (event->type() == QEvent::LanguageChange) {
-            retranslatePrintScreenButton();
-        }
-    }
-
     void keyPressEvent(QKeyEvent* event) override {
         if (m_recordingConfigIndex < 0) {
             QWidget::keyPressEvent(event);
             return;
         }
 
-        recordKeyEvent(*event);
-        rebuildKeyConfigRows();
+        if (m_printScreenRecorder == nullptr || !m_printScreenRecorder->handleKeyEvent(*event)) {
+            recordKeyEvent(*event);
+            rebuildKeyConfigRows();
+        }
         event->accept();
     }
 
     void keyReleaseEvent(QKeyEvent* event) override {
         if (m_recordingConfigIndex >= 0) {
+            if (m_printScreenRecorder != nullptr) {
+                m_printScreenRecorder->handleKeyEvent(*event);
+            }
             event->accept();
             return;
         }
@@ -665,20 +624,6 @@ class ShortcutKeyConfigContent final : public QWidget {
     }
 
   private:
-    void retranslatePrintScreenButton() {
-        if (m_printScreenButton == nullptr) {
-            return;
-        }
-        m_printScreenButton->setText(QObject::tr("Record Print Screen"));
-        m_printScreenButton->setTooltipAccessibleName(m_printScreenButton->text());
-        const QString note = QObject::tr(
-            "If you cannot trigger the screenshot on Windows, please disable the system screenshot "
-            "tool and try again (Keyboard \u2192 Use the Print Screen key to open screen capture). "
-            "If there is no response, try restarting.");
-        m_printScreenButton->setTooltipText(note);
-        m_printScreenButton->setAccessibleDescription(note);
-    }
-
     void rebuildKeyConfigRows() {
         clearLayout(m_keyListLayout);
 
@@ -778,6 +723,7 @@ class ShortcutKeyConfigContent final : public QWidget {
     }
 
     void startRecording(int configIndex) {
+        m_printScreenRecorder.reset();
         for (KeyConfig& keyConfig : m_keyConfigs) {
             if (keyConfig.index == configIndex) {
                 keyConfig.recordKeys.clear();
@@ -811,6 +757,7 @@ class ShortcutKeyConfigContent final : public QWidget {
     }
 
     void stopRecording() {
+        m_printScreenRecorder.reset();
         if (m_keyboardGrabbed) {
             releaseKeyboard();
             m_keyboardGrabbed = false;
@@ -823,15 +770,30 @@ class ShortcutKeyConfigContent final : public QWidget {
     }
 
     void ensureKeyboardGrabbed() {
-        if (m_recordingConfigIndex < 0 || m_keyboardGrabbed) {
+        if (m_recordingConfigIndex < 0) {
             return;
         }
 
-        grabKeyboard();
-        m_keyboardGrabbed = true;
+        if (m_validationScope == ShortcutKeyRowConfig::ValidationScope::GlobalShortcut &&
+            m_printScreenRecorder == nullptr) {
+            m_printScreenRecorder =
+                std::make_unique<snow_shot::platform::windows::PrintScreenShortcutRecorder>(
+                    *this, [this](Qt::KeyboardModifiers modifiers) {
+                        const QKeyEvent event(QEvent::KeyPress, Qt::Key_Print, modifiers);
+                        recordKeyEvent(event);
+                        rebuildKeyConfigRows();
+                    });
+        }
+        if (!m_keyboardGrabbed) {
+            grabKeyboard();
+            m_keyboardGrabbed = true;
+        }
     }
 
     void recordKeyEvent(const QKeyEvent& event) {
+        if (m_printScreenRecorder != nullptr) {
+            m_printScreenRecorder->cancelPendingCapture();
+        }
         if (isModifierOnlyKey(event.key())) {
             m_pendingShortcut.clear();
             m_rejectedShortcut.clear();
@@ -896,9 +858,6 @@ class ShortcutKeyConfigContent final : public QWidget {
         const bool canAddMore = m_maxShortcutCount > 1 && m_keyConfigs.size() < m_maxShortcutCount;
         m_addButton->setVisible(canAddMore);
         m_addButton->setEnabled(canAddMore && m_recordingConfigIndex < 0);
-        if (m_printScreenButton != nullptr) {
-            m_printScreenButton->setEnabled(m_recordingConfigIndex >= 0 || canAddMore);
-        }
     }
 
     void notifyShortcutAvailabilityChanged() {
@@ -939,7 +898,8 @@ class ShortcutKeyConfigContent final : public QWidget {
     snow_shot::presentation::styles::ThemeColorScheme m_colorScheme;
     QVBoxLayout* m_keyListLayout = nullptr;
     adqt::widgets::AdButton* m_addButton = nullptr;
-    ShortcutConfigInfoButton* m_printScreenButton = nullptr;
+    std::unique_ptr<snow_shot::platform::windows::PrintScreenShortcutRecorder>
+        m_printScreenRecorder;
     QVector<KeyConfig> m_keyConfigs;
     QString m_pendingShortcut;
     QString m_rejectedShortcut;

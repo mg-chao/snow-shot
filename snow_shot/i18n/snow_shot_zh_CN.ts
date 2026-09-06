@@ -324,122 +324,112 @@
 <context>
     <name>QObject</name>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="251"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="252"/>
         <source>This key is already assigned to another shortcut, try another key</source>
         <translation>此按键已分配给其他快捷键，请尝试其他按键</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="253"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="254"/>
         <source>%1 is already assigned to another shortcut, try another key</source>
         <translation>%1 已分配给其他快捷键，请尝试其他按键</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="258"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="259"/>
         <source>This key cannot be used as a screenshot shortcut, try another key</source>
         <translation>此按键不能用作截图快捷键，请尝试其他按键</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="259"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="260"/>
         <source>%1 cannot be used as a screenshot shortcut, try another key</source>
         <translation>%1 不能用作截图快捷键，请尝试其他按键</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="323"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="317"/>
         <source>Invalid screenshot shortcut</source>
         <translation>无效的截图快捷键</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="266"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="267"/>
         <source>This key is already assigned to another drawing tool, try another key</source>
         <translation>此按键已分配给另一个绘制工具，请尝试其他按键</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="268"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="269"/>
         <source>%1 is already assigned to another drawing tool, try another key</source>
         <translation>%1 已分配给另一个绘制工具，请尝试其他按键</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="273"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="274"/>
         <source>This key cannot be used as a drawing shortcut, try another key</source>
         <translation>此按键不能用作绘制快捷键，请尝试其他按键</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="274"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="275"/>
         <source>%1 cannot be used as a drawing shortcut, try another key</source>
         <translation>%1 不能用作绘制快捷键，请尝试其他按键</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="281"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="282"/>
         <source>This key is already assigned to another pinned window action, try another key</source>
         <translation>此快捷键已分配给其他固定到屏幕窗口操作，请尝试其他快捷键</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="283"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="284"/>
         <source>%1 is already assigned to another pinned window action, try another key</source>
         <translation>%1 已分配给其他固定到屏幕窗口操作，请尝试其他快捷键</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="288"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="289"/>
         <source>This key cannot be used as a pinned window shortcut, try another key</source>
         <translation>此快捷键不能用作固定到屏幕窗口快捷键，请尝试其他快捷键</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="289"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="290"/>
         <source>%1 cannot be used as a pinned window shortcut, try another key</source>
         <translation>%1 不能用作固定到屏幕窗口快捷键，请尝试其他快捷键</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="295"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="296"/>
         <source>Global shortcuts are not supported on this platform</source>
         <translation>此平台不支持全局快捷键</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="299"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="300"/>
         <source>%1 cannot be registered as a Windows global shortcut, try another key</source>
         <translation>无法将 %1 注册为 Windows 全局快捷键，请尝试其他按键</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="302"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="303"/>
         <source>This key cannot be registered as a Windows global shortcut, try another key</source>
         <translation>无法将此按键注册为 Windows 全局快捷键，请尝试其他按键</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="672"/>
-        <source>Record Print Screen</source>
-        <translation>录入 Print Screen</translation>
-    </message>
-    <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="674"/>
-        <source>If you cannot trigger the screenshot on Windows, please disable the system screenshot tool and try again (Keyboard → Use the Print Screen key to open screen capture). If there is no response, try restarting.</source>
-        <translation>如果在 Windows 上无法触发截图，请关闭系统截图工具后重试（键盘 → 使用 Print Screen 键打开屏幕截图）。如果没有反应，请尝试重启。</translation>
-    </message>
-    <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="740"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="685"/>
         <source>Please press a key</source>
         <translation>请按下按键</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="325"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="319"/>
         <source>Invalid drawing shortcut</source>
         <translation>无效的绘制快捷键</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="327"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="321"/>
         <source>Invalid pinned window shortcut</source>
         <translation>无效的固定到屏幕窗口快捷键</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="329"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="323"/>
         <source>Invalid global shortcut</source>
         <translation>无效的全局快捷键</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="542"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="532"/>
         <source>Add key config</source>
         <translation>添加按键配置</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="735"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="680"/>
         <source>Unsupported key</source>
         <translation>不支持的按键</translation>
     </message>
@@ -4464,99 +4454,99 @@
 <context>
     <name>ShortcutKeyRow</name>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1244"/>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1353"/>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1378"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1204"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1313"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1338"/>
         <source>Delay: %1 seconds</source>
         <translation>延时：%1 秒</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1471"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1431"/>
         <source>%1 (%2 s)</source>
         <translation>%1（%2 秒）</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1533"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1493"/>
         <source>Key configuration for &quot;%1&quot;</source>
         <translation>“%1”的按键配置</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1539"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1499"/>
         <source>OK</source>
         <translation>确定</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1540"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1500"/>
         <source>Cancel</source>
         <translation>取消</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1644"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1604"/>
         <source>Unset</source>
         <translation>未设置</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1657"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1617"/>
         <source>Registered</source>
         <translation>已注册</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1660"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1620"/>
         <source>Partially registered</source>
         <translation>部分注册</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1663"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1623"/>
         <source>Registration failed</source>
         <translation>注册失败</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1666"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1626"/>
         <source>Not configured</source>
         <translation>未配置</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1679"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1639"/>
         <source>Global shortcut status: %1</source>
         <translation>全局快捷键状态：%1</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1704"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1664"/>
         <source>already used by another application or action</source>
         <translation>已被其他应用程序或操作使用</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1707"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1667"/>
         <source>not supported as a Windows global shortcut</source>
         <translation>不支持作为 Windows 全局快捷键</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1710"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1670"/>
         <source>global shortcuts are not supported on this platform</source>
         <translation>此平台不支持全局快捷键</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1714"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1674"/>
         <source>the system rejected this shortcut</source>
         <translation>系统拒绝了此快捷键</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1715"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1675"/>
         <source>the system rejected this shortcut (error %1)</source>
         <translation>系统拒绝了此快捷键（错误 %1）</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1719"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1679"/>
         <source>registration did not complete</source>
         <translation>注册未完成</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1722"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1682"/>
         <source>%1: %2</source>
         <translation>%1：%2</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1727"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1687"/>
         <source>Some shortcuts are unavailable
 Available: %1
 Unavailable: %2</source>
@@ -4565,7 +4555,7 @@ Unavailable: %2</source>
 不可用：%2</translation>
     </message>
     <message>
-        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1732"/>
+        <location filename="../src/presentation/components/shortcutkeyrow.cpp" line="1692"/>
         <source>No configured shortcut is available
 %1
 Change the shortcut and try again</source>

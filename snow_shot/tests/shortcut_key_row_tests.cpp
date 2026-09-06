@@ -9,7 +9,10 @@
 #include "widgets/tooltip.h"
 
 #include <QApplication>
+#include <QAbstractEventDispatcher>
+#include <QAbstractNativeEventFilter>
 #include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QEvent>
 #include <QFontMetricsF>
 #include <QKeyEvent>
@@ -19,9 +22,15 @@
 #include <QWheelEvent>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
+
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#endif
 
 namespace shortcuts = snow_shot::presentation;
 namespace styles = snow_shot::presentation::styles;
@@ -378,119 +387,428 @@ void recorderAcceptsOnlyBackendSupportedShortcuts() {
             "the outer shortcut control must display a committed bare Shift key without duplication");
 }
 
-void printScreenButtonRecordsThroughValidation() {
-#ifdef Q_OS_WIN
+void printScreenReleaseRecordsModifiers() {
     const styles::ThemeColorScheme scheme = styles::ThemeManager::instance().themeColorScheme();
     const auto mainWindowMetric = styles::buildMainWindowComponentMetricToken(scheme);
-    const auto flushEvents = []() {
-        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
-        QApplication::processEvents();
-    };
-
     QString lastValidatedShortcut;
     QStringList savedShortcuts;
-    bool supported = false;
     ShortcutKeyRowConfig config;
     config.title = QStringLiteral("Screenshot");
-    config.registrationState.shortcuts = {QStringLiteral("Ctrl+1")};
-    config.maxShortcutCount = 2;
     config.shortcutValidator = [&](const QString& shortcut) {
         lastValidatedShortcut = shortcut;
         return shortcuts::GlobalShortcutValidationResult{
-            shortcut, supported,
-            supported ? shortcuts::GlobalShortcutFailureReason::None
-                      : shortcuts::GlobalShortcutFailureReason::AlreadyInUse};
+            shortcut, true, shortcuts::GlobalShortcutFailureReason::None};
     };
-
     ShortcutKeyRow row(config, scheme.metricAlias, mainWindowMetric);
     QObject::connect(&row, &ShortcutKeyRow::shortcutsChanged, &row,
                      [&](const QStringList& shortcuts) { savedShortcuts = shortcuts; });
-    row.resize(720, row.height());
     row.show();
-    flushEvents();
     row.findChild<adqt::widgets::AdButton*>(QStringLiteral("shortcutKeyButton"))->click();
-    flushEvents();
+    QApplication::processEvents();
 
-    auto* button =
-        row.findChild<adqt::widgets::AdButton*>(QStringLiteral("shortcutConfigPrintScreenButton"));
+    auto* content = row.findChild<QWidget*>(QStringLiteral("shortcutConfigContent"));
     auto* modal = row.findChild<adqt::widgets::AdModal*>();
-    require(button != nullptr && button->isVisible() && button->isEnabled() && modal != nullptr,
-            "global shortcut recorders must offer Print Screen when another binding fits");
-    auto* info = button->findChild<InfoTooltipIcon*>(
-        QStringLiteral("shortcutConfigPrintScreenTooltipTrigger"));
-    require(info != nullptr && info->isVisible() && info->parentWidget() == button &&
-                info->geometry().left() > button->width() / 2 &&
-                info->geometry().right() < button->width() &&
-                std::abs(info->geometry().center().y() - button->rect().center().y()) <= 1 &&
-                info->property("inlineGap").toInt() == scheme.metricAlias.marginXS,
-            "the Print Screen info icon must sit inline after the centered button text");
-    auto* tooltip = info->tooltipHost();
-    require(button->toolTip().isEmpty() && tooltip != nullptr && tooltip->targetWidget() == info &&
-                tooltip->anchorWidget() == info &&
-                tooltip->placement() == adqt::widgets::AdTooltip::Placement::Top &&
-                tooltip->hoverOpenDelayMs() == 0 &&
-                tooltip->text() == button->accessibleDescription() &&
-                info->accessibleName() == button->text() &&
-                info->accessibleDescription() == tooltip->text() &&
-                tooltip->text().contains(
-                    QStringLiteral("Use the Print Screen key to open screen capture")) &&
-                tooltip->text().contains(QStringLiteral("try restarting")),
-            "the inline info icon must own the immediate Windows troubleshooting tooltip");
-
-    button->click();
-    flushEvents();
-    require(lastValidatedShortcut == QStringLiteral("Print") &&
-                !modal->acceptButton()->isEnabled() && savedShortcuts.isEmpty(),
-            "direct Print Screen recording must respect validator rejection before saving");
-
-    supported = true;
-    button->click();
-    flushEvents();
-    require(modal->acceptButton()->isEnabled() && !button->isEnabled() && savedShortcuts.isEmpty(),
-            "a successful direct recording must fill the available slot and wait for OK");
-    const auto keyButtons =
-        row.findChildren<adqt::widgets::AdButton*>(QStringLiteral("shortcutConfigKeyButton"));
-    require(keyButtons.size() == 2 && keyButtons[0]->text() == QStringLiteral("Ctrl+1") &&
-                keyButtons[1]->text() == QStringLiteral("Print") && !keyButtons[1]->busy(),
-            "the Print Screen button must preserve existing shortcuts and finish the new row");
-
-    keyButtons[1]->click();
-    flushEvents();
-    require(button->isEnabled(),
-            "Print Screen must remain available while editing a row at the binding limit");
-    button->click();
-    flushEvents();
+    require(content != nullptr && modal != nullptr, "the shortcut recorder must open");
+    QKeyEvent release(QEvent::KeyRelease, Qt::Key_Print, Qt::ControlModifier);
+    QCoreApplication::sendEvent(content, &release);
+    QApplication::processEvents();
+    require(lastValidatedShortcut == QStringLiteral("Ctrl+Print") &&
+                modal->acceptButton()->isEnabled() && savedShortcuts.isEmpty(),
+            "a Print Screen release without a press must record its modifiers through validation");
     modal->acceptButton()->click();
-    flushEvents();
-    require(savedShortcuts == QStringList{QStringLiteral("Ctrl+1"), QStringLiteral("Print")},
-            "OK must save the directly recorded Print Screen binding as portable text");
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QApplication::processEvents();
+    require(savedShortcuts == QStringList{QStringLiteral("Ctrl+Print")},
+            "OK must persist the recorded Print Screen combination as portable text");
+}
 
-    savedShortcuts.clear();
-    row.findChild<adqt::widgets::AdButton*>(QStringLiteral("shortcutKeyButton"))->click();
-    flushEvents();
-    button =
-        row.findChild<adqt::widgets::AdButton*>(QStringLiteral("shortcutConfigPrintScreenButton"));
-    button->click();
-    flushEvents();
-    modal = row.findChild<adqt::widgets::AdModal*>();
-    modal->rejectButton()->click();
-    flushEvents();
-    require(savedShortcuts.isEmpty(), "Cancel must discard direct Print Screen recordings");
+class PrintScreenRecordingSession {
+  public:
+    explicit PrintScreenRecordingSession(
+        ShortcutKeyRowConfig::ValidationScope scope =
+            ShortcutKeyRowConfig::ValidationScope::GlobalShortcut) {
+        const auto scheme = styles::ThemeManager::instance().themeColorScheme();
+        ShortcutKeyRowConfig config;
+        config.title = QStringLiteral("Screenshot");
+        config.validationScope = scope;
+        config.shortcutValidator = [this](const QString& shortcut) {
+            validated.push_back(shortcut);
+            return shortcuts::GlobalShortcutValidationResult{
+                shortcut, supported,
+                supported ? shortcuts::GlobalShortcutFailureReason::None
+                          : shortcuts::GlobalShortcutFailureReason::AlreadyInUse};
+        };
+        row = std::make_unique<ShortcutKeyRow>(config, scheme.metricAlias,
+                                               styles::buildMainWindowComponentMetricToken(scheme));
+        QObject::connect(row.get(), &ShortcutKeyRow::shortcutsChanged, row.get(),
+                         [this](const QStringList& shortcuts) { saved = shortcuts; });
+        row->show();
+        open();
+    }
 
-    row.setRegistrationState({});
-    row.findChild<adqt::widgets::AdButton*>(QStringLiteral("shortcutKeyButton"))->click();
-    flushEvents();
-    button =
-        row.findChild<adqt::widgets::AdButton*>(QStringLiteral("shortcutConfigPrintScreenButton"));
-    require(button != nullptr && button->isEnabled(),
-            "Print Screen must be available immediately for an unset shortcut");
-    button->click();
-    flushEvents();
-    modal = row.findChild<adqt::widgets::AdModal*>();
-    modal->acceptButton()->click();
-    flushEvents();
-    require(savedShortcuts == QStringList{QStringLiteral("Print")},
-            "an unset shortcut must record Print Screen without adding an extra row");
+    void open() {
+        row->findChild<adqt::widgets::AdButton*>(QStringLiteral("shortcutKeyButton"))->click();
+        flush();
+        content = row->findChild<QWidget*>(QStringLiteral("shortcutConfigContent"));
+        modal = row->findChild<adqt::widgets::AdModal*>();
+        require(content != nullptr && modal != nullptr, "the Print Screen recorder must open");
+        require(content->layout() != nullptr && content->layout()->count() == 2 &&
+                    content->layout()->itemAt(0)->layout() != nullptr &&
+                    content->layout()->itemAt(1)->widget() ==
+                        row->findChild<adqt::widgets::AdButton*>(
+                            QStringLiteral("shortcutConfigAddButton")),
+                "the recorder must contain only the binding list and the add-binding control");
+    }
+
+    static void flush() {
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QApplication::processEvents();
+    }
+
+    void key(QEvent::Type type, int key, Qt::KeyboardModifiers modifiers, bool repeat = false) {
+        QKeyEvent event(type, key, modifiers, {}, repeat);
+        QCoreApplication::sendEvent(content, &event);
+    }
+
+    QStringList validated;
+    QStringList saved;
+    bool supported = true;
+    std::unique_ptr<ShortcutKeyRow> row;
+    QWidget* content = nullptr;
+    adqt::widgets::AdModal* modal = nullptr;
+};
+
+void printScreenRecordingPreservesEventOrderAndLifecycle() {
+    PrintScreenRecordingSession session;
+    session.key(QEvent::KeyPress, Qt::Key_Print, Qt::ControlModifier);
+    session.key(QEvent::KeyPress, Qt::Key_Print, Qt::ControlModifier, true);
+    session.key(QEvent::KeyRelease, Qt::Key_Print, Qt::NoModifier);
+    session.flush();
+    require(session.validated == QStringList{QStringLiteral("Ctrl+Print")},
+            "Print Screen repeats and releases must not overwrite the original modifier snapshot");
+
+    session.key(QEvent::KeyRelease, Qt::Key_Print, Qt::AltModifier);
+    session.key(QEvent::KeyPress, Qt::Key_A, Qt::ControlModifier);
+    session.flush();
+    require(session.validated.last() == QStringLiteral("Ctrl+A") && session.validated.size() == 2,
+            "a queued Print Screen capture must not overwrite a later ordinary key");
+
+    session.key(QEvent::KeyRelease, Qt::Key_Print, Qt::AltModifier);
+    session.key(QEvent::KeyRelease, Qt::Key_Print, Qt::ControlModifier | Qt::ShiftModifier);
+    session.flush();
+    require(session.validated.last() == QStringLiteral("Ctrl+Shift+Print") &&
+                session.validated.size() == 3,
+            "the latest Print Screen combination must win when captures are queued together");
+
+    const qsizetype beforeDeactivation = session.validated.size();
+    session.key(QEvent::KeyRelease, Qt::Key_Print, Qt::NoModifier);
+    QEvent deactivate(QEvent::WindowDeactivate);
+    QCoreApplication::sendEvent(session.content->window(), &deactivate);
+    session.flush();
+    require(session.validated.size() == beforeDeactivation,
+            "losing window activation must invalidate pending captures");
+    QEvent activate(QEvent::WindowActivate);
+    QCoreApplication::sendEvent(session.content->window(), &activate);
+
+    session.supported = false;
+    session.key(QEvent::KeyRelease, Qt::Key_SysReq, Qt::AltModifier);
+    session.flush();
+    require(session.validated.last() == QStringLiteral("Alt+Print") &&
+                !session.modal->acceptButton()->isEnabled() && session.saved.isEmpty(),
+            "Alt+SysReq must normalize to Print Screen and respect validator rejection");
+    session.supported = true;
+    session.key(QEvent::KeyRelease, Qt::Key_Print, Qt::ControlModifier);
+    session.flush();
+    require(session.modal->acceptButton()->isEnabled(),
+            "recording must recover after a rejected combination");
+
+    const qsizetype beforeCancel = session.validated.size();
+    session.key(QEvent::KeyRelease, Qt::Key_Print, Qt::MetaModifier);
+    session.modal->reject();
+    session.flush();
+    require(session.saved.isEmpty() && session.validated.size() == beforeCancel,
+            "Cancel must discard saved and queued Print Screen captures");
+    session.open();
+    session.key(QEvent::KeyRelease, Qt::Key_Print, Qt::MetaModifier | Qt::ShiftModifier);
+    session.flush();
+    session.modal->acceptButton()->click();
+    session.flush();
+    require(session.saved == QStringList{QStringLiteral("Meta+Shift+Print")},
+            "a new recording session must preserve Windows-key combinations independently");
+}
+
+#ifdef Q_OS_WIN
+bool sendNativeRecorderMessage(QWidget* window, UINT message, Qt::KeyboardModifiers modifiers,
+                               WPARAM key = VK_SNAPSHOT, LPARAM flags = 0, DWORD timestamp = 0) {
+    std::array<BYTE, 256> savedState{};
+    require(GetKeyboardState(savedState.data()) != FALSE, "keyboard state must be readable");
+    std::array<BYTE, 256> state{};
+    state[VK_CONTROL] = modifiers.testFlag(Qt::ControlModifier) ? 0x80 : 0;
+    state[VK_SHIFT] = modifiers.testFlag(Qt::ShiftModifier) ? 0x80 : 0;
+    state[VK_MENU] = modifiers.testFlag(Qt::AltModifier) ? 0x80 : 0;
+    state[VK_RWIN] = modifiers.testFlag(Qt::MetaModifier) ? 0x80 : 0;
+    require(SetKeyboardState(state.data()) != FALSE, "test keyboard state must be applied");
+    MSG native{};
+    native.hwnd = reinterpret_cast<HWND>(window->winId());
+    native.message = message;
+    native.wParam = key;
+    native.lParam = flags;
+    native.time = timestamp;
+    qintptr result = -1;
+    const bool consumed = QAbstractEventDispatcher::instance()->filterNativeEvent(
+        QByteArrayLiteral("windows_generic_MSG"), &native, &result);
+    require(SetKeyboardState(savedState.data()) != FALSE, "keyboard state must be restored");
+    require(!consumed || result == 0, "handled native keys must return a defined Windows result");
+    return consumed;
+}
+#endif
+
+void localShortcutRecordersUseOnlyNormalKeyEvents() {
+    using Scope = ShortcutKeyRowConfig::ValidationScope;
+    for (const Scope scope :
+         {Scope::ScreenshotShortcut, Scope::DrawingShortcut, Scope::PinnedWindowShortcut}) {
+        PrintScreenRecordingSession session(scope);
+        for (int recording = 0; recording < 2; ++recording) {
+            session.validated.clear();
+            session.key(QEvent::KeyRelease, Qt::Key_Print, Qt::ControlModifier);
+            session.key(QEvent::KeyRelease, Qt::Key_SysReq, Qt::AltModifier);
+            session.flush();
+            require(session.validated.isEmpty() && !session.modal->acceptButton()->isEnabled(),
+                    "local recorders must not synthesize shortcuts from Print Screen releases");
+#ifdef Q_OS_WIN
+            QWidget* const window = session.content->window();
+            require(!sendNativeRecorderMessage(window, WM_KEYDOWN, Qt::ControlModifier) &&
+                        !sendNativeRecorderMessage(window, WM_KEYUP, Qt::ControlModifier) &&
+                        !sendNativeRecorderMessage(window, WM_SYSKEYDOWN, Qt::AltModifier) &&
+                        !sendNativeRecorderMessage(window, WM_SYSKEYUP, Qt::AltModifier),
+                    "local recorders must not intercept native Print Screen messages");
+            session.flush();
+            require(session.validated.isEmpty(),
+                    "native Print Screen input must not enter local shortcut validation");
+#endif
+            session.key(QEvent::KeyPress, Qt::Key_A, Qt::ControlModifier);
+            require(session.validated == QStringList{QStringLiteral("Ctrl+A")} &&
+                        session.modal->acceptButton()->isEnabled(),
+                    "local recorders must retain normal synchronous Qt key recording");
+            if (recording == 0) {
+                session.flush();
+                session.row
+                    ->findChild<adqt::widgets::AdButton*>(
+                        QStringLiteral("shortcutConfigActionButton"))
+                    ->click();
+                session.flush();
+                session.row
+                    ->findChild<adqt::widgets::AdButton*>(QStringLiteral("shortcutConfigKeyButton"))
+                    ->click();
+                session.flush();
+            }
+        }
+        session.modal->acceptButton()->click();
+        session.flush();
+        require(session.saved == QStringList{QStringLiteral("Ctrl+A")},
+                "local shortcut recording must retain its existing save behavior");
+    }
+}
+
+void nativePrintScreenRecordingPreservesModifiers() {
+#ifdef Q_OS_WIN
+    PrintScreenRecordingSession session;
+    QWidget* const window = session.content->window();
+    for (int mask = 0; mask < 16; ++mask) {
+        Qt::KeyboardModifiers modifiers;
+        QString expected;
+        if ((mask & 1) != 0) {
+            modifiers |= Qt::MetaModifier;
+            expected += QStringLiteral("Meta+");
+        }
+        if ((mask & 2) != 0) {
+            modifiers |= Qt::ControlModifier;
+            expected += QStringLiteral("Ctrl+");
+        }
+        if ((mask & 4) != 0) {
+            modifiers |= Qt::AltModifier;
+            expected += QStringLiteral("Alt+");
+        }
+        if ((mask & 8) != 0) {
+            modifiers |= Qt::ShiftModifier;
+            expected += QStringLiteral("Shift+");
+        }
+        expected += QStringLiteral("Print");
+        require(sendNativeRecorderMessage(window, WM_KEYUP, modifiers),
+                "native Print Screen releases must be handled before Qt can discard them");
+        session.flush();
+        require(session.validated.last() == expected && session.modal->acceptButton()->isEnabled(),
+                "every native Print Screen modifier combination must reach validation unchanged");
+    }
+
+    session.validated.clear();
+    require(sendNativeRecorderMessage(window, WM_SYSKEYDOWN, Qt::ControlModifier, VK_SNAPSHOT,
+                                      LPARAM{1} << 29),
+            "native system-key messages must support Alt+Print Screen");
+    sendNativeRecorderMessage(window, WM_SYSKEYDOWN, Qt::NoModifier, VK_SNAPSHOT, LPARAM{1} << 30);
+    sendNativeRecorderMessage(window, WM_SYSKEYUP, Qt::NoModifier);
+    session.flush();
+    require(session.validated == QStringList{QStringLiteral("Ctrl+Alt+Print")},
+            "native repeats and releases must preserve the first press and its Alt context");
+
+    sendNativeRecorderMessage(window, WM_KEYUP, Qt::ControlModifier | Qt::ShiftModifier,
+                              VK_SNAPSHOT, 0, 100);
+    QKeyEvent queuedControl(QEvent::KeyPress, Qt::Key_Control, Qt::ControlModifier);
+    queuedControl.setTimestamp(99);
+    QCoreApplication::sendEvent(session.content, &queuedControl);
+    session.flush();
+    QKeyEvent queuedShift(QEvent::KeyPress, Qt::Key_Shift, Qt::ShiftModifier);
+    queuedShift.setTimestamp(100);
+    QCoreApplication::sendEvent(session.content, &queuedShift);
+    session.flush();
+    require(session.validated.last() == QStringLiteral("Ctrl+Shift+Print") &&
+                session.modal->acceptButton()->isEnabled(),
+            "older Qt modifier presses must not cancel or overwrite a native captured chord");
+    QKeyEvent newerKey(QEvent::KeyPress, Qt::Key_A, Qt::ControlModifier);
+    newerKey.setTimestamp(101);
+    QCoreApplication::sendEvent(session.content, &newerKey);
+    session.flush();
+    require(session.validated.last() == QStringLiteral("Ctrl+A"),
+            "a newer Qt key must still replace a native captured chord");
+    sendNativeRecorderMessage(window, WM_KEYUP, Qt::ControlModifier | Qt::AltModifier);
+    session.flush();
+
+    QWidget unrelated;
+    require(!sendNativeRecorderMessage(&unrelated, WM_KEYUP, Qt::NoModifier) &&
+                !sendNativeRecorderMessage(window, WM_KEYDOWN, Qt::NoModifier, 'A') &&
+                !sendNativeRecorderMessage(window, WM_CHAR, Qt::NoModifier),
+            "the native recorder must pass unrelated windows, keys, and message types through");
+    session.row->findChild<adqt::widgets::AdButton*>(QStringLiteral("shortcutConfigActionButton"))
+        ->click();
+    session.flush();
+    require(!sendNativeRecorderMessage(window, WM_KEYUP, Qt::NoModifier),
+            "committing a recording row must immediately remove its native capture");
+    session.modal->acceptButton()->click();
+    session.flush();
+    require(session.saved == QStringList{QStringLiteral("Ctrl+Alt+Print")},
+            "native combinations must persist through the standard dialog transaction");
+#endif
+}
+
+void printScreenHookRecordsBeforeRegisteredHotkeys() {
+#ifdef Q_OS_WIN
+    require(QGuiApplication::platformName() == QStringLiteral("windows"),
+            "the native input test requires the Windows platform");
+    class RegisteredHotkey final : public QAbstractNativeEventFilter {
+      public:
+        RegisteredHotkey() {
+            require(RegisterHotKey(nullptr, id, MOD_CONTROL | MOD_NOREPEAT, VK_SNAPSHOT) != FALSE,
+                    "Ctrl+Print Screen must be available for the native registration test");
+            QCoreApplication::instance()->installNativeEventFilter(this);
+        }
+        ~RegisteredHotkey() override {
+            UnregisterHotKey(nullptr, id);
+            QCoreApplication::instance()->removeNativeEventFilter(this);
+        }
+        bool nativeEventFilter(const QByteArray&, void* message, qintptr*) override {
+            const auto& native = *static_cast<const MSG*>(message);
+            if (native.message == WM_HOTKEY && native.wParam == id) {
+                ++activations;
+            }
+            return false;
+        }
+        enum { id = 0x5A71 };
+        int activations = 0;
+    } registeredHotkey;
+
+    const auto waitUntil = [](auto condition) {
+        QElapsedTimer timer;
+        timer.start();
+        while (!condition() && timer.elapsed() < 3000) {
+            QApplication::processEvents(QEventLoop::AllEvents, 10);
+        }
+        return condition();
+    };
+    const auto foreground = [&waitUntil](QWidget* window) {
+        window->show();
+        window->raise();
+        window->activateWindow();
+        const HWND hwnd = reinterpret_cast<HWND>(window->winId());
+        require(waitUntil([&]() {
+                    if (GetForegroundWindow() != hwnd) {
+                        const DWORD foregroundThread =
+                            GetWindowThreadProcessId(GetForegroundWindow(), nullptr);
+                        const DWORD currentThread = GetCurrentThreadId();
+                        const bool attached =
+                            foregroundThread != 0 && foregroundThread != currentThread &&
+                            AttachThreadInput(currentThread, foregroundThread, TRUE) != FALSE;
+                        BringWindowToTop(hwnd);
+                        SetForegroundWindow(hwnd);
+                        if (attached) {
+                            AttachThreadInput(currentThread, foregroundThread, FALSE);
+                        }
+                    }
+                    return GetForegroundWindow() == hwnd && window->isActiveWindow();
+                }),
+                "the native test window must become foreground");
+    };
+    const auto sendChord = [](WORD controlKey, bool releaseModifierFirst, bool repeat) {
+        std::array<INPUT, 5> inputs{};
+        UINT count = 0;
+        const auto append = [&](WORD key, bool release) {
+            INPUT& input = inputs[count++];
+            input.type = INPUT_KEYBOARD;
+            input.ki.wVk = key;
+            input.ki.dwFlags = (release ? KEYEVENTF_KEYUP : 0U) |
+                               (key == VK_SNAPSHOT ? KEYEVENTF_EXTENDEDKEY : 0U);
+        };
+        append(controlKey, false);
+        append(VK_SNAPSHOT, false);
+        if (repeat) {
+            append(VK_SNAPSHOT, false);
+        }
+        append(releaseModifierFirst ? controlKey : VK_SNAPSHOT, true);
+        append(releaseModifierFirst ? VK_SNAPSHOT : controlKey, true);
+        require(SendInput(count, inputs.data(), sizeof(INPUT)) == count,
+                "the native Print Screen chord must be delivered");
+    };
+
+    PrintScreenRecordingSession session;
+    QWidget* const window = session.content->window();
+    foreground(window);
+    sendChord(VK_LCONTROL, true, true);
+    require(waitUntil([&]() { return !session.validated.isEmpty(); }),
+            "the keyboard hook must capture Print Screen even when RegisterHotKey owns it");
+    require(session.validated == QStringList{QStringLiteral("Ctrl+Print")} &&
+                registeredHotkey.activations == 0,
+            "the hook must snapshot modifiers once and suppress the existing global action");
+    sendChord(VK_RCONTROL, false, false);
+    require(waitUntil([&]() { return session.validated.size() == 2; }) &&
+                session.validated.last() == QStringLiteral("Ctrl+Print") &&
+                registeredHotkey.activations == 0,
+            "right-hand modifiers must be captured without activating existing hotkeys");
+
+    QWidget otherWindow;
+    foreground(&otherWindow);
+    sendChord(VK_LCONTROL, false, false);
+    require(waitUntil([&]() { return registeredHotkey.activations == 1; }) &&
+                session.validated.size() == 2,
+            "a background recorder must not intercept Print Screen from another window");
+    foreground(window);
+    sendChord(VK_LCONTROL, false, false);
+    require(waitUntil([&]() { return session.validated.size() == 3; }) &&
+                registeredHotkey.activations == 1,
+            "returning to the recorder must restore scoped Print Screen capture");
+
+    session.flush();
+    auto* commit = session.row->findChild<adqt::widgets::AdButton*>(
+        QStringLiteral("shortcutConfigActionButton"));
+    require(commit != nullptr && commit->isEnabled(), "the current recording must be confirmable");
+    commit->click();
+    session.flush();
+    sendChord(VK_LCONTROL, false, false);
+    require(waitUntil([&]() { return registeredHotkey.activations == 2; }) &&
+                session.validated.size() == 3,
+            "finishing a row must restore normal global hotkey delivery immediately");
+    session.modal->acceptButton()->click();
+    session.flush();
+    require(session.saved == QStringList{QStringLiteral("Ctrl+Print")},
+            "the physical input recording must save through the existing dialog transaction");
 #endif
 }
 
@@ -524,9 +842,6 @@ void drawingRecorderUsesLocalValidationLanguage() {
 
     auto* configContent = row.findChild<QWidget*>(QStringLiteral("shortcutConfigContent"));
     require(configContent != nullptr, "drawing shortcut recorder should be created");
-    require(row.findChild<adqt::widgets::AdButton*>(
-                QStringLiteral("shortcutConfigPrintScreenButton")) == nullptr,
-            "drawing shortcut recorders must not show the Windows global shortcut workaround");
     QKeyEvent duplicateEvent(QEvent::KeyPress, Qt::Key_S, Qt::NoModifier);
     QCoreApplication::sendEvent(configContent, &duplicateEvent);
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
@@ -718,14 +1033,23 @@ void adjustableDelayUsesWheelAndClampsRange() {
 
 int main(int argc, char** argv) {
     bool titleAndKeyButtonOnly = false;
+    bool nativePrintScreenOnly = false;
     for (int argumentIndex = 1; argumentIndex < argc; ++argumentIndex) {
         if (QString::fromLocal8Bit(argv[argumentIndex]) ==
             QStringLiteral("--title-and-key-button-only")) {
             titleAndKeyButtonOnly = true;
         }
+        if (QString::fromLocal8Bit(argv[argumentIndex]) ==
+            QStringLiteral("--native-print-screen-only")) {
+            nativePrintScreenOnly = true;
+        }
     }
 
     QApplication application(argc, argv);
+    if (nativePrintScreenOnly) {
+        printScreenHookRecordsBeforeRegisteredHotkeys();
+        return 0;
+    }
     if (titleAndKeyButtonOnly) {
         compactTitleAndKeyButtonStylesMatchReference();
         return 0;
@@ -733,7 +1057,10 @@ int main(int argc, char** argv) {
 
     statusPresentationUsesSemanticTokens();
     recorderAcceptsOnlyBackendSupportedShortcuts();
-    printScreenButtonRecordsThroughValidation();
+    printScreenReleaseRecordsModifiers();
+    printScreenRecordingPreservesEventOrderAndLifecycle();
+    localShortcutRecordersUseOnlyNormalKeyEvents();
+    nativePrintScreenRecordingPreservesModifiers();
     drawingRecorderUsesLocalValidationLanguage();
     compactTitleAndKeyButtonStylesMatchReference();
     adjustableDelayUsesWheelAndClampsRange();

@@ -228,7 +228,7 @@ function(_snow_apply_test_labels directory)
     get_property(_directory_tests DIRECTORY "${directory}" PROPERTY TESTS)
     foreach(_snow_test IN LISTS _directory_tests)
         unset(_snow_test_labels)
-        get_test_property(_snow_test_labels "${_snow_test}" LABELS)
+        get_property(_snow_test_labels TEST "${_snow_test}" DIRECTORY "${directory}" PROPERTY LABELS)
         if(NOT _snow_test_labels OR
            _snow_test_labels STREQUAL "NOTFOUND" OR
            _snow_test_labels MATCHES "-NOTFOUND$")
