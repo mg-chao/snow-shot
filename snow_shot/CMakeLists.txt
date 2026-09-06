@@ -2388,6 +2388,10 @@ if(SNOW_SHOT_BUILD_TESTS)
         COMMAND snow-shot-pinned-window-tests --group-menu-only
     )
     add_test(
+        NAME snow-shot-pinned-cached-ocr-tests
+        COMMAND snow-shot-pinned-window-tests --cached-ocr-only
+    )
+    add_test(
         NAME snow-shot-pinned-restore-wiring-tests
         COMMAND snow-shot-pinned-window-tests --restore-wiring-only
     )
@@ -2396,6 +2400,7 @@ if(SNOW_SHOT_BUILD_TESTS)
         snow-shot-pinned-async-presentation-tests
         snow-shot-pinned-window-pool-tests
         snow-shot-pinned-group-menu-tests
+        snow-shot-pinned-cached-ocr-tests
         snow-shot-pinned-restore-wiring-tests
         snow-shot-pinned-toolbar-parity-tests
         snow-shot-pinned-movement-shortcut-tests
