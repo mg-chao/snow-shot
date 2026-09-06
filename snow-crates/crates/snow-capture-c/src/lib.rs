@@ -1755,8 +1755,29 @@ fn write_stream_frame_info(
     Ok(())
 }
 
-#[unsafe(no_mangle)]
 #[allow(clippy::needless_update)] // needed when snow-capture enables its `stage-timing` feature
+fn stream_capture_options(
+    config: SnowCaptureStreamConfig,
+    output_pixel_format: CapturePixelFormat,
+    wgc_update_mode: WgcUpdateMode,
+) -> CaptureOptions {
+    CaptureOptions {
+        capture_retry_count: config.capture_retry_count.max(1),
+        workload: CaptureWorkload::Continuous,
+        color_correction: if config.restore_original_colors != 0 {
+            ColorCorrection::snapshot_current()
+        } else {
+            ColorCorrection::Disabled
+        },
+        gpu_hdr_conversion: true,
+        hdr_tonemap_lut: true,
+        output_pixel_format,
+        wgc_update_mode,
+        ..Default::default()
+    }
+}
+
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn snow_capture_stream_create_region(
     config: *const SnowCaptureStreamConfig,
 ) -> *mut SnowCaptureStreamImpl {
@@ -1805,20 +1826,7 @@ pub unsafe extern "C" fn snow_capture_stream_create_region(
             return ptr::null_mut();
         }
     };
-    let options = CaptureOptions {
-        capture_retry_count: config.capture_retry_count.max(1),
-        workload: CaptureWorkload::Continuous,
-        color_correction: if config.restore_original_colors != 0 {
-            ColorCorrection::CurrentMagnifier
-        } else {
-            ColorCorrection::Disabled
-        },
-        gpu_hdr_conversion: true,
-        hdr_tonemap_lut: true,
-        output_pixel_format,
-        wgc_update_mode,
-        ..Default::default()
-    };
+    let options = stream_capture_options(config, output_pixel_format, wgc_update_mode);
     let session = match system.open_session(CaptureTarget::Region(region), options) {
         Ok(session) => session,
         Err(error) => {
@@ -3243,6 +3251,27 @@ mod tests {
             reserved: [0; 26],
         };
         assert!(unsafe { read_stream_config(&valid) }.is_ok());
+
+        let options = stream_capture_options(
+            valid,
+            CapturePixelFormat::Rgba8,
+            WgcUpdateMode::CompleteOnly,
+        );
+        assert_eq!(options.color_correction, ColorCorrection::Disabled);
+        for restore_original_colors in [1, u8::MAX] {
+            let options = stream_capture_options(
+                SnowCaptureStreamConfig {
+                    restore_original_colors,
+                    ..valid
+                },
+                CapturePixelFormat::Rgba8,
+                WgcUpdateMode::CompleteOnly,
+            );
+            assert!(
+                matches!(options.color_correction, ColorCorrection::Snapshot(_)),
+                "a scrolling stream must retain one color filter snapshot for all frames"
+            );
+        }
 
         let mut wrong_version = valid;
         wrong_version.version += 1;

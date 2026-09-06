@@ -144,7 +144,8 @@ typedef struct SnowCaptureStreamConfig {
     uint8_t adaptive_fps;
     /* Set to zero for scrolling captures to avoid cursor compositing work. */
     uint8_t include_cursor;
-    /* Opt in to reversal of supported full-screen Magnifier effects. */
+    /* Opt in to reversal of supported full-screen Magnifier effects.
+       The effect is sampled once when the stream is created. */
     uint8_t restore_original_colors;
     uint8_t reserved[26];
 } SnowCaptureStreamConfig;
