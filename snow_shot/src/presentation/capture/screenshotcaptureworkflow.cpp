@@ -95,6 +95,7 @@ void ScreenshotCaptureWorkflow::startCapture(ScreenshotCapturePresentationMode p
         resetCanvasRuntimeState();
     }
     m_captureModelsClean = false;
+    m_context.restoreSelectionEffects();
     m_context.interaction.beginCapture();
     m_context.intelligentSelection.beginCaptureSession(m_context.smartSelectionEnabled());
     beginCapturePreparation(sessionId);

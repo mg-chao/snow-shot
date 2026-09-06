@@ -16,6 +16,10 @@ class ScreenshotSelectionSettingsStore final : public ScreenshotSelectionParamsS
     [[nodiscard]] ScreenshotSelectionParams previousSelectionParams() const;
     void setPreviousSelectionParams(const ScreenshotSelectionParams& params) override;
 
+    [[nodiscard]] int cornerRadius() const;
+    [[nodiscard]] int shadowWidth() const;
+    void setSelectionEffects(int cornerRadius, int shadowWidth);
+
     [[nodiscard]] QVector<ScreenshotSelectionPreset> presets() const;
     void setPresets(const QVector<ScreenshotSelectionPreset>& presets);
 

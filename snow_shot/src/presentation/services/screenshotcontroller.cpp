@@ -1055,6 +1055,9 @@ void ScreenshotController::Impl::createSelectionWorkflows() {
                 [this]() { m_colorPickerController->hide(); },
                 [this](bool suppressed) { m_colorPickerController->setSuppressed(suppressed); },
             },
+            [this](int cornerRadius, int shadowWidth) {
+                m_selectionSettings->setSelectionEffects(cornerRadius, shadowWidth);
+            },
         });
 }
 
@@ -1235,6 +1238,10 @@ void ScreenshotController::Impl::createCaptureWorkflow() {
                         m_displaySession,
                         snow_shot::presentation::screenshotCanvasToolStyleDefaults());
                 }
+            },
+            [this]() {
+                static_cast<void>(m_selection.setCornerRadius(m_selectionSettings->cornerRadius()));
+                static_cast<void>(m_selection.setShadowWidth(m_selectionSettings->shadowWidth()));
             },
         });
 }

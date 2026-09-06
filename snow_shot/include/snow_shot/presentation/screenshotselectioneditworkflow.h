@@ -22,6 +22,8 @@ struct ScreenshotSelectionEditWorkflowContext {
     ScreenshotInteractionState& interaction;
     ScreenshotSelectionModel& selection;
     ScreenshotSelectionEditUiActions ui;
+    std::function<void(int cornerRadius, int shadowWidth)> persistSelectionEffects = [](int, int) {
+    };
 };
 
 class ScreenshotSelectionEditWorkflow final {

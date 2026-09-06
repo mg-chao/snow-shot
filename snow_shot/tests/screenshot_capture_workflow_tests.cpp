@@ -204,6 +204,46 @@ ScreenshotCaptureWorkflow makeWorkflow(ScreenshotCaptureState& state,
     });
 }
 
+void captureRestoresSelectionEffectsAfterReset() {
+    for (const bool prewarm : {false, true}) {
+        ScreenshotCaptureState state;
+        ScreenshotDisplaySession displays;
+        ScreenshotGeometryMapper geometry;
+        ScreenshotInteractionState interaction;
+        ScreenshotSelectionModel selection;
+        ScreenshotIntelligentSelectionModel intelligentSelection;
+        CaptureRuntime runtime;
+        ScreenshotCaptureWorkflowContext context{
+            state, runtime, geometry, displays, interaction, selection, intelligentSelection, {}};
+        int radius = 24;
+        int shadowWidth = 12;
+        context.restoreSelectionEffects = [&]() {
+            static_cast<void>(selection.setCornerRadius(radius));
+            static_cast<void>(selection.setShadowWidth(shadowWidth));
+        };
+        ScreenshotCaptureWorkflow workflow(std::move(context));
+        if (prewarm) {
+            workflow.prewarmResources();
+        }
+        workflow.startCapture();
+        require(selection.cornerRadius() == 24 && selection.shadowWidth() == 12,
+                "cold and prewarmed captures must restore effects after resetting the model");
+        require(!selection.hasPixelSelection() && !selection.aspectRatioLocked(),
+                "restoring effects must not restore selection geometry or aspect ratio locking");
+        workflow.cancelCapture();
+        radius = 32;
+        shadowWidth = 16;
+        workflow.startCapture();
+        require(selection.cornerRadius() == 32 && selection.shadowWidth() == 16,
+                "captures after cancellation must reload the latest saved effects");
+        radius = 0;
+        shadowWidth = 0;
+        workflow.startCapture();
+        require(selection.cornerRadius() == 0 && selection.shadowWidth() == 0,
+                "restarting an active capture must restore disabled effects");
+    }
+}
+
 void idlePrewarmDoesNotInitializeSelector() {
     ScreenshotCaptureState state;
     ScreenshotDisplaySession displaySession;
@@ -892,6 +932,7 @@ void captureSessionsApplyTheCurrentSmartSelectionSetting() {
 } // namespace
 
 int main() {
+    captureRestoresSelectionEffectsAfterReset();
     idlePrewarmDoesNotInitializeSelector();
     endingScreenshotReprewarmsOverlaySurfaces();
     exportCancellationDefersExpensiveCleanup();

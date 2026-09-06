@@ -41,6 +41,9 @@ void ScreenshotSelectionEditWorkflow::setSelectionCornerRadiusFromToolbar(int ra
         return;
     }
 
+    m_context.persistSelectionEffects(m_context.selection.cornerRadius(),
+                                      m_context.selection.shadowWidth());
+
     if (m_context.ui.updateOverlayState) {
         m_context.ui.updateOverlayState();
     }
@@ -50,6 +53,9 @@ void ScreenshotSelectionEditWorkflow::setSelectionShadowWidthFromToolbar(int sha
     if (!m_context.selection.setShadowWidth(shadowWidth)) {
         return;
     }
+
+    m_context.persistSelectionEffects(m_context.selection.cornerRadius(),
+                                      m_context.selection.shadowWidth());
 
     if (m_context.ui.updateOverlayState) {
         m_context.ui.updateOverlayState();
@@ -117,6 +123,9 @@ void ScreenshotSelectionEditWorkflow::applySelectionParams(
     if (!m_context.selection.applyParams(params, bounds)) {
         return;
     }
+
+    m_context.persistSelectionEffects(m_context.selection.cornerRadius(),
+                                      m_context.selection.shadowWidth());
 
     m_context.interaction.applySelectionParams();
     m_context.captureState.sessionState = ScreenshotSessionState::Editing;

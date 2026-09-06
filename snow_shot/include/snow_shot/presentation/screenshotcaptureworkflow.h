@@ -36,6 +36,7 @@ struct ScreenshotCaptureWorkflowContext {
     std::function<void(std::optional<ScreenshotWindowCaptureFrame>)> focusedWindowCaptured =
         [](std::optional<ScreenshotWindowCaptureFrame>) {};
     std::function<void()> refreshCanvasCreationStyles = []() {};
+    std::function<void()> restoreSelectionEffects = []() {};
 };
 
 enum class ScreenshotCapturePresentationMode {

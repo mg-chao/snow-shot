@@ -76,6 +76,21 @@ QVector<ScreenshotSelectionPreset> ScreenshotSelectionSettingsStore::presets() c
     return result;
 }
 
+int ScreenshotSelectionSettingsStore::cornerRadius() const {
+    return configuration().value(QStringLiteral("screenshot_selection/corner_radius")).toInt();
+}
+
+int ScreenshotSelectionSettingsStore::shadowWidth() const {
+    return configuration().value(QStringLiteral("screenshot_selection/shadow_width")).toInt();
+}
+
+void ScreenshotSelectionSettingsStore::setSelectionEffects(int cornerRadius, int shadowWidth) {
+    static_cast<void>(configuration().setValues({
+        {QStringLiteral("screenshot_selection/corner_radius"), cornerRadius},
+        {QStringLiteral("screenshot_selection/shadow_width"), shadowWidth},
+    }));
+}
+
 void ScreenshotSelectionSettingsStore::setPresets(
     const QVector<ScreenshotSelectionPreset>& presets) {
     QJsonArray array;
@@ -92,5 +107,7 @@ void ScreenshotSelectionSettingsStore::clear() {
     static_cast<void>(configuration().setValues({
         {QStringLiteral("screenshot_selection/previous_selection"), QJsonValue::Null},
         {QStringLiteral("screenshot_selection/selection_rect_presets"), QJsonArray()},
+        {QStringLiteral("screenshot_selection/corner_radius"), 0},
+        {QStringLiteral("screenshot_selection/shadow_width"), 0},
     }));
 }

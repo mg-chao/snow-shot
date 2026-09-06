@@ -1639,6 +1639,19 @@ if(SNOW_SHOT_BUILD_TESTS)
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
     )
 
+    add_executable(snow-shot-selection-effects-tests
+        tests/screenshot_selection_effects_tests.cpp
+        src/presentation/core/screenshotgeometry.cpp
+        src/presentation/core/screenshotinteractionstate.cpp
+        src/presentation/selection/screenshotselectioneditworkflow.cpp
+        src/presentation/selection/screenshotselectiongeometry.cpp
+        src/presentation/selection/screenshotselectionmodel.cpp
+        src/presentation/selection/screenshotselectionparams.cpp
+        src/presentation/selection/screenshotselectionsettingsstore.cpp
+    )
+    target_link_libraries(snow-shot-selection-effects-tests PRIVATE snow_shot_storage Qt6::Widgets)
+    add_test(NAME snow-shot-selection-effects-tests COMMAND snow-shot-selection-effects-tests)
+
     add_executable(snow-shot-capture-workflow-tests
         tests/screenshot_capture_workflow_tests.cpp
         include/snow_shot/presentation/screenshotcapturedisplaymodelreconciler.h
