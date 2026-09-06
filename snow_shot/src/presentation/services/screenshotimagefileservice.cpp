@@ -102,11 +102,10 @@ QStringList ScreenshotImageFileService::automaticDirectories() {
     QStringList directories;
     for (QStandardPaths::StandardLocation location :
          {QStandardPaths::PicturesLocation, QStandardPaths::DocumentsLocation}) {
-        const QString root = QStandardPaths::writableLocation(location);
-        if (root.isEmpty()) {
+        const QString directory = QStandardPaths::writableLocation(location);
+        if (directory.isEmpty()) {
             continue;
         }
-        const QString directory = QDir(root).filePath(QStringLiteral("SnowShot"));
         if (!directories.contains(directory, Qt::CaseInsensitive)) {
             directories.push_back(directory);
         }

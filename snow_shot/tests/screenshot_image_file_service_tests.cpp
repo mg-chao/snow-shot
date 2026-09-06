@@ -8,6 +8,7 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QMimeData>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTimeZone>
 #include <QTranslator>
@@ -201,6 +202,24 @@ void streamsRowsToAtomicFileAndCancelsWithoutPublishing() {
             "a cancelled row-source save must not publish its temporary file");
 }
 
+void automaticDirectoriesUseSystemLocations() {
+    const QString pictures = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
+    const QString documents = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    const QStringList directories = ScreenshotImageFileService::automaticDirectories();
+    if (!pictures.isEmpty()) {
+        require(!directories.isEmpty() && directories.constFirst() == pictures,
+                "automatic saving must prefer the system Pictures directory without a suffix");
+    }
+    if (!documents.isEmpty()) {
+        require(directories.contains(documents, Qt::CaseInsensitive),
+                "automatic saving must include the system Documents directory as a fallback");
+    }
+    for (const QString& directory : directories) {
+        require(!directory.isEmpty() && (directory == pictures || directory == documents),
+                "default save directories must come directly from the system");
+    }
+}
+
 void configuredAutomaticOutputUsesFormatDirectoryAndFilename() {
     QTemporaryDir directory;
     require(directory.isValid(), "temporary configured-output directory could not be created");
@@ -295,6 +314,7 @@ int main(int argc, char** argv) {
         writesLosslessImageAndPreservesCollisionNames();
         writesEveryAdvertisedFormat();
         streamsRowsToAtomicFileAndCancelsWithoutPublishing();
+        automaticDirectoriesUseSystemLocations();
         configuredAutomaticOutputUsesFormatDirectoryAndFilename();
         saveDialogPrefersTheLastExistingDirectory();
         retriesNextDirectoryAndPublishesFileOnlyClipboardData();

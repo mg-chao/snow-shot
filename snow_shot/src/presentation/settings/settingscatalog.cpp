@@ -1478,7 +1478,7 @@ QVector<SettingsPageDefinition> builtInPages() {
                 },
                 {
                     QStringLiteral("history"),
-                    settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "History")),
+                    settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Screenshot history")),
                     settingsText(QT_TRANSLATE_NOOP(
                         "SettingsCatalog", "Screenshot history retention and cleanup settings")),
                     SettingsSectionReset::HistoryPolicy,

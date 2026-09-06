@@ -10,7 +10,6 @@
 #include <QRegularExpression>
 #include <QSet>
 #include <QHash>
-#include <QDir>
 #include <QStandardPaths>
 
 #include <algorithm>
@@ -67,10 +66,7 @@ QString defaultOutputDirectory(QStandardPaths::StandardLocation primary) {
     if (root.isEmpty()) {
         root = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
     }
-    if (root.isEmpty()) {
-        return {};
-    }
-    return QDir(root).filePath(QStringLiteral("SnowShot"));
+    return root;
 }
 
 const QVector<ConfigurationSchemaEntry> kEntries = {

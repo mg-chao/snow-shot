@@ -174,6 +174,9 @@ void builtInCatalogIsCompleteAndValid() {
                 storagePage->sections.at(0).id == QStringLiteral("screenshots") &&
                 storagePage->sections.at(1).id == QStringLiteral("screen-recording-output") &&
                 storagePage->sections.at(2).id == QStringLiteral("history") &&
+                storagePage->sections.at(2).title.source != nullptr &&
+                QString::fromLatin1(storagePage->sections.at(2).title.source) ==
+                    QStringLiteral("Screenshot history") &&
                 storagePage->sections.at(3).id == QStringLiteral("storage-status") &&
                 imageFormat != nullptr && imageDirectory != nullptr && videoFilename != nullptr &&
                 std::get<settings::SettingsSelectDefinition>(imageFormat->payload).options.size() ==

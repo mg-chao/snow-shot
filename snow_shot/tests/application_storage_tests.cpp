@@ -13,6 +13,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 
 #include <atomic>
@@ -31,6 +32,12 @@ void require(bool condition, const char* message) {
         std::cerr << message << '\n';
         std::exit(1);
     }
+}
+
+QString systemSaveDirectory(QStandardPaths::StandardLocation location) {
+    const QString directory = QStandardPaths::writableLocation(location);
+    return directory.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
+                               : directory;
 }
 
 void writeBytes(const QString& path, const QByteArray& bytes) {
@@ -211,9 +218,8 @@ void newSettingsSchemaDefaultsAndValidationAreComplete() {
                     QStringLiteral("pin") &&
                 !defaultValue("screenshot/auto_save_after_copy").toBool() &&
                 !defaultValue("screenshot/copy_image_file_to_clipboard").toBool() &&
-                QDir::fromNativeSeparators(
-                    defaultValue("screenshot/image_save_directory").toString())
-                    .endsWith(QStringLiteral("/SnowShot")) &&
+                defaultValue("screenshot/image_save_directory").toString() ==
+                    systemSaveDirectory(QStandardPaths::PicturesLocation) &&
                 defaultValue("screenshot/last_manual_save_directory").toString().isEmpty() &&
                 defaultValue("screenshot/image_format").toString() == QStringLiteral("png") &&
                 defaultValue("screenshot/manual_save_filename_format").toString() ==
@@ -239,9 +245,8 @@ void newSettingsSchemaDefaultsAndValidationAreComplete() {
                 defaultValue("screen_recording/encoding_preset").toString() ==
                     QStringLiteral("veryfast") &&
                 defaultValue("screen_recording/hide_toolbar_in_recording").toBool() &&
-                QDir::fromNativeSeparators(
-                    defaultValue("screen_recording/video_save_directory").toString())
-                    .endsWith(QStringLiteral("/SnowShot")) &&
+                defaultValue("screen_recording/video_save_directory").toString() ==
+                    systemSaveDirectory(QStandardPaths::MoviesLocation) &&
                 defaultValue("screen_recording/video_filename_format").toString() ==
                     QStringLiteral("SnowShot_Video_{YYYY-MM-DD_HH-mm-ss}") &&
                 defaultValue("tray/left_click_action").toString() ==
@@ -638,8 +643,8 @@ void newSettingsAdaptersRoundTripAndRejectInvalidValues() {
                 screenshot.autoSaveFilenameFormat() ==
                     QStringLiteral("SnowShot_{YYYY-MM-DD_HH-mm-ss}") &&
                 screenshot.lastManualSaveDirectory().isEmpty() &&
-                QDir::fromNativeSeparators(screenshot.imageSaveDirectory())
-                    .endsWith(QStringLiteral("/SnowShot")),
+                screenshot.imageSaveDirectory() ==
+                    systemSaveDirectory(QStandardPaths::PicturesLocation),
             "screenshot adapters must expose requested defaults");
     require(screenshot.setAutoExecuteAfterTextRecognition(
                 QStringLiteral("quick_copy_text_and_end_screenshot")) &&
@@ -700,8 +705,8 @@ void newSettingsAdaptersRoundTripAndRejectInvalidValues() {
                 recording.encoder() == QStringLiteral("h264_hw") &&
                 recording.encodingPreset() == QStringLiteral("veryfast") &&
                 recording.hideToolbarInRecording() &&
-                QDir::fromNativeSeparators(recording.videoSaveDirectory())
-                    .endsWith(QStringLiteral("/SnowShot")) &&
+                recording.videoSaveDirectory() ==
+                    systemSaveDirectory(QStandardPaths::MoviesLocation) &&
                 recording.videoFilenameFormat() ==
                     QStringLiteral("SnowShot_Video_{YYYY-MM-DD_HH-mm-ss}"),
             "recording adapters must expose requested defaults");
@@ -890,6 +895,11 @@ void newSettingsAdaptersRoundTripAndRejectInvalidValues() {
 
     require(applicationStorage.configuration().flushNow().success,
             "new settings adapter mutations must be flushable");
+    applicationStorage.shutdown();
+    static_cast<void>(initialize(executable, temporary.path()));
+    require(screenshot.imageSaveDirectory() == QStringLiteral("D:/Captures") &&
+                recording.videoSaveDirectory() == QStringLiteral("D:/Recordings"),
+            "custom save directories must survive reload without being replaced by defaults");
 }
 
 void smartSelectionAccessorAndSignal() {

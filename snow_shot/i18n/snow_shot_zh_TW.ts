@@ -3528,6 +3528,7 @@
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="182"/>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="1296"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1481"/>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="1990"/>
         <source>Screenshot history</source>
         <translation>截圖歷史</translation>
@@ -4093,11 +4094,6 @@
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="1450"/>
         <source>System tray availability and icon settings</source>
         <translation>系統匣可用性與圖示設定</translation>
-    </message>
-    <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1481"/>
-        <source>History</source>
-        <translation>歷史</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="1489"/>
