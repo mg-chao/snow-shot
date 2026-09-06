@@ -13,6 +13,9 @@ class ScreenshotSavePreviewCanvas final : public QWidget {
     explicit ScreenshotSavePreviewCanvas(QWidget* parent = nullptr);
     void setSource(QImage image, QSize pixels);
     void setOutput(QImage image);
+    [[nodiscard]] const QImage& outputImage() const {
+        return m_output;
+    }
     void setSplitRatio(double value);
     [[nodiscard]] double splitRatio() const {
         return m_split;

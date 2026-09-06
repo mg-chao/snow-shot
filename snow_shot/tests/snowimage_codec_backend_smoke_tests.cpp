@@ -155,6 +155,27 @@ bool roundTripRequiredFormats(const std::array<uint8_t, 3U * 2U * 4U>& pixels,
 } // namespace
 
 int main() {
+    constexpr std::array<uint8_t, 12> resizePixels{0, 0, 0, 255, 255, 255, 255, 255, 0, 0, 0, 255};
+    std::array<uint8_t, 20> resized{};
+    std::array<char, 512> resizeError{};
+    if (!snow_shot_image_codec_resize_rgba8(resizePixels.data(), 3, 1, resized.data(), 5, 1,
+                                            nullptr, nullptr, resizeError.data(),
+                                            resizeError.size()) ||
+        resized[0] != 0 || resized[8] != 255 || resized[16] != 0 ||
+        std::abs(int(resized[4]) - 170) > 1 || std::abs(int(resized[12]) - 170) > 1) {
+        std::cerr << "Export resizing must use linear interpolation in linear RGB: "
+                  << resizeError.data() << '\n';
+        return EXIT_FAILURE;
+    }
+    constexpr std::array<uint8_t, 12> alphaPixels{255, 0, 0, 255, 0, 0, 255, 0, 255, 0, 0, 255};
+    if (!snow_shot_image_codec_resize_rgba8(alphaPixels.data(), 3, 1, resized.data(), 5, 1, nullptr,
+                                            nullptr, resizeError.data(), resizeError.size()) ||
+        resized[4] != 255 || resized[5] != 0 || resized[6] != 0 || resized[7] != 153 ||
+        resized[11] != 0) {
+        std::cerr << "Linear export resizing must premultiply alpha: " << resizeError.data()
+                  << '\n';
+        return EXIT_FAILURE;
+    }
     constexpr std::array<uint8_t, 3U * 2U * 4U> pixels{
         255, 0,   0,   255, 0, 255, 0, 255, 0,  0,   255, 255,
         255, 255, 255, 255, 0, 0,   0, 255, 80, 100, 120, 255,
@@ -182,10 +203,10 @@ int main() {
     const int32_t decodedBgra = snow_shot_image_codec_decode_bgra8(
         output.data, output.size, SNOW_SHOT_IMAGE_CODEC_FORMAT_PNG, &bgra, error.data(),
         error.size());
-    const bool hasBgraPixels =
-        decodedBgra != 0 && bgra.data != nullptr && bgra.width == 3 && bgra.height == 2 &&
-        bgra.row_stride == 3U * 4U && bgra.size == 3U * 2U * 4U && bgra.data[0] == 0 &&
-        bgra.data[1] == 0 && bgra.data[2] == 255 && bgra.data[3] == 255;
+    const bool hasBgraPixels = decodedBgra != 0 && bgra.data != nullptr && bgra.width == 3 &&
+                               bgra.height == 2 && bgra.row_stride == 3U * 4U &&
+                               bgra.size == 3U * 2U * 4U && bgra.data[0] == 0 &&
+                               bgra.data[1] == 0 && bgra.data[2] == 255 && bgra.data[3] == 255;
     snow_shot_image_codec_release_buffer(&bgra);
 
     uint8_t* const originalData = output.data;

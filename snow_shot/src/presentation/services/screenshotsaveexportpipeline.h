@@ -6,12 +6,12 @@
 #include <QFile>
 
 namespace screenshot_save_export {
-class MappedRaster final {
+class MappedRaster final : public std::enable_shared_from_this<MappedRaster> {
   public:
     ~MappedRaster();
     [[nodiscard]] static std::shared_ptr<MappedRaster> create(QSize size, QString* error);
     [[nodiscard]] ScreenshotImageRowSource rows(std::function<bool()> cancelled = {}) const;
-    [[nodiscard]] QImage thumbnail(int maximumExtent = 2048) const;
+    [[nodiscard]] QImage image() const;
     QSize size;
     uchar* pixels = nullptr;
 
@@ -27,15 +27,15 @@ struct Encoded {
     QTemporaryDir directory;
     QString path;
     ScreenshotSaveExportOptions options;
-    QImage preview;
-    QString previewError;
 };
 [[nodiscard]] Source prepare(const ScreenshotImageRowSource& rows,
                              const ScreenshotExportCancellation& cancellation, QString* error);
-[[nodiscard]] ScreenshotSaveExportOptions previewOptions(ScreenshotSaveExportOptions options);
+[[nodiscard]] ScreenshotSaveExportOptions normalizedOptions(ScreenshotSaveExportOptions options);
 [[nodiscard]] std::shared_ptr<Encoded> render(const Source& source,
                                               const ScreenshotSaveExportOptions& options,
                                               const ScreenshotExportCancellation& cancellation,
-                                              QString* error, bool previewOnly = false);
+                                              QString* error);
+[[nodiscard]] QImage decode(const Encoded& encoded,
+                            const ScreenshotExportCancellation& cancellation, QString* error);
 [[nodiscard]] QSize encoderLimits(ScreenshotImageFileFormat format);
 } // namespace screenshot_save_export

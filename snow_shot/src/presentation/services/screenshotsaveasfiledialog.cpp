@@ -163,6 +163,7 @@ class SaveContent final : public QWidget {
         dimensionsItem->setNoStyle(true);
 
         m_quality = new AdSlider(m_form);
+        m_quality->setTracking(false);
         m_quality->setObjectName(QStringLiteral("saveQualitySlider"));
         m_quality->setRange(1, 100);
         m_quality->setValue(100);
@@ -181,9 +182,6 @@ class SaveContent final : public QWidget {
                     m_preview->update();
                 });
 
-        m_debounce.setSingleShot(true);
-        m_debounce.setInterval(512);
-        connect(&m_debounce, &QTimer::timeout, this, [this] { startRender(); });
         m_menuCloseTimer.setSingleShot(true);
         m_menuCloseTimer.setInterval(150);
         connect(&m_menuCloseTimer, &QTimer::timeout, this, [this] {
@@ -236,9 +234,9 @@ class SaveContent final : public QWidget {
     void cancel(bool cancelSource = false) {
         m_closed = true;
         ++m_generation;
-        m_debounce.stop();
         m_menuCloseTimer.stop();
         m_job.cancel();
+        cancelDecode();
         m_saveJob.cancel();
         if (cancelSource)
             m_artifact->cancel();
@@ -249,6 +247,10 @@ class SaveContent final : public QWidget {
     void save() {
         if (m_saving || !m_source.rows.isValid())
             return;
+        if (auto* focus = QApplication::focusWidget();
+            focus && (focus == m_width || m_width->isAncestorOf(focus) || focus == m_height ||
+                      m_height->isAncestorOf(focus)))
+            focus->clearFocus();
         m_state.directory = m_directory->text();
         m_state.filename = m_filename->text();
         const QString error = m_state.validationError();
@@ -327,6 +329,7 @@ class SaveContent final : public QWidget {
         auto* input = new AdInputNumber;
         input->setObjectName(QString::fromLatin1(name));
         input->setDecimals(0);
+        input->setKeyboardTracking(false);
         input->setRange(0, 1000000);
         input->setSingleStep(1);
         input->setStepButtonLayout(AdInputNumber::StepButtonLayout::Compact);
@@ -644,28 +647,26 @@ class SaveContent final : public QWidget {
     }
     void changed() {
         updateControls();
-        if (m_closed || !m_source.rows.isValid())
+        if (m_closed || m_saving || !m_source.rows.isValid())
             return;
         validateFields();
         const QString error = m_state.imageValidationError();
         const auto options = error.isEmpty()
-                                 ? std::make_optional(pipeline::previewOptions(m_state.output))
+                                 ? std::make_optional(pipeline::normalizedOptions(m_state.output))
                                  : std::nullopt;
-        if (options && options == m_requestedPreviewOptions)
+        if (options && options == m_requestedOptions)
             return;
-        m_requestedPreviewOptions = options;
+        m_requestedOptions = options;
         ++m_generation;
         m_job.cancel();
-        m_debounce.stop();
+        cancelDecode();
         showError(error);
-        if (!options || options == m_renderedPreviewOptions) {
-            if (options)
-                m_preview->setOutput(m_renderedPreview);
+        if (!options) {
             m_preview->setBusy(false);
             return;
         }
         m_preview->setBusy(true);
-        m_debounce.start();
+        startRender();
     }
     void loadSource() {
         const bool started = m_artifact->requestRowSource(
@@ -717,22 +718,19 @@ class SaveContent final : public QWidget {
         showError(tr("The screenshot could not be prepared: %1").arg(error));
     }
     void startRender() {
-        if (m_closed || m_saving || !m_source.rows.isValid())
+        if (m_closed || !m_source.rows.isValid() || !m_requestedOptions)
             return;
-        if (!m_requestedPreviewOptions || m_requestedPreviewOptions == m_renderedPreviewOptions)
-            return;
-        if (m_renderRunning)
-            return;
-        const QString error = m_state.imageValidationError();
-        if (!error.isEmpty()) {
-            showError(error);
-            m_preview->setBusy(false);
+        if (m_encoded && m_encoded->options == *m_requestedOptions) {
             if (m_saving)
-                saveFailed(error);
+                writeFile();
+            else
+                startDecode();
             return;
         }
+        if (m_renderRunning)
+            return;
         const quint64 generation = m_generation;
-        const auto options = *m_requestedPreviewOptions;
+        const auto options = *m_requestedOptions;
         auto encoded = std::make_shared<std::shared_ptr<pipeline::Encoded>>();
         m_renderRunning = true;
         m_job = ScreenshotExportCoordinator::shared().submit(
@@ -740,58 +738,93 @@ class SaveContent final : public QWidget {
             [source = m_source, options,
              encoded](const ScreenshotExportCancellation& cancellation) {
                 ScreenshotExportTaskResult result;
-                *encoded = pipeline::render(source, options, cancellation, &result.error, true);
+                *encoded = pipeline::render(source, options, cancellation, &result.error);
                 if (!*encoded)
                     result.failureStage = ScreenshotExportFailureStage::Render;
                 return result;
             },
-            [this, generation, options, encoded](ScreenshotExportTaskResult result) {
+            [this, generation, encoded](ScreenshotExportTaskResult result) {
                 m_renderRunning = false;
                 m_job = {};
                 if (m_closed)
                     return;
                 if (generation != m_generation) {
-                    if (!m_debounce.isActive())
-                        startRender();
+                    startRender();
                     return;
                 }
-                m_preview->setBusy(false);
                 if (!result.succeeded() || !*encoded) {
-                    m_requestedPreviewOptions.reset();
                     saveFailed(tr("The export could not be prepared: %1").arg(result.error));
                     return;
                 }
-                const auto& current = *encoded;
-                if (!current->preview.isNull()) {
-                    m_renderedPreviewOptions = options;
-                    m_renderedPreview = current->preview;
-                    m_preview->setOutput(m_renderedPreview);
-                } else {
-                    m_requestedPreviewOptions.reset();
-                    showError(tr("The encoded preview could not be displayed: %1")
-                                  .arg(current->previewError));
-                }
-                setProperty("previewGeneration", QVariant::fromValue(generation));
+                m_encoded = *encoded;
+                setProperty("encodedGeneration", QVariant::fromValue(generation));
+                startRender();
             });
         if (!m_job.isValid()) {
             m_renderRunning = false;
-            m_requestedPreviewOptions.reset();
             saveFailed(tr("The screenshot export queue is full"));
         }
     }
+    void cancelDecode() {
+        ++m_decodeSerial;
+        m_decodeJob.cancel();
+        m_decodeJob = {};
+    }
+    void startDecode() {
+        if (m_closed || m_saving || !m_encoded || !m_requestedOptions ||
+            m_encoded->options != *m_requestedOptions)
+            return;
+        if (m_renderedPreviewOptions == m_requestedOptions) {
+            m_preview->setBusy(false);
+            return;
+        }
+        if (m_decodeJob.isValid())
+            return;
+        m_preview->setBusy(true);
+        const quint64 generation = m_generation;
+        const quint64 serial = ++m_decodeSerial;
+        const auto options = m_encoded->options;
+        m_decodeJob = ScreenshotExportCoordinator::shared().submit(
+            this, ScreenshotExportCoordinator::Priority::Foreground,
+            [encoded = m_encoded](const ScreenshotExportCancellation& cancellation) {
+                ScreenshotExportTaskResult result;
+                result.image = pipeline::decode(*encoded, cancellation, &result.error);
+                if (result.image.isNull())
+                    result.failureStage = ScreenshotExportFailureStage::Render;
+                return result;
+            },
+            [this, generation, serial, options](ScreenshotExportTaskResult result) {
+                if (m_closed || serial != m_decodeSerial || generation != m_generation || m_saving)
+                    return;
+                m_decodeJob = {};
+                m_preview->setBusy(false);
+                if (!result.succeeded()) {
+                    showError(
+                        tr("The encoded preview could not be displayed: %1").arg(result.error));
+                    return;
+                }
+                m_renderedPreviewOptions = options;
+                m_preview->setOutput(std::move(result.image));
+                setProperty("previewGeneration", QVariant::fromValue(generation));
+            });
+        if (!m_decodeJob.isValid()) {
+            m_preview->setBusy(false);
+            showError(tr("The screenshot export queue is full"));
+        }
+    }
     void beginSave() {
+        if (m_saving || m_closed)
+            return;
         m_saving = true;
+        m_savePath = m_state.outputPath();
         m_form->setDisabled(true);
         m_modal->setAcceptButtonBusy(true);
         m_modal->setCloseButtonVisible(false);
         m_modal->setCloseOnEscape(false);
         if (m_modal->rejectButton())
             m_modal->rejectButton()->setEnabled(false);
-        m_debounce.stop();
-        ++m_generation;
-        m_job.cancel();
-        m_requestedPreviewOptions.reset();
-        writeFile();
+        cancelDecode();
+        startRender();
     }
     void saveFailed(const QString& error) {
         m_saving = false;
@@ -804,19 +837,16 @@ class SaveContent final : public QWidget {
             m_modal->rejectButton()->setEnabled(true);
         validateFields();
         showError(error);
+        startDecode();
     }
     void writeFile() {
-        const QString path = m_state.outputPath();
+        if (m_saveJob.isValid())
+            return;
         m_saveJob = ScreenshotExportCoordinator::shared().submit(
             this, ScreenshotExportCoordinator::Priority::Foreground,
-            [source = m_source, options = m_state.output,
-             path](const ScreenshotExportCancellation& cancellation) {
+            [encoded = m_encoded,
+             path = m_savePath](const ScreenshotExportCancellation& cancellation) {
                 ScreenshotExportTaskResult result;
-                const auto encoded = pipeline::render(source, options, cancellation, &result.error);
-                if (!encoded) {
-                    result.failureStage = ScreenshotExportFailureStage::Render;
-                    return result;
-                }
                 const auto saved = ScreenshotImageFileService::writeEncodedFile(
                     encoded->path, path, encoded->options.format,
                     [&cancellation] { return cancellation.isCancellationRequested(); });
@@ -853,13 +883,15 @@ class SaveContent final : public QWidget {
     ScreenshotSaveAsFileDialog::Saved m_saved;
     ScreenshotSaveDialogState m_state;
     pipeline::Source m_source;
-    std::optional<ScreenshotSaveExportOptions> m_requestedPreviewOptions;
+    std::optional<ScreenshotSaveExportOptions> m_requestedOptions;
     std::optional<ScreenshotSaveExportOptions> m_renderedPreviewOptions;
-    QImage m_renderedPreview;
+    std::shared_ptr<pipeline::Encoded> m_encoded;
+    QString m_savePath;
     ScreenshotExportJobHandle m_job;
+    ScreenshotExportJobHandle m_decodeJob;
     ScreenshotExportJobHandle m_saveJob;
-    QTimer m_debounce;
     quint64 m_generation = 0;
+    quint64 m_decodeSerial = 0;
     bool m_closed = false;
     bool m_saving = false;
     bool m_renderRunning = false;

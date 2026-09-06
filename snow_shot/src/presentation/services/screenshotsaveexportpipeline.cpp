@@ -85,13 +85,16 @@ ScreenshotImageRowSource MappedRaster::rows(std::function<bool()> cancellation) 
     };
     return result;
 }
-QImage MappedRaster::thumbnail(int maximumExtent) const {
-    const QImage mapped(static_cast<const uchar*>(pixels), size.width(), size.height(),
-                        qsizetype(size.width()) * 4, QImage::Format_RGBA8888);
-    QImage result = size.width() <= maximumExtent && size.height() <= maximumExtent
-                        ? mapped.copy()
-                        : mapped.scaled(maximumExtent, maximumExtent, Qt::KeepAspectRatio,
-                                        Qt::SmoothTransformation);
+QImage MappedRaster::image() const {
+    // The immutable image keeps its mapping alive across worker and canvas lifetimes.
+    auto owner = std::make_unique<std::shared_ptr<const MappedRaster>>(shared_from_this());
+    QImage result(
+        static_cast<const uchar*>(pixels), size.width(), size.height(), qsizetype(size.width()) * 4,
+        QImage::Format_RGBA8888,
+        [](void* context) { delete static_cast<std::shared_ptr<const MappedRaster>*>(context); },
+        owner.get());
+    if (!result.isNull())
+        owner.release();
     result.setColorSpace(QColorSpace::SRgb);
     return result;
 }
@@ -161,17 +164,13 @@ QSize encoderLimits(ScreenshotImageFileFormat format) {
     return {int(qMin(width, uint32_t(std::numeric_limits<int>::max() / 4))),
             int(qMin(height, uint32_t(std::numeric_limits<int>::max() / 4)))};
 }
-ScreenshotSaveExportOptions previewOptions(ScreenshotSaveExportOptions options) {
-    if (options.size.width() > 2048 || options.size.height() > 2048)
-        options.size.scale(2048, 2048, Qt::KeepAspectRatio);
-    options.size = options.size.expandedTo(QSize(1, 1));
+ScreenshotSaveExportOptions normalizedOptions(ScreenshotSaveExportOptions options) {
     options.quality =
         options.format == ScreenshotImageFileFormat::Png ? 100 : qBound(1, options.quality, 100);
     return options;
 }
 std::shared_ptr<Encoded> render(const Source& source, const ScreenshotSaveExportOptions& options,
-                                const ScreenshotExportCancellation& cancellation, QString* error,
-                                bool previewOnly) {
+                                const ScreenshotExportCancellation& cancellation, QString* error) {
     if (!source.rows.isValid() || cancellation.isCancellationRequested())
         return {};
     const QSize limits = encoderLimits(options.format);
@@ -181,8 +180,8 @@ std::shared_ptr<Encoded> render(const Source& source, const ScreenshotSaveExport
             "ScreenshotSaveAsFileDialog", "The dimensions are not supported by this image format");
         return {};
     }
-    const QSize outputSize = previewOnly ? previewOptions(options).size : options.size;
-    auto rows = previewOnly ? snow_shot::image_codec::srgbRowSource(source.preview) : source.rows;
+    const QSize outputSize = options.size;
+    auto rows = source.rows;
     std::shared_ptr<MappedRaster> raster;
     std::array<char, 1024> backendError{};
     auto* context = const_cast<ScreenshotExportCancellation*>(&cancellation);
@@ -221,7 +220,7 @@ std::shared_ptr<Encoded> render(const Source& source, const ScreenshotSaveExport
         *error = result->directory.errorString();
         return {};
     }
-    result->options = options;
+    result->options = normalizedOptions(options);
     result->path = result->directory.filePath(
         QStringLiteral("export.") + ScreenshotImageFileService::extension(options.format));
     QFile output(result->path);
@@ -241,17 +240,24 @@ std::shared_ptr<Encoded> render(const Source& source, const ScreenshotSaveExport
     output.close();
     if (cancellation.isCancellationRequested())
         return {};
-    if (!previewOnly)
-        return result;
-    auto decoded = MappedRaster::create(outputSize, &result->previewError);
-    if (decoded && snow_shot_image_codec_decode_file_into(
-                       result->path.toUtf8().constData(), decoded->pixels,
-                       uint32_t(outputSize.width()), uint32_t(outputSize.height()), context,
-                       cancelled, backendError.data(), backendError.size())) {
-        result->preview = decoded->thumbnail();
-    } else if (result->previewError.isEmpty()) {
-        result->previewError = QString::fromUtf8(backendError.data());
+    return result;
+}
+QImage decode(const Encoded& encoded, const ScreenshotExportCancellation& cancellation,
+              QString* error) {
+    if (cancellation.isCancellationRequested())
+        return {};
+    auto decoded = MappedRaster::create(encoded.options.size, error);
+    if (!decoded)
+        return {};
+    std::array<char, 1024> backendError{};
+    auto* context = const_cast<ScreenshotExportCancellation*>(&cancellation);
+    if (!snow_shot_image_codec_decode_file_into(
+            encoded.path.toUtf8().constData(), decoded->pixels, uint32_t(decoded->size.width()),
+            uint32_t(decoded->size.height()), context, cancelled, backendError.data(),
+            backendError.size())) {
+        *error = QString::fromUtf8(backendError.data());
+        return {};
     }
-    return cancellation.isCancellationRequested() ? nullptr : result;
+    return cancellation.isCancellationRequested() ? QImage{} : decoded->image();
 }
 } // namespace screenshot_save_export

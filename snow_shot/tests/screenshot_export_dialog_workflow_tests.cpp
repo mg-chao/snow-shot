@@ -26,6 +26,7 @@
 #include <QApplication>
 #include <QColorSpace>
 #include <QCursor>
+#include <QDynamicPropertyChangeEvent>
 #include <QElapsedTimer>
 #include <QEnterEvent>
 #include <QFile>
@@ -46,8 +47,11 @@
 #include <QTimer>
 #include <QWheelEvent>
 #include <atomic>
+#include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <iostream>
+#include <source_location>
 #include <stdexcept>
 
 namespace {
@@ -63,14 +67,18 @@ void require(bool condition, const char* message) {
         throw std::runtime_error(message);
     }
 }
-void processUntil(const std::function<bool()>& condition) {
+void processUntil(const std::function<bool()>& condition,
+                  const std::source_location& location = std::source_location::current()) {
     QElapsedTimer timer;
     timer.start();
     while (!condition() && timer.elapsed() < 30000) {
         QApplication::processEvents(QEventLoop::AllEvents, 10);
         QThread::msleep(1);
     }
-    require(condition(), "timed out waiting for export dialog");
+    if (!condition()) {
+        std::cerr << "Wait failed at " << location.file_name() << ':' << location.line() << '\n';
+        require(false, "timed out waiting for export dialog");
+    }
 }
 void flush() {
     QApplication::processEvents();
@@ -100,6 +108,17 @@ QImage fixture(QSize size = QSize(160, 100)) {
         for (int x = 0; x < size.width(); ++x)
             image.setPixelColor(x, y, QColor((x * 9) % 256, (y * 17) % 256, (x + y) % 256));
     return image;
+}
+bool samePixels(const QImage& left, const QImage& right) {
+    if (left.isNull() || right.isNull() || left.size() != right.size())
+        return false;
+    const QImage rgbaLeft = left.convertToFormat(QImage::Format_RGBA8888);
+    const QImage rgbaRight = right.convertToFormat(QImage::Format_RGBA8888);
+    for (int row = 0; row < left.height(); ++row)
+        if (std::memcmp(rgbaLeft.constScanLine(row), rgbaRight.constScanLine(row),
+                        size_t(left.width()) * 4) != 0)
+            return false;
+    return true;
 }
 
 void reusablePathInputsAndSettings() {
@@ -306,7 +325,7 @@ void stateRules(const QTemporaryDir& temp) {
             "filename errors must not block preview rendering");
 }
 
-void encodingAndBoundedSources() {
+void encodingAndFullResolutionDisplay() {
     QObject receiver;
     bool done = false;
     QString failure;
@@ -314,7 +333,13 @@ void encodingAndBoundedSources() {
         &receiver, ScreenshotExportCoordinator::Priority::Foreground,
         [](const ScreenshotExportCancellation& cancellation) {
             QString error;
-            const QImage original = fixture();
+            QImage original = fixture();
+            for (int y = 0; y < original.height(); ++y)
+                for (int x = 0; x < original.width(); ++x) {
+                    auto color = original.pixelColor(x, y);
+                    color.setAlpha(64 + (x + y) % 192);
+                    original.setPixelColor(x, y, color);
+                }
             const auto source = pipeline::prepare(snow_shot::image_codec::srgbRowSource(original),
                                                   cancellation, &error);
             require(source.preview == original,
@@ -322,39 +347,39 @@ void encodingAndBoundedSources() {
             for (auto format :
                  {Format::Png, Format::Jpeg, Format::Webp, Format::Jxl, Format::Avif}) {
                 for (int quality : {100, 72}) {
-                    const ScreenshotSaveExportOptions options{QSize(80, 50), format, quality};
-                    const auto preview =
-                        pipeline::render(source, options, cancellation, &error, true);
-                    if (!preview || preview->preview.isNull())
-                        throw std::runtime_error(
-                            error.toStdString() +
-                            (preview ? preview->previewError.toStdString() : ""));
-                    require(preview->preview.size() == options.size,
-                            "encoded preview size differs from form");
+                    const ScreenshotSaveExportOptions options{
+                        quality == 100 ? QSize(80, 50) : QSize(96, 32), format, quality};
                     const auto output = pipeline::render(source, options, cancellation, &error);
                     require(output && snow_shot::image_codec::inspectFile(
                                           output->path,
                                           ScreenshotImageFileService::snowImageFormat(format),
                                           options.size),
                             "final encoding dimensions differ from form");
+                    const QImage preview = pipeline::decode(*output, cancellation, &error);
+                    const QImage independent = snow_shot::image_codec::decodeFile(
+                        output->path, ScreenshotImageFileService::snowImageFormat(format));
+                    require(!preview.isNull() && preview.size() == options.size &&
+                                samePixels(preview, independent),
+                            "display pixels must match an independent decode of the export");
                 }
                 if (format != Format::Jpeg) {
                     const auto lossless = pipeline::render(source, {original.size(), format, 100},
-                                                           cancellation, &error, true);
-                    if (!lossless || lossless->preview != original) {
+                                                           cancellation, &error);
+                    const QImage preview =
+                        lossless ? pipeline::decode(*lossless, cancellation, &error) : QImage{};
+                    if (preview != original) {
                         QString detail = ScreenshotImageFileService::extension(format);
-                        if (lossless) {
+                        if (!preview.isNull()) {
                             for (int y = 0; y < original.height(); ++y)
                                 for (int x = 0; x < original.width(); ++x)
-                                    if (original.pixelColor(x, y) !=
-                                        lossless->preview.pixelColor(x, y)) {
-                                        detail += QStringLiteral(" at %1,%2: %3 -> %4")
-                                                      .arg(x)
-                                                      .arg(y)
-                                                      .arg(original.pixelColor(x, y).name(
-                                                               QColor::HexArgb),
-                                                           lossless->preview.pixelColor(x, y).name(
-                                                               QColor::HexArgb));
+                                    if (original.pixelColor(x, y) != preview.pixelColor(x, y)) {
+                                        detail +=
+                                            QStringLiteral(" at %1,%2: %3 -> %4")
+                                                .arg(x)
+                                                .arg(y)
+                                                .arg(
+                                                    original.pixelColor(x, y).name(QColor::HexArgb),
+                                                    preview.pixelColor(x, y).name(QColor::HexArgb));
                                         throw std::runtime_error("lossless codec changed pixels: " +
                                                                  detail.toStdString());
                                     }
@@ -369,10 +394,62 @@ void encodingAndBoundedSources() {
                                   cancellation, &error);
             require(large.rows.size == QSize(128, 6000) && large.preview.height() == 2048,
                     "large source must retain full dimensions and a bounded preview");
-            const auto bounded = pipeline::render(large, {large.rows.size, Format::Png, 100},
-                                                  cancellation, &error, true);
-            require(bounded && bounded->preview.height() == 2048,
-                    "large encoded preview must remain bounded");
+            for (auto format :
+                 {Format::Png, Format::Jpeg, Format::Webp, Format::Jxl, Format::Avif}) {
+                const auto output =
+                    pipeline::render(large, {QSize(48, 2304), format, 72}, cancellation, &error);
+                require(output != nullptr, "large output encoding failed");
+                const QImage preview = pipeline::decode(*output, cancellation, &error);
+                require(preview.size() == QSize(48, 2304) &&
+                            samePixels(preview,
+                                       snow_shot::image_codec::decodeFile(
+                                           output->path,
+                                           ScreenshotImageFileService::snowImageFormat(format))),
+                        "large display images must contain the complete decoded export");
+            }
+            const auto retained =
+                pipeline::render(source, {original.size(), Format::Png, 100}, cancellation, &error);
+            require(retained != nullptr, "retained export fixture failed");
+            const QString parked = retained->path + QStringLiteral(".unavailable");
+            require(QFile::rename(retained->path, parked),
+                    "decode failure fixture could not be parked");
+            error.clear();
+            require(
+                pipeline::decode(*retained, cancellation, &error).isNull() && !error.isEmpty(),
+                "an unavailable encoded file must fail display decoding without fallback pixels");
+            require(QFile::rename(parked, retained->path), "retained export could not be restored");
+            const auto saved = ScreenshotImageFileService::writeEncodedFile(
+                retained->path, retained->directory.filePath(QStringLiteral("saved.png")),
+                retained->options.format);
+            QFile encodedBytes(retained->path);
+            QFile savedBytes(saved.path);
+            require(
+                saved.succeeded() && encodedBytes.open(QIODevice::ReadOnly) &&
+                    savedBytes.open(QIODevice::ReadOnly) &&
+                    encodedBytes.readAll() == savedBytes.readAll(),
+                "saving after a transient decode failure must copy the retained bytes unchanged");
+            auto raster = pipeline::MappedRaster::create(QSize(2, 2), &error);
+            require(raster != nullptr, "mapped image allocation failed");
+            std::fill_n(raster->pixels, 16, uchar(127));
+            QImage mapped = raster->image();
+            require(mapped.constBits() == raster->pixels,
+                    "display must not copy the mapped raster");
+            std::weak_ptr<pipeline::MappedRaster> weak = raster;
+            raster.reset();
+            require(!weak.expired() && mapped.pixelColor(0, 0) == QColor(127, 127, 127, 127),
+                    "display pixels must own their mapping after the worker finishes");
+            QImage modified = mapped;
+            modified.setPixelColor(0, 0, Qt::red);
+            require(mapped.pixelColor(0, 0) == QColor(127, 127, 127, 127),
+                    "writes must detach from the immutable mapped image");
+            mapped = {};
+            require(weak.expired(), "releasing the last display image must release its mapping");
+            pipeline::Encoded missing;
+            missing.options = {QSize(2, 2), Format::Png, 100};
+            missing.path = missing.directory.filePath(QStringLiteral("missing.png"));
+            error.clear();
+            require(pipeline::decode(missing, cancellation, &error).isNull() && !error.isEmpty(),
+                    "display decoding failure must return an error without fallback pixels");
             return ScreenshotExportTaskResult{};
         },
         [&](ScreenshotExportTaskResult result) {
@@ -602,18 +679,21 @@ void unchangedPreviewEdits(QWidget& owner) {
     processUntil(
         [&] { return content->property("previewGeneration").toULongLong() > jpegGeneration; });
     const quint64 qualityGeneration = content->property("previewGeneration").toULongLong();
-    width->setValue(4096);
+    width->setValue(2112);
     processUntil(
         [&] { return content->property("previewGeneration").toULongLong() > qualityGeneration; });
-    width->setValue(8192);
-    require(busy->isHidden() && height->value() == 5120,
-            "different export sizes with identical bounded preview pixels must reuse rendering");
+    const quint64 largeGeneration = content->property("previewGeneration").toULongLong();
+    width->setValue(2304);
+    require(!busy->isHidden() && height->value() == 1440,
+            "different full export sizes must calculate different results");
+    processUntil(
+        [&] { return content->property("previewGeneration").toULongLong() > largeGeneration; });
     width->setValue(1000000);
     require(!modal->acceptButton()->isEnabled() && busy->isHidden(),
-            "original export limits must be validated before comparing bounded preview options");
-    width->setValue(8192);
+            "invalid export limits must block rendering");
+    width->setValue(2304);
     require(modal->acceptButton()->isEnabled() && busy->isHidden(),
-            "restoring equivalent bounded pixels must reuse the last valid preview");
+            "restoring the completed export dimensions must reuse its result");
 }
 
 void shortcutPopupInteraction(QWidget& owner, const QTemporaryDir& temp) {
@@ -1132,8 +1212,8 @@ void rowBackedDialogAndStalePreview(QWidget& owner, const QTemporaryDir& temp) {
                 content->property("previewGeneration").toULongLong() == previous,
             "returning to the completed preview must cancel queued work and reuse its pixels");
     width->setValue(48);
-    require(child<QLabel>(content, "savePreviewStatus")->isHidden(),
-            "queued cancellation must also reuse equivalent bounded preview dimensions");
+    require(!child<QLabel>(content, "savePreviewStatus")->isHidden(),
+            "different full dimensions must remain pending after queued cancellation");
     width->setValue(24);
     *gate.released = true;
     processUntil(
@@ -1151,6 +1231,353 @@ void rowBackedDialogAndStalePreview(QWidget& owner, const QTemporaryDir& temp) {
             "row-backed Save must use the full source and latest settings");
     require(!artifact->isCancelled(),
             "successful export must leave its artifact available to history");
+    flush();
+}
+
+struct ExportProbe {
+    std::atomic_int passes{0};
+    std::atomic_bool pauseNext{false};
+    std::atomic_bool entered{false};
+    std::atomic_bool released{false};
+    std::atomic_bool failNext{false};
+};
+
+struct WorkerGate {
+    std::shared_ptr<std::atomic_bool> released = std::make_shared<std::atomic_bool>(false);
+    std::shared_ptr<std::atomic_int> started = std::make_shared<std::atomic_int>(0);
+    ~WorkerGate() {
+        *released = true;
+    }
+    void block(QObject* receiver, int count = 2) {
+        for (int worker = 0; worker < count; ++worker) {
+            const auto job = ScreenshotExportCoordinator::shared().submit(
+                receiver, ScreenshotExportCoordinator::Priority::Foreground,
+                [release = released, start = started](const ScreenshotExportCancellation& token) {
+                    ++*start;
+                    while (!release->load() && !token.isCancellationRequested())
+                        QThread::msleep(1);
+                    return ScreenshotExportTaskResult{};
+                },
+                [](ScreenshotExportTaskResult) {});
+            require(job.isValid(), "export worker gate must fit in the queue");
+        }
+    }
+};
+
+class ExportObserver final : public QObject {
+  public:
+    explicit ExportObserver(QWidget* content) : m_content(content) {
+        m_encodedGeneration = content->property("encodedGeneration").toULongLong();
+        m_previewGeneration = content->property("previewGeneration").toULongLong();
+        content->installEventFilter(this);
+    }
+    int encodes = 0;
+    int publications = 0;
+    QImage displayed;
+    std::function<void()> onEncoded;
+
+  protected:
+    bool eventFilter(QObject*, QEvent* event) override {
+        if (event->type() != QEvent::DynamicPropertyChange)
+            return false;
+        const auto name = static_cast<QDynamicPropertyChangeEvent*>(event)->propertyName();
+        if (name == "encodedGeneration") {
+            const auto generation = m_content->property("encodedGeneration").toULongLong();
+            if (generation == m_encodedGeneration)
+                return false;
+            m_encodedGeneration = generation;
+            ++encodes;
+            if (onEncoded)
+                onEncoded();
+        } else if (name == "previewGeneration") {
+            const auto generation = m_content->property("previewGeneration").toULongLong();
+            if (generation == m_previewGeneration)
+                return false;
+            m_previewGeneration = generation;
+            ++publications;
+            displayed =
+                child<ScreenshotSavePreviewCanvas>(m_content, "savePreviewCanvas")->outputImage();
+        }
+        return false;
+    }
+
+  private:
+    QWidget* m_content;
+    quint64 m_encodedGeneration = 0;
+    quint64 m_previewGeneration = 0;
+};
+
+AdModal* openCountedDialog(QWidget& owner, const std::shared_ptr<ExportProbe>& probe,
+                           ScreenshotSaveAsFileDialog::Saved saved = {}) {
+    auto rows = snow_shot::image_codec::srgbRowSource(fixture());
+    rows.readRows = [read = rows.readRows, probe](int first, int count, qsizetype stride,
+                                                  uchar* target, qsizetype capacity) {
+        if (first == 0) {
+            ++probe->passes;
+            if (probe->pauseNext.exchange(false)) {
+                probe->entered = true;
+                while (!probe->released.load())
+                    QThread::msleep(1);
+            }
+            if (probe->failNext.exchange(false))
+                return false;
+        }
+        return read(first, count, stride, target, capacity);
+    };
+    auto artifact = std::make_shared<ScreenshotExportArtifact>(ScreenshotExportSource::fromProducer(
+        [](const ScreenshotExportCancellation&) -> QImage {
+            throw std::runtime_error("row-backed export must not request a second image");
+        },
+        [rows](std::function<bool()>) { return rows; }));
+    require(ScreenshotSaveAsFileDialog::open(&owner, &owner, artifact, std::move(saved)),
+            "counted export dialog must open");
+    auto* modal = child<AdModal>(&owner, "screenshotSaveAsFileModal");
+    processUntil(
+        [&] { return modal->contentWidget()->property("previewGeneration").toULongLong() > 0; });
+    require(probe->passes == 2, "initial display must prepare the source and encode it only once");
+    return modal;
+}
+
+void saveReusesCalculatedResult(QWidget& owner, const QTemporaryDir& temp) {
+    enum class Moment { QueuedEncode, RunningEncode, BeforeDecode, QueuedDecode, Displayed };
+    for (const auto moment : {Moment::QueuedEncode, Moment::RunningEncode, Moment::BeforeDecode,
+                              Moment::QueuedDecode, Moment::Displayed}) {
+        auto probe = std::make_shared<ExportProbe>();
+        const auto releaseSource = qScopeGuard([probe] { probe->released = true; });
+        QString savedPath;
+        auto* modal =
+            openCountedDialog(owner, probe, [&](const QString& path) { savedPath = path; });
+        QPointer<QWidget> content = modal->contentWidget();
+        const auto closeDialog = qScopeGuard([&] {
+            if (content)
+                modal->reject();
+        });
+        ExportObserver observer(content);
+        WorkerGate gate;
+        child<AdLineEdit>(content, "saveDirectoryInput")->setText(temp.path());
+        child<AdLineEdit>(content, "saveFilenameInput")
+            ->setText(QStringLiteral("reuse-%1").arg(int(moment)));
+        int publicationsAtSave = -1;
+        const auto save = [&] {
+            publicationsAtSave = observer.publications;
+            modal->acceptButton()->click();
+            modal->acceptButton()->click();
+        };
+        if (moment == Moment::QueuedEncode) {
+            gate.block(&owner);
+            processUntil([&] { return *gate.started == 2; });
+        } else if (moment == Moment::RunningEncode) {
+            probe->pauseNext = true;
+        } else if (moment == Moment::BeforeDecode) {
+            observer.onEncoded = save;
+        } else if (moment == Moment::QueuedDecode) {
+            observer.onEncoded = [&] {
+                gate.block(&owner);
+                processUntil([&] { return *gate.started == 2; });
+            };
+        }
+        child<AdInputNumber>(content, "saveWidthInput")->setValue(80);
+        if (moment == Moment::QueuedEncode) {
+            require(ScreenshotExportCoordinator::shared().pendingJobCount() == 3,
+                    "the calculation must be queued behind the worker gates");
+            save();
+            *gate.released = true;
+        } else if (moment == Moment::RunningEncode) {
+            processUntil([&] { return probe->entered.load(); });
+            save();
+            probe->released = true;
+        } else if (moment == Moment::QueuedDecode) {
+            processUntil([&] {
+                return *gate.started == 2 &&
+                       ScreenshotExportCoordinator::shared().pendingJobCount() == 3;
+            });
+            save();
+            *gate.released = true;
+        } else if (moment == Moment::Displayed) {
+            processUntil([&] { return observer.publications == 1; });
+            save();
+        }
+        processUntil([&] { return !savedPath.isEmpty(); });
+        if (probe->passes != 3 || observer.encodes != 1)
+            std::cerr << "Save moment " << int(moment) << ": source passes=" << probe->passes
+                      << ", encodes=" << observer.encodes
+                      << ", publications=" << observer.publications << '\n';
+        require(
+            probe->passes == 3 && observer.encodes == 1,
+            "Save must reuse the single committed calculation without reading source pixels again");
+        require(publicationsAtSave >= 0 && observer.publications == publicationsAtSave,
+                "Save must suppress all subsequent canvas publication");
+        const QImage saved =
+            snow_shot::image_codec::decodeFile(savedPath, snow::image::Format::png);
+        require(saved.size() == QSize(80, 50), "saving must use the latest committed dimensions");
+        if (moment == Moment::Displayed)
+            require(samePixels(saved, observer.displayed),
+                    "saved pixels must equal the displayed decoded result");
+        flush();
+    }
+}
+
+void committedControlsAndSave(QWidget& owner, const QTemporaryDir& temp) {
+    auto probe = std::make_shared<ExportProbe>();
+    QString savedPath;
+    auto* modal = openCountedDialog(owner, probe, [&](const QString& path) { savedPath = path; });
+    auto* content = modal->contentWidget();
+    ExportObserver observer(content);
+    auto* width = child<AdInputNumber>(content, "saveWidthInput");
+    auto* height = child<AdInputNumber>(content, "saveHeightInput");
+    auto* quality = child<AdSlider>(content, "saveQualitySlider");
+    require(!width->keyboardTracking() && !height->keyboardTracking() && !quality->tracking(),
+            "export controls must calculate only committed values");
+    auto* editor = width->findChild<QLineEdit*>();
+    require(editor != nullptr, "width editor is missing");
+    const auto typeWidth = [&](const QString& text) {
+        editor->setFocus();
+        editor->selectAll();
+        for (const auto character : text) {
+            QKeyEvent key(QEvent::KeyPress, character.unicode(), Qt::NoModifier,
+                          QString(character));
+            QApplication::sendEvent(editor, &key);
+        }
+    };
+    typeWidth(QStringLiteral("80"));
+    require(width->value() == 160 && probe->passes == 2 && observer.encodes == 0,
+            "uncommitted numeric typing must not trigger encoding");
+    editor->clearFocus();
+    processUntil([&] { return observer.publications == 1; });
+    require(width->value() == 80 && height->value() == 50 && probe->passes == 3,
+            "committing width and its aspect-ratio partner must calculate exactly once");
+    child<AdSelect>(content, "saveFormatSelect")->setCurrentValue(QStringLiteral("jpeg"));
+    processUntil([&] { return observer.publications == 2; });
+    const int beforeDrag = probe->passes;
+    const QPoint start = quality->rect().center();
+    const QPoint end(quality->width() / 3, start.y());
+    QMouseEvent press(QEvent::MouseButtonPress, start, quality->mapToGlobal(start), Qt::LeftButton,
+                      Qt::LeftButton, Qt::NoModifier);
+    QMouseEvent move(QEvent::MouseMove, end, quality->mapToGlobal(end), Qt::NoButton,
+                     Qt::LeftButton, Qt::NoModifier);
+    QMouseEvent release(QEvent::MouseButtonRelease, end, quality->mapToGlobal(end), Qt::LeftButton,
+                        Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(quality, &press);
+    QApplication::sendEvent(quality, &move);
+    require(probe->passes == beforeDrag && quality->value() == 100,
+            "slider dragging must not encode intermediate values");
+    QApplication::sendEvent(quality, &release);
+    processUntil([&] { return observer.publications == 3; });
+    require(quality->value() < 100 && probe->passes == beforeDrag + 1,
+            "slider release must calculate the committed quality exactly once");
+    child<AdLineEdit>(content, "saveDirectoryInput")->setText(temp.path());
+    child<AdLineEdit>(content, "saveFilenameInput")->setText(QStringLiteral("commit-on-save"));
+    typeWidth(QStringLiteral("64"));
+    require(width->value() == 80, "the last numeric edit must still be uncommitted");
+    modal->acceptButton()->click();
+    processUntil([&] { return !savedPath.isEmpty(); });
+    require(observer.encodes == 4 && observer.publications == 3 &&
+                snow_shot::image_codec::inspectFile(savedPath, snow::image::Format::jpeg,
+                                                    QSize(64, 40)),
+            "Save must commit the active editor and save once without updating the canvas");
+    flush();
+}
+
+void retainedResultFailures(QWidget& owner, const QTemporaryDir& temp) {
+    auto probe = std::make_shared<ExportProbe>();
+    QString savedPath;
+    auto* modal = openCountedDialog(owner, probe, [&](const QString& path) { savedPath = path; });
+    auto* content = modal->contentWidget();
+    ExportObserver observer(content);
+    WorkerGate gate;
+    observer.onEncoded = [&] { gate.block(&owner, 16); };
+    child<AdInputNumber>(content, "saveWidthInput")->setValue(80);
+    auto* error = child<QLabel>(content, "saveErrorLabel");
+    processUntil([&] { return observer.encodes == 1 && !error->isHidden(); });
+    require(observer.publications == 0 && modal->acceptButton()->isEnabled(),
+            "a rejected display job must retain the encoded result and allow Save");
+    child<AdLineEdit>(content, "saveDirectoryInput")->setText(temp.path());
+    child<AdLineEdit>(content, "saveFilenameInput")->setText(QStringLiteral("retained-failure"));
+    modal->acceptButton()->click();
+    require(!modal->acceptButtonBusy() && savedPath.isEmpty(),
+            "a rejected save job must restore the dialog for retry");
+    *gate.released = true;
+    processUntil([&] { return ScreenshotExportCoordinator::shared().pendingJobCount() == 0; });
+    flush();
+    QFile blocking(temp.filePath(QStringLiteral("retained-blocker")));
+    require(blocking.open(QIODevice::WriteOnly), "write failure fixture could not be created");
+    blocking.close();
+    child<AdLineEdit>(content, "saveDirectoryInput")->setText(blocking.fileName() + "/child");
+    modal->acceptButton()->click();
+    processUntil([&] { return !modal->acceptButtonBusy(); });
+    require(!error->isHidden() && savedPath.isEmpty() && probe->passes == 3,
+            "destination failure must preserve the already encoded file");
+    processUntil([&] { return observer.publications == 1; });
+    child<AdLineEdit>(content, "saveDirectoryInput")->setText(temp.path());
+    modal->acceptButton()->click();
+    processUntil([&] { return !savedPath.isEmpty(); });
+    require(observer.encodes == 1 && probe->passes == 3,
+            "retrying after display, queue and destination failures must not encode again");
+    flush();
+}
+
+void failedAndClosedCalculations(QWidget& owner, const QTemporaryDir& temp) {
+    auto probe = std::make_shared<ExportProbe>();
+    const auto releaseSource = qScopeGuard([probe] { probe->released = true; });
+    QString savedPath;
+    auto* modal = openCountedDialog(owner, probe, [&](const QString& path) { savedPath = path; });
+    auto* content = modal->contentWidget();
+    ExportObserver observer(content);
+    child<AdLineEdit>(content, "saveDirectoryInput")->setText(temp.path());
+    child<AdLineEdit>(content, "saveFilenameInput")->setText(QStringLiteral("retry-source"));
+    probe->pauseNext = true;
+    probe->failNext = true;
+    child<AdInputNumber>(content, "saveWidthInput")->setValue(80);
+    processUntil([&] { return probe->entered.load(); });
+    modal->acceptButton()->click();
+    probe->released = true;
+    processUntil([&] { return !modal->acceptButtonBusy(); });
+    require(!child<QLabel>(content, "saveErrorLabel")->isHidden() && observer.encodes == 0 &&
+                savedPath.isEmpty(),
+            "failed source reads must leave Save retryable without publishing stale pixels");
+    modal->acceptButton()->click();
+    processUntil([&] { return !savedPath.isEmpty(); });
+    require(observer.encodes == 1 && observer.publications == 0 && probe->passes == 4,
+            "a failed calculation may retry once and must save the new successful result");
+    flush();
+
+    probe = std::make_shared<ExportProbe>();
+    const auto releaseClosedSource = qScopeGuard([probe] { probe->released = true; });
+    modal = openCountedDialog(owner, probe);
+    QPointer<QWidget> guarded = modal->contentWidget();
+    ExportObserver closedObserver(guarded);
+    probe->pauseNext = true;
+    child<AdInputNumber>(guarded, "saveWidthInput")->setValue(80);
+    processUntil([&] { return probe->entered.load(); });
+    modal->reject();
+    flush();
+    probe->released = true;
+    processUntil([&] { return ScreenshotExportCoordinator::shared().pendingJobCount() == 0; });
+    flush();
+    require(guarded.isNull() && closedObserver.encodes == 0 && closedObserver.publications == 0,
+            "closing during calculation must discard worker completion and release the dialog");
+}
+
+void rejectedCalculationRetries(QWidget& owner, const QTemporaryDir& temp) {
+    auto probe = std::make_shared<ExportProbe>();
+    QString savedPath;
+    auto* modal = openCountedDialog(owner, probe, [&](const QString& path) { savedPath = path; });
+    auto* content = modal->contentWidget();
+    ExportObserver observer(content);
+    WorkerGate gate;
+    gate.block(&owner, 16);
+    child<AdInputNumber>(content, "saveWidthInput")->setValue(80);
+    require(!child<QLabel>(content, "saveErrorLabel")->isHidden() && probe->passes == 2 &&
+                observer.encodes == 0 && modal->acceptButton()->isEnabled(),
+            "a rejected calculation must preserve the latest options and allow retry");
+    *gate.released = true;
+    processUntil([&] { return ScreenshotExportCoordinator::shared().pendingJobCount() == 0; });
+    child<AdLineEdit>(content, "saveDirectoryInput")->setText(temp.path());
+    child<AdLineEdit>(content, "saveFilenameInput")->setText(QStringLiteral("retry-queue"));
+    modal->acceptButton()->click();
+    processUntil([&] { return !savedPath.isEmpty(); });
+    require(probe->passes == 3 && observer.encodes == 1 && observer.publications == 0,
+            "Save must retry a rejected calculation once and skip canvas publication");
     flush();
 }
 } // namespace
@@ -1185,6 +1612,18 @@ int main(int argc, char* argv[]) {
         QWidget owner;
         owner.resize(1200, 800);
         owner.show();
+        if (app.arguments().contains(QStringLiteral("--shared-export"))) {
+            encodingAndFullResolutionDisplay();
+            saveReusesCalculatedResult(owner, temp);
+            committedControlsAndSave(owner, temp);
+            retainedResultFailures(owner, temp);
+            failedAndClosedCalculations(owner, temp);
+            rejectedCalculationRetries(owner, temp);
+            ScreenshotExportCoordinator::shared().shutdown();
+            storage::ApplicationStorage::instance().shutdown();
+            std::cout << "Shared export calculation tests passed\n";
+            return 0;
+        }
         if (app.arguments().contains(QStringLiteral("--zoom-hint")) ||
             app.arguments().contains(QStringLiteral("--canvas-baseline")) ||
             app.arguments().contains(QStringLiteral("--unchanged-edits")) ||
@@ -1214,7 +1653,7 @@ int main(int argc, char* argv[]) {
         reusablePathInputsAndSettings();
         persistence(temp);
         stateRules(temp);
-        encodingAndBoundedSources();
+        encodingAndFullResolutionDisplay();
         canvasInteraction();
         canvasZoomHint();
         canvasOriginalSizeBaseline();
@@ -1224,6 +1663,11 @@ int main(int argc, char* argv[]) {
         overwriteRequiresConfirmation(owner, temp);
         shortcutWrappingAndLanguageChange(owner, temp);
         rowBackedDialogAndStalePreview(owner, temp);
+        saveReusesCalculatedResult(owner, temp);
+        committedControlsAndSave(owner, temp);
+        retainedResultFailures(owner, temp);
+        failedAndClosedCalculations(owner, temp);
+        rejectedCalculationRetries(owner, temp);
         pendingCancellation(owner);
         ScreenshotExportCoordinator::shared().shutdown();
         storage::ApplicationStorage::instance().shutdown();

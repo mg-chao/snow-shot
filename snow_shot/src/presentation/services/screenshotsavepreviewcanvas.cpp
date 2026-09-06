@@ -116,7 +116,7 @@ void ScreenshotSavePreviewCanvas::paintEvent(QPaintEvent*) {
     const QPointF center = QRectF(rect()).center() + m_pan;
     const QRectF bounds(center.x() - dimensions.width() / 2, center.y() - dimensions.height() / 2,
                         dimensions.width(), dimensions.height());
-    painter.setRenderHint(QPainter::SmoothPixmapTransform, m_zoom < 2.0);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
     const double split = m_split * width();
     painter.save();
     painter.setClipRect(QRectF(0, 0, split, height()));

@@ -912,6 +912,7 @@ int32_t snow_shot_image_codec_resize_rgba8(const uint8_t* source, uint32_t width
         document.frames.push_back(std::move(frame));
         snow::image::TransformOptions options;
         options.resize = snow::image::ResizeOptions{outputWidth, outputHeight};
+        options.resize->method = snow::image::ResamplingMethod::linear;
         options.resize->maximum_threads = 2;
         options.animation_policy = snow::image::AnimationPolicy::first_frame;
         ExportPixelSink sink(destination, outputWidth, outputHeight);
