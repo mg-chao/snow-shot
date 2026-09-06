@@ -19,6 +19,7 @@ class ScreenshotOverlayWindow;
 class ScreenshotSelectionModel;
 struct ScreenshotCaptureState;
 enum class ScreenshotActiveTool;
+enum class ScreenshotIntelligentSelectionTarget;
 
 struct ScreenshotOverlayInputActions {
     std::function<bool(const QPoint& physicalPoint)> returnToIntelligentSelection =
@@ -107,6 +108,8 @@ struct ScreenshotOverlayInputActions {
 
     // Keep new actions at the end so positional test and application initializers remain valid.
     std::function<bool()> physicalCursorMovementAvailable = []() { return false; };
+    std::function<void(ScreenshotIntelligentSelectionTarget)> persistSelectionTarget =
+        [](ScreenshotIntelligentSelectionTarget) {};
 };
 
 struct ScreenshotOverlayInputHandlerContext {

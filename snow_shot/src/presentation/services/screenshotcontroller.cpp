@@ -534,7 +534,8 @@ void ScreenshotController::Impl::reloadDrawingPreferences() {
 }
 
 void ScreenshotController::Impl::updateSmartSelectionSettingForCurrentSession(bool enabled) {
-    if (m_interaction.inactive() || !m_intelligentSelection.updateSmartSelectionEnabled(enabled)) {
+    if (m_interaction.inactive() || !m_intelligentSelection.updateSmartSelectionEnabled(
+                                        enabled, m_selectionSettings->selectionTarget())) {
         return;
     }
 
@@ -843,8 +844,8 @@ bool ScreenshotController::Impl::ensureRecognitionFeature() {
             applicationStorage.configuration().value(QStringLiteral("network/proxy")).toString());
     }
     if (m_ocrRecognition == nullptr) {
-        m_ownedOcrRecognition =
-            std::make_unique<ScreenshotOcrRecognitionService>(ocrOptions, backendPreference, &owner);
+        m_ownedOcrRecognition = std::make_unique<ScreenshotOcrRecognitionService>(
+            ocrOptions, backendPreference, &owner);
         m_ocrRecognition = m_ownedOcrRecognition.get();
     }
     m_qrRecognition = std::make_unique<ScreenshotQrRecognitionService>(&owner);
@@ -1170,6 +1171,7 @@ void ScreenshotController::Impl::createCaptureWorkflow() {
                 static_cast<void>(m_selection.setShadowWidth(m_selectionSettings->shadowWidth()));
             },
             []() { return snow_shot::storage::ScreenshotSettings().restoreOriginalScreenColors(); },
+            [this]() { return m_selectionSettings->selectionTarget(); },
         });
 }
 
@@ -1422,6 +1424,9 @@ void ScreenshotController::Impl::createOverlayInputPipeline() {
             return true;
         },
         [this]() { return m_physicalCursor != nullptr && m_physicalCursor->isSupported(); },
+        [this](ScreenshotIntelligentSelectionTarget target) {
+            m_selectionSettings->setSelectionTarget(target);
+        },
     };
     m_overlayInputHandler =
         std::make_unique<ScreenshotOverlayInputHandler>(ScreenshotOverlayInputHandlerContext{
@@ -2816,9 +2821,9 @@ void ScreenshotController::Impl::copySelectionToClipboardWithSource(
                 }
                 auto artifact = std::make_shared<ScreenshotExportArtifact>(
                     ScreenshotExportSource::fromScrollingSnapshot(std::move(snapshot)));
-                receiver->m_impl->copyArtifactToClipboard(
-                    std::move(artifact), generation,
-                    historySource, std::move(historyCandidate), true);
+                receiver->m_impl->copyArtifactToClipboard(std::move(artifact), generation,
+                                                          historySource,
+                                                          std::move(historyCandidate), true);
             });
         if (!scheduled) {
             m_messages->error(
@@ -3516,36 +3521,35 @@ void ScreenshotController::Impl::handleSelectionConfirmed() {
     }
 
     const quint64 sessionId = m_captureState.sessionId;
-    QTimer::singleShot(0, &owner,
-                       [this, action, sessionId]() mutable {
-                           if (m_captureState.sessionId != sessionId ||
-                               m_captureState.sessionState != ScreenshotSessionState::Editing) {
-                               return;
-                           }
-                           switch (action) {
-                           case PendingSelectionAction::Pin:
-                               pinSelectionToScreen();
-                               break;
-                           case PendingSelectionAction::RecognizeText:
-                               m_activatingQuickOcr = m_pendingOcrFromQuickFunction;
-                               m_pendingOcrFromQuickFunction = false;
-                               setOcrTool();
-                               m_activatingQuickOcr = false;
-                               break;
-                           case PendingSelectionAction::RecognizeTextTranslation:
-                               m_pendingOcrFromQuickFunction = false;
-                               setTextTranslationTool();
-                               break;
-                           case PendingSelectionAction::Copy:
-                               copySelectionToClipboard();
-                               break;
-                           case PendingSelectionAction::StartVideo:
-                               startScreenRecording();
-                               break;
-                           case PendingSelectionAction::None:
-                               break;
-                           }
-                       });
+    QTimer::singleShot(0, &owner, [this, action, sessionId]() mutable {
+        if (m_captureState.sessionId != sessionId ||
+            m_captureState.sessionState != ScreenshotSessionState::Editing) {
+            return;
+        }
+        switch (action) {
+        case PendingSelectionAction::Pin:
+            pinSelectionToScreen();
+            break;
+        case PendingSelectionAction::RecognizeText:
+            m_activatingQuickOcr = m_pendingOcrFromQuickFunction;
+            m_pendingOcrFromQuickFunction = false;
+            setOcrTool();
+            m_activatingQuickOcr = false;
+            break;
+        case PendingSelectionAction::RecognizeTextTranslation:
+            m_pendingOcrFromQuickFunction = false;
+            setTextTranslationTool();
+            break;
+        case PendingSelectionAction::Copy:
+            copySelectionToClipboard();
+            break;
+        case PendingSelectionAction::StartVideo:
+            startScreenRecording();
+            break;
+        case PendingSelectionAction::None:
+            break;
+        }
+    });
 }
 
 void ScreenshotController::Impl::shutdown() {
@@ -3621,8 +3625,7 @@ void ScreenshotController::Impl::shutdown() {
 ScreenshotController::ScreenshotController(
     QObject* parent, snow_shot::presentation::PinnedWindowGroupManager* groupManager,
     ScreenshotOcrRecognitionService* sharedOcrRecognition)
-    : QObject(parent),
-      m_impl(std::make_unique<Impl>(*this, groupManager, sharedOcrRecognition)) {}
+    : QObject(parent), m_impl(std::make_unique<Impl>(*this, groupManager, sharedOcrRecognition)) {}
 
 ScreenshotController::~ScreenshotController() = default;
 
@@ -3690,7 +3693,6 @@ void ScreenshotController::captureAndTranslateText() {
 void ScreenshotController::captureAndCopySelection() {
     static_cast<void>(m_impl->beginCapture(Impl::PendingSelectionAction::Copy));
 }
-
 
 void ScreenshotController::captureAndStartScreenRecording() {
     static_cast<void>(m_impl->beginCapture(Impl::PendingSelectionAction::StartVideo));
