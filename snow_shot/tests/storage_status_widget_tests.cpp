@@ -1,4 +1,6 @@
 #include "snow_shot/presentation/components/storagestatussettingswidget.h"
+#include "snow_shot/presentation/components/settingscustomwidget.h"
+#include "snow_shot/presentation/settings/settingsregistry.h"
 #include "snow_shot/presentation/settings/settingsruntimesession.h"
 #include "snow_shot/storage/applicationstorage.h"
 #include "snow_shot/presentation/globalshortcutmanager.h"
@@ -20,10 +22,12 @@
 #include <QLabel>
 #include <QLayout>
 #include <QTemporaryDir>
+#include <QTranslator>
 
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 
 namespace presentation = snow_shot::presentation;
 namespace settings = snow_shot::presentation::settings;
@@ -45,6 +49,32 @@ void flushEvents() {
 settings::TranslatableText text(const char* source) {
     return {"StorageStatusWidgetTests", source};
 }
+
+class ToolbarEditorTranslator final : public QTranslator {
+  public:
+    QString translate(const char* context, const char* sourceText, const char*,
+                      int) const override {
+        const QString translationContext = QString::fromLatin1(context);
+        const QString source = QString::fromUtf8(sourceText);
+        if (translationContext == QStringLiteral("DrawingToolbarEditorSettingsWidget")) {
+            if (source == QStringLiteral("Shape")) {
+                return QStringLiteral("Translated drawing shape");
+            }
+            if (source == QStringLiteral("Drawing toolbar preview")) {
+                return QStringLiteral("Translated drawing preview");
+            }
+        }
+        if (translationContext == QStringLiteral("ScreenshotToolbarEditorSettingsWidget")) {
+            if (source == QStringLiteral("Barcode recognition")) {
+                return QStringLiteral("Translated barcode recognition");
+            }
+            if (source == QStringLiteral("Screenshot toolbar preview")) {
+                return QStringLiteral("Translated screenshot preview");
+            }
+        }
+        return {};
+    }
+};
 
 class FakeSettingsBackend final : public settings::SettingsBackend {
   public:
@@ -128,10 +158,12 @@ class FakeSettingsBackend final : public settings::SettingsBackend {
     bool applyTextValue(settings::SettingsTextBinding, const QString&) override {
         return false;
     }
-    storage::ScreenshotToolbarLayout toolbarLayout() const override {
+    storage::ScreenshotToolbarLayout
+    toolbarLayout(storage::ScreenshotToolbarLayoutKind) const override {
         return {};
     }
-    bool applyToolbarLayout(const storage::ScreenshotToolbarLayout&) override {
+    bool applyToolbarLayout(storage::ScreenshotToolbarLayoutKind,
+                            const storage::ScreenshotToolbarLayout&) override {
         return false;
     }
     presentation::GlobalShortcutRegistrationState
@@ -357,6 +389,63 @@ void widgetShowsScanningStateAndForwardsRefresh() {
     require(total->text() != QStringLiteral("Scanning…"),
             "a settled status must restore the total usage");
 }
+
+void toolbarEditorsUseSeparateDefinitionsAndRetranslate() {
+    const settings::SettingsRegistry& registry = settings::builtInSettingsRegistry();
+    FakeSettingsBackend backend;
+    settings::SettingsRuntimeSession session(registry, backend);
+    const auto createEditor = [&](settings::SettingsCustomRenderer renderer) {
+        const settings::SettingsFieldDescriptor* field = registry.fieldForCustom(renderer);
+        require(field != nullptr && field->definition != nullptr,
+                "the built-in toolbar editor field must exist");
+        return std::unique_ptr<SettingsCustomWidget>(
+            createSettingsCustomWidget(renderer, registry, *field->definition, session));
+    };
+
+    std::unique_ptr<SettingsCustomWidget> drawingEditor =
+        createEditor(settings::SettingsCustomRenderer::DrawingToolbarEditor);
+    std::unique_ptr<SettingsCustomWidget> screenshotEditor =
+        createEditor(settings::SettingsCustomRenderer::ScreenshotToolbarEditor);
+    require(drawingEditor != nullptr && screenshotEditor != nullptr,
+            "both custom toolbar renderers must create an editor");
+
+    QAbstractButton* shape = drawingEditor->findChild<QAbstractButton*>(
+        QStringLiteral("settings-drawing-toolbar-item-shape"));
+    QAbstractButton* barcode = screenshotEditor->findChild<QAbstractButton*>(
+        QStringLiteral("settings-screenshot-toolbar-item-barcode-recognition"));
+    QAbstractButton* table = screenshotEditor->findChild<QAbstractButton*>(
+        QStringLiteral("settings-screenshot-toolbar-item-table-recognition"));
+    QWidget* drawingPreview =
+        drawingEditor->findChild<QWidget*>(QStringLiteral("settings-drawing-toolbar-surface"));
+    QWidget* screenshotPreview = screenshotEditor->findChild<QWidget*>(
+        QStringLiteral("settings-screenshot-toolbar-surface"));
+    require(shape != nullptr && barcode != nullptr && table != nullptr &&
+                drawingPreview != nullptr && screenshotPreview != nullptr &&
+                drawingEditor->findChild<QAbstractButton*>(QStringLiteral(
+                    "settings-drawing-toolbar-item-barcode-recognition")) == nullptr &&
+                screenshotEditor->findChild<QAbstractButton*>(
+                    QStringLiteral("settings-screenshot-toolbar-item-shape")) == nullptr,
+            "drawing and screenshot editors must expose only their own stable tool definitions");
+    require(!barcode->property("screenshotToolbarMainButton").toBool() &&
+                table->property("screenshotToolbarMainButton").toBool(),
+            "the default screenshot preview must stack Barcode below the visible Table trigger");
+
+    ToolbarEditorTranslator translator;
+    require(QCoreApplication::installTranslator(&translator),
+            "the toolbar editor test translator must install");
+    QEvent drawingLanguageChange(QEvent::LanguageChange);
+    QCoreApplication::sendEvent(drawingEditor.get(), &drawingLanguageChange);
+    QEvent screenshotLanguageChange(QEvent::LanguageChange);
+    QCoreApplication::sendEvent(screenshotEditor.get(), &screenshotLanguageChange);
+    require(shape->accessibleName() == QStringLiteral("Translated drawing shape") &&
+                barcode->accessibleName() == QStringLiteral("Translated barcode recognition") &&
+                drawingPreview->accessibleName() == QStringLiteral("Translated drawing preview") &&
+                screenshotPreview->accessibleName() ==
+                    QStringLiteral("Translated screenshot preview"),
+            "LanguageChange must refresh labels and accessibility text in both toolbar editors");
+    QCoreApplication::removeTranslator(&translator);
+}
+
 void diagnosticsStateAndCopyFeedback() {
     const auto registry = storageStatusRegistry();
     FakeSettingsBackend backend;
@@ -465,6 +554,7 @@ int main(int argc, char** argv) {
     widgetUsesDescriptionsTitleAndThemeSpacing();
     widgetRendersAppUsageBreakdown();
     widgetShowsScanningStateAndForwardsRefresh();
+    toolbarEditorsUseSeparateDefinitionsAndRetranslate();
     diagnosticsStateAndCopyFeedback();
     copyPublishesStableFileAndPreservesClipboardOnFailure();
     storage::ApplicationStorage::instance().shutdown();

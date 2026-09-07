@@ -436,6 +436,27 @@ void settingsSchemaDefaultsAndValidationAreComplete() {
 }
 
 void screenshotUiSchemaRepairsStructuredValues() {
+    const QJsonObject defaultActionLayout =
+        storage::ConfigurationSchema::defaultValue(
+            QStringLiteral("screenshot_toolbar/action_tools_layout"))
+            .toObject();
+    require(defaultActionLayout ==
+                QJsonObject{
+                    {QStringLiteral("positions"),
+                     QJsonArray{
+                         QJsonArray{QStringLiteral("barcode-recognition"),
+                                    QStringLiteral("table-recognition")},
+                         QJsonArray{QStringLiteral("record-screen")},
+                         QJsonArray{QStringLiteral("pin-to-screen")},
+                         QJsonArray{QStringLiteral("text-recognition")},
+                         QJsonArray{QStringLiteral("text-translation")},
+                         QJsonArray{QStringLiteral("scrolling-screenshot")},
+                         QJsonArray{QStringLiteral("save-as-file")},
+                     }},
+                    {QStringLiteral("hidden"), QJsonArray{}},
+                },
+            "the screenshot action toolbar schema default must preserve the legacy appearance");
+
     const auto validColor = storage::ConfigurationSchema::normalize(
         QStringLiteral("screenshot_ui/cursor_guide_line_color"), QStringLiteral("#abcdef80"));
     require(validColor.valid && validColor.changed &&
@@ -477,6 +498,52 @@ void screenshotUiSchemaRepairsStructuredValues() {
                 layout.value(QStringLiteral("hidden")).toArray() ==
                     QJsonArray{QStringLiteral("arrow"), QStringLiteral("free-draw")},
             "toolbar layout normalization did not preserve hidden nested membership");
+
+    const QJsonObject malformedActionLayout{
+        {QStringLiteral("positions"),
+         QJsonArray{
+             QJsonArray{QStringLiteral("save-as-file"), QStringLiteral("table-recognition"),
+                        QStringLiteral("save-as-file"), QStringLiteral("unknown")},
+             QStringLiteral("not-a-position"),
+             QJsonArray{QStringLiteral("record-screen"), QStringLiteral("table-recognition")},
+         }},
+        {QStringLiteral("hidden"),
+         QJsonArray{QStringLiteral("table-recognition"), QStringLiteral("barcode-recognition"),
+                    QStringLiteral("text-recognition"), QStringLiteral("barcode-recognition"),
+                    QStringLiteral("unknown")}},
+    };
+    const auto normalizedActions = storage::ConfigurationSchema::normalize(
+        QStringLiteral("screenshot_toolbar/action_tools_layout"), malformedActionLayout);
+    const QJsonObject actionLayout = normalizedActions.value.toObject();
+    require(
+        normalizedActions.valid && normalizedActions.changed && actionLayout.size() == 2 &&
+            actionLayout.value(QStringLiteral("positions")).toArray() ==
+                QJsonArray{
+                    QJsonArray{QStringLiteral("save-as-file"), QStringLiteral("table-recognition")},
+                    QJsonArray{QStringLiteral("record-screen")},
+                    QJsonArray{QStringLiteral("pin-to-screen")},
+                    QJsonArray{QStringLiteral("text-translation")},
+                    QJsonArray{QStringLiteral("scrolling-screenshot")},
+                } &&
+            actionLayout.value(QStringLiteral("hidden")).toArray() ==
+                QJsonArray{QStringLiteral("barcode-recognition"),
+                           QStringLiteral("text-recognition")},
+        "action toolbar normalization must drop invalid entries, prefer visible membership, and "
+        "append missing tools in default positions");
+
+    const QJsonObject allHiddenActionLayout{
+        {QStringLiteral("positions"), QJsonArray{}},
+        {QStringLiteral("hidden"),
+         QJsonArray{QStringLiteral("barcode-recognition"), QStringLiteral("table-recognition"),
+                    QStringLiteral("record-screen"), QStringLiteral("pin-to-screen"),
+                    QStringLiteral("text-recognition"), QStringLiteral("text-translation"),
+                    QStringLiteral("scrolling-screenshot"), QStringLiteral("save-as-file")}},
+    };
+    const auto normalizedAllHidden = storage::ConfigurationSchema::normalize(
+        QStringLiteral("screenshot_toolbar/action_tools_layout"), allHiddenActionLayout);
+    require(normalizedAllHidden.valid && !normalizedAllHidden.changed &&
+                normalizedAllHidden.value.toObject() == allHiddenActionLayout,
+            "an all-hidden action toolbar layout must remain valid without restoring tools");
 }
 
 void screenshotUiAdaptersRoundTripTypedValues() {
@@ -519,8 +586,23 @@ void screenshotUiAdaptersRoundTripTypedValues() {
         expectedPositions,
         {QStringLiteral("arrow"), QStringLiteral("free-draw")},
     };
-    require(toolbar.setLayout(layout) && toolbar.layout() == expectedLayout,
+    require(toolbar.setLayout(storage::ScreenshotToolbarLayoutKind::DrawingTools, layout) &&
+                toolbar.layout(storage::ScreenshotToolbarLayoutKind::DrawingTools) ==
+                    expectedLayout,
             "typed toolbar layout did not preserve normalized visible and hidden entries");
+
+    const storage::ScreenshotToolbarLayout actionLayout{
+        {{QStringLiteral("save-as-file"), QStringLiteral("record-screen")},
+         {QStringLiteral("table-recognition")}},
+        {QStringLiteral("barcode-recognition"), QStringLiteral("pin-to-screen"),
+         QStringLiteral("text-recognition"), QStringLiteral("text-translation"),
+         QStringLiteral("scrolling-screenshot")},
+    };
+    require(toolbar.setLayout(storage::ScreenshotToolbarLayoutKind::ActionTools, actionLayout) &&
+                toolbar.layout(storage::ScreenshotToolbarLayoutKind::ActionTools) == actionLayout &&
+                toolbar.layout(storage::ScreenshotToolbarLayoutKind::DrawingTools) ==
+                    expectedLayout,
+            "drawing and action toolbar layouts must round-trip independently");
 }
 
 void screenshotTranslationSettingsRoundTripSupportedValues() {

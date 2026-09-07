@@ -86,6 +86,64 @@ void settingsPersistAndResetToMsaa(const QString& configurationPath) {
             "invalid stored API values must fall back to MSAA");
 }
 
+void toolbarLayoutSectionResetsRemainIndependent() {
+    snow_shot::presentation::GlobalShortcutManager shortcuts;
+    settings::BuiltInSettingsBackend backend(shortcuts);
+    const storage::ScreenshotToolbarLayout drawingLayout{
+        {{QStringLiteral("watermark")}},
+        {QStringLiteral("shape"), QStringLiteral("arrow"), QStringLiteral("line"),
+         QStringLiteral("free-draw"), QStringLiteral("highlighter"), QStringLiteral("spotlight"),
+         QStringLiteral("text"), QStringLiteral("serial-number"), QStringLiteral("filter"),
+         QStringLiteral("eraser")},
+    };
+    const storage::ScreenshotToolbarLayout actionLayout{
+        {{QStringLiteral("save-as-file")}},
+        {QStringLiteral("barcode-recognition"), QStringLiteral("table-recognition"),
+         QStringLiteral("record-screen"), QStringLiteral("pin-to-screen"),
+         QStringLiteral("text-recognition"), QStringLiteral("text-translation"),
+         QStringLiteral("scrolling-screenshot")},
+    };
+    require(backend.applyToolbarLayout(storage::ScreenshotToolbarLayoutKind::DrawingTools,
+                                       drawingLayout) &&
+                backend.applyToolbarLayout(storage::ScreenshotToolbarLayoutKind::ActionTools,
+                                           actionLayout),
+            "toolbar reset fixture must persist independent layouts");
+
+    require(backend.resetSection(settings::SettingsSectionReset::ScreenshotInterfaceSettings) &&
+                backend.toolbarLayout(storage::ScreenshotToolbarLayoutKind::DrawingTools) ==
+                    drawingLayout &&
+                backend.toolbarLayout(storage::ScreenshotToolbarLayoutKind::ActionTools) ==
+                    storage::ScreenshotToolbarLayout{{{QStringLiteral("barcode-recognition"),
+                                                       QStringLiteral("table-recognition")},
+                                                      {QStringLiteral("record-screen")},
+                                                      {QStringLiteral("pin-to-screen")},
+                                                      {QStringLiteral("text-recognition")},
+                                                      {QStringLiteral("text-translation")},
+                                                      {QStringLiteral("scrolling-screenshot")},
+                                                      {QStringLiteral("save-as-file")}},
+                                                     {}},
+            "Screenshot Interface reset must restore only the screenshot action layout");
+
+    require(backend.applyToolbarLayout(storage::ScreenshotToolbarLayoutKind::ActionTools,
+                                       actionLayout) &&
+                backend.resetSection(settings::SettingsSectionReset::DrawingToolbar) &&
+                backend.toolbarLayout(storage::ScreenshotToolbarLayoutKind::ActionTools) ==
+                    actionLayout &&
+                backend.toolbarLayout(storage::ScreenshotToolbarLayoutKind::DrawingTools) ==
+                    storage::ScreenshotToolbarLayout{
+                        {{QStringLiteral("shape")},
+                         {QStringLiteral("line"), QStringLiteral("arrow")},
+                         {QStringLiteral("free-draw")},
+                         {QStringLiteral("spotlight"), QStringLiteral("highlighter")},
+                         {QStringLiteral("text")},
+                         {QStringLiteral("serial-number")},
+                         {QStringLiteral("filter")},
+                         {QStringLiteral("eraser")},
+                         {QStringLiteral("watermark")}},
+                        {}},
+            "Drawing reset must restore only the drawing toolbar layout");
+}
+
 void changedApiRefreshesServiceAndRejectsOldResults() {
     ScreenshotSelectorCoordinator coordinator;
     const QVector<std::uintptr_t> exclusions{123, 456};
@@ -238,6 +296,7 @@ int main(int argc, char** argv) {
         applicationStorage.initialize({temporary.filePath(QStringLiteral("bin")),
                                        temporary.filePath(QStringLiteral("data")), 60000}));
     settingsPersistAndResetToMsaa(temporary.filePath(QStringLiteral("data/config.json")));
+    toolbarLayoutSectionResetsRemainIndependent();
     changedApiRefreshesServiceAndRejectsOldResults();
     apiChangesDuringRefreshAndWhileIdle();
     diagnosticEnvironmentOverridesRemainAvailable();

@@ -4,7 +4,7 @@
 <context>
     <name>DiagnosticsService</name>
     <message>
-        <location filename="../src/presentation/settings/settingsbackend.cpp" line="743"/>
+        <location filename="../src/presentation/settings/settingsbackend.cpp" line="745"/>
         <location filename="../src/diagnostics/diagnostics.cpp" line="861"/>
         <source>The diagnostics writer stopped unexpectedly.</source>
         <translation>The diagnostics writer stopped unexpectedly.</translation>
@@ -113,57 +113,57 @@
 <context>
     <name>DrawingToolbarEditorSettingsWidget</name>
     <message>
-        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="51"/>
+        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="68"/>
         <source>Shape</source>
         <translation>Shape</translation>
     </message>
     <message>
-        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="53"/>
+        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="70"/>
         <source>Arrow</source>
         <translation>Arrow</translation>
     </message>
     <message>
-        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="55"/>
+        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="72"/>
         <source>Line</source>
         <translation>Line</translation>
     </message>
     <message>
-        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="58"/>
+        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="75"/>
         <source>Pen</source>
         <translation>Pen</translation>
     </message>
     <message>
-        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="60"/>
+        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="77"/>
         <source>Highlight</source>
         <translation>Highlight</translation>
     </message>
     <message>
-        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="63"/>
+        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="79"/>
         <source>Spotlight</source>
         <translation>Spotlight</translation>
     </message>
     <message>
-        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="64"/>
+        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="80"/>
         <source>Text</source>
         <translation>Text</translation>
     </message>
     <message>
-        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="67"/>
+        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="83"/>
         <source>Serial number</source>
         <translation>Serial number</translation>
     </message>
     <message>
-        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="69"/>
+        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="85"/>
         <source>Filter</source>
         <translation>Filter</translation>
     </message>
     <message>
-        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="71"/>
+        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="87"/>
         <source>Eraser</source>
         <translation>Eraser</translation>
     </message>
     <message>
-        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="74"/>
+        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="90"/>
         <source>Watermark</source>
         <translation>Watermark</translation>
     </message>
@@ -493,11 +493,6 @@
 <context>
     <name>ScreenshotController</name>
     <message>
-        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2536"/>
-        <source>Save screenshot</source>
-        <translation>Save screenshot</translation>
-    </message>
-    <message>
         <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2709"/>
         <location filename="../src/presentation/pinned/screenshotpinnedwindow.cpp" line="3972"/>
         <location filename="../src/presentation/pinned/screenshotpinnedwindow.cpp" line="3982"/>
@@ -543,6 +538,11 @@
         <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2510"/>
         <source>The clipboard pin queue is full</source>
         <translation>The clipboard pin queue is full</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2536"/>
+        <source>Save screenshot</source>
+        <translation>Save screenshot</translation>
     </message>
     <message>
         <location filename="../src/presentation/services/screenshotcontroller.cpp" line="2599"/>
@@ -1694,37 +1694,37 @@
     </message>
     <message>
         <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="106"/>
-        <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="4414"/>
+        <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="4865"/>
         <source>Formatting</source>
         <translation>Formatting</translation>
     </message>
     <message>
         <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="107"/>
-        <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="4415"/>
+        <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="4866"/>
         <source>Keep line breaks</source>
         <translation>Keep line breaks</translation>
     </message>
     <message>
         <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="108"/>
-        <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="4416"/>
+        <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="4867"/>
         <source>Remove line breaks</source>
         <translation>Remove line breaks</translation>
     </message>
     <message>
         <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="109"/>
-        <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="4426"/>
+        <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="4877"/>
         <source>Punctuation</source>
         <translation>Punctuation</translation>
     </message>
     <message>
         <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="110"/>
-        <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="4428"/>
+        <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="4879"/>
         <source>Half-width</source>
         <translation>Half-width</translation>
     </message>
     <message>
         <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="111"/>
-        <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="4428"/>
+        <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="4879"/>
         <source>Full-width</source>
         <translation>Full-width</translation>
     </message>
@@ -1803,8 +1803,8 @@
         <location filename="../src/presentation/tools/screenshottoolpalettebuttons.cpp" line="596"/>
         <location filename="../src/presentation/tools/screenshottoolpalettebuttons.cpp" line="715"/>
         <location filename="../src/presentation/tools/screenshottoolpalettestylecontrols.cpp" line="209"/>
-        <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="1456"/>
-        <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="2750"/>
+        <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="1559"/>
+        <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="2858"/>
         <source>Mixed</source>
         <translation>Mixed</translation>
     </message>
@@ -1884,8 +1884,8 @@
         <translation>Copy animated image</translation>
     </message>
     <message>
-        <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="2754"/>
-        <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="4799"/>
+        <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="2862"/>
+        <location filename="../src/presentation/tools/screenshottoolpalette.cpp" line="5250"/>
         <source>Recording duration</source>
         <translation>Recording duration</translation>
     </message>
@@ -2439,6 +2439,79 @@
     </message>
 </context>
 <context>
+    <name>ScreenshotToolbarEditorSettingsWidget</name>
+    <message>
+        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="125"/>
+        <source>Barcode recognition</source>
+        <translation>Barcode recognition</translation>
+    </message>
+    <message>
+        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="128"/>
+        <source>Table recognition</source>
+        <translation>Table recognition</translation>
+    </message>
+    <message>
+        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="131"/>
+        <source>Record screen</source>
+        <translation>Record screen</translation>
+    </message>
+    <message>
+        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="134"/>
+        <source>Pin to screen</source>
+        <translation>Pin to screen</translation>
+    </message>
+    <message>
+        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="137"/>
+        <source>Text recognition</source>
+        <translation>Text recognition</translation>
+    </message>
+    <message>
+        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="140"/>
+        <source>Text translation</source>
+        <translation>Text translation</translation>
+    </message>
+    <message>
+        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="143"/>
+        <source>Scrolling screenshot</source>
+        <translation>Scrolling screenshot</translation>
+    </message>
+    <message>
+        <location filename="../include/snow_shot/presentation/screenshottoolbarlayoutmodel.h" line="146"/>
+        <source>Save as file</source>
+        <translation>Save as file</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/components/settingscustomwidget.cpp" line="68"/>
+        <source>Drop beside a tool to create a position. Drop above a tool to stack it. The bottom tool stays on the main toolbar row.</source>
+        <translation>Drop beside a tool to create a position. Drop above a tool to stack it. The bottom tool stays on the main toolbar row.</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/components/settingscustomwidget.cpp" line="72"/>
+        <source>Screenshot toolbar preview</source>
+        <translation>Screenshot toolbar preview</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/components/settingscustomwidget.cpp" line="73"/>
+        <source>Hidden tools</source>
+        <translation>Hidden tools</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/components/settingscustomwidget.cpp" line="74"/>
+        <source>Drag tools here to hide them from the screenshot toolbar.</source>
+        <translation>Drag tools here to hide them from the screenshot toolbar.</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/components/settingscustomwidget.cpp" line="76"/>
+        <source>No hidden tools</source>
+        <translation>No hidden tools</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/components/settingscustomwidget.cpp" line="77"/>
+        <source>Hidden screenshot toolbar tools</source>
+        <translation>Hidden screenshot toolbar tools</translation>
+    </message>
+</context>
+<context>
     <name>SectionHeaderWidget</name>
     <message>
         <location filename="../src/presentation/components/sectionheaderwidget.cpp" line="39"/>
@@ -2457,7 +2530,7 @@
 <context>
     <name>SettingsBackend</name>
     <message>
-        <location filename="../src/presentation/settings/settingsbackend.cpp" line="767"/>
+        <location filename="../src/presentation/settings/settingsbackend.cpp" line="769"/>
         <source>The clipboard is unavailable.</source>
         <translation>The clipboard is unavailable.</translation>
     </message>
@@ -2470,103 +2543,103 @@
         <translation>Pages</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="970"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="984"/>
         <source>Set up to two keys for this screenshot action</source>
         <translation>Set up to two keys for this screenshot action</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="978"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="992"/>
         <source>Screenshot shortcut</source>
         <translation>Screenshot shortcut</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="989"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1003"/>
         <source>Edit selection</source>
         <translation>Edit selection</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="992"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1147"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1006"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1161"/>
         <source>Move cursor up</source>
         <translation>Move cursor up</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="996"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1151"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1010"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1165"/>
         <source>Move cursor down</source>
         <translation>Move cursor down</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1000"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1155"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1014"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1169"/>
         <source>Move cursor left</source>
         <translation>Move cursor left</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1004"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1159"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1018"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1173"/>
         <source>Move cursor right</source>
         <translation>Move cursor right</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1497"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1512"/>
         <source>Storage and privacy</source>
         <translation>Storage and privacy</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1498"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1513"/>
         <source>Storage and privacy settings page</source>
         <translation>Storage and privacy settings page</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1519"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1534"/>
         <source>Screenshot history retention and cleanup settings</source>
         <translation>Screenshot history retention and cleanup settings</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1527"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1542"/>
         <source>Delete screenshots after they reach this age</source>
         <translation>Delete screenshots after they reach this age</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1536"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1551"/>
         <source>Remove the oldest screenshots when this limit is exceeded</source>
         <translation>Remove the oldest screenshots when this limit is exceeded</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1542"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1557"/>
         <source>Screenshot count</source>
         <translation>Screenshot count</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1547"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1562"/>
         <source>Limit how much disk space screenshot history can use</source>
         <translation>Limit how much disk space screenshot history can use</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1571"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1586"/>
         <source>System settings</source>
         <translation>System settings</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1619"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1634"/>
         <source>Hotkey settings</source>
         <translation>Hotkey settings</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1626"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1641"/>
         <source>Shortcut keys for screenshot tools and cursor movement</source>
         <translation>Shortcut keys for screenshot tools and cursor movement</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="39"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="819"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1283"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1339"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1414"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1585"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1625"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1990"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="833"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1297"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1353"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1428"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1600"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1640"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2005"/>
         <source>Screenshot</source>
         <translation>Screenshot</translation>
     </message>
@@ -2587,13 +2660,13 @@
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="196"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="340"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="354"/>
         <source>Light</source>
         <translation>Light</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="197"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="342"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="356"/>
         <source>Dark</source>
         <translation>Dark</translation>
     </message>
@@ -2624,6 +2697,7 @@
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="310"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="324"/>
         <source>Tool positions</source>
         <translation>Tool positions</translation>
     </message>
@@ -2633,22 +2707,22 @@
         <translation>Stack drawing tools</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1285"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1299"/>
         <source>Screenshot shortcuts and actions</source>
         <translation>Screenshot shortcuts and actions</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1312"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1326"/>
         <source>Other application shortcuts and actions</source>
         <translation>Other application shortcuts and actions</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1326"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1340"/>
         <source>Preview and manage saved screenshot history</source>
         <translation>Preview and manage saved screenshot history</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1408"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1422"/>
         <source>Appearance and language settings</source>
         <translation>Appearance and language settings</translation>
     </message>
@@ -2769,10 +2843,10 @@
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="160"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1300"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1374"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1510"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2025"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1314"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1388"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1525"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2040"/>
         <source>Screen recording</source>
         <translation>Screen recording</translation>
     </message>
@@ -2824,7 +2898,7 @@
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="225"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1357"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1371"/>
         <source>Translation</source>
         <translation>Translation</translation>
     </message>
@@ -2924,1540 +2998,1560 @@
         <translation>%</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="319"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="333"/>
         <source>Border color</source>
         <translation>Border color</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="320"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="334"/>
         <source>Set the border color of pinned screenshots</source>
         <translation>Set the border color of pinned screenshots</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="322"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="336"/>
         <source>Pinned window border</source>
         <translation>Pinned window border</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="327"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="341"/>
         <source>Enable tray</source>
         <translation>Enable tray</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="328"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="342"/>
         <source>Show the application icon and menu in the system tray</source>
         <translation>Show the application icon and menu in the system tray</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="330"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="344"/>
         <source>System tray</source>
         <translation>System tray</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="348"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="362"/>
         <source>Snowflake light</source>
         <translation>Snowflake light</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="351"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="365"/>
         <source>Snowflake dark</source>
         <translation>Snowflake dark</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="407"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="421"/>
         <source>No proxy</source>
         <translation>No proxy</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="409"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="423"/>
         <source>Use system proxy</source>
         <translation>Use system proxy</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="414"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="428"/>
         <source>Proxy</source>
         <translation>Proxy</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="415"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="429"/>
         <source>Choose whether network requests use the system proxy</source>
         <translation>Choose whether network requests use the system proxy</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="417"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="431"/>
         <source>Network proxy</source>
         <translation>Network proxy</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="455"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="469"/>
         <source>API used to control obtaining child elements of the window</source>
         <translation>API used to control obtaining child elements of the window</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="492"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="506"/>
         <source>Choose the functions shown in the system tray menu</source>
         <translation>Choose the functions shown in the system tray menu</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="494"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="508"/>
         <source>Tray menu</source>
         <translation>Tray menu</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="805"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="819"/>
         <source>Original Image Translation</source>
         <translation>Original Image Translation</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="806"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="820"/>
         <source>Display translated text in the original image</source>
         <translation>Display translated text in the original image</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="975"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="989"/>
         <source>Set up to two keys for this pinned window action</source>
         <translation>Set up to two keys for this pinned window action</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1077"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1091"/>
         <source>Undo</source>
         <translation>Undo</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1080"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1094"/>
         <source>Redo</source>
         <translation>Redo</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1251"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1265"/>
         <source>Delete</source>
         <translation>Delete</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1359"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1373"/>
         <source>Screenshot translation settings</source>
         <translation>Screenshot translation settings</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1586"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1601"/>
         <source>Screen capture settings</source>
         <translation>Screen capture settings</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1593"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1608"/>
         <source>Network</source>
         <translation>Network</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1594"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1609"/>
         <source>Configure proxy use for network requests</source>
         <translation>Configure proxy use for network requests</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1645"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1660"/>
         <source>Shortcut keys for pinned-to-screen windows</source>
         <translation>Shortcut keys for pinned-to-screen windows</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1941"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2059"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1956"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2074"/>
         <source>Exit</source>
         <translation>Exit</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="338"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="352"/>
         <source>Default</source>
         <translation>Default</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="345"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="359"/>
         <source>Snowflake</source>
         <translation>Snowflake</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="355"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="369"/>
         <source>Icon</source>
         <translation>Icon</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="356"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="370"/>
         <source>Choose the bundled icon used in the system tray</source>
         <translation>Choose the bundled icon used in the system tray</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="358"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="372"/>
         <source>Tray appearance</source>
         <translation>Tray appearance</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="366"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="380"/>
         <source>Custom icon</source>
         <translation>Custom icon</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="367"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="381"/>
         <source>Enter or browse to a PNG or ICO file; invalid files use the selected bundled icon</source>
         <translation>Enter or browse to a PNG or ICO file; invalid files use the selected bundled icon</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="370"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="384"/>
         <source>Tray icon path</source>
         <translation>Tray icon path</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="374"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="546"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="388"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="560"/>
         <source>Browse</source>
         <translation>Browse</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="375"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="389"/>
         <source>Select tray icon</source>
         <translation>Select tray icon</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="376"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="390"/>
         <source>Image files (*.png *.ico);;PNG images (*.png);;Icon files (*.ico)</source>
         <translation>Image files (*.png *.ico);;PNG images (*.png);;Icon files (*.ico)</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="469"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="483"/>
         <source>Save history</source>
         <translation>Save history</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="479"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="493"/>
         <source>Select child elements within a window while taking a screenshot</source>
         <translation>Select child elements within a window while taking a screenshot</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="457"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="481"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="471"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="495"/>
         <source>Child elements</source>
         <translation>Child elements</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="449"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="482"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="463"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="496"/>
         <source>MSAA</source>
         <translation>MSAA</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="504"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="518"/>
         <source>Pin an image, formatted text, or HTML from the clipboard to the screen</source>
         <translation>Pin an image, formatted text, or HTML from the clipboard to the screen</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="506"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="520"/>
         <source>Clipboard content</source>
         <translation>Clipboard content</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="507"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="521"/>
         <source>Pin clipboard</source>
         <translation>Pin clipboard</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="563"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="577"/>
         <source>Image format</source>
         <translation>Image format</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="564"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="578"/>
         <source>Choose the format used for automatically saved screenshot files</source>
         <translation>Choose the format used for automatically saved screenshot files</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="567"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="581"/>
         <source>PNG</source>
         <translation>PNG</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="568"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="582"/>
         <source>JPEG</source>
         <translation>JPEG</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="570"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="584"/>
         <source>JPEG XL</source>
         <translation>JPEG XL</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="571"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="585"/>
         <source>AVIF</source>
         <translation>AVIF</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="578"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="592"/>
         <source>Image save directory</source>
         <translation>Image save directory</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="579"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="593"/>
         <source>Choose where images are written for automatic save and copy-file actions</source>
         <translation>Choose where images are written for automatic save and copy-file actions</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="584"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="598"/>
         <source>Select image save directory</source>
         <translation>Select image save directory</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="588"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="602"/>
         <source>Manual save screenshot filename format</source>
         <translation>Manual save screenshot filename format</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="589"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="603"/>
         <source>Set the generated filename used when saving a screenshot as a file</source>
         <translation>Set the generated filename used when saving a screenshot as a file</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="595"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="609"/>
         <source>Auto-save screenshot filename format</source>
         <translation>Auto-save screenshot filename format</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="596"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="610"/>
         <source>Set the generated filename used by automatic screenshot file saves</source>
         <translation>Set the generated filename used by automatic screenshot file saves</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="607"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="621"/>
         <source>Video save directory</source>
         <translation>Video save directory</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="608"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="622"/>
         <source>Choose where recording output files are written</source>
         <translation>Choose where recording output files are written</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="611"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="625"/>
         <source>Select video save directory</source>
         <translation>Select video save directory</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="614"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="628"/>
         <source>Video filename format</source>
         <translation>Video filename format</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="615"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="629"/>
         <source>Set the generated filename used for recording output files</source>
         <translation>Set the generated filename used for recording output files</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="625"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="639"/>
         <source>Auto execute after text recognition</source>
         <translation>Auto execute after text recognition</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="626"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="640"/>
         <source>Choose what happens automatically when text recognition completes</source>
         <translation>Choose what happens automatically when text recognition completes</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="632"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="646"/>
         <source>No action</source>
         <translation>No action</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="634"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="648"/>
         <source>Copy text</source>
         <translation>Copy text</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="636"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="650"/>
         <source>Copy text and end screenshot</source>
         <translation>Copy text and end screenshot</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="643"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="657"/>
         <source>Enable edit mode</source>
         <translation>Enable edit mode</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="123"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="650"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1053"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1124"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2012"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="664"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1067"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1138"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2027"/>
         <source>Copy to clipboard</source>
         <translation>Copy to clipboard</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="652"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1045"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1131"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="666"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1059"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1145"/>
         <source>Save as file</source>
         <translation>Save as file</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="87"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="654"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1035"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1349"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1478"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1644"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2000"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="668"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1049"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1363"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1493"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1659"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2015"/>
         <source>Pin to screen</source>
         <translation>Pin to screen</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="655"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="669"/>
         <source>None</source>
         <translation>None</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="662"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="676"/>
         <source>Double-click action</source>
         <translation>Double-click action</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="663"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="677"/>
         <source>Choose the action for double-clicking while moving or drawing in a screenshot</source>
         <translation>Choose the action for double-clicking while moving or drawing in a screenshot</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="673"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="687"/>
         <source>Middle mouse button action</source>
         <translation>Middle mouse button action</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="674"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="688"/>
         <source>Choose the action for middle-clicking while moving or drawing in a screenshot</source>
         <translation>Choose the action for middle-clicking while moving or drawing in a screenshot</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="703"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="717"/>
         <source>Auto save after copy</source>
         <translation>Auto save after copy</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="704"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="718"/>
         <source>Save a PNG file automatically whenever a screenshot is copied</source>
         <translation>Save a PNG file automatically whenever a screenshot is copied</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="713"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="727"/>
         <source>Copy image file to clipboard</source>
         <translation>Copy image file to clipboard</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="714"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="728"/>
         <source>Write the screenshot to a file and copy that file to the clipboard</source>
         <translation>Write the screenshot to a file and copy that file to the clipboard</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1088"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1102"/>
         <source>Select tool</source>
         <translation>Select tool</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="723"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1091"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="737"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1105"/>
         <source>Shape tool</source>
         <translation>Shape tool</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="724"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1094"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="738"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1108"/>
         <source>Arrow</source>
         <translation>Arrow</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="725"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="739"/>
         <source>Line</source>
         <translation>Line</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="728"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="742"/>
         <source>Rectangle highlight</source>
         <translation>Rectangle highlight</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="730"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="744"/>
         <source>Pen highlight</source>
         <translation>Pen highlight</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="732"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="746"/>
         <source>Spotlight</source>
         <translation>Spotlight</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="734"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="748"/>
         <source>Rectangle filter</source>
         <translation>Rectangle filter</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="736"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="750"/>
         <source>Pen filter</source>
         <translation>Pen filter</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="737"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1103"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="751"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1117"/>
         <source>Text</source>
         <translation>Text</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="739"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1106"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="753"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1120"/>
         <source>Serial number</source>
         <translation>Serial number</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="740"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1112"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="754"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1126"/>
         <source>Eraser</source>
         <translation>Eraser</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="742"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1115"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="756"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1129"/>
         <source>Watermark</source>
         <translation>Watermark</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="746"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="760"/>
         <source>Tools that forbid quick selection of same-type elements</source>
         <translation>Tools that forbid quick selection of same-type elements</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="748"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="762"/>
         <source>Prevent left-click selection of matching elements while these tools are active</source>
         <translation>Prevent left-click selection of matching elements while these tools are active</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="751"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="765"/>
         <source>Quick selection</source>
         <translation>Quick selection</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="760"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="774"/>
         <source>Mouse wheel zoom mode</source>
         <translation>Mouse wheel zoom mode</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="761"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="775"/>
         <source>Choose the fixed point used when zooming a pinned screenshot</source>
         <translation>Choose the fixed point used when zooming a pinned screenshot</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="767"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="781"/>
         <source>Center on mouse position</source>
         <translation>Center on mouse position</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="769"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="783"/>
         <source>Fix top-left corner</source>
         <translation>Fix top-left corner</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="771"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="785"/>
         <source>Fix top-right corner</source>
         <translation>Fix top-right corner</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="773"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="787"/>
         <source>Fix bottom-left corner</source>
         <translation>Fix bottom-left corner</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="775"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="789"/>
         <source>Fix bottom-right corner</source>
         <translation>Fix bottom-right corner</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="777"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="791"/>
         <source>Fix center point</source>
         <translation>Fix center point</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="784"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="798"/>
         <source>Automatic text recognition</source>
         <translation>Automatic text recognition</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="785"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="799"/>
         <source>Recognize text automatically when a pinned screenshot is created</source>
         <translation>Recognize text automatically when a pinned screenshot is created</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="794"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="808"/>
         <source>Auto resize window</source>
         <translation>Auto resize window</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="795"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="809"/>
         <source>Resize scrolling screenshots automatically to remain inside the monitor</source>
         <translation>Resize scrolling screenshots automatically to remain inside the monitor</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="814"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="828"/>
         <source>Left-click action</source>
         <translation>Left-click action</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="815"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="829"/>
         <source>Choose what left-clicking the tray icon does</source>
         <translation>Choose what left-clicking the tray icon does</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="821"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="835"/>
         <source>Show main window</source>
         <translation>Show main window</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="829"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="843"/>
         <source>4K</source>
         <translation>4K</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="831"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="845"/>
         <source>2K</source>
         <translation>2K</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="834"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="848"/>
         <source>1080p</source>
         <translation>1080p</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="836"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="850"/>
         <source>720p</source>
         <translation>720p</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="838"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="852"/>
         <source>480p</source>
         <translation>480p</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="848"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="862"/>
         <source>83</source>
         <translation>83</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="849"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="863"/>
         <source>120</source>
         <translation>120</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="850"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="864"/>
         <source>60</source>
         <translation>60</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="851"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="865"/>
         <source>30</source>
         <translation>30</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="852"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="866"/>
         <source>24</source>
         <translation>24</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="853"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="867"/>
         <source>15</source>
         <translation>15</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="854"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="868"/>
         <source>10</source>
         <translation>10</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="863"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="877"/>
         <source>Screen recording clarity</source>
         <translation>Screen recording clarity</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="864"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="878"/>
         <source>Scale recordings that exceed the selected maximum resolution</source>
         <translation>Scale recordings that exceed the selected maximum resolution</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="869"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="883"/>
         <source>Frame rate</source>
         <translation>Frame rate</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="870"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="884"/>
         <source>Set the screen recording frame rate</source>
         <translation>Set the screen recording frame rate</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="875"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="889"/>
         <source>Animated image clarity</source>
         <translation>Animated image clarity</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="876"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="890"/>
         <source>Set the maximum resolution of exported animated images</source>
         <translation>Set the maximum resolution of exported animated images</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="882"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="896"/>
         <source>Animated image frame rate</source>
         <translation>Animated image frame rate</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="883"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="897"/>
         <source>Set the frame rate of exported animated images</source>
         <translation>Set the frame rate of exported animated images</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="888"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="902"/>
         <source>Animated image format</source>
         <translation>Animated image format</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="889"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="903"/>
         <source>Choose the format used to export animated images</source>
         <translation>Choose the format used to export animated images</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="893"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="907"/>
         <source>GIF</source>
         <translation>GIF</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="894"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="908"/>
         <source>APNG</source>
         <translation>APNG</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="569"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="895"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="583"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="909"/>
         <source>WebP</source>
         <translation>WebP</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="75"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1995"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2010"/>
         <source>Delay %1s to execute</source>
         <translation>Delay %1s to execute</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="99"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1070"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1601"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2004"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1084"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1616"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2019"/>
         <source>Text recognition</source>
         <translation>Text recognition</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="111"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1074"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2008"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1088"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2023"/>
         <source>Text translation</source>
         <translation>Text translation</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="135"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2016"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2031"/>
         <source>Current monitor</source>
         <translation>Current monitor</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="148"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2020"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2035"/>
         <source>Focused window</source>
         <translation>Focused window</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="170"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2030"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2045"/>
         <source>Start screen recording / stop and copy video</source>
         <translation>Start screen recording / stop and copy video</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="183"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1325"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1518"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2035"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1339"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1533"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2050"/>
         <source>Screenshot history</source>
         <translation>Screenshot history</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="427"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="318"/>
+        <source>Screenshot toolbar settings</source>
+        <translation>Screenshot toolbar settings</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="319"/>
+        <source>Drag screenshot tools to reorder them or stack them in the same toolbar position.</source>
+        <translation>Drag screenshot tools to reorder them or stack them in the same toolbar position.</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="323"/>
+        <source>Custom screenshot toolbar</source>
+        <translation>Custom screenshot toolbar</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="325"/>
+        <source>Stack screenshot tools</source>
+        <translation>Stack screenshot tools</translation>
+    </message>
+    <message>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="441"/>
         <source>Auto</source>
         <translation>Auto</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="428"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="442"/>
         <source>DXGI</source>
         <translation>DXGI</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="429"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="443"/>
         <source>WGC</source>
         <translation>WGC</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="430"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="444"/>
         <source>GDI</source>
         <translation>GDI</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="434"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="448"/>
         <source>API Mode</source>
         <translation>API Mode</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="435"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="449"/>
         <source>Choose the preferred API for normal screenshots; Auto uses DXGI on HDR displays and GDI otherwise</source>
         <translation>Choose the preferred API for normal screenshots; Auto uses DXGI on HDR displays and GDI otherwise</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="438"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="452"/>
         <source>Screenshot API</source>
         <translation>Screenshot API</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="439"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="453"/>
         <source>Capture backend</source>
         <translation>Capture backend</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="450"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="464"/>
         <source>UIA</source>
         <translation>UIA</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="454"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="468"/>
         <source>Window Element API</source>
         <translation>Window Element API</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="466"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="480"/>
         <source>Persistent screenshot history</source>
         <translation>Persistent screenshot history</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="467"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="481"/>
         <source>Keep screenshots available after the application closes</source>
         <translation>Keep screenshots available after the application closes</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="478"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="492"/>
         <source>Smart selection</source>
         <translation>Smart selection</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="491"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="505"/>
         <source>Menu options</source>
         <translation>Menu options</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="503"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2039"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="517"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2054"/>
         <source>Pin clipboard content to screen</source>
         <translation>Pin clipboard content to screen</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="638"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="652"/>
         <source>Copy text (quick function)</source>
         <translation>Copy text (quick function)</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="640"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="654"/>
         <source>Copy text and end screenshot (quick function)</source>
         <translation>Copy text and end screenshot (quick function)</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="684"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="698"/>
         <source>Restore original screen colors</source>
         <translation>Restore original screen colors</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="685"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="699"/>
         <source>Reverse supported full-screen color filters in screenshots.</source>
         <translation>Reverse supported full-screen color filters in screenshots.</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="694"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="708"/>
         <source>Capture cursor</source>
         <translation>Capture cursor</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="695"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="709"/>
         <source>Include the mouse cursor in normal screenshots.</source>
         <translation>Include the mouse cursor in normal screenshots.</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="726"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1097"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="740"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1111"/>
         <source>Pen</source>
         <translation>Pen</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="898"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="912"/>
         <source>Encoder</source>
         <translation>Encoder</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="899"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="913"/>
         <source>Choose the video encoder</source>
         <translation>Choose the video encoder</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="903"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="917"/>
         <source>H.264 (Hardware)</source>
         <translation>H.264 (Hardware)</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="904"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="918"/>
         <source>H.264</source>
         <translation>H.264</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="906"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="920"/>
         <source>H.265</source>
         <translation>H.265</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="909"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="923"/>
         <source>Encoding preset</source>
         <translation>Encoding preset</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="910"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="924"/>
         <source>Balance encoding speed against compression efficiency</source>
         <translation>Balance encoding speed against compression efficiency</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="915"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="929"/>
         <source>Ultra fast</source>
         <translation>Ultra fast</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="917"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="931"/>
         <source>Very fast</source>
         <translation>Very fast</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="919"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="933"/>
         <source>Medium</source>
         <translation>Medium</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="921"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="935"/>
         <source>Very slow</source>
         <translation>Very slow</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="923"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="937"/>
         <source>Maximum compression</source>
         <translation>Maximum compression</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="925"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="939"/>
         <source>Hide toolbar in recording</source>
         <translation>Hide toolbar in recording</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="926"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="940"/>
         <source>Exclude the screen recording toolbar from captured video</source>
         <translation>Exclude the screen recording toolbar from captured video</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="936"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="950"/>
         <source>Automatically disable when a focused fullscreen window exists</source>
         <translation>Automatically disable when a focused fullscreen window exists</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="938"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="952"/>
         <source>Ignore global hotkeys while the focused window occupies an entire monitor</source>
         <translation>Ignore global hotkeys while the focused window occupies an entire monitor</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="947"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="961"/>
         <source>Auto start at boot</source>
         <translation>Auto start at boot</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="948"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="962"/>
         <source>Start Snow Shot in the background when Windows starts</source>
         <translation>Start Snow Shot in the background when Windows starts</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="973"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="987"/>
         <source>Set up to two keys for this screenshot drawing tool</source>
         <translation>Set up to two keys for this screenshot drawing tool</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="979"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="993"/>
         <source>Drawing shortcut</source>
         <translation>Drawing shortcut</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="980"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="994"/>
         <source>Pin to screen shortcut</source>
         <translation>Pin to screen shortcut</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1008"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1022"/>
         <source>Move entire selection</source>
         <translation>Move entire selection</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1013"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1027"/>
         <source>Keep selection width and height consistent</source>
         <translation>Keep selection width and height consistent</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1017"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1031"/>
         <source>Select window/window sub-element</source>
         <translation>Select window/window sub-element</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1021"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1035"/>
         <source>Previous screenshot history</source>
         <translation>Previous screenshot history</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1025"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1039"/>
         <source>Next screenshot history</source>
         <translation>Next screenshot history</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1029"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1043"/>
         <source>Select previously selected area</source>
         <translation>Select previously selected area</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1032"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1046"/>
         <source>Copy color</source>
         <translation>Copy color</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1038"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1052"/>
         <source>Video recording</source>
         <translation>Video recording</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1042"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1056"/>
         <source>Scrolling screenshot</source>
         <translation>Scrolling screenshot</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1049"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1063"/>
         <source>Cancel screenshot</source>
         <translation>Cancel screenshot</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1062"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1076"/>
         <source>Table recognition</source>
         <translation>Table recognition</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1066"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1080"/>
         <source>Barcode recognition</source>
         <translation>Barcode recognition</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1100"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1114"/>
         <source>Highlight</source>
         <translation>Highlight</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1109"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1123"/>
         <source>Filter</source>
         <translation>Filter</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1128"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1142"/>
         <source>Copy original content</source>
         <translation>Copy original content</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1135"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1149"/>
         <source>Show text recognition results</source>
         <translation>Show text recognition results</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1138"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1152"/>
         <source>Drawing mode</source>
         <translation>Drawing mode</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1141"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1155"/>
         <source>Thumbnail mode</source>
         <translation>Thumbnail mode</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1144"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1158"/>
         <source>Close window</source>
         <translation>Close window</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1167"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1181"/>
         <source>DirectML acceleration</source>
         <translation>DirectML acceleration</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1168"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1182"/>
         <source>Use DirectML for GPU-accelerated text recognition when available</source>
         <translation>Use DirectML for GPU-accelerated text recognition when available</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1188"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1228"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1202"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1242"/>
         <source>Clear</source>
         <translation>Clear</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1195"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1209"/>
         <source>Clear history</source>
         <translation>Clear history</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1214"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1228"/>
         <source>App-wide storage usage breakdown, location, mode, and latest errors</source>
         <translation>App-wide storage usage breakdown, location, mode, and latest errors</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1239"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1253"/>
         <source>Clear thumbnail cache</source>
         <translation>Clear thumbnail cache</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1231"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1245"/>
         <source>Clear the thumbnail cache?</source>
         <translation>Clear the thumbnail cache?</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1232"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1246"/>
         <source>Cached history thumbnails will be removed and rebuilt on demand</source>
         <translation>Cached history thumbnails will be removed and rebuilt on demand</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1234"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1248"/>
         <source>Clear cache</source>
         <translation>Clear cache</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1241"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1255"/>
         <source>Remove cached screenshot-history thumbnails</source>
         <translation>Remove cached screenshot-history thumbnails</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1242"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1256"/>
         <source>Thumbnail cache</source>
         <translation>Thumbnail cache</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1263"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1277"/>
         <source>Delete temporary recording files</source>
         <translation>Delete temporary recording files</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1254"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1268"/>
         <source>Delete temporary recording files?</source>
         <translation>Delete temporary recording files?</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1255"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1269"/>
         <source>Leftover working files from finished or interrupted recordings will be removed</source>
         <translation>Leftover working files from finished or interrupted recordings will be removed</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1258"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1272"/>
         <source>Delete files</source>
         <translation>Delete files</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1265"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1279"/>
         <source>Remove leftover recording working files that are no longer needed</source>
         <translation>Remove leftover recording working files that are no longer needed</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1267"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1281"/>
         <source>Recording temporary files</source>
         <translation>Recording temporary files</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1560"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1575"/>
         <source>App-wide storage usage, location, mode, errors, and cleanup</source>
         <translation>App-wide storage usage, location, mode, errors, and cleanup</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1930"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2044"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1945"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2059"/>
         <source>Window grouping</source>
         <translation>Window grouping</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1934"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2049"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1949"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2064"/>
         <source>Disable shortcut functions</source>
         <translation>Disable shortcut functions</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1938"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2054"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1953"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="2069"/>
         <source>Show main interface</source>
         <translation>Show main interface</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1196"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1235"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1259"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1210"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1249"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1273"/>
         <source>Cancel</source>
         <translation>Cancel</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1203"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1217"/>
         <source>Delete history</source>
         <translation>Delete history</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1213"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1559"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1227"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1574"/>
         <source>Storage status</source>
         <translation>Storage status</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1217"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1231"/>
         <source>Disk usage</source>
         <translation>Disk usage</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1218"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1232"/>
         <source>Storage location</source>
         <translation>Storage location</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1219"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1233"/>
         <source>Storage error</source>
         <translation>Storage error</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1301"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1315"/>
         <source>Screen recording shortcuts and actions</source>
         <translation>Screen recording shortcuts and actions</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1311"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1653"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1325"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1668"/>
         <source>Other</source>
         <translation>Other</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1335"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1349"/>
         <source>Configure screenshot behavior</source>
         <translation>Configure screenshot behavior</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1341"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1355"/>
         <source>Screenshot selection behavior</source>
         <translation>Screenshot selection behavior</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1375"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1389"/>
         <source>Screen recording and animated image export settings</source>
         <translation>Screen recording and animated image export settings</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1392"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1406"/>
         <source>Global hotkey activation behavior</source>
         <translation>Global hotkey activation behavior</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1406"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1577"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1420"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1592"/>
         <source>General</source>
         <translation>General</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1415"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1429"/>
         <source>Screenshot interface and visual guidance settings</source>
         <translation>Screenshot interface and visual guidance settings</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1460"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1475"/>
         <source>Toolbar</source>
         <translation>Toolbar</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1461"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1476"/>
         <source>Configure the screenshot, pinned, and recording toolbars</source>
         <translation>Configure the screenshot, pinned, and recording toolbars</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1423"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1437"/>
         <source>Selection mask color</source>
         <translation>Selection mask color</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1192"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1206"/>
         <source>Clear screenshot history?</source>
         <translation>Clear screenshot history?</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1200"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1214"/>
         <source>Clear screenshot history</source>
         <translation>Clear screenshot history</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1204"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1218"/>
         <source>Remove screenshots</source>
         <translation>Remove screenshots</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1278"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1292"/>
         <source>Quick functions</source>
         <translation>Quick functions</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1279"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1293"/>
         <source>Quick functions page</source>
         <translation>Quick functions page</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1334"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1348"/>
         <source>Function settings</source>
         <translation>Function settings</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1390"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1404"/>
         <source>Global hotkeys</source>
         <translation>Global hotkeys</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1401"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1415"/>
         <source>Interface settings</source>
         <translation>Interface settings</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1402"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1416"/>
         <source>Interface settings page</source>
         <translation>Interface settings page</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1424"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1438"/>
         <source>Set the color and opacity outside the screenshot selection</source>
         <translation>Set the color and opacity outside the screenshot selection</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1432"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1446"/>
         <source>Cursor guide line color</source>
         <translation>Cursor guide line color</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1433"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1447"/>
         <source>Draw a dashed crosshair at the pointer while selecting</source>
         <translation>Draw a dashed crosshair at the pointer while selecting</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1440"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1454"/>
         <source>Monitor center guide line color</source>
         <translation>Monitor center guide line color</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1441"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1455"/>
         <source>Draw a solid crosshair at the active monitor center while selecting</source>
         <translation>Draw a solid crosshair at the active monitor center while selecting</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1449"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1463"/>
         <source>Color picker center guide line color</source>
         <translation>Color picker center guide line color</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1451"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1465"/>
         <source>Draw four guide segments around the sampled center pixel</source>
         <translation>Draw four guide segments around the sampled center pixel</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1365"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1469"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1635"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1379"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1484"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1650"/>
         <source>Drawing</source>
         <translation>Drawing</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1366"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1470"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1380"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1485"/>
         <source>Configure drawing tools and the screenshot drawing toolbar</source>
         <translation>Configure drawing tools and the screenshot drawing toolbar</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1350"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1479"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1364"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1494"/>
         <source>Pinned screenshot window appearance settings</source>
         <translation>Pinned screenshot window appearance settings</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1382"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1486"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1396"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1501"/>
         <source>Tray</source>
         <translation>Tray</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1383"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1487"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1397"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1502"/>
         <source>System tray availability and icon settings</source>
         <translation>System tray availability and icon settings</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1526"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1541"/>
         <source>Retention period</source>
         <translation>Retention period</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1531"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1546"/>
         <source> days</source>
         <translation> days</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1532"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1547"/>
         <source>Age</source>
         <translation>Age</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1535"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1550"/>
         <source>Maximum entries</source>
         <translation>Maximum entries</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1546"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1561"/>
         <source>Maximum disk usage</source>
         <translation>Maximum disk usage</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1552"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1567"/>
         <source> MiB</source>
         <translation> MiB</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1553"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1568"/>
         <source>Disk limit</source>
         <translation>Disk limit</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1502"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1517"/>
         <source>Screenshots</source>
         <translation>Screenshots</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1503"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1518"/>
         <source>Screenshot output locations, formats, and filenames</source>
         <translation>Screenshot output locations, formats, and filenames</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1511"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1526"/>
         <source>Recording output location and filename settings</source>
         <translation>Recording output location and filename settings</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1578"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1593"/>
         <source>General system integration settings</source>
         <translation>General system integration settings</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1609"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1624"/>
         <source>Core</source>
         <translation>Core</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1621"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1636"/>
         <source>Configure screenshot editor shortcut keys</source>
         <translation>Configure screenshot editor shortcut keys</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1637"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1652"/>
         <source>Shortcut keys for drawing tools</source>
         <translation>Shortcut keys for drawing tools</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1654"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1669"/>
         <source>Shortcut keys for recognition and screenshot actions</source>
         <translation>Shortcut keys for recognition and screenshot actions</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1678"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1693"/>
         <source>Settings</source>
         <translation>Settings</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1573"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1588"/>
         <source>Configure application process behavior</source>
         <translation>Configure application process behavior</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1610"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1625"/>
         <source>Core application settings</source>
         <translation>Core application settings</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="394"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="408"/>
         <source>Application priority</source>
         <translation>Application priority</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="395"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="409"/>
         <source>Choose how much execution time the application receives</source>
         <translation>Choose how much execution time the application receives</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="397"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="411"/>
         <source>Process priority</source>
         <translation>Process priority</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="398"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="412"/>
         <source>Execution order</source>
         <translation>Execution order</translation>
     </message>
     <message>
         <location filename="../src/presentation/settings/settingscatalog.cpp" line="236"/>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="384"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="398"/>
         <source>Normal</source>
         <translation>Normal</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="386"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="400"/>
         <source>Above normal</source>
         <translation>Above normal</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="387"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="401"/>
         <source>High</source>
         <translation>High</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="389"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="403"/>
         <source>Real-time</source>
         <translation>Real-time</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1170"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1184"/>
         <source>DirectML</source>
         <translation>DirectML</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1171"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1185"/>
         <source>GPU acceleration</source>
         <translation>GPU acceleration</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1602"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1617"/>
         <source>Configure text recognition acceleration</source>
         <translation>Configure text recognition acceleration</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1194"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1208"/>
         <source>All screenshot history will be removed</source>
         <translation>All screenshot history will be removed</translation>
     </message>
     <message>
-        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1202"/>
+        <location filename="../src/presentation/settings/settingscatalog.cpp" line="1216"/>
         <source>Permanently remove all saved screenshots</source>
         <translation>Permanently remove all saved screenshots</translation>
     </message>

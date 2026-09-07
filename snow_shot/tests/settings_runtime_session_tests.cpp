@@ -64,8 +64,7 @@ class FakeSettingsBackend final : public settings::SettingsBackend {
         return {};
     }
 
-    bool applySelectValue(settings::SettingsSelectBinding binding,
-                          const QVariant& value) override {
+    bool applySelectValue(settings::SettingsSelectBinding binding, const QVariant& value) override {
         if (binding != settings::SettingsSelectBinding::Theme) {
             return false;
         }
@@ -80,7 +79,9 @@ class FakeSettingsBackend final : public settings::SettingsBackend {
         return false;
     }
 
-    bool switchEnabled(settings::SettingsSwitchBinding) const override { return true; }
+    bool switchEnabled(settings::SettingsSwitchBinding) const override {
+        return true;
+    }
 
     bool applySwitchValue(settings::SettingsSwitchBinding binding, bool value) override {
         if (binding != settings::SettingsSwitchBinding::TrayEnabled) {
@@ -121,36 +122,60 @@ class FakeSettingsBackend final : public settings::SettingsBackend {
                           [this](const QVariant& next) { m_delay = next.toInt(); });
     }
 
-    int sliderValue(settings::SettingsSliderBinding) const override { return 0; }
-    bool applySliderValue(settings::SettingsSliderBinding, int) override { return false; }
+    int sliderValue(settings::SettingsSliderBinding) const override {
+        return 0;
+    }
+    bool applySliderValue(settings::SettingsSliderBinding, int) override {
+        return false;
+    }
 
-    QColor colorValue(settings::SettingsColorBinding) const override { return {}; }
-    bool applyColorValue(settings::SettingsColorBinding, const QColor&) override { return false; }
+    QColor colorValue(settings::SettingsColorBinding) const override {
+        return {};
+    }
+    bool applyColorValue(settings::SettingsColorBinding, const QColor&) override {
+        return false;
+    }
 
-    QVariant radioValue(settings::SettingsRadioBinding) const override { return {}; }
-    bool applyRadioValue(settings::SettingsRadioBinding, const QVariant&) override { return false; }
+    QVariant radioValue(settings::SettingsRadioBinding) const override {
+        return {};
+    }
+    bool applyRadioValue(settings::SettingsRadioBinding, const QVariant&) override {
+        return false;
+    }
 
-    QString filePathValue(settings::SettingsFilePathBinding) const override { return {}; }
+    QString filePathValue(settings::SettingsFilePathBinding) const override {
+        return {};
+    }
     bool applyFilePathValue(settings::SettingsFilePathBinding, const QString&) override {
         return false;
     }
 
-    QString directoryPathValue(settings::SettingsDirectoryPathBinding) const override { return {}; }
-    bool applyDirectoryPathValue(settings::SettingsDirectoryPathBinding,
-                                 const QString&) override {
+    QString directoryPathValue(settings::SettingsDirectoryPathBinding) const override {
+        return {};
+    }
+    bool applyDirectoryPathValue(settings::SettingsDirectoryPathBinding, const QString&) override {
         return false;
     }
 
-    QString textValue(settings::SettingsTextBinding) const override { return {}; }
-    bool applyTextValue(settings::SettingsTextBinding, const QString&) override { return false; }
+    QString textValue(settings::SettingsTextBinding) const override {
+        return {};
+    }
+    bool applyTextValue(settings::SettingsTextBinding, const QString&) override {
+        return false;
+    }
 
-    storage::ScreenshotToolbarLayout toolbarLayout() const override { return m_toolbar; }
+    storage::ScreenshotToolbarLayout
+    toolbarLayout(storage::ScreenshotToolbarLayoutKind kind) const override {
+        return kind == storage::ScreenshotToolbarLayoutKind::DrawingTools ? m_drawingToolbar
+                                                                          : m_actionToolbar;
+    }
 
-    bool applyToolbarLayout(const storage::ScreenshotToolbarLayout& layout) override {
-        return applyField(QStringLiteral("toolbar"), QVariant::fromValue(layout),
-                          [this](const QVariant& next) {
-                              m_toolbar = next.value<storage::ScreenshotToolbarLayout>();
-                          });
+    bool applyToolbarLayout(storage::ScreenshotToolbarLayoutKind kind,
+                            const storage::ScreenshotToolbarLayout& layout) override {
+        const QString fieldId = toolbarFieldId(kind);
+        return applyField(fieldId, QVariant::fromValue(layout), [this, kind](const QVariant& next) {
+            toolbarLayoutStorage(kind) = next.value<storage::ScreenshotToolbarLayout>();
+        });
     }
 
     presentation::GlobalShortcutRegistrationState
@@ -165,8 +190,7 @@ class FakeSettingsBackend final : public settings::SettingsBackend {
         return {shortcut, true, presentation::GlobalShortcutFailureReason::None};
     }
 
-    bool applyShortcuts(presentation::GlobalShortcutAction,
-                        const QStringList&) override {
+    bool applyShortcuts(presentation::GlobalShortcutAction, const QStringList&) override {
         return false;
     }
 
@@ -190,13 +214,21 @@ class FakeSettingsBackend final : public settings::SettingsBackend {
         return {true, false};
     }
 
-    bool triggerAction(settings::SettingsActionBinding) override { return true; }
+    bool triggerAction(settings::SettingsActionBinding) override {
+        return true;
+    }
 
-    storage::StorageStatus storageStatus() const override { return m_status; }
+    storage::StorageStatus storageStatus() const override {
+        return m_status;
+    }
 
-    void refreshStorageStatus() override { ++m_refreshCount; }
+    void refreshStorageStatus() override {
+        ++m_refreshCount;
+    }
 
-    int refreshCount() const { return m_refreshCount; }
+    int refreshCount() const {
+        return m_refreshCount;
+    }
 
     void setAppUsage(const storage::AppStorageUsage& usage) {
         m_status.appUsage = usage;
@@ -215,7 +247,9 @@ class FakeSettingsBackend final : public settings::SettingsBackend {
         return true;
     }
 
-    QString fieldError(const QString& fieldId) const override { return m_fieldErrors.value(fieldId); }
+    QString fieldError(const QString& fieldId) const override {
+        return m_fieldErrors.value(fieldId);
+    }
 
     bool fieldPending(const QString& fieldId) const override {
         const auto found = m_pending.constFind(fieldId);
@@ -223,25 +257,35 @@ class FakeSettingsBackend final : public settings::SettingsBackend {
                (m_status.historyPolicyUpdating && fieldId == QStringLiteral("theme"));
     }
 
-    void setMode(const QString& fieldId, WriteMode mode) { m_modes.insert(fieldId, mode); }
+    void setMode(const QString& fieldId, WriteMode mode) {
+        m_modes.insert(fieldId, mode);
+    }
 
-    void setResetAccepted(bool accepted) { m_resetAccepted = accepted; }
+    void setResetAccepted(bool accepted) {
+        m_resetAccepted = accepted;
+    }
 
-    void setResetHistoryPending(bool pending) { m_resetHistoryPending = pending; }
+    void setResetHistoryPending(bool pending) {
+        m_resetHistoryPending = pending;
+    }
 
     void completeHistoryReset() {
         m_status.historyPolicyUpdating = false;
         emit synchronized();
     }
 
-    int applyCount(const QString& fieldId) const { return m_applyCounts.value(fieldId); }
+    int applyCount(const QString& fieldId) const {
+        return m_applyCounts.value(fieldId);
+    }
 
     void setConfigurationError(const QString& error) {
         m_status.lastConfigurationError = error;
         emit synchronized();
     }
 
-    void notify() { emit synchronized(); }
+    void notify() {
+        emit synchronized();
+    }
 
     void setExternal(const QString& fieldId, const QVariant& value) {
         setFieldValue(fieldId, value);
@@ -266,9 +310,15 @@ class FakeSettingsBackend final : public settings::SettingsBackend {
         emit synchronized();
     }
 
-    QString theme() const { return m_theme; }
-    bool trayEnabled() const { return m_trayEnabled; }
-    int delay() const { return m_delay; }
+    QString theme() const {
+        return m_theme;
+    }
+    bool trayEnabled() const {
+        return m_trayEnabled;
+    }
+    int delay() const {
+        return m_delay;
+    }
 
   private:
     template <typename Setter>
@@ -306,16 +356,33 @@ class FakeSettingsBackend final : public settings::SettingsBackend {
         } else if (fieldId == QStringLiteral("tray-options")) {
             m_trayOptions = value.toList();
         } else if (fieldId == QStringLiteral("toolbar")) {
-            m_toolbar = value.value<storage::ScreenshotToolbarLayout>();
+            m_drawingToolbar = value.value<storage::ScreenshotToolbarLayout>();
+        } else if (fieldId == QStringLiteral("action-toolbar")) {
+            m_actionToolbar = value.value<storage::ScreenshotToolbarLayout>();
         }
+    }
+
+    static QString toolbarFieldId(storage::ScreenshotToolbarLayoutKind kind) {
+        return kind == storage::ScreenshotToolbarLayoutKind::DrawingTools
+                   ? QStringLiteral("toolbar")
+                   : QStringLiteral("action-toolbar");
+    }
+
+    storage::ScreenshotToolbarLayout&
+    toolbarLayoutStorage(storage::ScreenshotToolbarLayoutKind kind) {
+        return kind == storage::ScreenshotToolbarLayoutKind::DrawingTools ? m_drawingToolbar
+                                                                          : m_actionToolbar;
     }
 
     QString m_theme = QStringLiteral("system");
     bool m_trayEnabled = true;
     int m_delay = 3;
     QVariantList m_trayOptions{QStringLiteral("quick.screenshot")};
-    storage::ScreenshotToolbarLayout m_toolbar{
-        {{QStringLiteral("select")}}, {QStringLiteral("eraser")}};
+    storage::ScreenshotToolbarLayout m_drawingToolbar{{{QStringLiteral("select")}},
+                                                      {QStringLiteral("eraser")}};
+    storage::ScreenshotToolbarLayout m_actionToolbar{
+        {{QStringLiteral("table-recognition")}, {QStringLiteral("save-as-file")}},
+        {QStringLiteral("barcode-recognition")}};
     storage::StorageStatus m_status;
     QHash<QString, WriteMode> m_modes;
     QHash<QString, int> m_applyCounts;
@@ -326,8 +393,8 @@ class FakeSettingsBackend final : public settings::SettingsBackend {
     int m_refreshCount = 0;
 };
 
-settings::SettingsRegistry testRegistry(
-    settings::SettingsSectionReset reset = settings::SettingsSectionReset::None) {
+settings::SettingsRegistry
+testRegistry(settings::SettingsSectionReset reset = settings::SettingsSectionReset::None) {
     settings::SettingsSelectDefinition theme;
     theme.binding = settings::SettingsSelectBinding::Theme;
     theme.options = {{QStringLiteral("system"), text("Follow system")},
@@ -347,29 +414,68 @@ settings::SettingsRegistry testRegistry(
     settings::SettingsCustomDefinition toolbar;
     toolbar.renderer = settings::SettingsCustomRenderer::DrawingToolbarEditor;
 
+    settings::SettingsCustomDefinition actionToolbar;
+    actionToolbar.renderer = settings::SettingsCustomRenderer::ScreenshotToolbarEditor;
+
     settings::SettingsCustomDefinition storageStatus;
     storageStatus.renderer = settings::SettingsCustomRenderer::StorageStatus;
 
     settings::SettingsSectionDefinition section{
-        QStringLiteral("general"), text("General"), text("General settings"),
+        QStringLiteral("general"),
+        text("General"),
+        text("General settings"),
         reset,
-        {{QStringLiteral("theme"), text("Theme"), text("Theme"), {},
-          QStringLiteral("interface/theme_mode"), theme},
-         {QStringLiteral("tray-enabled"), text("Tray enabled"), text("Tray enabled"), {},
-          QStringLiteral("tray/enabled"), trayEnabled},
-         {QStringLiteral("delay"), text("Delay"), text("Delay"), {},
-          QStringLiteral("screenshot/delay_seconds"), delay},
-         {QStringLiteral("tray-options"), text("Tray options"), text("Tray options"), {},
-          QStringLiteral("tray/menu_options"), trayOptions},
-         {QStringLiteral("toolbar"), text("Toolbar"), text("Toolbar"), {},
-          QStringLiteral("screenshot_toolbar/layout"), toolbar},
-         {QStringLiteral("storage-status"), text("Storage status"), text("Storage status"), {},
-          {}, storageStatus}}};
+        {{QStringLiteral("theme"),
+          text("Theme"),
+          text("Theme"),
+          {},
+          QStringLiteral("interface/theme_mode"),
+          theme},
+         {QStringLiteral("tray-enabled"),
+          text("Tray enabled"),
+          text("Tray enabled"),
+          {},
+          QStringLiteral("tray/enabled"),
+          trayEnabled},
+         {QStringLiteral("delay"),
+          text("Delay"),
+          text("Delay"),
+          {},
+          QStringLiteral("screenshot/delay_seconds"),
+          delay},
+         {QStringLiteral("tray-options"),
+          text("Tray options"),
+          text("Tray options"),
+          {},
+          QStringLiteral("tray/menu_options"),
+          trayOptions},
+         {QStringLiteral("toolbar"),
+          text("Toolbar"),
+          text("Toolbar"),
+          {},
+          QStringLiteral("screenshot_toolbar/layout"),
+          toolbar},
+         {QStringLiteral("action-toolbar"),
+          text("Action toolbar"),
+          text("Action toolbar"),
+          {},
+          QStringLiteral("screenshot_toolbar/action_tools_layout"),
+          actionToolbar},
+         {QStringLiteral("storage-status"),
+          text("Storage status"),
+          text("Storage status"),
+          {},
+          {},
+          storageStatus}}};
 
-    settings::SettingsPageDefinition page{QStringLiteral("test-page"), QStringLiteral("/test"),
-                                          text("Test"), text("Test settings"), {section}};
+    settings::SettingsPageDefinition page{QStringLiteral("test-page"),
+                                          QStringLiteral("/test"),
+                                          text("Test"),
+                                          text("Test settings"),
+                                          {section}};
     settings::SettingsNavigationPageDefinition navigation{
-        QStringLiteral("nav.test"), page.id, []() { return adqt::icons::antd::outlined::Appstore(); }};
+        QStringLiteral("nav.test"), page.id,
+        []() { return adqt::icons::antd::outlined::Appstore(); }};
     settings::SettingsCatalog catalog({page}, {navigation}, {page.id, section.id, {}});
     return settings::SettingsRegistry::fromCatalog(catalog, QStringLiteral("test-provider"));
 }
@@ -377,13 +483,21 @@ settings::SettingsRegistry testRegistry(
 settings::SettingsRegistry registryWithoutStandaloneDelay() {
     settings::SettingsSelectDefinition theme;
     theme.binding = settings::SettingsSelectBinding::Theme;
-    settings::SettingsSectionDefinition section{
-        QStringLiteral("general"), text("General"), text("General settings"),
-        settings::SettingsSectionReset::None,
-        {{QStringLiteral("theme"), text("Theme"), text("Theme"), {},
-          QStringLiteral("interface/theme_mode"), theme}}};
-    settings::SettingsPageDefinition page{QStringLiteral("test-page"), QStringLiteral("/test"),
-                                          text("Test"), text("Test settings"), {section}};
+    settings::SettingsSectionDefinition section{QStringLiteral("general"),
+                                                text("General"),
+                                                text("General settings"),
+                                                settings::SettingsSectionReset::None,
+                                                {{QStringLiteral("theme"),
+                                                  text("Theme"),
+                                                  text("Theme"),
+                                                  {},
+                                                  QStringLiteral("interface/theme_mode"),
+                                                  theme}}};
+    settings::SettingsPageDefinition page{QStringLiteral("test-page"),
+                                          QStringLiteral("/test"),
+                                          text("Test"),
+                                          text("Test settings"),
+                                          {section}};
     settings::SettingsNavigationPageDefinition navigation{
         QStringLiteral("nav.test"), page.id,
         []() { return adqt::icons::antd::outlined::Appstore(); }};
@@ -399,9 +513,8 @@ void initialStateAndNoOp() {
 
     const settings::SettingsFieldState initial = session.state(QStringLiteral("theme"));
     require(initial.acceptedValue == QStringLiteral("system") &&
-                initial.draftValue == QStringLiteral("system") && !initial.dirty &&
-                !initial.busy && initial.phase == settings::SettingsWritePhase::Clean &&
-                initial.revision == 0,
+                initial.draftValue == QStringLiteral("system") && !initial.dirty && !initial.busy &&
+                initial.phase == settings::SettingsWritePhase::Clean && initial.revision == 0,
             "initial runtime state must be clean and revision zero");
     const quint64 revision = initial.revision;
     require(session.submitDraft(QStringLiteral("theme"), QStringLiteral("system")),
@@ -445,11 +558,9 @@ void storageUsagePropagation() {
     usage.recordingTempBytes = 4096;
     backend.setAppUsage(usage);
     flushEvents();
-    require(statusChanges >= 1,
-            "an app usage change must emit storageStateChanged");
+    require(statusChanges >= 1, "an app usage change must emit storageStateChanged");
     require(latest.appUsage.thumbnailCacheBytes == 2048 &&
-                latest.appUsage.recordingTempBytes == 4096 &&
-                latest.appUsage.totalBytes() == 6144,
+                latest.appUsage.recordingTempBytes == 4096 && latest.appUsage.totalBytes() == 6144,
             "the emitted status must carry the updated app usage");
 
     backend.notify();
@@ -463,8 +574,7 @@ void synchronousWriteAndFieldSignals() {
     settings::SettingsRuntimeSession session(registry, backend);
     QHash<QString, int> signalCounts;
     QObject::connect(&session, &settings::SettingsRuntimeSession::fieldChanged, &session,
-                     [&signalCounts](const QString& fieldId,
-                                     const settings::SettingsFieldState&) {
+                     [&signalCounts](const QString& fieldId, const settings::SettingsFieldState&) {
                          ++signalCounts[fieldId];
                      });
 
@@ -473,13 +583,13 @@ void synchronousWriteAndFieldSignals() {
     const settings::SettingsFieldState state = session.state(QStringLiteral("theme"));
     require(state.acceptedValue == QStringLiteral("dark") &&
                 state.draftValue == QStringLiteral("dark") && !state.dirty && !state.busy &&
-                state.phase == settings::SettingsWritePhase::Clean && signalCounts.value("theme") > 0,
+                state.phase == settings::SettingsWritePhase::Clean &&
+                signalCounts.value("theme") > 0,
             "synchronous write must settle the field and emit its field signal");
     require(signalCounts.value(QStringLiteral("tray-enabled")) == 0 &&
                 signalCounts.value(QStringLiteral("delay")) == 0,
             "a field write must not refresh unrelated field subscribers");
-    require(session.selectValue(settings::SettingsSelectBinding::Theme) ==
-                QStringLiteral("dark"),
+    require(session.selectValue(settings::SettingsSelectBinding::Theme) == QStringLiteral("dark"),
             "compatibility reads must expose the accepted draft");
 }
 
@@ -493,8 +603,8 @@ void rejectedWriteRetainsDraftAndCanRetry() {
             "a rejected backend write must report failure");
     settings::SettingsFieldState rejected = session.state(QStringLiteral("theme"));
     require(rejected.acceptedValue == QStringLiteral("system") &&
-                rejected.draftValue == QStringLiteral("dark") && rejected.dirty &&
-                !rejected.busy && rejected.phase == settings::SettingsWritePhase::Rejected &&
+                rejected.draftValue == QStringLiteral("dark") && rejected.dirty && !rejected.busy &&
+                rejected.phase == settings::SettingsWritePhase::Rejected &&
                 rejected.error == QStringLiteral("rejected"),
             "rejected writes must retain the attempted draft and error");
 
@@ -517,8 +627,8 @@ void mutatedRejectedWriteDoesNotSelfHeal() {
             "a write that mutates the backend before failing must report failure");
     const settings::SettingsFieldState failed = session.state(QStringLiteral("theme"));
     require(failed.acceptedValue == QStringLiteral("system") &&
-                failed.draftValue == QStringLiteral("dark") && failed.dirty &&
-                !failed.busy && failed.phase == settings::SettingsWritePhase::Rejected &&
+                failed.draftValue == QStringLiteral("dark") && failed.dirty && !failed.busy &&
+                failed.phase == settings::SettingsWritePhase::Rejected &&
                 failed.error == QStringLiteral("persistence failed"),
             "a mutated rejected write must retain its retryable error and draft");
 
@@ -613,8 +723,8 @@ void newerRevisionWinsOverStaleCompletion() {
     flushEvents();
     const settings::SettingsFieldState settled = session.state(QStringLiteral("theme"));
     require(settled.acceptedValue == QStringLiteral("light") &&
-                settled.draftValue == QStringLiteral("light") && !settled.dirty &&
-                !settled.busy && settled.phase == settings::SettingsWritePhase::Clean,
+                settled.draftValue == QStringLiteral("light") && !settled.dirty && !settled.busy &&
+                settled.phase == settings::SettingsWritePhase::Clean,
             "the newest completion must settle the current revision");
 }
 
@@ -638,7 +748,8 @@ void conflictAndScopedErrorSnapshots() {
     require(failed.dirty && !failed.busy && failed.phase == settings::SettingsWritePhase::Failed &&
                 failed.error == QStringLiteral("new configuration failure") &&
                 failed.draftValue == 7,
-            "a new scoped backend error must fail only the affected pending write and retain its draft");
+            "a new scoped backend error must fail only the affected pending write and retain its "
+            "draft");
 
     require(session.discard(QStringLiteral("delay")),
             "a failed asynchronous write must be discardable");
@@ -662,8 +773,8 @@ void asynchronousFailureCanRetryAndExternalUpdatesConflict() {
     backend.complete(QStringLiteral("theme"), 0, false);
     flushEvents();
     settings::SettingsFieldState failed = session.state(QStringLiteral("theme"));
-    require(failed.phase == settings::SettingsWritePhase::Failed && failed.dirty &&
-                !failed.busy && failed.draftValue == QStringLiteral("dark") &&
+    require(failed.phase == settings::SettingsWritePhase::Failed && failed.dirty && !failed.busy &&
+                failed.draftValue == QStringLiteral("dark") &&
                 failed.error == QStringLiteral("async rejection"),
             "an asynchronous rejection must retain a retryable draft");
 
@@ -671,10 +782,8 @@ void asynchronousFailureCanRetryAndExternalUpdatesConflict() {
             "an asynchronously failed write must be retryable");
     backend.complete(QStringLiteral("theme"));
     flushEvents();
-    require(session.state(QStringLiteral("theme")).phase ==
-                    settings::SettingsWritePhase::Clean &&
-                session.state(QStringLiteral("theme")).acceptedValue ==
-                    QStringLiteral("dark"),
+    require(session.state(QStringLiteral("theme")).phase == settings::SettingsWritePhase::Clean &&
+                session.state(QStringLiteral("theme")).acceptedValue == QStringLiteral("dark"),
             "a successful asynchronous retry must settle cleanly");
 
     require(session.submitDraft(QStringLiteral("theme"), QStringLiteral("light")),
@@ -685,12 +794,12 @@ void asynchronousFailureCanRetryAndExternalUpdatesConflict() {
     require(conflicted.busy && conflicted.dirty && conflicted.conflicted &&
                 conflicted.acceptedValue == QStringLiteral("system") &&
                 conflicted.draftValue == QStringLiteral("light"),
-            "an external update during a pending write must expose a conflict without losing the draft");
+            "an external update during a pending write must expose a conflict without losing the "
+            "draft");
     backend.complete(QStringLiteral("theme"));
     flushEvents();
     require(!session.state(QStringLiteral("theme")).conflicted &&
-                session.state(QStringLiteral("theme")).acceptedValue ==
-                    QStringLiteral("light"),
+                session.state(QStringLiteral("theme")).acceptedValue == QStringLiteral("light"),
             "the requested completion must resolve its temporary external conflict");
 }
 
@@ -706,18 +815,17 @@ void submittingAcceptedBaselineSupersedesPendingWrite() {
     require(session.submitDraft(QStringLiteral("theme"), QStringLiteral("system")),
             "submitting the accepted baseline must cancel the local pending draft");
     const settings::SettingsFieldState restored = session.state(QStringLiteral("theme"));
-    require(!restored.dirty && !restored.busy &&
-                restored.phase == settings::SettingsWritePhase::Clean &&
-                restored.revision > pendingRevision &&
-                backend.applyCount(QStringLiteral("theme")) == 1,
-            "restoring the accepted baseline must advance the revision without another backend write");
+    require(
+        !restored.dirty && !restored.busy &&
+            restored.phase == settings::SettingsWritePhase::Clean &&
+            restored.revision > pendingRevision && backend.applyCount(QStringLiteral("theme")) == 1,
+        "restoring the accepted baseline must advance the revision without another backend write");
 
     backend.complete(QStringLiteral("theme"));
     flushEvents();
     backend.notify();
     flushEvents();
-    require(session.state(QStringLiteral("theme")).acceptedValue ==
-                QStringLiteral("system"),
+    require(session.state(QStringLiteral("theme")).acceptedValue == QStringLiteral("system"),
             "the superseded completion must not overwrite the restored baseline");
 }
 
@@ -737,8 +845,7 @@ void deterministicDirtyOrderAndCustomValues() {
     backend.complete(QStringLiteral("theme"));
     backend.complete(QStringLiteral("delay"));
     flushEvents();
-    require(session.dirtyFieldIds().isEmpty(),
-            "completed writes must leave no dirty fields");
+    require(session.dirtyFieldIds().isEmpty(), "completed writes must leave no dirty fields");
 
     backend.setMode(QStringLiteral("tray-options"), WriteMode::Pending);
     const QVariantList options{QStringLiteral("quick.screenshot"), QStringLiteral("tray.exit")};
@@ -757,9 +864,75 @@ void deterministicDirtyOrderAndCustomValues() {
     storage::ScreenshotToolbarLayout layout;
     layout.positions = {{QStringLiteral("brush")}};
     layout.hidden = {QStringLiteral("text")};
-    require(session.applyToolbarLayout(layout), "custom toolbar values must be writable");
-    require(session.toolbarLayout() == layout,
+    require(session.applyToolbarLayout(storage::ScreenshotToolbarLayoutKind::DrawingTools, layout),
+            "custom toolbar values must be writable");
+    require(session.toolbarLayout(storage::ScreenshotToolbarLayoutKind::DrawingTools) == layout,
             "custom toolbar compatibility reads must expose the accepted value");
+
+    storage::ScreenshotToolbarLayout actionLayout;
+    actionLayout.positions = {{QStringLiteral("save-as-file")}, {QStringLiteral("record-screen")}};
+    actionLayout.hidden = {QStringLiteral("barcode-recognition")};
+    require(session.applyToolbarLayout(storage::ScreenshotToolbarLayoutKind::ActionTools,
+                                       actionLayout) &&
+                session.toolbarLayout(storage::ScreenshotToolbarLayoutKind::ActionTools) ==
+                    actionLayout &&
+                session.toolbarLayout(storage::ScreenshotToolbarLayoutKind::DrawingTools) == layout,
+            "drawing and screenshot toolbar compatibility bindings must be independent");
+}
+
+void toolbarLayoutsMaintainIndependentWriteState() {
+    const settings::SettingsRegistry registry = testRegistry();
+    FakeSettingsBackend backend;
+    settings::SettingsRuntimeSession session(registry, backend);
+
+    const storage::ScreenshotToolbarLayout drawingLayout{
+        {{QStringLiteral("text")}, {QStringLiteral("shape")}},
+        {QStringLiteral("eraser")},
+    };
+    const storage::ScreenshotToolbarLayout actionLayout{
+        {{QStringLiteral("save-as-file"), QStringLiteral("record-screen")}},
+        {QStringLiteral("barcode-recognition")},
+    };
+
+    backend.setMode(QStringLiteral("toolbar"), WriteMode::Pending);
+    require(session.applyToolbarLayout(storage::ScreenshotToolbarLayoutKind::DrawingTools,
+                                       drawingLayout),
+            "drawing toolbar draft must enter pending state");
+    require(
+        session.applyToolbarLayout(storage::ScreenshotToolbarLayoutKind::ActionTools, actionLayout),
+        "action toolbar write must remain available while drawing is pending");
+    require(session.toolbarLayout(storage::ScreenshotToolbarLayoutKind::DrawingTools) ==
+                    drawingLayout &&
+                session.toolbarLayout(storage::ScreenshotToolbarLayoutKind::ActionTools) ==
+                    actionLayout &&
+                session.state(QStringLiteral("toolbar")).busy &&
+                !session.state(QStringLiteral("action-toolbar")).busy,
+            "pending state and drafts must not cross toolbar layout kinds");
+
+    backend.complete(QStringLiteral("toolbar"));
+    flushEvents();
+    require(!session.state(QStringLiteral("toolbar")).dirty &&
+                !session.state(QStringLiteral("action-toolbar")).dirty,
+            "completing one toolbar write must preserve the other accepted state");
+
+    const storage::ScreenshotToolbarLayout rejectedActionLayout{
+        {{QStringLiteral("table-recognition")}}, {QStringLiteral("save-as-file")}};
+    backend.setMode(QStringLiteral("action-toolbar"), WriteMode::Reject);
+    require(!session.applyToolbarLayout(storage::ScreenshotToolbarLayoutKind::ActionTools,
+                                        rejectedActionLayout) &&
+                session.state(QStringLiteral("action-toolbar")).phase ==
+                    settings::SettingsWritePhase::Rejected &&
+                session.state(QStringLiteral("toolbar")).phase ==
+                    settings::SettingsWritePhase::Clean,
+            "an action toolbar rejection must not contaminate drawing toolbar state");
+
+    backend.setMode(QStringLiteral("action-toolbar"), WriteMode::Immediate);
+    require(session.retry(QStringLiteral("action-toolbar")) &&
+                session.toolbarLayout(storage::ScreenshotToolbarLayoutKind::ActionTools) ==
+                    rejectedActionLayout &&
+                session.toolbarLayout(storage::ScreenshotToolbarLayoutKind::DrawingTools) ==
+                    drawingLayout,
+            "retrying an action toolbar write must not rewrite the drawing layout");
 }
 
 void acceptedResetClearsDraftAndQuarantinesLateCompletion() {
@@ -782,8 +955,8 @@ void acceptedResetClearsDraftAndQuarantinesLateCompletion() {
     flushEvents();
     const settings::SettingsFieldState afterCompletion = session.state(QStringLiteral("theme"));
     require(afterCompletion.acceptedValue == QStringLiteral("system") &&
-                afterCompletion.draftValue == QStringLiteral("system") &&
-                !afterCompletion.dirty && !afterCompletion.busy,
+                afterCompletion.draftValue == QStringLiteral("system") && !afterCompletion.dirty &&
+                !afterCompletion.busy,
             "a late completion from before reset must remain quarantined");
 }
 
@@ -812,7 +985,8 @@ void asynchronousResetTracksPendingStateAndLateUserEdits() {
     flushEvents();
     const settings::SettingsFieldState afterResetCompletion =
         session.state(QStringLiteral("theme"));
-    require(afterResetCompletion.dirty && afterResetCompletion.draftValue == QStringLiteral("dark") &&
+    require(afterResetCompletion.dirty &&
+                afterResetCompletion.draftValue == QStringLiteral("dark") &&
                 afterResetCompletion.busy,
             "a late reset completion must not overwrite a newer user edit");
 }
@@ -837,8 +1011,7 @@ void discardingAsynchronousResetQuarantinesLateCompletion() {
 
     backend.completeHistoryReset();
     flushEvents();
-    const settings::SettingsFieldState afterCompletion =
-        session.state(QStringLiteral("theme"));
+    const settings::SettingsFieldState afterCompletion = session.state(QStringLiteral("theme"));
     require(afterCompletion.acceptedValue == discarded.acceptedValue &&
                 afterCompletion.draftValue == discarded.draftValue &&
                 afterCompletion.dirty == discarded.dirty && !afterCompletion.busy &&
@@ -863,11 +1036,9 @@ void rejectedResetRetainsStateAndErrorUntilDiscarded() {
 
     backend.notify();
     flushEvents();
-    require(session.state(QStringLiteral("theme")).phase ==
-                settings::SettingsWritePhase::Rejected,
+    require(session.state(QStringLiteral("theme")).phase == settings::SettingsWritePhase::Rejected,
             "a repeated synchronization must not clear a rejected reset");
-    require(session.discard(QStringLiteral("theme")),
-            "a rejected reset state must be dismissible");
+    require(session.discard(QStringLiteral("theme")), "a rejected reset state must be dismissible");
     require(session.state(QStringLiteral("theme")).phase == settings::SettingsWritePhase::Clean &&
                 session.state(QStringLiteral("theme")).error.isEmpty(),
             "discard must clear a rejected reset state");
@@ -878,9 +1049,8 @@ void auxiliaryIntegerValuesRemainReactiveWithoutSyntheticFields() {
     FakeSettingsBackend backend;
     settings::SettingsRuntimeSession session(registry, backend);
     require(registry.fieldForInteger(settings::SettingsIntegerBinding::ScreenshotDelaySeconds) ==
-                nullptr &&
-                session.integerValue(settings::SettingsIntegerBinding::ScreenshotDelaySeconds) ==
-                    3,
+                    nullptr &&
+                session.integerValue(settings::SettingsIntegerBinding::ScreenshotDelaySeconds) == 3,
             "auxiliary runtime values must not require synthetic catalog fields");
 
     int changedValue = 0;
@@ -893,11 +1063,11 @@ void auxiliaryIntegerValuesRemainReactiveWithoutSyntheticFields() {
                 ++changeCount;
             }
         });
-    require(session.applyIntegerValue(settings::SettingsIntegerBinding::ScreenshotDelaySeconds, 5) &&
-                session.integerValue(settings::SettingsIntegerBinding::ScreenshotDelaySeconds) ==
-                    5 &&
-                changedValue == 5 && changeCount == 1,
-            "auxiliary integer writes must update session consumers immediately");
+    require(
+        session.applyIntegerValue(settings::SettingsIntegerBinding::ScreenshotDelaySeconds, 5) &&
+            session.integerValue(settings::SettingsIntegerBinding::ScreenshotDelaySeconds) == 5 &&
+            changedValue == 5 && changeCount == 1,
+        "auxiliary integer writes must update session consumers immediately");
 
     backend.setExternal(QStringLiteral("delay"), 7);
     flushEvents();
@@ -921,6 +1091,7 @@ int main(int argc, char** argv) {
     asynchronousFailureCanRetryAndExternalUpdatesConflict();
     submittingAcceptedBaselineSupersedesPendingWrite();
     deterministicDirtyOrderAndCustomValues();
+    toolbarLayoutsMaintainIndependentWriteState();
     acceptedResetClearsDraftAndQuarantinesLateCompletion();
     asynchronousResetTracksPendingStateAndLateUserEdits();
     discardingAsynchronousResetQuarantinesLateCompletion();

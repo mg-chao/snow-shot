@@ -50,19 +50,33 @@ ScreenshotToolbarWindow::ScreenshotToolbarWindow(ScreenshotToolbarCommandSink& c
     : ScreenshotFloatingToolPaletteWindow(screenshotToolbarOptions(), parent),
       m_commands(commands) {
     setToolbarSize(snow_shot::storage::ScreenshotUiSettings().toolbarSize());
-    setToolbarLayout(snow_shot::storage::ScreenshotToolbarSettings().layout());
+    const snow_shot::storage::ScreenshotToolbarSettings toolbarSettings;
+    setToolbarLayout(
+        toolbarSettings.layout(snow_shot::storage::ScreenshotToolbarLayoutKind::DrawingTools));
+    setActionToolsLayout(
+        toolbarSettings.layout(snow_shot::storage::ScreenshotToolbarLayoutKind::ActionTools));
     initializePalette();
 
-    auto& configuration =
-        snow_shot::storage::ApplicationStorage::instance().configuration();
+    auto& configuration = snow_shot::storage::ApplicationStorage::instance().configuration();
     connect(&configuration, &snow_shot::storage::ConfigurationStore::valueChanged, this,
             [this](const QString& key, const QJsonValue&) {
                 if (key == QStringLiteral("screenshot_ui/toolbar_size")) {
                     setToolbarSize(snow_shot::storage::ScreenshotUiSettings().toolbarSize());
                 } else if (key == QStringLiteral("screenshot_toolbar/layout")) {
-                    setToolbarLayout(snow_shot::storage::ScreenshotToolbarSettings().layout());
+                    setToolbarLayout(snow_shot::storage::ScreenshotToolbarSettings().layout(
+                        snow_shot::storage::ScreenshotToolbarLayoutKind::DrawingTools));
+                } else if (key == QStringLiteral("screenshot_toolbar/action_tools_layout")) {
+                    setActionToolsLayout(snow_shot::storage::ScreenshotToolbarSettings().layout(
+                        snow_shot::storage::ScreenshotToolbarLayoutKind::ActionTools));
                 }
             });
+}
+
+void ScreenshotToolbarWindow::setActionToolsLayout(
+    const snow_shot::storage::ScreenshotToolbarLayout& layout) {
+    if (ScreenshotToolPalette* toolPalette = palette()) {
+        toolPalette->setActionToolsLayout(layout);
+    }
 }
 
 void ScreenshotToolbarWindow::setToolbarSize(const QString& size) {
@@ -212,15 +226,14 @@ void ScreenshotToolbarWindow::connectStyleCommands(ScreenshotToolPalette& toolPa
                     palette->creationStyleDefaults()));
             }
         });
-    connect(
-        &toolPalette, &ScreenshotToolPalette::textStyleChanged, this,
-        [this](const SnowCanvasTextStyle& style) {
-            m_commands.setTextStyleFromToolbar(style);
-            if (ScreenshotToolPalette* palette = this->palette()) {
-                static_cast<void>(snow_shot::presentation::persistScreenshotCanvasToolStyles(
-                    palette->creationStyleDefaults()));
-            }
-        });
+    connect(&toolPalette, &ScreenshotToolPalette::textStyleChanged, this,
+            [this](const SnowCanvasTextStyle& style) {
+                m_commands.setTextStyleFromToolbar(style);
+                if (ScreenshotToolPalette* palette = this->palette()) {
+                    static_cast<void>(snow_shot::presentation::persistScreenshotCanvasToolStyles(
+                        palette->creationStyleDefaults()));
+                }
+            });
     connect(&toolPalette, &ScreenshotToolPalette::lineRequested, this, [this]() {
         m_commands.setLineTool();
         setActiveToolAndReposition(ScreenshotToolPalette::Tool::Line);

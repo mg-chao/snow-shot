@@ -1,6 +1,7 @@
 #include "snow_shot/presentation/screenshottoolpalette.h"
 #include "snow_shot/presentation/screenshotcanvastoolstyles.h"
 #include "snow_shot/presentation/screenshotdefaultstyles.h"
+#include "snow_shot/presentation/screenshottoolbarlayoutmodel.h"
 #include "snow_shot/presentation/components/icons/iconrenderutils.h"
 #include "snow_shot/presentation/components/icons/snowshoticons.h"
 #include "snow_shot/presentation/languagemanager.h"
@@ -698,6 +699,42 @@ QList<adqt::widgets::AdButton*> mainDrawingToolbarButtons(ScreenshotToolPalette&
         }
     }
     return buttons;
+}
+
+QList<adqt::widgets::AdButton*> mainActionToolbarButtons(ScreenshotToolPalette& palette) {
+    const QStringList actionIds{
+        QStringLiteral("barcode-recognition"),  QStringLiteral("table-recognition"),
+        QStringLiteral("record-screen"),        QStringLiteral("pin-to-screen"),
+        QStringLiteral("text-recognition"),     QStringLiteral("text-translation"),
+        QStringLiteral("scrolling-screenshot"), QStringLiteral("save-as-file"),
+    };
+    QList<adqt::widgets::AdButton*> buttons;
+    for (adqt::widgets::AdButton* button : mainToolbarButtons(palette)) {
+        const QStringList items = button->property("screenshotToolbarPositionItems").toStringList();
+        if (std::any_of(items.cbegin(), items.cend(), [&actionIds](const QString& itemId) {
+                return actionIds.contains(itemId);
+            })) {
+            buttons.append(button);
+        }
+    }
+    return buttons;
+}
+
+bool hasSeparatorBetween(QLayout* layout, QWidget* before, QWidget* after) {
+    if (layout == nullptr || before == nullptr || after == nullptr) {
+        return false;
+    }
+    const int beforeIndex = layout->indexOf(before);
+    const int afterIndex = layout->indexOf(after);
+    if (beforeIndex < 0 || afterIndex <= beforeIndex) {
+        return false;
+    }
+    for (int index = beforeIndex + 1; index < afterIndex; ++index) {
+        if (qobject_cast<QFrame*>(layout->itemAt(index)->widget()) != nullptr) {
+            return true;
+        }
+    }
+    return false;
 }
 
 adqt::widgets::AdColorPicker* colorPickerWithAccessibleName(ScreenshotToolPalette& palette,
@@ -1412,6 +1449,257 @@ void tableQrPopoverSharesOneEntryAndRemembersTheSelectedMode() {
                 palette.activeToolForTests() == ScreenshotToolPalette::Tool::Table &&
                 trigger->accessibleName() == QStringLiteral("Table recognition"),
             "choosing Table should restore the default shared trigger presentation");
+}
+
+void sharedToolbarLayoutModelOperationsAreDeterministic() {
+    using snow_shot::presentation::toolbar_layout::defaultOrder;
+    using snow_shot::presentation::toolbar_layout::moveItemToHidden;
+    using snow_shot::presentation::toolbar_layout::moveItemToPosition;
+    using snow_shot::presentation::toolbar_layout::normalizedLayout;
+    using snow_shot::presentation::toolbar_layout::stackItemInPosition;
+    using snow_shot::storage::ScreenshotToolbarLayout;
+    using snow_shot::storage::ScreenshotToolbarLayoutKind;
+
+    const auto exercise = [&](ScreenshotToolbarLayoutKind kind, const QString& first,
+                              const QString& second, const QString& third) {
+        QStringList remaining = defaultOrder(kind);
+        remaining.removeAll(first);
+        remaining.removeAll(second);
+        remaining.removeAll(third);
+        const ScreenshotToolbarLayout initial{{{first, second}, {third}}, remaining};
+
+        const ScreenshotToolbarLayout unstacked = moveItemToPosition(initial, kind, second, 1);
+        require(unstacked == ScreenshotToolbarLayout{{{first}, {second}, {third}}, remaining},
+                "moving a stacked item beside its source must create a stable toolbar position");
+
+        const ScreenshotToolbarLayout stacked = stackItemInPosition(unstacked, kind, second, 2, 1);
+        require(stacked == ScreenshotToolbarLayout{{{first}, {third, second}}, remaining},
+                "stacking must remove the source position and preserve the requested item order");
+
+        QStringList hiddenItems = remaining;
+        hiddenItems.prepend(first);
+        const ScreenshotToolbarLayout hidden = moveItemToHidden(stacked, kind, first, 0);
+        require(hidden == ScreenshotToolbarLayout{{{third, second}}, hiddenItems},
+                "hiding must remove the toolbar position and preserve hidden ordering");
+
+        const ScreenshotToolbarLayout restored =
+            moveItemToPosition(hidden, kind, first, hidden.positions.size());
+        require(restored == ScreenshotToolbarLayout{{{third, second}, {first}}, remaining},
+                "restoring a hidden item must remove it from hidden state and append its position");
+        require(moveItemToHidden(initial, kind, QStringLiteral("unknown"), 0) ==
+                    normalizedLayout(initial, kind),
+                "unknown move requests must leave the normalized layout unchanged");
+    };
+
+    exercise(ScreenshotToolbarLayoutKind::DrawingTools, QStringLiteral("shape"),
+             QStringLiteral("arrow"), QStringLiteral("free-draw"));
+    exercise(ScreenshotToolbarLayoutKind::ActionTools, QStringLiteral("barcode-recognition"),
+             QStringLiteral("table-recognition"), QStringLiteral("record-screen"));
+}
+
+void configurableScreenshotActionLayoutSupportsStacksHidingAndRuntimeReplacement() {
+    require(snow_shot::storage::ScreenshotToolbarSettings().setTableQrTool(QStringLiteral("table")),
+            "the configurable action toolbar fixture should start in Table mode");
+    ScreenshotToolPalette::Options options;
+    options.showSelectTool = false;
+    options.showShapeTool = false;
+    options.showTableTool = true;
+    options.showQrTool = true;
+    options.showScreenRecordButton = true;
+    options.showOcrTool = true;
+    options.showTextTranslationTool = true;
+    options.showScrollingScreenshotTool = true;
+    options.showSaveButton = true;
+    options.enableStyleToolbar = false;
+    options.actions = ScreenshotToolPalette::PinAction | ScreenshotToolPalette::CancelAction |
+                      ScreenshotToolPalette::CopyAction;
+    options.actionToolsLayout = snow_shot::storage::ScreenshotToolbarLayout{
+        {
+            {QStringLiteral("record-screen"), QStringLiteral("save-as-file"),
+             QStringLiteral("table-recognition")},
+            {QStringLiteral("barcode-recognition")},
+            {QStringLiteral("text-translation"), QStringLiteral("text-recognition")},
+            {QStringLiteral("pin-to-screen")},
+        },
+        {QStringLiteral("scrolling-screenshot")},
+    };
+
+    ScreenshotToolPalette palette(options);
+    palette.show();
+    QCoreApplication::processEvents();
+    const QList<adqt::widgets::AdButton*> actionButtons = mainActionToolbarButtons(palette);
+    auto* mixedTrigger = palette.findChild<adqt::widgets::AdButton*>(
+        QStringLiteral("screenshotActionToolGroupButton0"));
+    auto* barcodeButton = palette.findChild<adqt::widgets::AdButton*>(
+        QStringLiteral("screenshotQrRecognitionButton"));
+    auto* textTrigger = palette.findChild<adqt::widgets::AdButton*>(
+        QStringLiteral("screenshotActionToolGroupButton2"));
+    require(actionButtons.size() == 4 && mixedTrigger == actionButtons.at(0) &&
+                barcodeButton == actionButtons.at(1) && textTrigger == actionButtons.at(2) &&
+                mixedTrigger->accessibleName() == QStringLiteral("Table recognition") &&
+                mixedTrigger->toolTip() == QStringLiteral("Table recognition (Ctrl+X)") &&
+                mixedTrigger->property("screenshotToolbarPositionItems").toStringList() ==
+                    QStringList{QStringLiteral("record-screen"), QStringLiteral("save-as-file"),
+                                QStringLiteral("table-recognition")} &&
+                textTrigger->accessibleName() == QStringLiteral("Text recognition") &&
+                palette
+                    .findChild<adqt::widgets::AdButton*>(
+                        QStringLiteral("screenshotScrollingScreenshotButton"))
+                    ->isHidden(),
+            "custom action positions must preserve order, use the last item as trigger, and hide "
+            "removed tools");
+
+    int saveRequests = 0;
+    int tableRequests = 0;
+    int qrRequests = 0;
+    int translationRequests = 0;
+    QObject::connect(&palette, &ScreenshotToolPalette::saveRequested,
+                     [&saveRequests]() { ++saveRequests; });
+    QObject::connect(&palette, &ScreenshotToolPalette::tableRequested,
+                     [&tableRequests]() { ++tableRequests; });
+    QObject::connect(&palette, &ScreenshotToolPalette::qrRequested,
+                     [&qrRequests]() { ++qrRequests; });
+    QObject::connect(&palette, &ScreenshotToolPalette::textTranslationRequested,
+                     [&translationRequests]() { ++translationRequests; });
+
+    materializeLazyPopover(mixedTrigger);
+    adqt::widgets::AdPopover* mixedPopover = popoverForTrigger(mixedTrigger);
+    auto* saveOption = popoverButtonWithTooltip(mixedPopover, "Save as file");
+    auto* tableOption = popoverButtonWithTooltip(mixedPopover, "Table recognition");
+    require(mixedPopover != nullptr &&
+                mixedPopover->contentWidget()->objectName() ==
+                    QStringLiteral("screenshotActionToolGroupPopoverContent") &&
+                saveOption != nullptr && tableOption != nullptr,
+            "an arbitrary action stack must lazily expose all available actions");
+    saveOption->click();
+    require(saveRequests == 1 && mixedTrigger->accessibleName() == QStringLiteral("Save as file") &&
+                mixedTrigger->toolTip() == QStringLiteral("Save as file (Ctrl+S)"),
+            "choosing an action stack option must dispatch it and replace the current trigger");
+    mixedTrigger->click();
+    require(saveRequests == 2,
+            "the replaced action stack trigger must execute its newly selected command");
+    tableOption->click();
+    require(tableRequests == 1 && snow_shot::storage::ScreenshotToolbarSettings().tableQrTool() ==
+                                      QStringLiteral("table"),
+            "Table selection in an arbitrary stack must retain the cross-instance preference");
+
+    materializeLazyPopover(textTrigger);
+    adqt::widgets::AdPopover* textPopover = popoverForTrigger(textTrigger);
+    auto* recognitionOption = popoverButtonWithTooltip(textPopover, "Text recognition");
+    auto* translationOption = popoverButtonWithTooltip(textPopover, "Text translation");
+    require(recognitionOption != nullptr && translationOption != nullptr,
+            "text actions in a stack must retain independent popover entries");
+    palette.setOcrEnabled(false);
+    require(!textTrigger->isEnabled() && !recognitionOption->isEnabled() &&
+                !translationOption->isEnabled(),
+            "the action stack trigger and options must mirror per-item enablement");
+    palette.setOcrEnabled(true);
+    translationOption->click();
+    require(translationRequests == 1 && textTrigger->isEnabled() &&
+                textTrigger->accessibleName() == QStringLiteral("Text translation"),
+            "selecting an enabled stack item must replace a disabled trigger");
+    palette.setOcrBusy(true);
+    require(textTrigger->busy() && !recognitionOption->busy() && translationOption->busy(),
+            "busy state must propagate from the active source action to its stack presentation");
+    palette.setOcrBusy(false);
+
+    barcodeButton->click();
+    require(qrRequests == 1 && snow_shot::storage::ScreenshotToolbarSettings().tableQrTool() ==
+                                   QStringLiteral("qr"),
+            "an independently placed Barcode control must dispatch and persist its mode");
+
+    const snow_shot::storage::ScreenshotToolbarLayout unstacked{
+        {
+            {QStringLiteral("barcode-recognition")},
+            {QStringLiteral("table-recognition")},
+            {QStringLiteral("record-screen")},
+            {QStringLiteral("pin-to-screen")},
+            {QStringLiteral("text-recognition")},
+            {QStringLiteral("text-translation")},
+            {QStringLiteral("scrolling-screenshot")},
+            {QStringLiteral("save-as-file")},
+        },
+        {},
+    };
+    palette.setActionToolsLayout(unstacked);
+    QCoreApplication::processEvents();
+    auto* directBarcode = palette.findChild<adqt::widgets::AdButton*>(
+        QStringLiteral("screenshotQrRecognitionButton"));
+    auto* directTable = palette.findChild<adqt::widgets::AdButton*>(
+        QStringLiteral("screenshotTableRecognitionButton"));
+    require(mainActionToolbarButtons(palette).size() == 8 && directBarcode != nullptr &&
+                directTable != nullptr && popoverForTrigger(directBarcode) == nullptr &&
+                popoverForTrigger(directTable) == nullptr &&
+                directBarcode->toolTip().startsWith(QStringLiteral("Barcode recognition")) &&
+                directTable->toolTip() == QStringLiteral("Table recognition (Ctrl+X)"),
+            "runtime replacement must unstack Table and Barcode into stable direct controls");
+    directTable->click();
+    require(tableRequests == 2 && snow_shot::storage::ScreenshotToolbarSettings().tableQrTool() ==
+                                      QStringLiteral("table"),
+            "an independently placed Table control must dispatch and persist its mode");
+
+    ScreenshotToolPalette::Options unavailableOptions;
+    unavailableOptions.showSelectTool = false;
+    unavailableOptions.showShapeTool = false;
+    unavailableOptions.showScreenRecordButton = true;
+    unavailableOptions.enableStyleToolbar = false;
+    unavailableOptions.actionToolsLayout = snow_shot::storage::ScreenshotToolbarLayout{
+        {{QStringLiteral("table-recognition"), QStringLiteral("record-screen")}},
+        {QStringLiteral("barcode-recognition"), QStringLiteral("pin-to-screen"),
+         QStringLiteral("text-recognition"), QStringLiteral("text-translation"),
+         QStringLiteral("scrolling-screenshot"), QStringLiteral("save-as-file")},
+    };
+    ScreenshotToolPalette unavailablePalette(unavailableOptions);
+    const QList<adqt::widgets::AdButton*> availableActions =
+        mainActionToolbarButtons(unavailablePalette);
+    require(availableActions.size() == 1 &&
+                availableActions.constFirst()->accessibleName() ==
+                    QStringLiteral("Record screen") &&
+                popoverForTrigger(availableActions.constFirst()) == nullptr,
+            "unavailable configured actions must be skipped without leaving an empty group");
+
+    const QStringList allActionIds{
+        QStringLiteral("barcode-recognition"),  QStringLiteral("table-recognition"),
+        QStringLiteral("record-screen"),        QStringLiteral("pin-to-screen"),
+        QStringLiteral("text-recognition"),     QStringLiteral("text-translation"),
+        QStringLiteral("scrolling-screenshot"), QStringLiteral("save-as-file"),
+    };
+    ScreenshotToolPalette::Options hiddenOptions;
+    hiddenOptions.showSelectTool = true;
+    hiddenOptions.showShapeTool = true;
+    hiddenOptions.showHistoryActions = true;
+    hiddenOptions.showTableTool = true;
+    hiddenOptions.showQrTool = true;
+    hiddenOptions.showScreenRecordButton = true;
+    hiddenOptions.showOcrTool = true;
+    hiddenOptions.showTextTranslationTool = true;
+    hiddenOptions.showScrollingScreenshotTool = true;
+    hiddenOptions.showSaveButton = true;
+    hiddenOptions.enableStyleToolbar = false;
+    hiddenOptions.actions = ScreenshotToolPalette::CancelAction | ScreenshotToolPalette::CopyAction;
+    hiddenOptions.actionToolsLayout = snow_shot::storage::ScreenshotToolbarLayout{{}, allActionIds};
+    ScreenshotToolPalette hiddenPalette(hiddenOptions);
+    auto* redo =
+        hiddenPalette.findChild<adqt::widgets::AdButton*>(QStringLiteral("screenshotRedoButton"));
+    QWidget* cancel = controlWithTooltip(hiddenPalette, "Cancel screenshot");
+    require(mainActionToolbarButtons(hiddenPalette).isEmpty() && redo != nullptr &&
+                cancel != nullptr &&
+                hasSeparatorBetween(hiddenPalette.mainPanel()->layout(), redo, cancel),
+            "all-hidden action layouts must retain drawing, history, and separated fixed results");
+
+    const auto originalPersistedLayout = snow_shot::storage::ScreenshotToolbarSettings().layout(
+        snow_shot::storage::ScreenshotToolbarLayoutKind::ActionTools);
+    require(snow_shot::storage::ScreenshotToolbarSettings().setLayout(
+                snow_shot::storage::ScreenshotToolbarLayoutKind::ActionTools,
+                snow_shot::storage::ScreenshotToolbarLayout{{}, allActionIds}),
+            "the scenario boundary fixture must persist an all-hidden screenshot layout");
+    ScreenshotToolPalette unaffectedPalette(options);
+    require(mainActionToolbarButtons(unaffectedPalette).size() == 4,
+            "a generic palette owner must use only its supplied layout, not screenshot storage");
+    require(
+        snow_shot::storage::ScreenshotToolbarSettings().setLayout(
+            snow_shot::storage::ScreenshotToolbarLayoutKind::ActionTools, originalPersistedLayout),
+        "the scenario boundary fixture must restore the persisted screenshot layout");
 }
 
 void arrowAndLineRemainDirectWhenConfiguredIndividually() {
@@ -6404,6 +6692,12 @@ int main(int argc, char** argv) {
         spotlightControlsMatchMaskConfigurationBehavior();
         return 0;
     }
+    if (application.arguments().contains(QStringLiteral("--action-toolbar-layout-only"))) {
+        sharedToolbarLayoutModelOperationsAreDeterministic();
+        configurableScreenshotActionLayoutSupportsStacksHidingAndRuntimeReplacement();
+        snow_shot::storage::ApplicationStorage::instance().shutdown();
+        return 0;
+    }
     numericStrokeWidthPreviewUsesLineWithinPreviewBounds();
     secondaryControlsMaterializeOnlyForTheRequestedFamily();
     textAndHighlightStrokeWidthTriggersUseSharedPreviewButton();
@@ -6427,6 +6721,8 @@ int main(int argc, char** argv) {
     clickingActiveToolbarToolReturnsToSelect();
     tableToolExposesStructureActionsAndOwnHistoryState();
     tableQrPopoverSharesOneEntryAndRemembersTheSelectedMode();
+    sharedToolbarLayoutModelOperationsAreDeterministic();
+    configurableScreenshotActionLayoutSupportsStacksHidingAndRuntimeReplacement();
     arrowAndLineRemainDirectWhenConfiguredIndividually();
     confirmActionRemainsSeparatedAndCallableForPinnedEditing();
     isolatedBusyIndicatorMatchesItsOwnerWindowBand();

@@ -9,6 +9,8 @@
 #include <QStringList>
 #include <QVector>
 
+#include <algorithm>
+
 namespace snow_shot::presentation::toolbar_layout {
 
 enum class Item {
@@ -37,11 +39,26 @@ enum class Icon {
     Filter,
     Eraser,
     Watermark,
+    BarcodeRecognition,
+    TableRecognition,
+    RecordScreen,
+    PinToScreen,
+    TextRecognition,
+    TextTranslation,
+    ScrollingScreenshot,
+    SaveAsFile,
 };
 
 struct Descriptor {
     Item item = Item::Shape;
     const char* id = nullptr;
+    const char* label = nullptr;
+    Icon icon = Icon::Shape;
+};
+
+struct EditorDescriptor {
+    const char* id = nullptr;
+    const char* translationContext = nullptr;
     const char* label = nullptr;
     Icon icon = Icon::Shape;
 };
@@ -57,8 +74,7 @@ struct Descriptor {
         {Item::FreeDraw, "free-draw",
          QT_TRANSLATE_NOOP("DrawingToolbarEditorSettingsWidget", "Pen"), Icon::FreeDraw},
         {Item::Highlighter, "highlighter",
-         QT_TRANSLATE_NOOP("DrawingToolbarEditorSettingsWidget", "Highlight"),
-         Icon::Highlight},
+         QT_TRANSLATE_NOOP("DrawingToolbarEditorSettingsWidget", "Highlight"), Icon::Highlight},
         {Item::Spotlight, "spotlight",
          QT_TRANSLATE_NOOP("DrawingToolbarEditorSettingsWidget", "Spotlight"), Icon::Spotlight},
         {Item::Text, "text", QT_TRANSLATE_NOOP("DrawingToolbarEditorSettingsWidget", "Text"),
@@ -103,23 +119,100 @@ struct Descriptor {
     return result;
 }
 
+[[nodiscard]] inline const QVector<EditorDescriptor>& actionDescriptors() {
+    static const QVector<EditorDescriptor> value{
+        {"barcode-recognition", "ScreenshotToolbarEditorSettingsWidget",
+         QT_TRANSLATE_NOOP("ScreenshotToolbarEditorSettingsWidget", "Barcode recognition"),
+         Icon::BarcodeRecognition},
+        {"table-recognition", "ScreenshotToolbarEditorSettingsWidget",
+         QT_TRANSLATE_NOOP("ScreenshotToolbarEditorSettingsWidget", "Table recognition"),
+         Icon::TableRecognition},
+        {"record-screen", "ScreenshotToolbarEditorSettingsWidget",
+         QT_TRANSLATE_NOOP("ScreenshotToolbarEditorSettingsWidget", "Record screen"),
+         Icon::RecordScreen},
+        {"pin-to-screen", "ScreenshotToolbarEditorSettingsWidget",
+         QT_TRANSLATE_NOOP("ScreenshotToolbarEditorSettingsWidget", "Pin to screen"),
+         Icon::PinToScreen},
+        {"text-recognition", "ScreenshotToolbarEditorSettingsWidget",
+         QT_TRANSLATE_NOOP("ScreenshotToolbarEditorSettingsWidget", "Text recognition"),
+         Icon::TextRecognition},
+        {"text-translation", "ScreenshotToolbarEditorSettingsWidget",
+         QT_TRANSLATE_NOOP("ScreenshotToolbarEditorSettingsWidget", "Text translation"),
+         Icon::TextTranslation},
+        {"scrolling-screenshot", "ScreenshotToolbarEditorSettingsWidget",
+         QT_TRANSLATE_NOOP("ScreenshotToolbarEditorSettingsWidget", "Scrolling screenshot"),
+         Icon::ScrollingScreenshot},
+        {"save-as-file", "ScreenshotToolbarEditorSettingsWidget",
+         QT_TRANSLATE_NOOP("ScreenshotToolbarEditorSettingsWidget", "Save as file"),
+         Icon::SaveAsFile},
+    };
+    return value;
+}
+
+[[nodiscard]] inline QVector<EditorDescriptor>
+editorDescriptors(storage::ScreenshotToolbarLayoutKind kind) {
+    if (kind == storage::ScreenshotToolbarLayoutKind::ActionTools) {
+        return actionDescriptors();
+    }
+    QVector<EditorDescriptor> result;
+    result.reserve(descriptors().size());
+    for (const Descriptor& descriptor : descriptors()) {
+        result.push_back({descriptor.id, "DrawingToolbarEditorSettingsWidget", descriptor.label,
+                          descriptor.icon});
+    }
+    return result;
+}
+
+[[nodiscard]] inline const EditorDescriptor* actionDescriptor(const QString& id) {
+    for (const EditorDescriptor& candidate : actionDescriptors()) {
+        if (id == QLatin1String(candidate.id)) {
+            return &candidate;
+        }
+    }
+    return nullptr;
+}
+
 [[nodiscard]] inline QVector<QStringList> defaultPositions() {
     return {
-        {QStringLiteral("shape")},
-        {QStringLiteral("line"), QStringLiteral("arrow")},
-        {QStringLiteral("free-draw")},
-        {QStringLiteral("spotlight"), QStringLiteral("highlighter")},
-        {QStringLiteral("text")},
-        {QStringLiteral("serial-number")},
-        {QStringLiteral("filter")},
-        {QStringLiteral("eraser")},
+        {QStringLiteral("shape")},     {QStringLiteral("line"), QStringLiteral("arrow")},
+        {QStringLiteral("free-draw")}, {QStringLiteral("spotlight"), QStringLiteral("highlighter")},
+        {QStringLiteral("text")},      {QStringLiteral("serial-number")},
+        {QStringLiteral("filter")},    {QStringLiteral("eraser")},
         {QStringLiteral("watermark")},
     };
 }
 
+[[nodiscard]] inline QVector<QStringList> actionDefaultPositions() {
+    return {
+        {QStringLiteral("barcode-recognition"), QStringLiteral("table-recognition")},
+        {QStringLiteral("record-screen")},
+        {QStringLiteral("pin-to-screen")},
+        {QStringLiteral("text-recognition")},
+        {QStringLiteral("text-translation")},
+        {QStringLiteral("scrolling-screenshot")},
+        {QStringLiteral("save-as-file")},
+    };
+}
+
+[[nodiscard]] inline QVector<QStringList>
+defaultPositions(storage::ScreenshotToolbarLayoutKind kind) {
+    return kind == storage::ScreenshotToolbarLayoutKind::ActionTools ? actionDefaultPositions()
+                                                                     : defaultPositions();
+}
+
+[[nodiscard]] inline QStringList defaultOrder(storage::ScreenshotToolbarLayoutKind kind) {
+    QStringList result;
+    const QVector<EditorDescriptor> definitions = editorDescriptors(kind);
+    result.reserve(definitions.size());
+    for (const EditorDescriptor& descriptor : definitions) {
+        result.push_back(QString::fromLatin1(descriptor.id));
+    }
+    return result;
+}
+
 [[nodiscard]] inline storage::ScreenshotToolbarLayout
-normalizedLayout(const storage::ScreenshotToolbarLayout& input) {
-    const QStringList defaults = defaultOrder();
+normalizedLayout(const storage::ScreenshotToolbarLayout& input, const QStringList& defaults,
+                 const QVector<QStringList>& defaultLayout) {
     const QSet<QString> known(defaults.cbegin(), defaults.cend());
     QSet<QString> positioned;
     storage::ScreenshotToolbarLayout result;
@@ -144,7 +237,7 @@ normalizedLayout(const storage::ScreenshotToolbarLayout& input) {
         }
     }
 
-    for (const QStringList& defaultPosition : defaultPositions()) {
+    for (const QStringList& defaultPosition : defaultLayout) {
         QStringList missing;
         for (const QString& itemId : defaultPosition) {
             if (!positioned.contains(itemId) && !hidden.contains(itemId)) {
@@ -156,6 +249,132 @@ normalizedLayout(const storage::ScreenshotToolbarLayout& input) {
             result.positions.push_back(missing);
         }
     }
+    return result;
+}
+
+[[nodiscard]] inline storage::ScreenshotToolbarLayout
+normalizedLayout(const storage::ScreenshotToolbarLayout& input) {
+    return normalizedLayout(input, defaultOrder(), defaultPositions());
+}
+
+[[nodiscard]] inline storage::ScreenshotToolbarLayout
+normalizedLayout(const storage::ScreenshotToolbarLayout& input,
+                 storage::ScreenshotToolbarLayoutKind kind) {
+    return normalizedLayout(input, defaultOrder(kind), defaultPositions(kind));
+}
+
+namespace detail {
+struct ItemLocation {
+    int positionIndex = -1;
+    int itemIndex = -1;
+    int hiddenIndex = -1;
+};
+
+[[nodiscard]] inline ItemLocation itemLocation(const storage::ScreenshotToolbarLayout& layout,
+                                               const QString& itemId) {
+    ItemLocation result;
+    for (int positionIndex = 0; positionIndex < layout.positions.size(); ++positionIndex) {
+        const int itemIndex = layout.positions.at(positionIndex).indexOf(itemId);
+        if (itemIndex >= 0) {
+            result.positionIndex = positionIndex;
+            result.itemIndex = itemIndex;
+            return result;
+        }
+    }
+    result.hiddenIndex = layout.hidden.indexOf(itemId);
+    return result;
+}
+} // namespace detail
+
+[[nodiscard]] inline storage::ScreenshotToolbarLayout
+moveItemToPosition(const storage::ScreenshotToolbarLayout& input,
+                   storage::ScreenshotToolbarLayoutKind kind, const QString& itemId,
+                   int targetPositionIndex) {
+    storage::ScreenshotToolbarLayout result = normalizedLayout(input, kind);
+    const detail::ItemLocation source = detail::itemLocation(result, itemId);
+    if (source.positionIndex < 0 && source.hiddenIndex < 0) {
+        return result;
+    }
+    if (source.hiddenIndex >= 0) {
+        result.hidden.removeAt(source.hiddenIndex);
+    }
+    if (source.positionIndex >= 0) {
+        result.positions[source.positionIndex].removeAt(source.itemIndex);
+        if (result.positions.at(source.positionIndex).isEmpty()) {
+            result.positions.removeAt(source.positionIndex);
+            if (source.positionIndex < targetPositionIndex) {
+                --targetPositionIndex;
+            }
+        }
+    }
+    targetPositionIndex =
+        std::clamp(targetPositionIndex, 0, static_cast<int>(result.positions.size()));
+    result.positions.insert(targetPositionIndex, QStringList{itemId});
+    return result;
+}
+
+[[nodiscard]] inline storage::ScreenshotToolbarLayout
+stackItemInPosition(const storage::ScreenshotToolbarLayout& input,
+                    storage::ScreenshotToolbarLayoutKind kind, const QString& itemId,
+                    int targetPositionIndex, int targetItemIndex) {
+    storage::ScreenshotToolbarLayout result = normalizedLayout(input, kind);
+    const detail::ItemLocation source = detail::itemLocation(result, itemId);
+    if (source.positionIndex < 0 && source.hiddenIndex < 0) {
+        return result;
+    }
+    if (source.hiddenIndex >= 0) {
+        result.hidden.removeAt(source.hiddenIndex);
+    }
+    if (result.positions.isEmpty()) {
+        result.positions.push_back({itemId});
+        return result;
+    }
+
+    targetPositionIndex =
+        std::clamp(targetPositionIndex, 0, static_cast<int>(result.positions.size()) - 1);
+    if (source.positionIndex == targetPositionIndex) {
+        result.positions[source.positionIndex].removeAt(source.itemIndex);
+        if (source.itemIndex < targetItemIndex) {
+            --targetItemIndex;
+        }
+    } else if (source.positionIndex >= 0) {
+        result.positions[source.positionIndex].removeAt(source.itemIndex);
+        if (result.positions.at(source.positionIndex).isEmpty()) {
+            result.positions.removeAt(source.positionIndex);
+            if (source.positionIndex < targetPositionIndex) {
+                --targetPositionIndex;
+            }
+        }
+    }
+    targetItemIndex = std::clamp(targetItemIndex, 0,
+                                 static_cast<int>(result.positions.at(targetPositionIndex).size()));
+    result.positions[targetPositionIndex].insert(targetItemIndex, itemId);
+    return result;
+}
+
+[[nodiscard]] inline storage::ScreenshotToolbarLayout
+moveItemToHidden(const storage::ScreenshotToolbarLayout& input,
+                 storage::ScreenshotToolbarLayoutKind kind, const QString& itemId,
+                 int targetHiddenIndex) {
+    storage::ScreenshotToolbarLayout result = normalizedLayout(input, kind);
+    const detail::ItemLocation source = detail::itemLocation(result, itemId);
+    if (source.positionIndex < 0 && source.hiddenIndex < 0) {
+        return result;
+    }
+    if (source.positionIndex >= 0) {
+        result.positions[source.positionIndex].removeAt(source.itemIndex);
+        if (result.positions.at(source.positionIndex).isEmpty()) {
+            result.positions.removeAt(source.positionIndex);
+        }
+    }
+    if (source.hiddenIndex >= 0) {
+        result.hidden.removeAt(source.hiddenIndex);
+        if (source.hiddenIndex < targetHiddenIndex) {
+            --targetHiddenIndex;
+        }
+    }
+    targetHiddenIndex = std::clamp(targetHiddenIndex, 0, static_cast<int>(result.hidden.size()));
+    result.hidden.insert(targetHiddenIndex, itemId);
     return result;
 }
 
@@ -184,6 +403,22 @@ normalizedLayout(const storage::ScreenshotToolbarLayout& input) {
         return custom::ToolEraser();
     case Icon::Watermark:
         return custom::ToolWatermark();
+    case Icon::BarcodeRecognition:
+        return custom::ScanQrcode();
+    case Icon::TableRecognition:
+        return custom::TableRecognition();
+    case Icon::RecordScreen:
+        return custom::RecordScreen();
+    case Icon::PinToScreen:
+        return custom::PinToScreen();
+    case Icon::TextRecognition:
+        return custom::ToolRecognizeText();
+    case Icon::TextTranslation:
+        return custom::OcrTranslate();
+    case Icon::ScrollingScreenshot:
+        return custom::ScrollingScreenshot();
+    case Icon::SaveAsFile:
+        return custom::Save();
     }
     return {};
 }

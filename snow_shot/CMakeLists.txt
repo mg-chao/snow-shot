@@ -660,7 +660,7 @@ set(SNOW_SHOT_SETTINGS_SOURCES
     include/snow_shot/platform/windows/printscreenshortcutrecorder.h
     include/snow_shot/presentation/globalshortcutmanager.h
     include/snow_shot/presentation/globalshortcuttypes.h
-    include/snow_shot/presentation/components/drawingtoolbareditorsettingswidget.h
+    include/snow_shot/presentation/components/toolbareditorsettingswidget.h
     include/snow_shot/presentation/components/infotooltipicon.h
     include/snow_shot/presentation/components/pagecontainerwidget.h
     include/snow_shot/presentation/components/sectionheaderwidget.h
@@ -2649,7 +2649,14 @@ if(SNOW_SHOT_BUILD_TESTS)
         NAME snow-shot-screenshot-tool-palette-tests
         COMMAND snow-shot-screenshot-tool-palette-tests
     )
-    set_tests_properties(snow-shot-screenshot-tool-palette-tests PROPERTIES
+    add_test(
+        NAME snow-shot-screenshot-action-toolbar-layout-tests
+        COMMAND snow-shot-screenshot-tool-palette-tests --action-toolbar-layout-only
+    )
+    set_tests_properties(
+        snow-shot-screenshot-tool-palette-tests
+        snow-shot-screenshot-action-toolbar-layout-tests
+        PROPERTIES
         ENVIRONMENT
             "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"
         ENVIRONMENT_MODIFICATION
@@ -2872,6 +2879,10 @@ if(SNOW_SHOT_BUILD_TESTS)
         NAME snow-shot-floating-toolbar-seam-straddle-drag-tests
         COMMAND snow-shot-floating-toolbar-drag-tests --seam-straddle-drag-only
     )
+    add_test(
+        NAME snow-shot-floating-toolbar-action-layout-tests
+        COMMAND snow-shot-floating-toolbar-drag-tests --action-layout-only
+    )
     set_tests_properties(snow-shot-floating-toolbar-drag-tests PROPERTIES
         RUN_SERIAL TRUE
         ENVIRONMENT_MODIFICATION
@@ -2886,6 +2897,10 @@ if(SNOW_SHOT_BUILD_TESTS)
         ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
     )
+    set_tests_properties(snow-shot-floating-toolbar-action-layout-tests PROPERTIES
+        ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    )
     if(NOT WIN32)
         set_tests_properties(snow-shot-floating-toolbar-drag-tests PROPERTIES
             ENVIRONMENT
@@ -2896,6 +2911,10 @@ if(SNOW_SHOT_BUILD_TESTS)
                 "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"
         )
         set_tests_properties(snow-shot-floating-toolbar-seam-straddle-drag-tests PROPERTIES
+            ENVIRONMENT
+                "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"
+        )
+        set_tests_properties(snow-shot-floating-toolbar-action-layout-tests PROPERTIES
             ENVIRONMENT
                 "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"
         )

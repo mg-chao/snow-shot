@@ -23,6 +23,11 @@ struct ScreenshotToolbarLayout {
     }
 };
 
+enum class ScreenshotToolbarLayoutKind {
+    DrawingTools,
+    ActionTools,
+};
+
 [[nodiscard]] QColor colorFromRgbaString(const QString& value);
 [[nodiscard]] QString colorToRgbaString(const QColor& color);
 
@@ -237,8 +242,8 @@ class ScreenshotToolbarSettings final {
   public:
     [[nodiscard]] QString tableQrTool() const;
     bool setTableQrTool(const QString& tool) const;
-    [[nodiscard]] ScreenshotToolbarLayout layout() const;
-    bool setLayout(const ScreenshotToolbarLayout& layout) const;
+    [[nodiscard]] ScreenshotToolbarLayout layout(ScreenshotToolbarLayoutKind kind) const;
+    bool setLayout(ScreenshotToolbarLayoutKind kind, const ScreenshotToolbarLayout& layout) const;
 };
 
 class PinToScreenSettings final {
