@@ -36,7 +36,7 @@
 
 namespace {
 constexpr auto kManifestName = "asset-manifest.json";
-constexpr auto kRuntimeVersion = "1.0.1";
+constexpr auto kRuntimeVersion = "1.0.2";
 constexpr auto kPlatform = "windows-x64";
 constexpr auto kModelId = "ppocrv6-small-463ea9f";
 constexpr auto kDetectorName = "PP-OCRv6_det_small.onnx";
