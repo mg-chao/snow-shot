@@ -30,6 +30,11 @@ struct ScreenshotToolbarLayout {
     }
 };
 
+enum class ScreenshotToolbarLayoutKind {
+    DrawingTools,
+    ActionTools,
+};
+
 [[nodiscard]] QColor colorFromRgbaString(const QString& value);
 [[nodiscard]] QString colorToRgbaString(const QColor& color);
 
@@ -81,6 +86,8 @@ class GlobalShortcutSettings final {
 
 class ScreenshotSettings final {
   public:
+    [[nodiscard]] bool captureCursor() const;
+    bool setCaptureCursor(bool enabled) const;
     [[nodiscard]] bool restoreOriginalScreenColors() const;
     bool setRestoreOriginalScreenColors(bool enabled) const;
     [[nodiscard]] QString apiMode() const;
@@ -246,8 +253,8 @@ class ScreenshotToolbarSettings final {
   public:
     [[nodiscard]] QString tableQrTool() const;
     bool setTableQrTool(const QString& tool) const;
-    [[nodiscard]] ScreenshotToolbarLayout layout() const;
-    bool setLayout(const ScreenshotToolbarLayout& layout) const;
+    [[nodiscard]] ScreenshotToolbarLayout layout(ScreenshotToolbarLayoutKind kind) const;
+    bool setLayout(ScreenshotToolbarLayoutKind kind, const ScreenshotToolbarLayout& layout) const;
 };
 
 class PinToScreenSettings final {

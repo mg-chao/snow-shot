@@ -129,6 +129,107 @@ void cachedVerificationStaysSilent() {
     require(recognition.requests == 1, "a cached launch must not requeue recognition");
 }
 
+void displayedRecognitionSnapshotPreservesCachedResults() {
+    ControllableOcrRecognition recognition;
+    PromptRecorder recorder;
+    auto controller = makeTextSession(recognition, recorder);
+    auto presentation = std::make_shared<ScreenshotOcrPresentation>();
+    presentation->selection = QRect(0, 0, 64, 64);
+    presentation->lines.push_back(
+        {QStringLiteral("Visible OCR"), 0.95,
+         QPolygonF{QPointF(5, 5), QPointF(55, 5), QPointF(55, 25), QPointF(5, 25)}});
+    presentation->prepareForRendering();
+    ScreenshotRecognitionResults cached;
+    cached.key = QStringLiteral("session");
+    cached.text = ScreenshotOcrRecognitionResult{presentation, {}, {}, {}};
+    SnowShotTableResult table;
+    table.html = QStringLiteral("<table><tr><td>Cached table</td></tr></table>");
+    cached.table = table;
+    cached.qr = ScreenshotQrRecognitionResult{{QStringLiteral("Cached QR")}, {}};
+    cached.translatedText = std::make_shared<ScreenshotOcrPresentation>();
+    cached.translatedText->selection = presentation->selection;
+    cached.translatedText->lines = presentation->lines;
+    cached.translatedText->lines[0].text = QStringLiteral("Translated OCR");
+    cached.translatedText->prepareForRendering();
+    controller->seedRecognitionResults(cached);
+    require(controller->recognitionResultsSnapshot().text->presentation->lines[0].text ==
+                QStringLiteral("Visible OCR"),
+            "an inactive session must fall back to its cached source result");
+    controller->activate(ScreenshotRecognitionSessionController::Mode::Text);
+    presentation->selectAll();
+    const auto snapshot = controller->recognitionResultsSnapshot();
+    controller->deactivate();
+    require(
+        snapshot.text.has_value() && snapshot.text->presentation != presentation &&
+            snapshot.text->presentation->lines.front().text == QStringLiteral("Visible OCR") &&
+            snapshot.text->presentation->selection == presentation->selection &&
+            snapshot.text->presentation->lines.front().quad == presentation->lines.front().quad &&
+            snapshot.text->presentation->selectedText().isEmpty(),
+        "capturing before deactivation must preserve visible text and geometry without selection");
+    require(snapshot.table.has_value() && snapshot.table->html == table.html &&
+                snapshot.qr.has_value() && snapshot.qr->contents == cached.qr->contents &&
+                snapshot.translatedText != nullptr &&
+                snapshot.translatedText != cached.translatedText &&
+                snapshot.translatedText->lines[0].text == QStringLiteral("Translated OCR"),
+            "a display snapshot must preserve the session's table and QR results");
+    controller->activate(ScreenshotRecognitionSessionController::Mode::Text);
+    controller->beginTextEditing();
+    require(controller->editing() &&
+                controller->recognitionResultsSnapshot().text->presentation->lines[0].text ==
+                    QStringLiteral("Visible OCR"),
+            "text editor panels must snapshot cached OCR instead of transient editor content");
+    require(recognition.requests == 0, "capturing cached display results must not request OCR");
+    controller->endTextEditing();
+    require(controller->activateCachedTextTranslation() &&
+                controller->activateCachedTextTranslation() &&
+                controller->originalImageTranslationActive() &&
+                controller->originalText() == QStringLiteral("Visible OCR") &&
+                controller->textDraft() == QStringLiteral("Translated OCR"),
+            "restoring cached translation must be idempotent and retain source OCR");
+    controller->endTextEditing();
+    require(controller->textDraft() == QStringLiteral("Visible OCR") &&
+                controller->recognitionResultsSnapshot().translatedText != nullptr,
+            "canceling translation must restore the source while retaining its translation cache");
+    const snow_shot::storage::ScreenshotTranslationSettings translationSettings;
+    const auto previousConfiguration = translationSettings.configuration();
+    auto hidden = makeTextSession(recognition, recorder);
+    hidden->seedRecognitionResults(cached);
+    int invalidatedResults = 0;
+    QObject::connect(controller.get(),
+                     &ScreenshotRecognitionSessionController::recognitionResultsChanged,
+                     [&]() { ++invalidatedResults; });
+    require(translationSettings.setConfiguration(
+                {QStringLiteral("ja"), QStringLiteral("en"), QStringLiteral("qwen")}),
+            "change translation settings after restoring a captured translation");
+    require(
+        controller->recognitionResultsSnapshot().translatedText == nullptr &&
+            controller->textDraft() == QStringLiteral("Visible OCR") && invalidatedResults > 0,
+        "an explicit translation settings change must invalidate the capture without changing OCR");
+    hidden->activate(ScreenshotRecognitionSessionController::Mode::Text);
+    hidden->beginTextTranslation();
+    require(!hidden->activateCachedTextTranslation() &&
+                hidden->originalText() == QStringLiteral("Visible OCR"),
+            "first activation of a hidden translation must honor changed translation settings");
+    hidden->deactivate();
+    require(translationSettings.setConfiguration(previousConfiguration),
+            "restore translation settings after the invalidation test");
+    for (const bool wrongGeometry : {false, true}) {
+        auto invalid = makeTextSession(recognition, recorder);
+        if (wrongGeometry) {
+            cached.translatedText->lines = presentation->lines;
+            cached.translatedText->lines[0].quad.translate(QPointF(1, 0));
+        } else {
+            cached.translatedText->lines.clear();
+        }
+        invalid->seedRecognitionResults(cached);
+        invalid->activate(ScreenshotRecognitionSessionController::Mode::Text);
+        require(
+            !invalid->activateCachedTextTranslation() && invalid->hasTextResult() &&
+                invalid->recognitionResultsSnapshot().translatedText == nullptr,
+            "translation with mismatched source lines or coordinates must not replace valid OCR");
+    }
+}
+
 void liveDownloadsStillSurfaceThePrompt() {
     ControllableOcrRecognition recognition;
     PromptRecorder recorder;
@@ -262,6 +363,7 @@ int main(int argc, char** argv) {
         return 0;
     }
     translationLanguageSelectsUseCodePrefixGroups();
+    displayedRecognitionSnapshotPreservesCachedResults();
     cachedVerificationStaysSilent();
     liveDownloadsStillSurfaceThePrompt();
     prefetchVerificationStaysSilentWhileDownloadsSurface();

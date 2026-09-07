@@ -303,6 +303,7 @@ foreach ($property in $expectedBinaryMetadata.Keys) {
 
 $requiredStageFiles = @(
     "bin\snow_shot.exe",
+    "bin\crashpad_handler.exe",
     "bin\snow-ocr-process.exe",
     "bin\DirectML.dll",
     "share\snow-shot\licenses\LICENSE",
@@ -346,7 +347,7 @@ if (Test-Path -LiteralPath $stagedQtPluginDirectory -PathType Container) {
 }
 
 $stagedExecutables = @(Get-ChildItem -LiteralPath $installDirectory -Recurse -File -Filter "*.exe")
-$expectedExecutables = @("snow_shot.exe", "snow-ocr-process.exe")
+$expectedExecutables = @("snow_shot.exe", "snow-ocr-process.exe", "crashpad_handler.exe")
 $unexpectedExecutables = @($stagedExecutables | Where-Object { $_.Name -notin $expectedExecutables })
 if ($unexpectedExecutables.Count -gt 0) {
     throw "Release staging contains unexpected executables: $($unexpectedExecutables.FullName -join ', ')"
@@ -368,6 +369,7 @@ $stagedBinaries = @(Get-ChildItem -LiteralPath $installDirectory -Recurse -File 
     Where-Object { $_.Extension.ToLowerInvariant() -in @(".dll", ".exe") })
 $expectedBinaryPaths = @(
     "bin\snow_shot.exe",
+    "bin\crashpad_handler.exe",
     "bin\snow-ocr-process.exe",
     "bin\DirectML.dll"
 )
@@ -446,6 +448,7 @@ $allowedSystemImports = @(
 )
 $allowedLocalImports = @{
     "snow_shot.exe" = @()
+    "crashpad_handler.exe" = @()
     "snow-ocr-process.exe" = @("directml.dll")
     "directml.dll" = @()
 }
@@ -495,6 +498,7 @@ if ($unexpectedImports.Count -gt 0) {
     throw "Release staging imports non-system or disallowed libraries: $($unexpectedImports -join ', ')"
 }
 Write-Output "PE dependency audit: $($stagedBinaries.Count) binaries checked"
+& (Join-Path $PSScriptRoot "collect-snow-shot-symbols.ps1") -BuildDirectory $buildDirectory -InstallDirectory $installDirectory
 
 $linkMapPath = Join-Path $buildDirectory "snow_shot\Release\snow_shot.map"
 if (-not (Test-Path -LiteralPath $linkMapPath -PathType Leaf)) {
@@ -601,7 +605,7 @@ if ($versionInfo.FileVersion -ne "$packageVersionNumeric.0" -or
     throw "Snow Shot binary version '$($versionInfo.FileVersion)'/'$($versionInfo.ProductVersion)' does not match package version '$packageVersion'."
 }
 
-$ocrRuntimeVersion = "1.0.0"
+$ocrRuntimeVersion = "1.0.2"
 $ocrPlatform = "windows-x64"
 $ocrModelId = "ppocrv6-small-463ea9f"
 $ocrModelBaseUrl = "https://www.modelscope.cn/models/mgchao/SnowShotOCR/resolve/master/PP-OCRv6/small"
@@ -699,18 +703,18 @@ Copy-Item -LiteralPath $runtimeSource -Destination (Join-Path $runtimeWork $ocrR
 Copy-Item -LiteralPath $directMlSource -Destination (Join-Path $runtimeWork "DirectML.dll")
 $ocrVersionOutput = & (Join-Path $runtimeWork $ocrRuntimeFileName) --version 2>$null
 if ($LASTEXITCODE -ne 0 -or $ocrVersionOutput -notmatch
-    '^snow-ocr-process 1\.0\.0 windows-x86_64 protocol 2$') {
+    '^snow-ocr-process 1\.0\.2 windows-x86_64 protocol 2$') {
     throw "The staged OCR runtime reported an unexpected version: $ocrVersionOutput"
 }
 $ocrRuntimeVersionInfo = (Get-Item -LiteralPath (Join-Path $runtimeWork $ocrRuntimeFileName)).VersionInfo
 $expectedOcrMetadata = @{
     CompanyName = "Snow Apps"
     FileDescription = "Snow Shot OCR runtime"
-    FileVersion = "1.0.0.0"
+    FileVersion = "1.0.2.0"
     InternalName = "snow-ocr-process"
     OriginalFilename = $ocrRuntimeFileName
     ProductName = "Snow Shot OCR Runtime"
-    ProductVersion = "1.0.0"
+    ProductVersion = "1.0.2"
 }
 foreach ($property in $expectedOcrMetadata.Keys) {
     if ($ocrRuntimeVersionInfo.$property -ne $expectedOcrMetadata[$property]) {
@@ -898,12 +902,15 @@ if (-not (Test-Path -LiteralPath $offlineProcess -PathType Leaf)) {
 }
 
 $producedPackages = @()
+# NSIS still uses MAX_PATH for payload input, including long third-party license names.
+$nsisWorkDirectory = Join-Path $repoRoot "build\nsis"
+New-Item -ItemType Directory -Path $nsisWorkDirectory -Force | Out-Null
 foreach ($variant in $variantStages.Keys) {
     $packageBaseName = "snow-shot-$packageVersion-windows-x64-$variant"
     $variantConfig = Join-Path $buildDirectory "CPackConfig-$variant.cmake"
     $baseConfigPath = $cpackConfig.Replace('\', '/')
     $stagePath = $variantStages[$variant].Replace('\', '/')
-    $packageDirectory = $buildDirectory.Replace('\', '/')
+    $packageDirectory = $nsisWorkDirectory.Replace('\', '/')
     @"
 include("$baseConfigPath")
 set(CPACK_INSTALL_CMAKE_PROJECTS "")
@@ -918,6 +925,12 @@ string(REPLACE "snow-shot-$packageVersion-windows-x64.exe" "$packageBaseName.exe
     Push-Location $buildDirectory
     try { & cpack --config $variantConfig -G NSIS -C Release }
     finally { Pop-Location }
+    if ($LASTEXITCODE -eq 0) {
+        foreach ($suffix in @(".exe", ".exe.sha256")) {
+            Move-Item -LiteralPath (Join-Path $nsisWorkDirectory "$packageBaseName$suffix") `
+                -Destination (Join-Path $buildDirectory "$packageBaseName$suffix") -Force
+        }
+    }
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $packagePath -PathType Leaf)) {
         throw "NSIS $variant packaging failed."
     }

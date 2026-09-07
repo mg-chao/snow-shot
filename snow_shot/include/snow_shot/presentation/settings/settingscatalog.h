@@ -103,6 +103,7 @@ enum class SettingsSwitchBinding {
     SelectionTransitionAnimation,
     TrayEnabled,
     ScreenshotAutoSaveAfterCopy,
+    ScreenshotCaptureCursor,
     ScreenshotRestoreOriginalScreenColors,
     ScreenshotCopyImageFileToClipboard,
     PinAutomaticTextRecognition,
@@ -237,6 +238,7 @@ enum class SettingsActionBinding {
     ClearCaptureHistory,
     ClearThumbnailCache,
     ClearRecordingTemp,
+    CopyTodayLog,
 };
 
 enum class SettingsActionAccent {
@@ -262,6 +264,7 @@ struct SettingsActionDefinition {
 enum class SettingsCustomRenderer {
     StorageStatus,
     DrawingToolbarEditor,
+    ScreenshotToolbarEditor,
     TrayMenuOptions,
 };
 

@@ -8,6 +8,7 @@ license = "Apache-2.0"
 crate-type = ["staticlib"]
 
 [dependencies]
+snow-diagnostics = { path = "../snow-crates/crates/snow-diagnostics" }
 snow-capture-c = { path = "../snow-crates/crates/snow-capture-c" }
 snow-draw-engine-c = { path = "../snow_draw_engine_qt/crates/snow-draw-engine-c" }
 snow-stitch-images-c = { path = "../snow-crates/crates/snow-stitch-images-c" }
@@ -18,7 +19,7 @@ opt-level = 3
 codegen-units = 1
 lto = "fat"
 panic = "abort"
-debug = 0
+debug = 2
 incremental = false
 overflow-checks = false
 

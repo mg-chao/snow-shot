@@ -24,6 +24,13 @@ const QStringList kDrawingToolbarItemIds = {
     QStringLiteral("eraser"),    QStringLiteral("watermark"),
 };
 
+const QStringList kActionToolbarItemIds = {
+    QStringLiteral("barcode-recognition"),  QStringLiteral("table-recognition"),
+    QStringLiteral("record-screen"),        QStringLiteral("pin-to-screen"),
+    QStringLiteral("text-recognition"),     QStringLiteral("text-translation"),
+    QStringLiteral("scrolling-screenshot"), QStringLiteral("save-as-file"),
+};
+
 QJsonArray jsonArray(const QStringList& values) {
     QJsonArray result;
     for (const QString& value : values) {
@@ -50,8 +57,20 @@ QVector<QStringList> defaultDrawingToolbarPositions() {
     };
 }
 
-QJsonObject defaultScreenshotToolbarLayout() {
-    return {{QStringLiteral("positions"), jsonArray(defaultDrawingToolbarPositions())},
+QVector<QStringList> defaultActionToolbarPositions() {
+    return {
+        {QStringLiteral("barcode-recognition"), QStringLiteral("table-recognition")},
+        {QStringLiteral("record-screen")},
+        {QStringLiteral("pin-to-screen")},
+        {QStringLiteral("text-recognition")},
+        {QStringLiteral("text-translation")},
+        {QStringLiteral("scrolling-screenshot")},
+        {QStringLiteral("save-as-file")},
+    };
+}
+
+QJsonObject defaultToolbarLayout(const QVector<QStringList>& positions) {
+    return {{QStringLiteral("positions"), jsonArray(positions)},
             {QStringLiteral("hidden"), QJsonArray()}};
 }
 
@@ -533,8 +552,10 @@ const QVector<ConfigurationSchemaEntry> kEntries = {
      ConfigurationValueKind::String,
      std::nullopt,
      {QStringLiteral("table"), QStringLiteral("qr")}},
-    {QStringLiteral("screenshot_toolbar/layout"), defaultScreenshotToolbarLayout(),
-     ConfigurationValueKind::Structured},
+    {QStringLiteral("screenshot_toolbar/layout"),
+     defaultToolbarLayout(defaultDrawingToolbarPositions()), ConfigurationValueKind::Structured},
+    {QStringLiteral("screenshot_toolbar/action_tools_layout"),
+     defaultToolbarLayout(defaultActionToolbarPositions()), ConfigurationValueKind::Structured},
     {QStringLiteral("screenshot_ui/toolbar_size"),
      QStringLiteral("normal"),
      ConfigurationValueKind::String,
@@ -614,6 +635,7 @@ const QVector<ConfigurationSchemaEntry> kEntries = {
      ConfigurationIntegerRange{0, 256, 1}},
     {QStringLiteral("screenshot_selection/shadow_width"), 0, ConfigurationValueKind::Integer,
      ConfigurationIntegerRange{0, 64, 1}},
+    {QStringLiteral("screenshot/capture_cursor"), false, ConfigurationValueKind::Boolean},
     {QStringLiteral("screenshot/restore_original_screen_colors"), true,
      ConfigurationValueKind::Boolean},
     {QStringLiteral("screenshot/delay_seconds"), 3, ConfigurationValueKind::Integer,
@@ -963,12 +985,14 @@ ConfigurationNormalization normalizeTranslationLanguage(const ConfigurationSchem
     return {*canonical, true, *canonical != original};
 }
 
-ConfigurationNormalization normalizeToolbarLayout(const QJsonValue& value) {
+ConfigurationNormalization normalizeToolbarLayout(const QJsonValue& value,
+                                                  const QStringList& itemIds,
+                                                  const QVector<QStringList>& defaultPositions) {
     if (!value.isObject()) {
         return {};
     }
     const QJsonObject object = value.toObject();
-    const QSet<QString> known(kDrawingToolbarItemIds.cbegin(), kDrawingToolbarItemIds.cend());
+    const QSet<QString> known(itemIds.cbegin(), itemIds.cend());
     QVector<QStringList> positions;
     QSet<QString> positioned;
     QStringList hidden;
@@ -1022,7 +1046,7 @@ ConfigurationNormalization normalizeToolbarLayout(const QJsonValue& value) {
         return {};
     }
 
-    for (const QStringList& defaultPosition : defaultDrawingToolbarPositions()) {
+    for (const QStringList& defaultPosition : defaultPositions) {
         QStringList missing;
         for (const QString& id : defaultPosition) {
             if (!positioned.contains(id) && !hiddenSet.contains(id)) {
@@ -1106,7 +1130,12 @@ ConfigurationNormalization ConfigurationSchema::normalize(const QString& key,
         return {result, true, result != value.toArray()};
     }
     if (key == QStringLiteral("screenshot_toolbar/layout")) {
-        return normalizeToolbarLayout(value);
+        return normalizeToolbarLayout(value, kDrawingToolbarItemIds,
+                                      defaultDrawingToolbarPositions());
+    }
+    if (key == QStringLiteral("screenshot_toolbar/action_tools_layout")) {
+        return normalizeToolbarLayout(value, kActionToolbarItemIds,
+                                      defaultActionToolbarPositions());
     }
     if (isRgbaColorKey(key)) {
         return normalizeRgbaColor(value);

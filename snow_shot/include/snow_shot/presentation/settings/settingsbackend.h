@@ -41,8 +41,8 @@ class SettingsBackend : public QObject {
     ~SettingsBackend() override = default;
 
     [[nodiscard]] virtual QVariant selectValue(SettingsSelectBinding binding) const = 0;
-    [[nodiscard]] QVector<SettingsRuntimeOption>
-    virtual dynamicSelectOptions(SettingsSelectBinding binding) const = 0;
+    [[nodiscard]] QVector<SettingsRuntimeOption> virtual dynamicSelectOptions(
+        SettingsSelectBinding binding) const = 0;
     [[nodiscard]] virtual bool applySelectValue(SettingsSelectBinding binding,
                                                 const QVariant& value) = 0;
 
@@ -76,8 +76,8 @@ class SettingsBackend : public QObject {
     [[nodiscard]] virtual bool applyFilePathValue(SettingsFilePathBinding binding,
                                                   const QString& value) = 0;
 
-    [[nodiscard]] virtual QString directoryPathValue(
-        SettingsDirectoryPathBinding binding) const = 0;
+    [[nodiscard]] virtual QString
+    directoryPathValue(SettingsDirectoryPathBinding binding) const = 0;
     [[nodiscard]] virtual bool applyDirectoryPathValue(SettingsDirectoryPathBinding binding,
                                                        const QString& value) = 0;
 
@@ -85,9 +85,11 @@ class SettingsBackend : public QObject {
     [[nodiscard]] virtual bool applyTextValue(SettingsTextBinding binding,
                                               const QString& value) = 0;
 
-    [[nodiscard]] virtual storage::ScreenshotToolbarLayout toolbarLayout() const = 0;
+    [[nodiscard]] virtual storage::ScreenshotToolbarLayout
+    toolbarLayout(storage::ScreenshotToolbarLayoutKind kind) const = 0;
     [[nodiscard]] virtual bool
-    applyToolbarLayout(const storage::ScreenshotToolbarLayout& layout) = 0;
+    applyToolbarLayout(storage::ScreenshotToolbarLayoutKind kind,
+                       const storage::ScreenshotToolbarLayout& layout) = 0;
 
     [[nodiscard]] virtual GlobalShortcutRegistrationState
     shortcutState(GlobalShortcutAction action) const = 0;
@@ -104,14 +106,15 @@ class SettingsBackend : public QObject {
                                                    const QString& shortcutId,
                                                    const QStringList& shortcuts) = 0;
 
-    [[nodiscard]] virtual SettingsActionState
-    actionState(SettingsActionBinding binding) const = 0;
+    [[nodiscard]] virtual SettingsActionState actionState(SettingsActionBinding binding) const = 0;
     [[nodiscard]] virtual bool triggerAction(SettingsActionBinding binding) = 0;
     [[nodiscard]] virtual storage::StorageStatus storageStatus() const = 0;
     virtual void refreshStorageStatus() {}
     // Show-event path; backends may throttle repeated refreshes.  Defaults to
     // the unthrottled refresh so simple backends only need that override.
-    virtual void refreshStorageStatusIfStale() { refreshStorageStatus(); }
+    virtual void refreshStorageStatusIfStale() {
+        refreshStorageStatus();
+    }
     [[nodiscard]] virtual bool resetSection(SettingsSectionReset reset) = 0;
     [[nodiscard]] virtual QString fieldError(const QString& fieldId) const {
         Q_UNUSED(fieldId);
@@ -124,10 +127,11 @@ class SettingsBackend : public QObject {
 
   signals:
     void synchronized();
-    void shortcutStateChanged(
-        snow_shot::presentation::GlobalShortcutAction action,
-        const snow_shot::presentation::GlobalShortcutRegistrationState& state);
-
+    void actionFinished(snow_shot::presentation::settings::SettingsActionBinding action,
+                        bool success, const QString& error);
+    void
+    shortcutStateChanged(snow_shot::presentation::GlobalShortcutAction action,
+                         const snow_shot::presentation::GlobalShortcutRegistrationState& state);
 };
 
 class BuiltInSettingsBackend final : public SettingsBackend {
@@ -144,8 +148,7 @@ class BuiltInSettingsBackend final : public SettingsBackend {
     [[nodiscard]] bool switchValue(SettingsSwitchBinding binding) const override;
     [[nodiscard]] bool switchEnabled(SettingsSwitchBinding binding) const override;
     [[nodiscard]] bool applySwitchValue(SettingsSwitchBinding binding, bool value) override;
-    [[nodiscard]] QVariantList
-    multiSelectValue(SettingsMultiSelectBinding binding) const override;
+    [[nodiscard]] QVariantList multiSelectValue(SettingsMultiSelectBinding binding) const override;
     [[nodiscard]] bool applyMultiSelectValue(SettingsMultiSelectBinding binding,
                                              const QVariantList& value) override;
     [[nodiscard]] int integerValue(SettingsIntegerBinding binding) const override;
@@ -153,24 +156,22 @@ class BuiltInSettingsBackend final : public SettingsBackend {
     [[nodiscard]] int sliderValue(SettingsSliderBinding binding) const override;
     [[nodiscard]] bool applySliderValue(SettingsSliderBinding binding, int value) override;
     [[nodiscard]] QColor colorValue(SettingsColorBinding binding) const override;
-    [[nodiscard]] bool applyColorValue(SettingsColorBinding binding,
-                                       const QColor& value) override;
+    [[nodiscard]] bool applyColorValue(SettingsColorBinding binding, const QColor& value) override;
     [[nodiscard]] QVariant radioValue(SettingsRadioBinding binding) const override;
     [[nodiscard]] bool applyRadioValue(SettingsRadioBinding binding,
                                        const QVariant& value) override;
     [[nodiscard]] QString filePathValue(SettingsFilePathBinding binding) const override;
     [[nodiscard]] bool applyFilePathValue(SettingsFilePathBinding binding,
                                           const QString& value) override;
-    [[nodiscard]] QString directoryPathValue(
-        SettingsDirectoryPathBinding binding) const override;
+    [[nodiscard]] QString directoryPathValue(SettingsDirectoryPathBinding binding) const override;
     [[nodiscard]] bool applyDirectoryPathValue(SettingsDirectoryPathBinding binding,
                                                const QString& value) override;
     [[nodiscard]] QString textValue(SettingsTextBinding binding) const override;
-    [[nodiscard]] bool applyTextValue(SettingsTextBinding binding,
-                                      const QString& value) override;
-    [[nodiscard]] storage::ScreenshotToolbarLayout toolbarLayout() const override;
-    [[nodiscard]] bool
-    applyToolbarLayout(const storage::ScreenshotToolbarLayout& layout) override;
+    [[nodiscard]] bool applyTextValue(SettingsTextBinding binding, const QString& value) override;
+    [[nodiscard]] storage::ScreenshotToolbarLayout
+    toolbarLayout(storage::ScreenshotToolbarLayoutKind kind) const override;
+    [[nodiscard]] bool applyToolbarLayout(storage::ScreenshotToolbarLayoutKind kind,
+                                          const storage::ScreenshotToolbarLayout& layout) override;
     [[nodiscard]] GlobalShortcutRegistrationState
     shortcutState(GlobalShortcutAction action) const override;
     [[nodiscard]] GlobalShortcutValidationResult
@@ -185,8 +186,7 @@ class BuiltInSettingsBackend final : public SettingsBackend {
     [[nodiscard]] bool applyLocalShortcuts(SettingsLocalShortcutScope scope,
                                            const QString& shortcutId,
                                            const QStringList& shortcuts) override;
-    [[nodiscard]] SettingsActionState
-    actionState(SettingsActionBinding binding) const override;
+    [[nodiscard]] SettingsActionState actionState(SettingsActionBinding binding) const override;
     [[nodiscard]] bool triggerAction(SettingsActionBinding binding) override;
     [[nodiscard]] storage::StorageStatus storageStatus() const override;
     void refreshStorageStatus() override;
@@ -195,6 +195,7 @@ class BuiltInSettingsBackend final : public SettingsBackend {
 
   private:
     ::snow_shot::presentation::GlobalShortcutManager& m_shortcutManager;
+    bool m_copyLogBusy = false;
 };
 
 } // namespace settings

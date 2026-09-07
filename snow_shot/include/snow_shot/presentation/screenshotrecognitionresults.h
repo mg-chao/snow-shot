@@ -8,12 +8,14 @@
 #include <QString>
 
 #include <optional>
+#include <memory>
 
 struct ScreenshotRecognitionResults {
     QString key;
     std::optional<ScreenshotOcrRecognitionResult> text;
     std::optional<SnowShotTableResult> table;
     std::optional<ScreenshotQrRecognitionResult> qr;
+    std::shared_ptr<ScreenshotOcrPresentation> translatedText;
 
     [[nodiscard]] bool isEmpty() const {
         return !text.has_value() && !table.has_value() && !qr.has_value();

@@ -6,6 +6,9 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QTemporaryDir>
 #include <QUuid>
 
@@ -237,6 +240,58 @@ void removedRecordsPruneTheirPayloads() {
     require(!QFileInfo::exists(payloadFilePath(directory.path(), id)),
             "the removed record's payload survived on disk");
 }
+void recognitionVisibilityRoundTripsAndDefaultsToHidden() {
+    QTemporaryDir directory;
+    require(directory.isValid(), "temporary storage directory is unavailable");
+    const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    auto record = recordWithId(id, patternedImage(QSize(8, 8), 3));
+    const QString manifest =
+        QDir(directory.path()).filePath(QStringLiteral("pinned_windows/index.json"));
+    {
+        storage::PinnedWindowRepository repository(directory.path());
+        record.recognitionVisible = true;
+        record.translationVisible = true;
+        require(repository.upsert(record).success && repository.flush().success,
+                "visible recognition state should be saved");
+        require(repository.loadRecord(id)->recognitionVisible &&
+                    repository.loadRecord(id)->translationVisible,
+                "visible recognition state should survive payload demotion");
+        record.recognitionVisible = false;
+        record.translationVisible = false;
+        require(repository.updateState(record).success && repository.flush().success,
+                "hidden recognition state should be saved");
+    }
+    {
+        storage::PinnedWindowRepository repository(directory.path());
+        const auto loaded = repository.loadRecord(id);
+        require(loaded.has_value() && !loaded->recognitionVisible && !loaded->translationVisible,
+                "hidden recognition state should survive reopening");
+        record.recognitionVisible = true;
+        record.translationVisible = true;
+        require(repository.updateState(record).success && repository.flush().success,
+                "recognition can be made visible again");
+    }
+    auto root = QJsonDocument::fromJson(readBytes(manifest)).object();
+    auto records = root.value(QStringLiteral("records")).toArray();
+    require(records.size() == 1 &&
+                records[0].toObject().value(QStringLiteral("recognition_visible")).toBool() &&
+                records[0].toObject().value(QStringLiteral("translation_visible")).toBool(),
+            "the manifest must explicitly store visible recognition");
+    auto legacyRecord = records[0].toObject();
+    legacyRecord.remove(QStringLiteral("recognition_visible"));
+    legacyRecord.remove(QStringLiteral("translation_visible"));
+    records[0] = legacyRecord;
+    root.insert(QStringLiteral("records"), records);
+    QFile file(manifest);
+    require(file.open(QIODevice::WriteOnly | QIODevice::Truncate), "open legacy manifest fixture");
+    const QByteArray legacyBytes = QJsonDocument(root).toJson();
+    require(file.write(legacyBytes) == legacyBytes.size(), "write legacy manifest fixture");
+    file.close();
+    storage::PinnedWindowRepository legacy(directory.path());
+    const auto loaded = legacy.loadRecord(id);
+    require(loaded.has_value() && !loaded->recognitionVisible && !loaded->translationVisible,
+            "records without recognition visibility must default to hidden");
+}
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -246,5 +301,6 @@ int main(int argc, char* argv[]) {
     metadataOnlyUpdatesDoNotRewriteCommittedPayloads();
     changedPayloadsRecommitAndStayLazy();
     removedRecordsPruneTheirPayloads();
+    recognitionVisibilityRoundTripsAndDefaultsToHidden();
     return 0;
 }

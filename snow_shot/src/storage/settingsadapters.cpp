@@ -339,6 +339,14 @@ bool GlobalShortcutSettings::setDisableOnFocusedFullscreenWindow(bool disabled) 
                             disabled);
 }
 
+bool ScreenshotSettings::captureCursor() const {
+    return cache().value(QStringLiteral("screenshot/capture_cursor")).toBool();
+}
+
+bool ScreenshotSettings::setCaptureCursor(bool enabled) const {
+    return cache().setValue(QStringLiteral("screenshot/capture_cursor"), enabled);
+}
+
 bool ScreenshotSettings::restoreOriginalScreenColors() const {
     return cache().value(QStringLiteral("screenshot/restore_original_screen_colors")).toBool();
 }
@@ -976,9 +984,20 @@ bool ScreenshotToolbarSettings::setTableQrTool(const QString& tool) const {
     return cache().setValue(QStringLiteral("screenshot_toolbar/table_qr_tool"), tool);
 }
 
-ScreenshotToolbarLayout ScreenshotToolbarSettings::layout() const {
-    const QJsonObject object =
-        cache().value(QStringLiteral("screenshot_toolbar/layout")).toObject();
+namespace {
+QString screenshotToolbarLayoutKey(ScreenshotToolbarLayoutKind kind) {
+    switch (kind) {
+    case ScreenshotToolbarLayoutKind::DrawingTools:
+        return QStringLiteral("screenshot_toolbar/layout");
+    case ScreenshotToolbarLayoutKind::ActionTools:
+        return QStringLiteral("screenshot_toolbar/action_tools_layout");
+    }
+    return {};
+}
+} // namespace
+
+ScreenshotToolbarLayout ScreenshotToolbarSettings::layout(ScreenshotToolbarLayoutKind kind) const {
+    const QJsonObject object = cache().value(screenshotToolbarLayoutKey(kind)).toObject();
     return {stringListArray(object.value(QStringLiteral("positions"))),
             stringList(object.value(QStringLiteral("hidden")))};
 }
@@ -1009,9 +1028,10 @@ bool ScreenshotTranslationSettings::setConfiguration(
     });
 }
 
-bool ScreenshotToolbarSettings::setLayout(const ScreenshotToolbarLayout& layout) const {
+bool ScreenshotToolbarSettings::setLayout(ScreenshotToolbarLayoutKind kind,
+                                          const ScreenshotToolbarLayout& layout) const {
     return cache().setValue(
-        QStringLiteral("screenshot_toolbar/layout"),
+        screenshotToolbarLayoutKey(kind),
         QJsonObject{{QStringLiteral("positions"), stringArrayArray(layout.positions)},
                     {QStringLiteral("hidden"), stringArray(layout.hidden)}});
 }

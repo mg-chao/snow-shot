@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/screenshotscrollingcapturecontroller.h"
+#include "snow_shot/diagnostics/diagnostics.h"
 
 #include "snow_shot/presentation/screenshotdisplaysession.h"
 #include "snow_shot/presentation/screenshotgeometry.h"
@@ -824,6 +825,9 @@ struct ScreenshotScrollingCaptureController::Impl {
         thumbnailHost = anchorOverlay;
         active = true;
         ++generation;
+        snow_shot::diagnostics::logEvent(
+            QStringLiteral("snow_shot.scrolling"), QStringLiteral("scrolling.started"),
+            {{QStringLiteral("operation"), QString::number(generation)}});
         pendingResultRequestId.reset();
         mailbox->reset(generation);
 
@@ -907,6 +911,11 @@ struct ScreenshotScrollingCaptureController::Impl {
 
     void stop(bool restoreScreenshotPresentation) {
         const bool wasActive = active;
+        if (wasActive) {
+            snow_shot::diagnostics::logEvent(
+                QStringLiteral("snow_shot.scrolling"), QStringLiteral("scrolling.stopped"),
+                {{QStringLiteral("operation"), QString::number(generation)}});
+        }
         active = false;
         exportPaused = false;
         ++generation;

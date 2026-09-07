@@ -5,6 +5,7 @@
 #include "snow_shot/storage/capturehistorytypes.h"
 #include "snow_shot/storage/configurationstore.h"
 #include "snow_shot/storage/storageresult.h"
+#include "snow_shot/diagnostics/diagnostics.h"
 
 #include <QObject>
 #include <QString>
@@ -16,11 +17,13 @@ namespace snow_shot::storage {
 class CaptureHistoryRepository;
 class PinnedWindowRepository;
 class StorageUsageTracker;
+struct StorageDirectorySelection;
 
 struct StorageInitializationOptions {
     QString executableDirectory;
     QString appDataDirectory;
     int debounceMilliseconds = 1000;
+    std::shared_ptr<const StorageDirectorySelection> resolvedDirectory;
 };
 
 enum class StorageMode {
@@ -30,13 +33,20 @@ enum class StorageMode {
     Degraded,
 };
 
+struct StorageDirectorySelection {
+    QString requestedDirectory;
+    QString effectiveDirectory;
+    QString fallbackReason;
+    QString executableDirectory;
+    StorageMode mode = StorageMode::Degraded;
+};
+
 struct StorageStatus {
     QString requestedDirectory;
     QString effectiveDirectory;
     QString fallbackReason;
     StorageMode effectiveMode = StorageMode::Degraded;
-    ConfigurationCompatibility configurationCompatibility =
-        ConfigurationCompatibility::Unavailable;
+    ConfigurationCompatibility configurationCompatibility = ConfigurationCompatibility::Unavailable;
     bool readAvailable = false;
     bool writeAvailable = false;
     CaptureHistoryUsage historyUsage;
@@ -46,6 +56,7 @@ struct StorageStatus {
     bool cacheClearing = false;
     QString lastConfigurationError;
     QString lastHistoryError;
+    diagnostics::DiagnosticsStatus diagnostics;
 };
 
 class ApplicationStorage final : public QObject {
@@ -53,6 +64,8 @@ class ApplicationStorage final : public QObject {
 
   public:
     static ApplicationStorage& instance();
+    static StorageDirectorySelection
+    resolveDirectory(const StorageInitializationOptions& options = {});
     ~ApplicationStorage() override;
 
     [[nodiscard]] StorageResult initialize(const StorageInitializationOptions& options = {});

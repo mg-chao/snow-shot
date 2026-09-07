@@ -18,6 +18,10 @@
 
 #include <chrono>
 
+#ifdef Q_OS_WIN
+#include <Windows.h>
+#endif
+
 namespace snow_shot::storage {
 namespace {
 // A completed usage scan stays authoritative for this long, so settings-page
@@ -96,6 +100,9 @@ ApplicationStorage::ApplicationStorage(QObject* parent) : QObject(parent) {
     qRegisterMetaType<CaptureHistoryUsage>();
     qRegisterMetaType<AppStorageUsage>();
     qRegisterMetaType<StorageStatus>();
+    connect(&diagnostics::DiagnosticsService::instance(),
+            &diagnostics::DiagnosticsService::statusChanged, this,
+            &ApplicationStorage::emitStatusChanged, Qt::QueuedConnection);
 }
 
 ApplicationStorage::~ApplicationStorage() {
@@ -107,20 +114,23 @@ ApplicationStorage& ApplicationStorage::instance() {
     return storage;
 }
 
-StorageResult ApplicationStorage::initialize(const StorageInitializationOptions& options) {
-    if (m_initialized) {
-        shutdown();
+StorageDirectorySelection
+ApplicationStorage::resolveDirectory(const StorageInitializationOptions& options) {
+    if (options.resolvedDirectory) {
+        return *options.resolvedDirectory;
     }
-    // The usage tracker's history provider reads the capture-history repository,
-    // so the tracker worker must be joined before the repository is destroyed.
-    m_usageTracker.reset();
-    m_captureHistory.reset();
-    m_pinnedWindows.reset();
-    m_configuration.reset();
-
-    const QString executableDirectory = QDir::cleanPath(options.executableDirectory.isEmpty()
-                                                            ? QCoreApplication::applicationDirPath()
-                                                            : options.executableDirectory);
+    QString executableDirectory = options.executableDirectory;
+    if (executableDirectory.isEmpty()) {
+#ifdef Q_OS_WIN
+        wchar_t path[32768]{};
+        const DWORD length = GetModuleFileNameW(nullptr, path, 32768);
+        executableDirectory =
+            QFileInfo(QString::fromWCharArray(path, static_cast<int>(length))).absolutePath();
+#else
+        executableDirectory = QCoreApplication::applicationDirPath();
+#endif
+    }
+    executableDirectory = QDir::cleanPath(executableDirectory);
     const QString appDataDirectory =
         QDir::cleanPath(options.appDataDirectory.isEmpty()
                             ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
@@ -131,21 +141,21 @@ StorageResult ApplicationStorage::initialize(const StorageInitializationOptions&
     const QString markerDirectory =
         markerSelection(executableDirectory, &markerPresent, &markerError);
     const bool customRequested = markerPresent && !markerDirectory.isEmpty();
-    m_status = {};
-    m_status.requestedDirectory = customRequested ? markerDirectory : appDataDirectory;
+    StorageDirectorySelection selection;
+    selection.executableDirectory = executableDirectory;
+    selection.requestedDirectory = customRequested ? markerDirectory : appDataDirectory;
 
     QString effectiveDirectory;
     StorageMode requestedMode = StorageMode::ApplicationData;
     if (!markerError.isEmpty()) {
-        m_status.fallbackReason = markerError;
+        selection.fallbackReason = markerError;
     } else if (customRequested) {
         requestedMode = StorageMode::Portable;
         const DirectoryCheck custom = ensureWritableDirectory(markerDirectory);
         if (custom.available) {
             effectiveDirectory = markerDirectory;
         } else {
-            m_status.fallbackReason = custom.error;
-            qCWarning(storageLog) << "Portable storage unavailable:" << custom.error;
+            selection.fallbackReason = custom.error;
         }
     }
 
@@ -155,22 +165,40 @@ StorageResult ApplicationStorage::initialize(const StorageInitializationOptions&
             effectiveDirectory = appDataDirectory;
             requestedMode = StorageMode::ApplicationData;
         } else {
-            if (!m_status.fallbackReason.isEmpty()) {
-                m_status.fallbackReason += u' ';
+            if (!selection.fallbackReason.isEmpty()) {
+                selection.fallbackReason += u' ';
             }
-            m_status.fallbackReason +=
+            selection.fallbackReason +=
                 QStringLiteral("The AppDataLocation fallback is unavailable: ") + fallback.error;
         }
     }
 
+    selection.effectiveDirectory = effectiveDirectory;
+    selection.mode = effectiveDirectory.isEmpty() ? StorageMode::Degraded : requestedMode;
+    return selection;
+}
+
+StorageResult ApplicationStorage::initialize(const StorageInitializationOptions& options) {
+    if (m_initialized) {
+        shutdown();
+    }
+    m_usageTracker.reset();
+    m_captureHistory.reset();
+    m_pinnedWindows.reset();
+    m_configuration.reset();
+    const auto selection = resolveDirectory(options);
+    const QString effectiveDirectory = selection.effectiveDirectory;
+    m_status = {};
+    m_status.requestedDirectory = selection.requestedDirectory;
     m_status.effectiveDirectory = effectiveDirectory;
+    m_status.fallbackReason = selection.fallbackReason;
     m_status.readAvailable = !effectiveDirectory.isEmpty();
     m_status.writeAvailable = !effectiveDirectory.isEmpty();
-    m_status.effectiveMode = effectiveDirectory.isEmpty() ? StorageMode::Degraded : requestedMode;
-    const QString configurationFile = effectiveDirectory.isEmpty()
-                                          ? QString()
-                                          : QDir(effectiveDirectory).filePath(
-                                              QStringLiteral("config.json"));
+    m_status.effectiveMode = selection.mode;
+    const QString configurationFile =
+        effectiveDirectory.isEmpty()
+            ? QString()
+            : QDir(effectiveDirectory).filePath(QStringLiteral("config.json"));
     m_configuration = std::make_unique<ConfigurationStore>(
         configurationFile, m_status.readAvailable, m_status.writeAvailable,
         options.debounceMilliseconds, this);
@@ -207,9 +235,8 @@ StorageResult ApplicationStorage::initialize(const StorageInitializationOptions&
             Qt::QueuedConnection);
     };
     m_captureHistory = makeCaptureHistoryRepository(effectiveDirectory, std::move(historyOptions));
-    m_pinnedWindows = std::make_unique<PinnedWindowRepository>(effectiveDirectory,
-                                                                m_status.writeAvailable,
-                                                                options.debounceMilliseconds);
+    m_pinnedWindows = std::make_unique<PinnedWindowRepository>(
+        effectiveDirectory, m_status.writeAvailable, options.debounceMilliseconds);
     m_status.historyUsage = m_captureHistory->usage();
     m_status.lastHistoryError = m_captureHistory->lastError();
 
@@ -217,6 +244,7 @@ StorageResult ApplicationStorage::initialize(const StorageInitializationOptions&
     usageOptions.appDataDirectory = effectiveDirectory;
     usageOptions.thumbnailCacheDirectory = StorageUsageTracker::defaultThumbnailCacheDirectory();
     usageOptions.recordingTempDirectory = StorageUsageTracker::defaultRecordingTempDirectory();
+    usageOptions.diagnosticsDirectories = diagnostics::DiagnosticsService::instance().directories();
     usageOptions.activeFileCutoff = QDateTime::currentDateTime();
     usageOptions.historyBytesProvider = [this]() {
         return m_captureHistory != nullptr ? m_captureHistory->usage().totalBytes : 0;
@@ -228,8 +256,7 @@ StorageResult ApplicationStorage::initialize(const StorageInitializationOptions&
     usageOptions.callbacks.clearFinished = [this](StorageCacheKind kind,
                                                   const StorageResult& result) {
         QMetaObject::invokeMethod(
-            this, [this, kind, result]() { finishCacheClear(kind, result); },
-            Qt::QueuedConnection);
+            this, [this, kind, result]() { finishCacheClear(kind, result); }, Qt::QueuedConnection);
     };
     m_usageTracker = std::make_unique<StorageUsageTracker>(std::move(usageOptions));
     m_status.appUsage = m_usageTracker->usage();
@@ -325,6 +352,7 @@ PinnedWindowRepository& ApplicationStorage::pinnedWindows() {
 
 StorageStatus ApplicationStorage::status() const {
     StorageStatus current = m_status;
+    current.diagnostics = diagnostics::DiagnosticsService::instance().status();
     if (m_configuration != nullptr) {
         current.lastConfigurationError = m_configuration->lastError();
     }
@@ -368,8 +396,8 @@ ApplicationStorage::requestCaptureHistoryPolicyAsync(const CaptureHistoryPolicy&
     if (!m_initialized || m_configuration == nullptr || m_captureHistory == nullptr ||
         !policy.isValid()) {
         updateHistoryError(QStringLiteral("The capture-history policy is invalid"));
-        return readyFuture(StorageResult::failure(QStringLiteral(
-            "The capture-history policy is invalid")));
+        return readyFuture(
+            StorageResult::failure(QStringLiteral("The capture-history policy is invalid")));
     }
     const QMap<QString, QJsonValue> values = captureHistoryPolicyConfigurationValues(policy);
     if (!m_configuration->setValues(values)) {
@@ -393,8 +421,8 @@ bool ApplicationStorage::requestSmartSelection(bool enabled) {
 
 std::shared_future<StorageResult> ApplicationStorage::requestSmartSelectionAsync(bool enabled) {
     if (!m_initialized || m_configuration == nullptr || !m_status.writeAvailable) {
-        return readyFuture(StorageResult::failure(
-            QStringLiteral("Configuration storage is not writable")));
+        return readyFuture(
+            StorageResult::failure(QStringLiteral("Configuration storage is not writable")));
     }
     if (!m_configuration->setValue(QStringLiteral("screenshot_selection/smart_selection"),
                                    enabled)) {
@@ -414,8 +442,8 @@ bool ApplicationStorage::requestCaptureHistoryClear() {
 std::shared_future<StorageResult> ApplicationStorage::requestCaptureHistoryClearAsync() {
     if (!m_initialized || m_captureHistory == nullptr || m_status.historyClearing ||
         !m_status.writeAvailable) {
-        return readyFuture(StorageResult::failure(
-            QStringLiteral("Capture-history storage is not writable")));
+        return readyFuture(
+            StorageResult::failure(QStringLiteral("Capture-history storage is not writable")));
     }
     m_status.historyClearing = true;
     emitStatusChanged();
@@ -429,6 +457,7 @@ std::shared_future<StorageResult> ApplicationStorage::requestCaptureHistoryClear
 }
 
 void ApplicationStorage::requestStorageUsageRefresh() {
+    diagnostics::DiagnosticsService::instance().requestMaintenance();
     if (m_usageTracker != nullptr) {
         m_usageTracker->requestRefresh();
     }

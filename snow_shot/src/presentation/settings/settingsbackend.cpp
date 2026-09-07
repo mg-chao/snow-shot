@@ -8,8 +8,14 @@
 #include "snow_shot/presentation/styles/thememanager.h"
 #include "snow_shot/storage/configurationschema.h"
 #include "snow_shot/storage/settingsadapters.h"
+#include "snow_shot/presentation/screenshotclipboardservice.h"
 
 #include <QJsonArray>
+#include <QApplication>
+#include <QClipboard>
+#include <QMimeData>
+#include <QTimer>
+#include <QUrl>
 
 namespace snow_shot::presentation::settings {
 namespace {
@@ -293,6 +299,8 @@ bool BuiltInSettingsBackend::switchValue(SettingsSwitchBinding binding) const {
         return storage::TraySettings().enabled();
     case SettingsSwitchBinding::ScreenshotAutoSaveAfterCopy:
         return storage::ScreenshotSettings().autoSaveAfterCopy();
+    case SettingsSwitchBinding::ScreenshotCaptureCursor:
+        return storage::ScreenshotSettings().captureCursor();
     case SettingsSwitchBinding::ScreenshotRestoreOriginalScreenColors:
         return storage::ScreenshotSettings().restoreOriginalScreenColors();
     case SettingsSwitchBinding::ScreenshotCopyImageFileToClipboard:
@@ -322,6 +330,9 @@ bool BuiltInSettingsBackend::switchEnabled(SettingsSwitchBinding binding) const 
 }
 
 bool BuiltInSettingsBackend::applySwitchValue(SettingsSwitchBinding binding, bool value) {
+    if (binding == SettingsSwitchBinding::ScreenshotCaptureCursor) {
+        return storage::ScreenshotSettings().setCaptureCursor(value);
+    }
     if (binding == SettingsSwitchBinding::ScreenshotRestoreOriginalScreenColors) {
         return storage::ScreenshotSettings().setRestoreOriginalScreenColors(value);
     }
@@ -384,6 +395,7 @@ bool BuiltInSettingsBackend::applySwitchValue(SettingsSwitchBinding binding, boo
     case SettingsSwitchBinding::SelectionTransitionAnimation:
     case SettingsSwitchBinding::TrayEnabled:
     case SettingsSwitchBinding::ScreenshotAutoSaveAfterCopy:
+    case SettingsSwitchBinding::ScreenshotCaptureCursor:
     case SettingsSwitchBinding::ScreenshotRestoreOriginalScreenColors:
     case SettingsSwitchBinding::ScreenshotCopyImageFileToClipboard:
     case SettingsSwitchBinding::PinAutomaticTextRecognition:
@@ -600,12 +612,14 @@ bool BuiltInSettingsBackend::applyTextValue(SettingsTextBinding binding, const Q
     return false;
 }
 
-storage::ScreenshotToolbarLayout BuiltInSettingsBackend::toolbarLayout() const {
-    return storage::ScreenshotToolbarSettings().layout();
+storage::ScreenshotToolbarLayout
+BuiltInSettingsBackend::toolbarLayout(storage::ScreenshotToolbarLayoutKind kind) const {
+    return storage::ScreenshotToolbarSettings().layout(kind);
 }
 
-bool BuiltInSettingsBackend::applyToolbarLayout(const storage::ScreenshotToolbarLayout& layout) {
-    return storage::ScreenshotToolbarSettings().setLayout(layout);
+bool BuiltInSettingsBackend::applyToolbarLayout(storage::ScreenshotToolbarLayoutKind kind,
+                                                const storage::ScreenshotToolbarLayout& layout) {
+    return storage::ScreenshotToolbarSettings().setLayout(kind, layout);
 }
 
 GlobalShortcutRegistrationState
@@ -695,6 +709,10 @@ SettingsActionState BuiltInSettingsBackend::actionState(SettingsActionBinding bi
             status.writeAvailable && !status.historyClearing,
             status.historyClearing,
         };
+    case SettingsActionBinding::CopyTodayLog:
+        return {status.diagnostics.loggingAvailable && !m_copyLogBusy &&
+                    !status.diagnostics.exporting,
+                m_copyLogBusy || status.diagnostics.exporting};
     case SettingsActionBinding::ClearThumbnailCache:
         return {status.appUsage.thumbnailCacheBytes > 0 && !status.cacheClearing &&
                     !status.appUsage.scanning,
@@ -709,6 +727,56 @@ SettingsActionState BuiltInSettingsBackend::actionState(SettingsActionBinding bi
 
 bool BuiltInSettingsBackend::triggerAction(SettingsActionBinding binding) {
     switch (binding) {
+    case SettingsActionBinding::CopyTodayLog: {
+        if (!actionState(binding).enabled)
+            return false;
+        m_copyLogBusy = true;
+        emit synchronized();
+        const auto future =
+            diagnostics::DiagnosticsService::instance().exportDay(QDate::currentDate());
+        const auto publication = ScreenshotClipboardService::reservePublication();
+        auto* poll = new QTimer(this);
+        poll->setInterval(25);
+        connect(poll, &QTimer::timeout, this, [this, poll, future, publication, binding] {
+            if (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready)
+                return;
+            poll->stop();
+            poll->deleteLater();
+            diagnostics::LogExportResult result;
+            try {
+                result = future.get();
+            } catch (...) {
+                result.error = QCoreApplication::translate(
+                    "DiagnosticsService", "The diagnostics writer stopped unexpectedly.");
+            }
+            if (!result.success) {
+                m_copyLogBusy = false;
+                emit synchronized();
+                emit actionFinished(binding, false, result.error);
+                return;
+            }
+            auto* mime = new QMimeData();
+            mime->setUrls({QUrl::fromLocalFile(result.path)});
+            const auto handle = ScreenshotClipboardService::commitMimeData(
+                QApplication::clipboard(), this, mime, publication,
+                [this, path = result.path, binding](ScreenshotClipboardCommitResult committed) {
+                    m_copyLogBusy = false;
+                    if (committed.succeeded())
+                        diagnostics::DiagnosticsService::instance().protectSnapshot(path);
+                    emit synchronized();
+                    emit actionFinished(binding, committed.succeeded(), committed.errorString());
+                });
+            if (!handle.isValid()) {
+                m_copyLogBusy = false;
+                emit synchronized();
+                emit actionFinished(binding, false,
+                                    QCoreApplication::translate("SettingsBackend",
+                                                                "The clipboard is unavailable."));
+            }
+        });
+        poll->start();
+        return true;
+    }
     case SettingsActionBinding::ClearCaptureHistory:
         return storage::ApplicationStorage::instance().requestCaptureHistoryClear();
     case SettingsActionBinding::ClearThumbnailCache:
@@ -720,10 +788,13 @@ bool BuiltInSettingsBackend::triggerAction(SettingsActionBinding binding) {
 }
 
 storage::StorageStatus BuiltInSettingsBackend::storageStatus() const {
-    return storage::ApplicationStorage::instance().status();
+    auto status = storage::ApplicationStorage::instance().status();
+    status.diagnostics.exporting = status.diagnostics.exporting || m_copyLogBusy;
+    return status;
 }
 
 void BuiltInSettingsBackend::refreshStorageStatus() {
+    diagnostics::DiagnosticsService::instance().requestMaintenance();
     storage::ApplicationStorage::instance().requestStorageUsageRefresh();
 }
 
@@ -848,6 +919,9 @@ bool BuiltInSettingsBackend::resetSection(SettingsSectionReset reset) {
             {QStringLiteral("screenshot_ui/color_picker_center_guide_line_color"),
              storage::ConfigurationSchema::defaultValue(
                  QStringLiteral("screenshot_ui/color_picker_center_guide_line_color"))},
+            {QStringLiteral("screenshot_toolbar/action_tools_layout"),
+             storage::ConfigurationSchema::defaultValue(
+                 QStringLiteral("screenshot_toolbar/action_tools_layout"))},
         });
     case SettingsSectionReset::Toolbar:
         return storage::ApplicationStorage::instance().configuration().setValue(
@@ -1024,6 +1098,9 @@ bool BuiltInSettingsBackend::resetSection(SettingsSectionReset reset) {
             {QStringLiteral("screenshot/restore_original_screen_colors"),
              storage::ConfigurationSchema::defaultValue(
                  QStringLiteral("screenshot/restore_original_screen_colors"))},
+            {QStringLiteral("screenshot/capture_cursor"),
+             storage::ConfigurationSchema::defaultValue(
+                 QStringLiteral("screenshot/capture_cursor"))},
         });
     case SettingsSectionReset::Network:
         return applySelectValue(

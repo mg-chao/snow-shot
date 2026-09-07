@@ -20,6 +20,7 @@ class ScreenshotToolbarWindow final : public ScreenshotFloatingToolPaletteWindow
     void resetForNewCapture();
     void setToolbarSize(const QString& size);
     void setToolbarLayout(const snow_shot::storage::ScreenshotToolbarLayout& layout);
+    void setActionToolsLayout(const snow_shot::storage::ScreenshotToolbarLayout& layout);
     void setScrollingScreenshotMode(bool enabled);
     void setActiveTool(ScreenshotToolPalette::Tool tool);
     [[nodiscard]] bool activateDrawingShortcut(const QString& toolId);

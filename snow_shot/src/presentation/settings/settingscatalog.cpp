@@ -313,6 +313,20 @@ SettingsItemDefinition drawingToolbarEditorItem() {
             SettingsCustomDefinition{SettingsCustomRenderer::DrawingToolbarEditor}};
 }
 
+SettingsItemDefinition screenshotToolbarEditorItem() {
+    return {QStringLiteral("interface.screenshot.screenshot-toolbar-editor"),
+            settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Screenshot toolbar settings")),
+            settingsText(QT_TRANSLATE_NOOP(
+                "SettingsCatalog",
+                "Drag screenshot tools to reorder them or stack them in the same toolbar "
+                "position.")),
+            {settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Custom screenshot toolbar")),
+             settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Tool positions")),
+             settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Stack screenshot tools"))},
+            QStringLiteral("screenshot_toolbar/action_tools_layout"),
+            SettingsCustomDefinition{SettingsCustomRenderer::ScreenshotToolbarEditor}};
+}
+
 SettingsItemDefinition pinBorderColorItem() {
     return screenshotColorItem(
         QStringLiteral("interface.pin-to-screen.border-color"),
@@ -698,6 +712,15 @@ SettingsItemDefinition screenshotRestoreOriginalScreenColorsItem() {
                           "Reverse supported full-screen color filters in screenshots."),
         QStringLiteral("screenshot/restore_original_screen_colors"),
         SettingsSwitchBinding::ScreenshotRestoreOriginalScreenColors);
+}
+
+SettingsItemDefinition screenshotCaptureCursorItem() {
+    return switchItem(
+        QStringLiteral("screenshot.capture-cursor"),
+        QT_TRANSLATE_NOOP("SettingsCatalog", "Capture cursor"),
+        QT_TRANSLATE_NOOP("SettingsCatalog", "Include the mouse cursor in normal screenshots."),
+        QStringLiteral("screenshot/capture_cursor"),
+        SettingsSwitchBinding::ScreenshotCaptureCursor);
 }
 
 SettingsItemDefinition screenshotAutoSaveAfterCopyItem() {
@@ -1457,6 +1480,7 @@ QVector<SettingsPageDefinition> builtInPages() {
                                 "Draw four guide segments around the sampled center pixel"),
                             QStringLiteral("screenshot_ui/color_picker_center_guide_line_color"),
                             SettingsColorBinding::ColorPickerCenterGuideLineColor),
+                        screenshotToolbarEditorItem(),
                     },
                 },
                 {
@@ -1590,7 +1614,7 @@ QVector<SettingsPageDefinition> builtInPages() {
                     settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Screen capture settings")),
                     SettingsSectionReset::ScreenshotCapture,
                     {screenshotApiModeItem(), windowElementApiItem(),
-                     screenshotRestoreOriginalScreenColorsItem()},
+                     screenshotRestoreOriginalScreenColorsItem(), screenshotCaptureCursorItem()},
                 },
                 {
                     QStringLiteral("network"),
@@ -2325,6 +2349,9 @@ QStringList SettingsCatalog::validationErrors() const {
                     case SettingsSwitchBinding::ScreenshotAutoSaveAfterCopy:
                         expectedKey = QStringLiteral("screenshot/auto_save_after_copy");
                         break;
+                    case SettingsSwitchBinding::ScreenshotCaptureCursor:
+                        expectedKey = QStringLiteral("screenshot/capture_cursor");
+                        break;
                     case SettingsSwitchBinding::ScreenshotRestoreOriginalScreenColors:
                         expectedKey = QStringLiteral("screenshot/restore_original_screen_colors");
                         break;
@@ -2650,6 +2677,11 @@ QStringList SettingsCatalog::validationErrors() const {
                     case SettingsCustomRenderer::DrawingToolbarEditor:
                         rendererSupported = true;
                         expectedKey = QStringLiteral("screenshot_toolbar/layout");
+                        expectedKind = storage::ConfigurationValueKind::Structured;
+                        break;
+                    case SettingsCustomRenderer::ScreenshotToolbarEditor:
+                        rendererSupported = true;
+                        expectedKey = QStringLiteral("screenshot_toolbar/action_tools_layout");
                         expectedKind = storage::ConfigurationValueKind::Structured;
                         break;
                     case SettingsCustomRenderer::TrayMenuOptions:

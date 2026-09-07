@@ -219,6 +219,7 @@ typedef struct SnowCaptureWindowFrameInfo {
 #define SNOW_CAPTURE_SCREENSHOT_REQUEST_VERSION 1u
 #define SNOW_CAPTURE_SCREENSHOT_REQUEST_REFRESH_LAYOUT (1u << 0)
 #define SNOW_CAPTURE_SCREENSHOT_REQUEST_RESTORE_ORIGINAL_COLORS (1u << 1)
+#define SNOW_CAPTURE_SCREENSHOT_REQUEST_INCLUDE_CURSOR (1u << 2)
 
 typedef struct SnowCaptureScreenshotRequest {
     uint32_t version;

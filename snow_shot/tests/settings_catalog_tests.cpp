@@ -95,8 +95,8 @@ void builtInCatalogIsCompleteAndValid() {
         }
     }
     require(
-        sectionCount == 29 && itemCount == 116,
-        "catalog must contain the expected twenty-nine sections and one hundred sixteen items");
+        sectionCount == 29 && itemCount == 118,
+        "catalog must contain the expected twenty-nine sections and one hundred eighteen items");
     const auto* saveDialog =
         catalog.item({QStringLiteral("function-settings"), QStringLiteral("screenshot-settings"),
                       QStringLiteral("screenshot.save-as-file-dialog")});
@@ -146,6 +146,26 @@ void builtInCatalogIsCompleteAndValid() {
                 std::get<settings::SettingsSwitchDefinition>(colorRestoration->payload).binding ==
                     settings::SettingsSwitchBinding::ScreenshotRestoreOriginalScreenColors,
             "screen color restoration must be a system screenshot switch");
+    const auto* captureCursor =
+        catalog.item({QStringLiteral("system-settings"), QStringLiteral("screenshot-capture"),
+                      QStringLiteral("screenshot.capture-cursor")});
+    const auto* screenshotCaptureSection =
+        catalog.section(QStringLiteral("system-settings"), QStringLiteral("screenshot-capture"));
+    require(
+        captureCursor != nullptr && screenshotCaptureSection != nullptr &&
+            screenshotCaptureSection->items.size() == 4 &&
+            screenshotCaptureSection->items.at(2).id ==
+                QStringLiteral("screenshot.restore-original-screen-colors") &&
+            screenshotCaptureSection->items.at(3).id ==
+                QStringLiteral("screenshot.capture-cursor") &&
+            captureCursor->title.translated() == QStringLiteral("Capture cursor") &&
+            captureCursor->description.translated() ==
+                QStringLiteral("Include the mouse cursor in normal screenshots.") &&
+            captureCursor->configurationKey == QStringLiteral("screenshot/capture_cursor") &&
+            std::get<settings::SettingsSwitchDefinition>(captureCursor->payload).binding ==
+                settings::SettingsSwitchBinding::ScreenshotCaptureCursor &&
+            !storage::ConfigurationSchema::defaultValue(captureCursor->configurationKey).toBool(),
+        "cursor capture must be the disabled final switch in system Screenshot settings");
     const auto* functionPage = catalog.page(QStringLiteral("function-settings"));
     const auto* smartSelection =
         catalog.item({QStringLiteral("function-settings"), QStringLiteral("screenshot-settings"),
@@ -409,12 +429,18 @@ void builtInCatalogIsCompleteAndValid() {
     const auto* toolbarEditor =
         catalog.item({QStringLiteral("interface-settings"), QStringLiteral("drawing"),
                       QStringLiteral("interface.toolbar.drawing-toolbar-editor")});
+    const auto* screenshotToolbarEditor =
+        catalog.item({QStringLiteral("interface-settings"), QStringLiteral("interface-screenshot"),
+                      QStringLiteral("interface.screenshot.screenshot-toolbar-editor")});
+    const auto& screenshotSection = interfacePage->sections.at(1);
     const auto& toolbarSection = interfacePage->sections.at(2);
     const auto* trayIcon =
         catalog.item({QStringLiteral("interface-settings"), QStringLiteral("tray"),
                       QStringLiteral("interface.tray.icon")});
     require(
-        toolbarSize != nullptr && toolbarEditor != nullptr && trayIcon != nullptr &&
+        toolbarSize != nullptr && toolbarEditor != nullptr && screenshotToolbarEditor != nullptr &&
+            trayIcon != nullptr &&
+            screenshotSection.items.constLast().id == screenshotToolbarEditor->id &&
             catalog.item({QStringLiteral("interface-settings"), QStringLiteral("drawing"),
                           QStringLiteral("drawing.quick-selection-disabled-tools")}) == nullptr &&
             catalog.item({QStringLiteral("interface-settings"), QStringLiteral("pin-to-screen"),
@@ -433,6 +459,24 @@ void builtInCatalogIsCompleteAndValid() {
             toolbarEditor->aliases.size() == 2 &&
             toolbarEditor->aliases.at(0).translated() == QStringLiteral("Tool positions") &&
             toolbarEditor->aliases.at(1).translated() == QStringLiteral("Stack drawing tools") &&
+            screenshotToolbarEditor->configurationKey ==
+                QStringLiteral("screenshot_toolbar/action_tools_layout") &&
+            screenshotToolbarEditor->title.translated() ==
+                QStringLiteral("Screenshot toolbar settings") &&
+            screenshotToolbarEditor->description.translated() ==
+                QStringLiteral("Drag screenshot tools to reorder them or stack them in the same "
+                               "toolbar position.") &&
+            screenshotToolbarEditor->aliases.size() == 3 &&
+            screenshotToolbarEditor->aliases.at(0).translated() ==
+                QStringLiteral("Custom screenshot toolbar") &&
+            screenshotToolbarEditor->aliases.at(1).translated() ==
+                QStringLiteral("Tool positions") &&
+            screenshotToolbarEditor->aliases.at(2).translated() ==
+                QStringLiteral("Stack screenshot tools") &&
+            std::get<settings::SettingsCustomDefinition>(screenshotToolbarEditor->payload)
+                    .renderer == settings::SettingsCustomRenderer::ScreenshotToolbarEditor &&
+            screenshotSection.reset ==
+                settings::SettingsSectionReset::ScreenshotInterfaceSettings &&
             trayIcon->configurationKey == QStringLiteral("tray/icon") &&
             std::get<settings::SettingsRadioDefinition>(trayIcon->payload).options.size() == 6,
         "new Interface settings controls must retain their schema contracts");
@@ -798,8 +842,8 @@ void invalidCatalogReportsAllConformanceErrors() {
 
 void searchIndexIsGeneratedAndRanked() {
     settings::SettingsSearchIndex index(settings::builtInSettingsRegistry());
-    require(index.entries().size() == 152 && index.search(QString()).size() == 152,
-            "search must generate all one hundred fifty-two catalog nodes in catalog order");
+    require(index.entries().size() == 154 && index.search(QString()).size() == 154,
+            "search must generate all one hundred fifty-four catalog nodes in catalog order");
     const auto translation = index.search(QStringLiteral("original image translation"));
     require(!translation.isEmpty() && translation.constFirst().location.itemId ==
                                           QStringLiteral("translation.original-image"),
@@ -830,8 +874,13 @@ void searchIndexIsGeneratedAndRanked() {
             break;
         }
     }
-    require(pages == 7 && sections == 29 && items == 116,
+    require(pages == 7 && sections == 29 && items == 118,
             "search node counts must match catalog page, section, and item counts");
+
+    const auto captureCursor = index.search(QStringLiteral("Capture cursor"));
+    require(!captureCursor.isEmpty() && captureCursor.constFirst().location.itemId ==
+                                            QStringLiteral("screenshot.capture-cursor"),
+            "search must find the cursor capture setting");
 
     const auto theme = index.search(QStringLiteral("theme"));
     require(!theme.isEmpty() && theme.constFirst().id == QStringLiteral("item:interface.theme"),
@@ -857,6 +906,11 @@ void searchIndexIsGeneratedAndRanked() {
                 drawingToolbar.constFirst().location.itemId ==
                     QStringLiteral("interface.toolbar.drawing-toolbar-editor"),
             "drawing toolbar position and stack terminology must be indexed");
+    const auto screenshotToolbar = index.search(QStringLiteral("custom screenshot toolbar"));
+    require(!screenshotToolbar.isEmpty() &&
+                screenshotToolbar.constFirst().location.itemId ==
+                    QStringLiteral("interface.screenshot.screenshot-toolbar-editor"),
+            "screenshot toolbar customization terminology must be indexed");
 
     index.setRuntimeValues({7});
     const auto delayedScreenshot = index.search(QStringLiteral("delay 7s"));

@@ -1,6 +1,9 @@
 #include "snow_shot/presentation/components/storagestatussettingswidget.h"
+#include "snow_shot/presentation/components/settingscustomwidget.h"
+#include "snow_shot/presentation/settings/settingsregistry.h"
 #include "snow_shot/presentation/settings/settingsruntimesession.h"
 #include "snow_shot/storage/applicationstorage.h"
+#include "snow_shot/presentation/globalshortcutmanager.h"
 
 #include "antd_icons.h"
 #include "theme/theme_manager.h"
@@ -10,13 +13,21 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QEvent>
+#include <QClipboard>
+#include <QMimeData>
+#include <QFile>
+#include <QElapsedTimer>
+#include <QThread>
+#include <QUrl>
 #include <QLabel>
 #include <QLayout>
 #include <QTemporaryDir>
+#include <QTranslator>
 
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 
 namespace presentation = snow_shot::presentation;
 namespace settings = snow_shot::presentation::settings;
@@ -38,6 +49,32 @@ void flushEvents() {
 settings::TranslatableText text(const char* source) {
     return {"StorageStatusWidgetTests", source};
 }
+
+class ToolbarEditorTranslator final : public QTranslator {
+  public:
+    QString translate(const char* context, const char* sourceText, const char*,
+                      int) const override {
+        const QString translationContext = QString::fromLatin1(context);
+        const QString source = QString::fromUtf8(sourceText);
+        if (translationContext == QStringLiteral("DrawingToolbarEditorSettingsWidget")) {
+            if (source == QStringLiteral("Shape")) {
+                return QStringLiteral("Translated drawing shape");
+            }
+            if (source == QStringLiteral("Drawing toolbar preview")) {
+                return QStringLiteral("Translated drawing preview");
+            }
+        }
+        if (translationContext == QStringLiteral("ScreenshotToolbarEditorSettingsWidget")) {
+            if (source == QStringLiteral("Barcode recognition")) {
+                return QStringLiteral("Translated barcode recognition");
+            }
+            if (source == QStringLiteral("Screenshot toolbar preview")) {
+                return QStringLiteral("Translated screenshot preview");
+            }
+        }
+        return {};
+    }
+};
 
 class FakeSettingsBackend final : public settings::SettingsBackend {
   public:
@@ -121,10 +158,12 @@ class FakeSettingsBackend final : public settings::SettingsBackend {
     bool applyTextValue(settings::SettingsTextBinding, const QString&) override {
         return false;
     }
-    storage::ScreenshotToolbarLayout toolbarLayout() const override {
+    storage::ScreenshotToolbarLayout
+    toolbarLayout(storage::ScreenshotToolbarLayoutKind) const override {
         return {};
     }
-    bool applyToolbarLayout(const storage::ScreenshotToolbarLayout&) override {
+    bool applyToolbarLayout(storage::ScreenshotToolbarLayoutKind,
+                            const storage::ScreenshotToolbarLayout&) override {
         return false;
     }
     presentation::GlobalShortcutRegistrationState
@@ -150,7 +189,10 @@ class FakeSettingsBackend final : public settings::SettingsBackend {
                              const QStringList&) override {
         return false;
     }
-    settings::SettingsActionState actionState(settings::SettingsActionBinding) const override {
+    settings::SettingsActionState
+    actionState(settings::SettingsActionBinding binding) const override {
+        if (binding == settings::SettingsActionBinding::CopyTodayLog)
+            return {!m_status.diagnostics.exporting, m_status.diagnostics.exporting};
         return {true, false};
     }
     bool triggerAction(settings::SettingsActionBinding) override {
@@ -240,8 +282,7 @@ void widgetUsesDescriptionsTitleAndThemeSpacing() {
             "the refresh button must be the descriptions extra widget");
 
     QWidget* header = descriptions->findChild<QWidget*>(QStringLiteral("adDescriptionsHeader"));
-    require(header != nullptr && header->layout() != nullptr,
-            "the descriptions header must exist");
+    require(header != nullptr && header->layout() != nullptr, "the descriptions header must exist");
     const QMargins headerMargins = header->layout()->contentsMargins();
     const adqt::theme::ResolvedTheme theme =
         adqt::theme::ThemeManager::instance().resolve(descriptions);
@@ -348,6 +389,158 @@ void widgetShowsScanningStateAndForwardsRefresh() {
     require(total->text() != QStringLiteral("Scanning…"),
             "a settled status must restore the total usage");
 }
+
+void toolbarEditorsUseSeparateDefinitionsAndRetranslate() {
+    const settings::SettingsRegistry& registry = settings::builtInSettingsRegistry();
+    FakeSettingsBackend backend;
+    settings::SettingsRuntimeSession session(registry, backend);
+    const auto createEditor = [&](settings::SettingsCustomRenderer renderer) {
+        const settings::SettingsFieldDescriptor* field = registry.fieldForCustom(renderer);
+        require(field != nullptr && field->definition != nullptr,
+                "the built-in toolbar editor field must exist");
+        return std::unique_ptr<SettingsCustomWidget>(
+            createSettingsCustomWidget(renderer, registry, *field->definition, session));
+    };
+
+    std::unique_ptr<SettingsCustomWidget> drawingEditor =
+        createEditor(settings::SettingsCustomRenderer::DrawingToolbarEditor);
+    std::unique_ptr<SettingsCustomWidget> screenshotEditor =
+        createEditor(settings::SettingsCustomRenderer::ScreenshotToolbarEditor);
+    require(drawingEditor != nullptr && screenshotEditor != nullptr,
+            "both custom toolbar renderers must create an editor");
+
+    QAbstractButton* shape = drawingEditor->findChild<QAbstractButton*>(
+        QStringLiteral("settings-drawing-toolbar-item-shape"));
+    QAbstractButton* barcode = screenshotEditor->findChild<QAbstractButton*>(
+        QStringLiteral("settings-screenshot-toolbar-item-barcode-recognition"));
+    QAbstractButton* table = screenshotEditor->findChild<QAbstractButton*>(
+        QStringLiteral("settings-screenshot-toolbar-item-table-recognition"));
+    QWidget* drawingPreview =
+        drawingEditor->findChild<QWidget*>(QStringLiteral("settings-drawing-toolbar-surface"));
+    QWidget* screenshotPreview = screenshotEditor->findChild<QWidget*>(
+        QStringLiteral("settings-screenshot-toolbar-surface"));
+    require(shape != nullptr && barcode != nullptr && table != nullptr &&
+                drawingPreview != nullptr && screenshotPreview != nullptr &&
+                drawingEditor->findChild<QAbstractButton*>(QStringLiteral(
+                    "settings-drawing-toolbar-item-barcode-recognition")) == nullptr &&
+                screenshotEditor->findChild<QAbstractButton*>(
+                    QStringLiteral("settings-screenshot-toolbar-item-shape")) == nullptr,
+            "drawing and screenshot editors must expose only their own stable tool definitions");
+    require(!barcode->property("screenshotToolbarMainButton").toBool() &&
+                table->property("screenshotToolbarMainButton").toBool(),
+            "the default screenshot preview must stack Barcode below the visible Table trigger");
+
+    ToolbarEditorTranslator translator;
+    require(QCoreApplication::installTranslator(&translator),
+            "the toolbar editor test translator must install");
+    QEvent drawingLanguageChange(QEvent::LanguageChange);
+    QCoreApplication::sendEvent(drawingEditor.get(), &drawingLanguageChange);
+    QEvent screenshotLanguageChange(QEvent::LanguageChange);
+    QCoreApplication::sendEvent(screenshotEditor.get(), &screenshotLanguageChange);
+    require(shape->accessibleName() == QStringLiteral("Translated drawing shape") &&
+                barcode->accessibleName() == QStringLiteral("Translated barcode recognition") &&
+                drawingPreview->accessibleName() == QStringLiteral("Translated drawing preview") &&
+                screenshotPreview->accessibleName() ==
+                    QStringLiteral("Translated screenshot preview"),
+            "LanguageChange must refresh labels and accessibility text in both toolbar editors");
+    QCoreApplication::removeTranslator(&translator);
+}
+
+void diagnosticsStateAndCopyFeedback() {
+    const auto registry = storageStatusRegistry();
+    FakeSettingsBackend backend;
+    settings::SettingsRuntimeSession session(registry, backend);
+    StorageStatusSettingsWidget widget(session);
+    auto status = backend.storageStatus();
+    status.diagnostics.directory = QStringLiteral("C:/very-long-storage-directory/").repeated(10);
+    status.diagnostics.loggingAvailable = true;
+    status.diagnostics.exporting = true;
+    status.appUsage.diagnosticsBytes = 2048;
+    status.lastHistoryError = QStringLiteral("history error");
+    status.diagnostics.lastError = QStringLiteral("collector error");
+    backend.publish(status);
+    flushEvents();
+    auto* location =
+        widget.findChild<QLabel*>(QStringLiteral("settings-status-value-log-location"));
+    auto* usage = widget.findChild<QLabel*>(QStringLiteral("settings-status-value-diagnostics"));
+    auto* copy =
+        widget.findChild<QAbstractButton*>(QStringLiteral("settings-storage-copy-today-log"));
+    require(location && location->text() == status.diagnostics.directory && location->wordWrap(),
+            "log path wraps without shortening");
+    require(location->textInteractionFlags().testFlag(Qt::TextSelectableByMouse),
+            "log path selectable");
+    require(usage && usage->text() == QStringLiteral("2.00 KiB"), "diagnostics bytes visible");
+    require(copy && !copy->isEnabled(), "repeat activation blocked during export");
+    status.diagnostics.exporting = false;
+    backend.publish(status);
+    flushEvents();
+    require(copy->isEnabled(), "copy enabled after completion");
+    emit backend.actionFinished(settings::SettingsActionBinding::CopyTodayLog, true, {});
+    auto* feedback =
+        widget.findChild<QLabel*>(QStringLiteral("settings-storage-log-copy-feedback"));
+    require(feedback && feedback->text() == QStringLiteral("Log file copied."),
+            "async completion reaches widget");
+    QEvent language(QEvent::LanguageChange);
+    QCoreApplication::sendEvent(&widget, &language);
+    require(!copy->accessibleName().isEmpty(), "copy action has an accessible translated name");
+}
+void copyPublishesStableFileAndPreservesClipboardOnFailure() {
+    QTemporaryDir directory;
+    auto& diagnostics = snow_shot::diagnostics::DiagnosticsService::instance();
+    snow_shot::diagnostics::DiagnosticsOptions options;
+    options.directories = {directory.path()};
+    options.enableCrashCapture = false;
+    options.installMessageHandler = false;
+    require(diagnostics.initialize(options), "clipboard diagnostics initialize");
+    presentation::GlobalShortcutManager shortcuts;
+    settings::BuiltInSettingsBackend backend(shortcuts);
+    int completions = 0;
+    bool succeeded = false;
+    QObject::connect(&backend, &settings::SettingsBackend::actionFinished, &backend,
+                     [&](settings::SettingsActionBinding, bool success, const QString&) {
+                         ++completions;
+                         succeeded = success;
+                     });
+    const auto copy = settings::SettingsActionBinding::CopyTodayLog;
+    require(backend.triggerAction(copy), "copy action starts");
+    require(!backend.triggerAction(copy), "concurrent copy rejected");
+    QElapsedTimer timer;
+    timer.start();
+    while (completions == 0 && timer.elapsed() < 5000) {
+        flushEvents();
+        QThread::msleep(5);
+    }
+    require(completions == 1 && succeeded, "copy completes successfully");
+    const auto urls = QApplication::clipboard()->mimeData()->urls();
+    require(urls.size() == 1 && urls.front().isLocalFile(), "copy publishes a file attachment");
+    QFile snapshot(urls.front().toLocalFile());
+    require(snapshot.open(QIODevice::ReadOnly), "copied attachment exists");
+    const auto content = snapshot.readAll();
+    snapshot.close();
+    diagnostics.record(QtWarningMsg, QStringLiteral("test"), QStringLiteral("after.copy"));
+    require(diagnostics.flush(), "later records flushed");
+    require(snapshot.open(QIODevice::ReadOnly) && snapshot.readAll() == content,
+            "attachment is immutable");
+    snapshot.close();
+    diagnostics.shutdown();
+    QTemporaryDir failedDirectory;
+    options.directories = {failedDirectory.path()};
+    require(diagnostics.initialize(options), "failed-export logger starts");
+    QFile blocker(QDir(failedDirectory.path()).filePath(QStringLiteral("exports")));
+    require(blocker.open(QIODevice::WriteOnly), "create export failure fixture");
+    blocker.close();
+    require(backend.triggerAction(copy), "failing export starts");
+    timer.restart();
+    while (completions < 2 && timer.elapsed() < 5000) {
+        flushEvents();
+        QThread::msleep(5);
+    }
+    require(completions == 2 && !succeeded, "export failure reported");
+    require(QApplication::clipboard()->mimeData()->urls() == urls,
+            "failed export preserves previous clipboard");
+    diagnostics.shutdown();
+    QApplication::clipboard()->clear();
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -361,6 +554,9 @@ int main(int argc, char** argv) {
     widgetUsesDescriptionsTitleAndThemeSpacing();
     widgetRendersAppUsageBreakdown();
     widgetShowsScanningStateAndForwardsRefresh();
+    toolbarEditorsUseSeparateDefinitionsAndRetranslate();
+    diagnosticsStateAndCopyFeedback();
+    copyPublishesStableFileAndPreservesClipboardOnFailure();
     storage::ApplicationStorage::instance().shutdown();
     return 0;
 }

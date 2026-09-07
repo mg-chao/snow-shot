@@ -1176,6 +1176,7 @@ void ScreenshotController::Impl::createCaptureWorkflow() {
                 static_cast<void>(m_selection.setShadowWidth(m_selectionSettings->shadowWidth()));
             },
             []() { return snow_shot::storage::ScreenshotSettings().restoreOriginalScreenColors(); },
+            []() { return snow_shot::storage::ScreenshotSettings().captureCursor(); },
             [this]() { return m_selectionSettings->selectionTarget(); },
         });
 }
@@ -2154,6 +2155,14 @@ void ScreenshotController::Impl::pinSelectionToScreen() {
     const bool historyEligible = m_interaction.activeTool() != ScreenshotActiveTool::Ocr &&
                                  m_interaction.activeTool() != ScreenshotActiveTool::Table &&
                                  m_interaction.activeTool() != ScreenshotActiveTool::Qr;
+    const bool recognitionVisible =
+        m_ocrController != nullptr && m_ocrController->active() &&
+        m_ocrController->mode() == ScreenshotOcrController::Mode::Text &&
+        m_ocrController->hasTextResult() && !m_ocrController->editing();
+    const ScreenshotRecognitionResults recognitionResults =
+        m_ocrController != nullptr ? m_ocrController->recognitionResultsSnapshot()
+                                   : ScreenshotRecognitionResults{};
+    const bool translationVisible = recognitionVisible && m_ocrController->translating();
     deactivateRecognition();
     SNOW_SHOT_PIN_PERF_MILESTONE("controller.ocr_deactivated");
     const std::optional<quint64> exportGeneration = beginImageExport();
@@ -2180,9 +2189,9 @@ void ScreenshotController::Impl::pinSelectionToScreen() {
         m_captureWorkflow->cancelCapture();
         return;
     }
-    if (m_ocrController != nullptr) {
-        request->recognitionResults = m_ocrController->cachedRecognitionResults();
-    }
+    request->recognitionResults = recognitionResults;
+    request->recognitionVisible = recognitionVisible;
+    request->translationVisible = translationVisible;
     ScreenshotPinnedSelectionResultHandle resultHandle;
     const bool renderScheduled = m_exportService->schedulePinnedSelection(
         *request, &owner,

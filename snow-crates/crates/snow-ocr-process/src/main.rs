@@ -462,6 +462,7 @@ fn worker_loop(
             state.jobs.pop_front().unwrap()
         };
         let cancelled = job.cancelled.load(std::sync::atomic::Ordering::Acquire);
+        diagnostics::operation_started(job.id);
         let result = if cancelled {
             Err("cancelled".to_string())
         } else {
@@ -480,6 +481,7 @@ fn worker_loop(
                                     resolution.resolved == ResolvedExecutionProvider::DirectMl
                                 });
                         if wants_directml && !provider_ok {
+                            eprintln!("ocr.backend_fallback directml-to-cpu");
                             config.directml_cache.write(false);
                             config.directml_enabled.store(false, Ordering::Release);
                             make_engine(&config, false, thread_budget).ok()
@@ -648,6 +650,8 @@ fn completion_payload(completion: &Completion) -> Vec<u8> {
     p
 }
 
+mod diagnostics;
+
 fn main() -> io::Result<()> {
     if std::env::args_os().any(|argument| argument == "--version") {
         println!(
@@ -659,6 +663,7 @@ fn main() -> io::Result<()> {
         );
         return Ok(());
     }
+    diagnostics::initialize();
     // Native ONNX Runtime diagnostics must never share stdout with the binary
     // IPC stream. Severity 3 suppresses the cpuinfo debug chatter emitted by
     // the Windows runtime before its custom logger is installed.

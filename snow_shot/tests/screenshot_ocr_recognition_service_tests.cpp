@@ -1,5 +1,6 @@
 #include "snow_shot/presentation/screenshotocrrecognitionservice.h"
 #include "snow_shot/presentation/screenshotocrpresentation.h"
+#include "snow_shot/diagnostics/diagnostics.h"
 
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -14,6 +15,7 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QProcess>
 
 #include <algorithm>
 #include <cmath>
@@ -23,6 +25,9 @@
 #include <memory>
 #include <utility>
 #include <vector>
+#ifdef Q_OS_WIN
+#include <Windows.h>
+#endif
 
 namespace {
 void require(bool condition, const char* message) {
@@ -86,8 +91,7 @@ void explicitAssetsControlReadiness() {
         require(file.open(QIODevice::WriteOnly), "OCR asset fixture file should be writable");
         file.write("fixture");
     }
-    require(service.modelFilesReady(),
-            "a complete explicit OCR asset set must report ready");
+    require(service.modelFilesReady(), "a complete explicit OCR asset set must report ready");
 }
 
 void diskBackedEngineCompletesThroughTheQtWorker(bool directMlEnabled) {
@@ -96,13 +100,11 @@ void diskBackedEngineCompletesThroughTheQtWorker(bool directMlEnabled) {
     // payload next to the test binary), so the run needs either cache,
     // packaged assets, or network access.
     ScreenshotOcrRecognitionService::Options options;
-    options.cacheRoot =
-        QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
-            .filePath(QStringLiteral("snow-shot-ocr-test-assets"));
-    ScreenshotOcrRecognitionService service(
-        options,
-        directMlEnabled ? ScreenshotOcrBackendPreference::DirectMl
-                        : ScreenshotOcrBackendPreference::Cpu);
+    options.cacheRoot = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
+                            .filePath(QStringLiteral("snow-shot-ocr-test-assets"));
+    ScreenshotOcrRecognitionService service(options, directMlEnabled
+                                                         ? ScreenshotOcrBackendPreference::DirectMl
+                                                         : ScreenshotOcrBackendPreference::Cpu);
     require(service.liveWorkerCount() == 0,
             "OCR service construction must not create worker threads eagerly");
     QEventLoop loop;
@@ -118,9 +120,8 @@ void diskBackedEngineCompletesThroughTheQtWorker(bool directMlEnabled) {
 
     const QImage image = whiteImage();
     const ScreenshotOcrRecognitionPort::RequestToken token =
-        service.recognize(
-            ScreenshotOcrRequest{image, QRectF(QPointF(), QSizeF(image.size()))}, &loop,
-                          [&](ScreenshotOcrRecognitionResult result) {
+        service.recognize(ScreenshotOcrRequest{image, QRectF(QPointF(), QSizeF(image.size()))},
+                          &loop, [&](ScreenshotOcrRecognitionResult result) {
                               output = std::move(result);
                               completed = true;
                               loop.quit();
@@ -166,8 +167,8 @@ void renderOnlyWorkRunsOnTheOcrWorkerWithoutAnEngine() {
 
     ScreenshotOcrRecognitionResult output;
     bool completed = false;
-    const auto token = service.render(
-        std::move(request), &receiver, [&](ScreenshotOcrRecognitionResult result) {
+    const auto token =
+        service.render(std::move(request), &receiver, [&](ScreenshotOcrRecognitionResult result) {
             output = std::move(result);
             completed = true;
         });
@@ -177,8 +178,7 @@ void renderOnlyWorkRunsOnTheOcrWorkerWithoutAnEngine() {
     require(output.error.isEmpty() && output.presentation == nullptr &&
                 !output.filteredImage.isNull(),
             "render-only OCR work should return only its transient filtered image");
-    require(output.filteredImageCanvasRect.isValid() &&
-                !output.filteredImageCanvasRect.isEmpty() &&
+    require(output.filteredImageCanvasRect.isValid() && !output.filteredImageCanvasRect.isEmpty() &&
                 canvasRect.contains(output.filteredImageCanvasRect),
             "render-only OCR work should report the canvas rect covered by its filtered crop");
     const qreal renderScale = image.width() / canvasRect.width();
@@ -198,13 +198,13 @@ void recognitionRenderIntentCanChangeWhileQueued() {
     QObject receiver;
     const QImage blocker = whiteImage(768);
     bool blockerCompleted = false;
-    const auto blockerToken = service.recognize(
-        ScreenshotOcrRequest{blocker, QRectF(QPointF(), QSizeF(blocker.size()))}, &receiver,
-        [&](ScreenshotOcrRecognitionResult result) {
-            require(result.error.isEmpty() && result.presentation != nullptr,
-                    "the render-intent blocker recognition should succeed");
-            blockerCompleted = true;
-        });
+    const auto blockerToken =
+        service.recognize(ScreenshotOcrRequest{blocker, QRectF(QPointF(), QSizeF(blocker.size()))},
+                          &receiver, [&](ScreenshotOcrRecognitionResult result) {
+                              require(result.error.isEmpty() && result.presentation != nullptr,
+                                      "the render-intent blocker recognition should succeed");
+                              blockerCompleted = true;
+                          });
     require(blockerToken != 0, "the render-intent blocker should be accepted");
 
     QImage promotedImage(96, 64, QImage::Format_RGBA8888);
@@ -215,17 +215,17 @@ void recognitionRenderIntentCanChangeWhileQueued() {
     promotedRequest.priority = ScreenshotOcrRequestPriority::Prefetch;
     bool promotedCompleted = false;
     ScreenshotOcrRecognitionResult promotedOutput;
-    const auto promotedToken = service.recognize(
-        std::move(promotedRequest), &receiver, [&](ScreenshotOcrRecognitionResult result) {
-            promotedOutput = std::move(result);
-            promotedCompleted = true;
-        });
+    const auto promotedToken = service.recognize(std::move(promotedRequest), &receiver,
+                                                 [&](ScreenshotOcrRecognitionResult result) {
+                                                     promotedOutput = std::move(result);
+                                                     promotedCompleted = true;
+                                                 });
     require(promotedToken != 0 &&
                 service.setRenderFilteredImage(promotedToken, true, QColor(Qt::white)),
             "a queued prefetch should accept interactive render promotion");
-    require(waitUntil([&]() { return blockerCompleted && promotedCompleted; },
-                      kRecognitionTimeoutMs),
-            "promoted recognition should finish within the timeout");
+    require(
+        waitUntil([&]() { return blockerCompleted && promotedCompleted; }, kRecognitionTimeoutMs),
+        "promoted recognition should finish within the timeout");
     require(promotedOutput.error.isEmpty() && promotedOutput.presentation != nullptr &&
                 !promotedOutput.filteredImage.isNull(),
             "a promoted prefetch should render its transient effect in the recognition worker");
@@ -236,13 +236,12 @@ void recognitionRenderIntentCanChangeWhileQueued() {
     suppressedRequest.renderFilteredImage = true;
     bool suppressedCompleted = false;
     ScreenshotOcrRecognitionResult suppressedOutput;
-    const auto suppressedToken = service.recognize(
-        std::move(suppressedRequest), &receiver, [&](ScreenshotOcrRecognitionResult result) {
-            suppressedOutput = std::move(result);
-            suppressedCompleted = true;
-        });
-    require(suppressedToken != 0 &&
-                service.setRenderFilteredImage(suppressedToken, false),
+    const auto suppressedToken = service.recognize(std::move(suppressedRequest), &receiver,
+                                                   [&](ScreenshotOcrRecognitionResult result) {
+                                                       suppressedOutput = std::move(result);
+                                                       suppressedCompleted = true;
+                                                   });
+    require(suppressedToken != 0 && service.setRenderFilteredImage(suppressedToken, false),
             "an abandoned recognition should accept render suppression");
     require(waitUntil([&]() { return suppressedCompleted; }, kRecognitionTimeoutMs),
             "render-suppressed recognition should still complete and remain cacheable");
@@ -272,10 +271,8 @@ void concurrentRequestsCompleteExactlyOnce() {
     for (int index = 0; index < kRequestCount; ++index) {
         const QImage image = whiteImage();
         const auto token = service.recognize(
-            ScreenshotOcrRequest{
-                image, QRectF(QPointF(index, index), QSizeF(image.size()))},
-            &receiver,
-            [&, index](ScreenshotOcrRecognitionResult result) {
+            ScreenshotOcrRequest{image, QRectF(QPointF(index, index), QSizeF(image.size()))},
+            &receiver, [&, index](ScreenshotOcrRecognitionResult result) {
                 ++completions;
                 completionOrder.push_back(index);
                 outputs.push_back(std::move(result));
@@ -324,8 +321,7 @@ void interactiveRequestsPrecedeQueuedPrefetch() {
         const QImage image = whiteImage(imageEdge);
         const auto token = service.recognize(
             ScreenshotOcrRequest{image, QRectF(QPointF(), QSizeF(image.size())), priority},
-            &receiver,
-            [&, id](ScreenshotOcrRecognitionResult result) {
+            &receiver, [&, id](ScreenshotOcrRecognitionResult result) {
                 require(result.error.isEmpty() && result.presentation != nullptr,
                         "priority test OCR requests should succeed");
                 completionOrder.push_back(id);
@@ -336,9 +332,16 @@ void interactiveRequestsPrecedeQueuedPrefetch() {
         require(token != 0, "priority test OCR requests should be accepted");
     };
 
-    submit(0, 512, ScreenshotOcrRequestPriority::Interactive);
-    submit(1, 64, ScreenshotOcrRequestPriority::Prefetch);
-    submit(2, 64, ScreenshotOcrRequestPriority::Interactive);
+    // Cold ONNX startup can exceed the scheduler's prefetch-aging threshold.
+    // Queue the priority comparison while a warmed child is still alive.
+    const QImage warmup = whiteImage();
+    service.recognize(ScreenshotOcrRequest{warmup, QRectF(QPointF(), QSizeF(warmup.size()))},
+                      &receiver, [&](ScreenshotOcrRecognitionResult result) {
+                          require(result.error.isEmpty(), "priority-test engine warms up");
+                          submit(0, 512, ScreenshotOcrRequestPriority::Interactive);
+                          submit(1, 64, ScreenshotOcrRequestPriority::Prefetch);
+                          submit(2, 64, ScreenshotOcrRequestPriority::Interactive);
+                      });
 
     timeout.start(kRecognitionTimeoutMs);
     loop.exec();
@@ -362,12 +365,12 @@ void workerRecyclesImmediatelyAndCanBeRecreated() {
         loop.quit();
     });
     const QImage image = whiteImage();
-    const auto token = service.recognize(
-        ScreenshotOcrRequest{image, QRectF(QPointF(), QSizeF(image.size()))}, &receiver,
-        [&](ScreenshotOcrRecognitionResult result) {
-            output = std::move(result);
-            loop.quit();
-        });
+    const auto token =
+        service.recognize(ScreenshotOcrRequest{image, QRectF(QPointF(), QSizeF(image.size()))},
+                          &receiver, [&](ScreenshotOcrRecognitionResult result) {
+                              output = std::move(result);
+                              loop.quit();
+                          });
     require(token != 0, "the immediate-retirement OCR request should be accepted");
     timeout.start(kRecognitionTimeoutMs);
     loop.exec();
@@ -378,11 +381,11 @@ void workerRecyclesImmediatelyAndCanBeRecreated() {
     output.presentation.reset();
 
     bool recreated = false;
-    const auto secondToken = service.recognize(
-        ScreenshotOcrRequest{image, QRectF(QPointF(), QSizeF(image.size()))}, &receiver,
-        [&](ScreenshotOcrRecognitionResult result) {
-            recreated = result.presentation != nullptr && result.error.isEmpty();
-        });
+    const auto secondToken =
+        service.recognize(ScreenshotOcrRequest{image, QRectF(QPointF(), QSizeF(image.size()))},
+                          &receiver, [&](ScreenshotOcrRecognitionResult result) {
+                              recreated = result.presentation != nullptr && result.error.isEmpty();
+                          });
     require(secondToken != 0, "a request after immediate recycling should be accepted");
     require(waitUntil([&]() { return recreated; }, kRecognitionTimeoutMs),
             "a request after immediate recycling should recreate the OCR engine");
@@ -401,14 +404,14 @@ void queuedCancellationSkipsExecution() {
     std::vector<ScreenshotOcrRecognitionPort::RequestToken> tokens;
     for (int index = 0; index < 3; ++index) {
         const QImage image = whiteImage(256);
-        tokens.push_back(service.recognize(
-            ScreenshotOcrRequest{image, QRectF(QPointF(), QSizeF(image.size()))}, &receiver,
-            [&](ScreenshotOcrRecognitionResult) {
-                ++completions;
-                if (completions == 2) {
-                    loop.quit();
-                }
-            }));
+        tokens.push_back(
+            service.recognize(ScreenshotOcrRequest{image, QRectF(QPointF(), QSizeF(image.size()))},
+                              &receiver, [&](ScreenshotOcrRecognitionResult) {
+                                  ++completions;
+                                  if (completions == 2) {
+                                      loop.quit();
+                                  }
+                              }));
         require(tokens.back() != 0, "queued cancellation requests should be accepted");
     }
     service.cancel(tokens.back());
@@ -422,9 +425,9 @@ void cancellationSuppressesCompletion() {
     QObject receiver;
     bool completed = false;
     const QImage image = whiteImage();
-    const auto token = service.recognize(
-        ScreenshotOcrRequest{image, QRectF(QPointF(), QSizeF(image.size()))}, &receiver,
-        [&](ScreenshotOcrRecognitionResult) { completed = true; });
+    const auto token =
+        service.recognize(ScreenshotOcrRequest{image, QRectF(QPointF(), QSizeF(image.size()))},
+                          &receiver, [&](ScreenshotOcrRecognitionResult) { completed = true; });
     require(token != 0, "the cancellable OCR request should be accepted");
     service.cancel(token);
     processEventsFor(250);
@@ -453,9 +456,9 @@ void serviceDestructionJoinsWorkersAndSuppressesLateDelivery() {
     auto service = std::make_unique<ScreenshotOcrRecognitionService>();
     for (int index = 0; index < 3; ++index) {
         const QImage image = whiteImage(256);
-        const auto token = service->recognize(
-            ScreenshotOcrRequest{image, QRectF(QPointF(), QSizeF(image.size()))}, &receiver,
-            [&](ScreenshotOcrRecognitionResult) { ++completions; });
+        const auto token =
+            service->recognize(ScreenshotOcrRequest{image, QRectF(QPointF(), QSizeF(image.size()))},
+                               &receiver, [&](ScreenshotOcrRecognitionResult) { ++completions; });
         require(token != 0, "requests queued before service shutdown should be accepted");
     }
 
@@ -468,15 +471,15 @@ void serviceDestructionJoinsWorkersAndSuppressesLateDelivery() {
             "destroyed OCR services must not deliver queued completions");
 }
 
-QJsonObject assetFile(const QString& name, const QByteArray& contents,
-                      const QString& url = {}) {
-    QJsonObject result{{QStringLiteral("name"), name},
-                       {QStringLiteral("size"), contents.size()},
-                       {QStringLiteral("sha256"),
-                        QString::fromLatin1(QCryptographicHash::hash(
-                                                contents, QCryptographicHash::Sha256)
-                                                .toHex())}};
-    if (!url.isEmpty()) result.insert(QStringLiteral("url"), url);
+QJsonObject assetFile(const QString& name, const QByteArray& contents, const QString& url = {}) {
+    QJsonObject result{
+        {QStringLiteral("name"), name},
+        {QStringLiteral("size"), contents.size()},
+        {QStringLiteral("sha256"),
+         QString::fromLatin1(
+             QCryptographicHash::hash(contents, QCryptographicHash::Sha256).toHex())}};
+    if (!url.isEmpty())
+        result.insert(QStringLiteral("url"), url);
     return result;
 }
 
@@ -496,11 +499,14 @@ void writeAssetManifest(const QString& root, bool completePayload) {
     const QByteArray detector("detector");
     const QByteArray recognizer("recognizer");
     const QByteArray dictionary("dictionary");
-    const QString runtimeDirectory = QDir(root).filePath(QStringLiteral("runtimes/1.0.0/windows-x64"));
-    const QString modelDirectory = QDir(root).filePath(QStringLiteral("models/ppocrv6-small-463ea9f"));
+    const QString runtimeDirectory =
+        QDir(root).filePath(QStringLiteral("runtimes/1.0.2/windows-x64"));
+    const QString modelDirectory =
+        QDir(root).filePath(QStringLiteral("models/ppocrv6-small-463ea9f"));
     if (completePayload) {
-        writeFixture(QDir(runtimeDirectory).filePath(
-                         QStringLiteral("snow-ocr-process-1.0.0-windows-x64.exe")), process);
+        writeFixture(QDir(runtimeDirectory)
+                         .filePath(QStringLiteral("snow-ocr-process-1.0.2-windows-x64.exe")),
+                     process);
         writeFixture(QDir(runtimeDirectory).filePath(QStringLiteral("DirectML.dll")), directMl);
         writeFixture(QDir(runtimeDirectory).filePath(QStringLiteral("runtime-manifest.json")),
                      runtimeManifest);
@@ -510,30 +516,29 @@ void writeAssetManifest(const QString& root, bool completePayload) {
                      recognizer);
         writeFixture(QDir(modelDirectory).filePath(QStringLiteral("ppocrv6_dict.txt")), dictionary);
         writeFixture(QDir(runtimeDirectory).filePath(QStringLiteral(".complete.json")),
-                     R"({"schema":1,"component":"1.0.0"})");
+                     R"({"schema":1,"component":"1.0.2"})");
         writeFixture(QDir(modelDirectory).filePath(QStringLiteral(".complete.json")),
                      R"({"schema":1,"component":"ppocrv6-small-463ea9f"})");
     }
     const QJsonArray runtimeFiles{
-        assetFile(QStringLiteral("snow-ocr-process-1.0.0-windows-x64.exe"), process),
+        assetFile(QStringLiteral("snow-ocr-process-1.0.2-windows-x64.exe"), process),
         assetFile(QStringLiteral("DirectML.dll"), directMl),
         assetFile(QStringLiteral("runtime-manifest.json"), runtimeManifest)};
-    const QJsonArray modelFiles{
-        assetFile(QStringLiteral("PP-OCRv6_det_small.onnx"), detector,
-                  QStringLiteral("https://example.invalid/det")),
-        assetFile(QStringLiteral("PP-OCRv6_rec_small.onnx"), recognizer,
-                  QStringLiteral("https://example.invalid/rec")),
-        assetFile(QStringLiteral("ppocrv6_dict.txt"), dictionary,
-                  QStringLiteral("https://example.invalid/dict"))};
+    const QJsonArray modelFiles{assetFile(QStringLiteral("PP-OCRv6_det_small.onnx"), detector,
+                                          QStringLiteral("https://example.invalid/det")),
+                                assetFile(QStringLiteral("PP-OCRv6_rec_small.onnx"), recognizer,
+                                          QStringLiteral("https://example.invalid/rec")),
+                                assetFile(QStringLiteral("ppocrv6_dict.txt"), dictionary,
+                                          QStringLiteral("https://example.invalid/dict"))};
     const QByteArray archive("archive");
     const QJsonObject manifest{
         {QStringLiteral("schema"), 1},
         {QStringLiteral("runtime"),
-         QJsonObject{{QStringLiteral("version"), QStringLiteral("1.0.0")},
+         QJsonObject{{QStringLiteral("version"), QStringLiteral("1.0.2")},
                      {QStringLiteral("platform"), QStringLiteral("windows-x64")},
                      {QStringLiteral("archive"),
-                      assetFile(QStringLiteral("snow-ocr-runtime-1.0.0-windows-x64.zip"),
-                                archive, QStringLiteral("https://example.invalid/runtime"))},
+                      assetFile(QStringLiteral("snow-ocr-runtime-1.0.2-windows-x64.zip"), archive,
+                                QStringLiteral("https://example.invalid/runtime"))},
                      {QStringLiteral("files"), runtimeFiles}}},
         {QStringLiteral("model"),
          QJsonObject{{QStringLiteral("id"), QStringLiteral("ppocrv6-small-463ea9f")},
@@ -574,7 +579,8 @@ void validOfflineAssetsAreSelectedWithoutNetwork() {
 void incompleteOfflineAssetsFallBackToOnlineAcquisition() {
     QTemporaryDir offline;
     QTemporaryDir cache;
-    require(offline.isValid() && cache.isValid(), "temporary OCR fallback roots should be available");
+    require(offline.isValid() && cache.isValid(),
+            "temporary OCR fallback roots should be available");
     writeAssetManifest(offline.path(), false);
     int downloads = 0;
     bool finished = false;
@@ -594,10 +600,83 @@ void incompleteOfflineAssetsFallBackToOnlineAcquisition() {
             "invalid offline OCR assets should attempt online acquisition");
     require(downloads == 1, "incomplete offline assets must enter online acquisition once");
 }
+
+void actualOcrCrashAfterInference() {
+#ifdef Q_OS_WIN
+    using namespace snow_shot::diagnostics;
+    QTemporaryDir directory;
+    auto& diagnostics = DiagnosticsService::instance();
+    DiagnosticsOptions diagnosticsOptions;
+    diagnosticsOptions.directories = {directory.path()};
+    diagnosticsOptions.handlerPath = QStringLiteral(SNOW_TEST_CRASHPAD_HANDLER);
+    diagnosticsOptions.mirrorToConsole = false;
+    require(diagnostics.initialize(diagnosticsOptions) &&
+                diagnostics.status().crashCaptureAvailable,
+            "actual OCR crash collector starts");
+    ScreenshotOcrRecognitionService service;
+    QObject receiver;
+    bool crashed = false;
+    const auto image = whiteImage();
+    service.recognize(
+        ScreenshotOcrRequest{image, QRectF(QPointF(), QSizeF(image.size()))}, &receiver,
+        [&](ScreenshotOcrRecognitionResult result) {
+            require(result.error.isEmpty(), "actual OCR inference succeeds before crash");
+            auto* child = service.findChild<QProcess*>();
+            require(child != nullptr && child->state() == QProcess::Running,
+                    "the test owns a running OCR child");
+            HANDLE process =
+                OpenProcess(PROCESS_CREATE_THREAD | PROCESS_VM_OPERATION |
+                                PROCESS_QUERY_INFORMATION | PROCESS_VM_WRITE | PROCESS_VM_READ,
+                            FALSE, static_cast<DWORD>(child->processId()));
+            require(process != nullptr, "open the test-owned OCR child");
+            void* inaccessible =
+                VirtualAllocEx(process, nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_NOACCESS);
+            require(inaccessible != nullptr, "reserve inaccessible crash fixture page");
+            HANDLE thread = CreateRemoteThread(
+                process, nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(inaccessible),
+                nullptr, 0, nullptr);
+            require(thread != nullptr && WaitForSingleObject(thread, 10000) == WAIT_OBJECT_0,
+                    "isolated OCR native crash terminates");
+            CloseHandle(thread);
+            CloseHandle(process);
+            crashed = true;
+        });
+    require(waitUntil([&] { return crashed; }, kRecognitionTimeoutMs),
+            "actual OCR crash completes");
+    require(waitUntil([&] {
+                const auto* child = service.findChild<QProcess*>();
+                return child == nullptr || child->state() == QProcess::NotRunning;
+            }, 5000), "parent observes the abnormal OCR exit");
+    auto collector = makeCrashCollector();
+    QString error;
+    require(collector->initialize(QDir(directory.path()).filePath(QStringLiteral("crashes")), {},
+                                  {}, &error),
+            "open actual OCR crash database");
+    require(waitUntil([&] { return !collector->reports().isEmpty(); }, 5000),
+            "actual OCR dump arrives");
+    const auto reports = collector->reports();
+    require(reports.size() == 1 && reports.front().context.value(QStringLiteral(
+                                       "exception_code")) == QStringLiteral("0xc0000005"),
+            "actual OCR dump has native exception context");
+    QFile dump(reports.front().path);
+    require(dump.open(QIODevice::ReadOnly), "actual OCR dump is readable");
+    const auto bytes = dump.readAll();
+    dump.close();
+    require(bytes.contains(diagnostics.status().sessionId.toUtf8()) &&
+                bytes.contains("ocr.operation_started") && bytes.contains("1.0.2"),
+            "actual OCR dump retains parent session, operation and runtime version");
+    require(diagnostics.flush(), "actual OCR final diagnostics flush");
+    diagnostics.shutdown();
+#endif
+}
 } // namespace
 
 int main(int argc, char** argv) {
     QCoreApplication application(argc, argv);
+    if (application.arguments().contains(QStringLiteral("--native-crash"))) {
+        actualOcrCrashAfterInference();
+        return 0;
+    }
     const bool directMlRequested = application.arguments().contains(QStringLiteral("--directml"));
     validOfflineAssetsAreSelectedWithoutNetwork();
     incompleteOfflineAssetsFallBackToOnlineAcquisition();

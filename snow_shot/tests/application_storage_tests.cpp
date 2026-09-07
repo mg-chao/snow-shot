@@ -436,6 +436,27 @@ void settingsSchemaDefaultsAndValidationAreComplete() {
 }
 
 void screenshotUiSchemaRepairsStructuredValues() {
+    const QJsonObject defaultActionLayout =
+        storage::ConfigurationSchema::defaultValue(
+            QStringLiteral("screenshot_toolbar/action_tools_layout"))
+            .toObject();
+    require(defaultActionLayout ==
+                QJsonObject{
+                    {QStringLiteral("positions"),
+                     QJsonArray{
+                         QJsonArray{QStringLiteral("barcode-recognition"),
+                                    QStringLiteral("table-recognition")},
+                         QJsonArray{QStringLiteral("record-screen")},
+                         QJsonArray{QStringLiteral("pin-to-screen")},
+                         QJsonArray{QStringLiteral("text-recognition")},
+                         QJsonArray{QStringLiteral("text-translation")},
+                         QJsonArray{QStringLiteral("scrolling-screenshot")},
+                         QJsonArray{QStringLiteral("save-as-file")},
+                     }},
+                    {QStringLiteral("hidden"), QJsonArray{}},
+                },
+            "the screenshot action toolbar schema default must preserve the legacy appearance");
+
     const auto validColor = storage::ConfigurationSchema::normalize(
         QStringLiteral("screenshot_ui/cursor_guide_line_color"), QStringLiteral("#abcdef80"));
     require(validColor.valid && validColor.changed &&
@@ -477,6 +498,52 @@ void screenshotUiSchemaRepairsStructuredValues() {
                 layout.value(QStringLiteral("hidden")).toArray() ==
                     QJsonArray{QStringLiteral("arrow"), QStringLiteral("free-draw")},
             "toolbar layout normalization did not preserve hidden nested membership");
+
+    const QJsonObject malformedActionLayout{
+        {QStringLiteral("positions"),
+         QJsonArray{
+             QJsonArray{QStringLiteral("save-as-file"), QStringLiteral("table-recognition"),
+                        QStringLiteral("save-as-file"), QStringLiteral("unknown")},
+             QStringLiteral("not-a-position"),
+             QJsonArray{QStringLiteral("record-screen"), QStringLiteral("table-recognition")},
+         }},
+        {QStringLiteral("hidden"),
+         QJsonArray{QStringLiteral("table-recognition"), QStringLiteral("barcode-recognition"),
+                    QStringLiteral("text-recognition"), QStringLiteral("barcode-recognition"),
+                    QStringLiteral("unknown")}},
+    };
+    const auto normalizedActions = storage::ConfigurationSchema::normalize(
+        QStringLiteral("screenshot_toolbar/action_tools_layout"), malformedActionLayout);
+    const QJsonObject actionLayout = normalizedActions.value.toObject();
+    require(
+        normalizedActions.valid && normalizedActions.changed && actionLayout.size() == 2 &&
+            actionLayout.value(QStringLiteral("positions")).toArray() ==
+                QJsonArray{
+                    QJsonArray{QStringLiteral("save-as-file"), QStringLiteral("table-recognition")},
+                    QJsonArray{QStringLiteral("record-screen")},
+                    QJsonArray{QStringLiteral("pin-to-screen")},
+                    QJsonArray{QStringLiteral("text-translation")},
+                    QJsonArray{QStringLiteral("scrolling-screenshot")},
+                } &&
+            actionLayout.value(QStringLiteral("hidden")).toArray() ==
+                QJsonArray{QStringLiteral("barcode-recognition"),
+                           QStringLiteral("text-recognition")},
+        "action toolbar normalization must drop invalid entries, prefer visible membership, and "
+        "append missing tools in default positions");
+
+    const QJsonObject allHiddenActionLayout{
+        {QStringLiteral("positions"), QJsonArray{}},
+        {QStringLiteral("hidden"),
+         QJsonArray{QStringLiteral("barcode-recognition"), QStringLiteral("table-recognition"),
+                    QStringLiteral("record-screen"), QStringLiteral("pin-to-screen"),
+                    QStringLiteral("text-recognition"), QStringLiteral("text-translation"),
+                    QStringLiteral("scrolling-screenshot"), QStringLiteral("save-as-file")}},
+    };
+    const auto normalizedAllHidden = storage::ConfigurationSchema::normalize(
+        QStringLiteral("screenshot_toolbar/action_tools_layout"), allHiddenActionLayout);
+    require(normalizedAllHidden.valid && !normalizedAllHidden.changed &&
+                normalizedAllHidden.value.toObject() == allHiddenActionLayout,
+            "an all-hidden action toolbar layout must remain valid without restoring tools");
 }
 
 void screenshotUiAdaptersRoundTripTypedValues() {
@@ -519,8 +586,23 @@ void screenshotUiAdaptersRoundTripTypedValues() {
         expectedPositions,
         {QStringLiteral("arrow"), QStringLiteral("free-draw")},
     };
-    require(toolbar.setLayout(layout) && toolbar.layout() == expectedLayout,
+    require(toolbar.setLayout(storage::ScreenshotToolbarLayoutKind::DrawingTools, layout) &&
+                toolbar.layout(storage::ScreenshotToolbarLayoutKind::DrawingTools) ==
+                    expectedLayout,
             "typed toolbar layout did not preserve normalized visible and hidden entries");
+
+    const storage::ScreenshotToolbarLayout actionLayout{
+        {{QStringLiteral("save-as-file"), QStringLiteral("record-screen")},
+         {QStringLiteral("table-recognition")}},
+        {QStringLiteral("barcode-recognition"), QStringLiteral("pin-to-screen"),
+         QStringLiteral("text-recognition"), QStringLiteral("text-translation"),
+         QStringLiteral("scrolling-screenshot")},
+    };
+    require(toolbar.setLayout(storage::ScreenshotToolbarLayoutKind::ActionTools, actionLayout) &&
+                toolbar.layout(storage::ScreenshotToolbarLayoutKind::ActionTools) == actionLayout &&
+                toolbar.layout(storage::ScreenshotToolbarLayoutKind::DrawingTools) ==
+                    expectedLayout,
+            "drawing and action toolbar layouts must round-trip independently");
 }
 
 void screenshotTranslationSettingsRoundTripSupportedValues() {
@@ -615,6 +697,23 @@ void settingsAdaptersRoundTripAndRejectInvalidValues() {
     auto& applicationStorage = initialize(executable, temporary.path());
 
     const storage::ScreenshotSettings screenshot;
+    require(!screenshot.captureCursor(), "cursor capture must default off");
+    require(screenshot.setCaptureCursor(true) && storage::ScreenshotSettings().captureCursor(),
+            "cursor capture must persist when enabled");
+    require(applicationStorage.configuration().flushNow().success,
+            "enabled cursor capture must be flushable");
+    applicationStorage.shutdown();
+    static_cast<void>(initialize(executable, temporary.path()));
+    require(storage::ScreenshotSettings().captureCursor(),
+            "enabled cursor capture must survive storage restart");
+    require(screenshot.setCaptureCursor(false) && !storage::ScreenshotSettings().captureCursor(),
+            "cursor capture must support disabling");
+    require(applicationStorage.configuration().flushNow().success,
+            "disabled cursor capture must be flushable");
+    applicationStorage.shutdown();
+    static_cast<void>(initialize(executable, temporary.path()));
+    require(!storage::ScreenshotSettings().captureCursor(),
+            "disabled cursor capture must survive storage restart");
     require(screenshot.restoreOriginalScreenColors(), "screen color restoration must default on");
     require(screenshot.setRestoreOriginalScreenColors(false) &&
                 !storage::ScreenshotSettings().restoreOriginalScreenColors(),
@@ -625,7 +724,8 @@ void settingsAdaptersRoundTripAndRejectInvalidValues() {
     require(screenshot.autoExecuteAfterTextRecognition() == QStringLiteral("no_action") &&
                 screenshot.doubleClickAction() == QStringLiteral("copy") &&
                 screenshot.middleMouseButtonAction() == QStringLiteral("pin") &&
-                !screenshot.autoSaveAfterCopy() && !screenshot.copyImageFileToClipboard() &&
+                !screenshot.captureCursor() && !screenshot.autoSaveAfterCopy() &&
+                !screenshot.copyImageFileToClipboard() &&
                 screenshot.imageFormat() == QStringLiteral("png") &&
                 screenshot.manualSaveFilenameFormat() ==
                     QStringLiteral("SnowShot_{YYYY-MM-DD_HH-mm-ss}") &&
@@ -877,6 +977,25 @@ void settingsAdaptersRoundTripAndRejectInvalidValues() {
     require(screenshot.imageSaveDirectory() == QStringLiteral("D:/Captures") &&
                 recording.videoSaveDirectory() == QStringLiteral("D:/Recordings"),
             "custom save directories must survive reload without being replaced by defaults");
+}
+
+void invalidCaptureCursorConfigurationFallsBackToDisabled() {
+    QTemporaryDir temporary;
+    require(temporary.isValid(), "failed to create invalid cursor setting directory");
+    const QString config = QDir(temporary.path()).filePath(QStringLiteral("config.json"));
+    writeBytes(config, QByteArrayLiteral("{\n"
+                                         "  \"storage\": {\"schema_version\": 1},\n"
+                                         "  \"screenshot\": {\"capture_cursor\": \"enabled\"}\n"
+                                         "}\n"));
+    storage::ConfigurationStore store(config, true, true, 60000);
+    require(!store.value(QStringLiteral("screenshot/capture_cursor")).toBool() && store.isDirty() &&
+                store.flushNow().success &&
+                !readObject(config)
+                     .value(QStringLiteral("screenshot"))
+                     .toObject()
+                     .value(QStringLiteral("capture_cursor"))
+                     .toBool(),
+            "invalid stored cursor capture values must be replaced with disabled");
 }
 
 void smartSelectionAccessorAndSignal() {
@@ -1194,6 +1313,7 @@ int main(int argc, char** argv) {
     screenshotUiAdaptersRoundTripTypedValues();
     screenshotTranslationSettingsRoundTripSupportedValues();
     settingsAdaptersRoundTripAndRejectInvalidValues();
+    invalidCaptureCursorConfigurationFallsBackToDisabled();
     smartSelectionAccessorAndSignal();
     unknownFieldsArePreserved();
     malformedConfigurationIsCopiedAndReplaced();

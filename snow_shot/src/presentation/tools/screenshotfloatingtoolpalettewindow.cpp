@@ -40,7 +40,7 @@
 namespace {
 namespace native = screenshot_floating_palette_native;
 
-constexpr QSize kToolbarWindowPresetSize(1042, 142);
+constexpr QSize kToolbarWindowPresetSize(1142, 142);
 }
 
 ScreenshotFloatingToolPaletteWindow::ScreenshotFloatingToolPaletteWindow(

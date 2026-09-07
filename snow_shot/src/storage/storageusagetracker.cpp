@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QStandardPaths>
+#include <QSet>
 
 #include <algorithm>
 #include <utility>
@@ -33,6 +34,7 @@ StorageUsageTracker::StorageUsageTracker(StorageUsageTrackerOptions options)
     : m_appDataDirectory(QDir::cleanPath(options.appDataDirectory)),
       m_thumbnailCacheDirectory(QDir::cleanPath(options.thumbnailCacheDirectory)),
       m_recordingTempDirectory(QDir::cleanPath(options.recordingTempDirectory)),
+      m_diagnosticsDirectories(std::move(options.diagnosticsDirectories)),
       m_activeFileCutoff(options.activeFileCutoff),
       m_historyBytesProvider(std::move(options.historyBytesProvider)),
       m_directoryScanObserved(std::move(options.directoryScanObserved)),
@@ -181,7 +183,7 @@ AppStorageUsage StorageUsageTracker::scanNow() {
             .entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden |
                            QDir::System);
     for (const QFileInfo& entry : entries) {
-        if (entry.isSymLink()) {
+        if (storageLink(entry)) {
             continue;
         }
         const QString name = entry.fileName();
@@ -202,6 +204,8 @@ AppStorageUsage StorageUsageTracker::scanNow() {
             scanned.pinnedWindowBytes += bytes;
         } else if (name == QLatin1String(kAssetDirectoryName)) {
             scanned.ocrAssetBytes += bytes;
+        } else if (name == QLatin1String("logs")) {
+            scanned.diagnosticsBytes += bytes;
         } else {
             scanned.otherBytes += bytes;
         }
@@ -210,6 +214,28 @@ AppStorageUsage StorageUsageTracker::scanNow() {
         scanned.historyBytes = providedHistoryBytes;
     }
     scanned.thumbnailCacheBytes = directoryBytes(m_thumbnailCacheDirectory);
+    const QString insideRoot = QDir(m_appDataDirectory).filePath(QStringLiteral("logs"));
+    QStringList counted{QDir::cleanPath(insideRoot).toCaseFolded()};
+    QStringList roots = m_diagnosticsDirectories;
+    std::sort(roots.begin(), roots.end(),
+              [](const QString& a, const QString& b) { return a.size() < b.size(); });
+    for (const QString& root : roots) {
+        const QString normalized = QDir::cleanPath(root).toCaseFolded();
+        const bool covered =
+            std::any_of(counted.begin(), counted.end(), [&](const QString& parent) {
+                return normalized == parent || normalized.startsWith(parent + u'/');
+            });
+        if (covered)
+            continue;
+        qint64 bytes = directoryBytes(root);
+        const QString appRoot = QDir::cleanPath(m_appDataDirectory).toCaseFolded();
+        if (appRoot == normalized || appRoot.startsWith(normalized + u'/'))
+            bytes -= directoryBytes(m_appDataDirectory);
+        else if (counted.front().startsWith(normalized + u'/'))
+            bytes -= directoryBytes(insideRoot);
+        scanned.diagnosticsBytes += std::max<qint64>(0, bytes);
+        counted.append(normalized);
+    }
     scanned.recordingTempBytes = directoryBytes(m_recordingTempDirectory);
 
     {

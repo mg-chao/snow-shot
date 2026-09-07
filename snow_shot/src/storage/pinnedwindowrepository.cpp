@@ -378,6 +378,8 @@ QJsonObject recordToJson(const PinnedWindowRecord& record, const QJsonObject& pa
         {QStringLiteral("quarter_turns"), record.quarterTurns},
         {QStringLiteral("image_transform"), transformToJson(record.imageTransform)},
         {QStringLiteral("thumbnail_mode"), record.thumbnailMode},
+        {QStringLiteral("recognition_visible"), record.recognitionVisible},
+        {QStringLiteral("translation_visible"), record.translationVisible},
         {QStringLiteral("pre_thumbnail_geometry"), rectToJson(record.preThumbnailNativeGeometry)},
         {QStringLiteral("original_file_name"), record.originalFileName},
         {QStringLiteral("updated_utc"), record.updatedUtc.toUTC().toString(Qt::ISODateWithMs)},
@@ -661,6 +663,8 @@ bool parseRecord(const QJsonObject& object, const QString& root, PinnedWindowRec
         return false;
     }
     record.thumbnailMode = object.value(QStringLiteral("thumbnail_mode")).toBool();
+    record.recognitionVisible = object.value(QStringLiteral("recognition_visible")).toBool(false);
+    record.translationVisible = object.value(QStringLiteral("translation_visible")).toBool(false);
     if (record.thumbnailMode &&
         !rectFromJson(object.value(QStringLiteral("pre_thumbnail_geometry")),
                       &record.preThumbnailNativeGeometry)) {

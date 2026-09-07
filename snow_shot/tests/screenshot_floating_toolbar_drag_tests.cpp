@@ -3,6 +3,8 @@
 #include "snow_shot/presentation/screenshottoolbarcommands.h"
 #include "snow_shot/presentation/screenshottoolbarwindow.h"
 #include "snow_shot/presentation/screenshottoolpalettehost.h"
+#include "snow_shot/storage/applicationstorage.h"
+#include "snow_shot/storage/settingsadapters.h"
 #include "widgets/button.h"
 #include "widgets/dpi_stable_window_controller.h"
 
@@ -10,6 +12,7 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QCursor>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QGuiApplication>
 #include <QLayout>
@@ -19,6 +22,7 @@
 #include <QSize>
 #include <QString>
 #include <QThread>
+#include <QTemporaryDir>
 #include <QWindow>
 
 #include <atomic>
@@ -1319,9 +1323,147 @@ void requireDynamicToolbarContentFits(ScreenshotFloatingToolPaletteWindow& windo
     }
 }
 
+int actionToolbarButtonCount(const ScreenshotToolPalette& palette) {
+    const QWidget* mainPanel = palette.mainPanel();
+    const QLayout* layout = mainPanel != nullptr ? mainPanel->layout() : nullptr;
+    if (layout == nullptr) {
+        return 0;
+    }
+
+    const QStringList actionIds{
+        QStringLiteral("barcode-recognition"),  QStringLiteral("table-recognition"),
+        QStringLiteral("record-screen"),        QStringLiteral("pin-to-screen"),
+        QStringLiteral("text-recognition"),     QStringLiteral("text-translation"),
+        QStringLiteral("scrolling-screenshot"), QStringLiteral("save-as-file"),
+    };
+    int count = 0;
+    for (int index = 0; index < layout->count(); ++index) {
+        const auto* button =
+            qobject_cast<const adqt::widgets::AdButton*>(layout->itemAt(index)->widget());
+        if (button == nullptr) {
+            continue;
+        }
+        const QStringList positionItems =
+            button->property("screenshotToolbarPositionItems").toStringList();
+        for (const QString& itemId : positionItems) {
+            if (actionIds.contains(itemId)) {
+                ++count;
+                break;
+            }
+        }
+    }
+    return count;
+}
+
+void screenshotActionLayoutReloadIsWindowScopedAndFitsThePreset() {
+    QTemporaryDir temporary;
+    require(temporary.isValid(), "failed to create isolated action-layout test storage");
+    const QString executableDirectory =
+        QDir(temporary.path()).filePath(QStringLiteral("bin"));
+    require(QDir().mkpath(executableDirectory),
+            "failed to create the action-layout test executable directory");
+
+    auto& applicationStorage = snow_shot::storage::ApplicationStorage::instance();
+    require(applicationStorage
+                .initialize({executableDirectory, temporary.path(), 60000})
+                .success,
+            "failed to initialize isolated action-layout test storage");
+
+    const QStringList actionIds{
+        QStringLiteral("barcode-recognition"),  QStringLiteral("table-recognition"),
+        QStringLiteral("record-screen"),        QStringLiteral("pin-to-screen"),
+        QStringLiteral("text-recognition"),     QStringLiteral("text-translation"),
+        QStringLiteral("scrolling-screenshot"), QStringLiteral("save-as-file"),
+    };
+    const snow_shot::storage::ScreenshotToolbarSettings toolbarSettings;
+    require(toolbarSettings.setLayout(
+                snow_shot::storage::ScreenshotToolbarLayoutKind::ActionTools,
+                snow_shot::storage::ScreenshotToolbarLayout{{}, actionIds}),
+            "failed to persist the all-hidden screenshot action layout");
+
+    {
+        NoOpToolbarCommands commands;
+        ScreenshotToolbarWindow screenshotToolbar(commands);
+        screenshotToolbar.prepareForDisplay();
+        require(actionToolbarButtonCount(*screenshotToolbar.palette()) == 0,
+                "an all-hidden screenshot action layout should remove every configurable action");
+        require(screenshotToolbar.palette()->findChild<adqt::widgets::AdButton*>(
+                    QStringLiteral("screenshotUndoButton")) != nullptr &&
+                    screenshotToolbar.palette()->findChild<adqt::widgets::AdButton*>(
+                        QStringLiteral("screenshotRedoButton")) != nullptr,
+                "an all-hidden screenshot action layout should retain history controls");
+
+        bool hasCancel = false;
+        bool hasCopy = false;
+        for (const adqt::widgets::AdButton* button :
+             screenshotToolbar.palette()->findChildren<adqt::widgets::AdButton*>()) {
+            hasCancel =
+                hasCancel || button->accessibleName() == QStringLiteral("Cancel screenshot");
+            hasCopy = hasCopy || button->accessibleName() == QStringLiteral("Copy to clipboard");
+        }
+        require(hasCancel && hasCopy,
+                "an all-hidden screenshot action layout should retain fixed result actions");
+
+        ScreenshotToolPalette::Options genericOptions;
+        genericOptions.showSelectTool = false;
+        genericOptions.showShapeTool = false;
+        genericOptions.showTableTool = true;
+        genericOptions.showQrTool = true;
+        genericOptions.showScreenRecordButton = true;
+        genericOptions.enableStyleToolbar = false;
+        ScreenshotFloatingToolPaletteWindow genericToolbar(genericOptions);
+        genericToolbar.prepareForDisplay();
+        require(actionToolbarButtonCount(*genericToolbar.palette()) == 2,
+                "a generic palette should retain its fixed Table/Barcode and Record slots");
+
+        const snow_shot::storage::ScreenshotToolbarLayout unstackedLayout{
+            {
+                {QStringLiteral("barcode-recognition")},
+                {QStringLiteral("table-recognition")},
+                {QStringLiteral("record-screen")},
+                {QStringLiteral("pin-to-screen")},
+                {QStringLiteral("text-recognition")},
+                {QStringLiteral("text-translation")},
+                {QStringLiteral("scrolling-screenshot")},
+                {QStringLiteral("save-as-file")},
+            },
+            {},
+        };
+        require(toolbarSettings.setLayout(
+                    snow_shot::storage::ScreenshotToolbarLayoutKind::ActionTools,
+                    unstackedLayout),
+                "failed to persist the widest screenshot action layout");
+        settleQueuedRefreshes();
+        require(actionToolbarButtonCount(*screenshotToolbar.palette()) == 8 &&
+                    screenshotToolbar.palette()->findChild<adqt::widgets::AdButton*>(
+                        QStringLiteral("screenshotQrRecognitionButton")) != nullptr &&
+                    screenshotToolbar.palette()->findChild<adqt::widgets::AdButton*>(
+                        QStringLiteral("screenshotTableRecognitionButton")) != nullptr,
+                "the screenshot window should live-reload all eight independent action slots");
+        require(actionToolbarButtonCount(*genericToolbar.palette()) == 2,
+                "screenshot action layout reloads must not modify generic palettes");
+        requireDynamicToolbarContentFits(
+            screenshotToolbar,
+            "the widest screenshot action layout must fit the fixed window preset");
+
+        require(toolbarSettings.setLayout(
+                    snow_shot::storage::ScreenshotToolbarLayoutKind::ActionTools, {}),
+                "failed to restore the default screenshot action layout");
+        settleQueuedRefreshes();
+        require(actionToolbarButtonCount(*screenshotToolbar.palette()) == 7 &&
+                    screenshotToolbar.palette()->findChild<adqt::widgets::AdButton*>(
+                        QStringLiteral("screenshotTableQrButton")) != nullptr,
+                "restoring the default layout should restore the shared Table/Barcode slot");
+        require(actionToolbarButtonCount(*genericToolbar.palette()) == 2,
+                "restoring the screenshot layout must not modify generic palettes");
+    }
+
+    applicationStorage.shutdown();
+}
+
 void floatingToolbarsUseTheFixedWindowPreset() {
-    constexpr QSize normalPreset(1042, 142);
-    constexpr QSize smallPreset(834, 114);
+    constexpr QSize normalPreset(1142, 142);
+    constexpr QSize smallPreset(914, 114);
 
     NoOpToolbarCommands commands;
     ScreenshotToolbarWindow screenshotToolbar(commands);
@@ -1605,6 +1747,11 @@ int main(int argc, char* argv[]) {
         }
         if (app.arguments().contains(QStringLiteral("--toolbar-size-only"))) {
             screenshotToolbarSizeMultiplierSurvivesCaptureReset();
+            floatingToolbarsUseTheFixedWindowPreset();
+            return 0;
+        }
+        if (app.arguments().contains(QStringLiteral("--action-layout-only"))) {
+            screenshotActionLayoutReloadIsWindowScopedAndFitsThePreset();
             return 0;
         }
         if (app.arguments().contains(QStringLiteral("--native-surface-lifecycle-only"))) {

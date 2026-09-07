@@ -140,6 +140,22 @@ void embeddedRecognitionWindowPreservesParentSurfaceWithVisibleTextLayer() {
     auto* textLayer = recognition.findChild<QGraphicsView*>(QStringLiteral("snowShotOcrTextLayer"));
     require(textLayer != nullptr && textLayer->isVisible(),
             "the embedded recognition text layer should participate in composition");
+    require(recognition.isOcrBackgroundAt(QPointF(10, 10)) &&
+                !recognition.isOcrBackgroundAt(QPointF(80, 45)),
+            "OCR hit testing must distinguish text from empty background");
+    const QPoint textPoint(80, 45);
+    QMouseEvent press(QEvent::MouseButtonPress, QPointF(textPoint),
+                      QPointF(recognition.mapToGlobal(textPoint)), Qt::LeftButton, Qt::LeftButton,
+                      Qt::NoModifier);
+    QApplication::sendEvent(&recognition, &press);
+    require(presentation->textSelectionActive() && !recognition.isOcrBackgroundAt(QPointF(10, 10)),
+            "dragging a text selection outside its line must not become a window move");
+    QMouseEvent release(QEvent::MouseButtonRelease, QPointF(textPoint),
+                        QPointF(recognition.mapToGlobal(textPoint)), Qt::LeftButton, Qt::NoButton,
+                        Qt::NoModifier);
+    QApplication::sendEvent(&recognition, &release);
+    require(!presentation->textSelectionActive() && recognition.isOcrBackgroundAt(QPointF(10, 10)),
+            "OCR background dragging must become available after selection ends");
 
     QImage rendered(host.size(), QImage::Format_ARGB32_Premultiplied);
     rendered.fill(Qt::transparent);
@@ -166,6 +182,12 @@ void embeddedRecognitionWindowPreservesParentSurfaceWithVisibleTextLayer() {
     require(translated.pixelColor(QPoint(10, 10)) == background &&
                 translated.copy(QRect(45, 35, 70, 20)) != rendered.copy(QRect(45, 35, 70, 20)),
             "streamed text should repaint its box while retaining the parent background");
+
+    QTextDocument editorDocument(QStringLiteral("editable"));
+    recognition.showTextEditor(&editorDocument);
+    require(!recognition.isOcrBackgroundAt(QPointF(10, 10)),
+            "text-editor panels must retain their mouse input");
+    recognition.hideTextEditor();
 }
 
 void recognitionWindowCanExtendBeyondItsDpiScreen() {

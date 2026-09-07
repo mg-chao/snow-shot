@@ -627,6 +627,8 @@ bool ScreenshotSelectionExportUiServices::presentPinnedArtifact(
     // The pinned image retains the source canvas coordinates, including shadow padding.
     // Cached OCR quads must stay in that same space to align with the image.
     config.recognitionResults = request.recognitionResults;
+    config.recognitionVisible = request.recognitionVisible;
+    config.translationVisible = request.translationVisible;
     config.formattedTextDocument.reset();
     config.formattedPlainText.clear();
     applyPinRuntimeSettings(&config);
@@ -904,6 +906,8 @@ void ScreenshotSelectionExportUiServices::restorePersistedWindows() {
         config.persistedFirstCreationTextDpi = record.firstCreationTextDpi;
         config.persistedCanvasSession = record.canvasSession;
         config.persistedRecognitionResults = record.recognitionResults;
+        config.persistedRecognitionVisible = record.recognitionVisible;
+        config.persistedTranslationVisible = record.translationVisible;
         config.groupManager = m_groupManager;
         config.groupId = record.groupId;
         config.recognition = m_recognition;

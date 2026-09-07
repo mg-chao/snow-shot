@@ -102,10 +102,17 @@ void scanCategorizesAppOwnedLocations() {
     writeBytes(QDir(dirs.appData).filePath(QStringLiteral("stray.log")), 5);
     writeBytes(QDir(dirs.thumbnails).filePath(QStringLiteral("thumb.png")), 30);
     writeBytes(QDir(dirs.recordingTemp).filePath(QStringLiteral("bundle.bin")), 40);
+    const QString logs = QDir(dirs.appData).filePath(QStringLiteral("logs"));
+    const QString fallback = QDir(dirs.temporary.path()).filePath(QStringLiteral("fallback-logs"));
+    writeBytes(QDir(logs).filePath(QStringLiteral("today.log")), 17);
+    writeBytes(QDir(fallback).filePath(QStringLiteral("crashes/report.dmp")), 23);
 
     UsageRecorder recorder;
     {
-        storage::StorageUsageTracker tracker(trackerOptions(dirs, recorder.callbacks()));
+        auto options = trackerOptions(dirs, recorder.callbacks());
+        options.diagnosticsDirectories = {logs, logs, fallback, fallback,
+                                          QDir(fallback).filePath(QStringLiteral("crashes"))};
+        storage::StorageUsageTracker tracker(options);
         tracker.requestRefresh();
         tracker.drain();
         const storage::AppStorageUsage usage = tracker.usage();
@@ -116,14 +123,15 @@ void scanCategorizesAppOwnedLocations() {
         require(usage.thumbnailCacheBytes == 30, "thumbnail cache bytes must match payload");
         require(usage.recordingTempBytes == 40, "recording temp bytes must match payload");
         require(usage.otherBytes == 15, "other bytes must cover config and stray files");
-        require(usage.totalBytes() == 410, "total bytes must be the sum of all categories");
+        require(usage.diagnosticsBytes == 40, "fallback diagnostics are counted exactly once");
+        require(usage.totalBytes() == 450, "total bytes must be the sum of all categories");
     }
 
     std::lock_guard<std::mutex> lock(recorder.mutex);
     require(recorder.usages.size() >= 2,
             "a scan must publish a scanning snapshot and a final snapshot");
     require(recorder.usages.front().scanning, "the first published snapshot must be scanning");
-    require(!recorder.usages.back().scanning && recorder.usages.back().totalBytes() == 410,
+    require(!recorder.usages.back().scanning && recorder.usages.back().totalBytes() == 450,
             "the last published snapshot must carry the final usage");
 }
 
