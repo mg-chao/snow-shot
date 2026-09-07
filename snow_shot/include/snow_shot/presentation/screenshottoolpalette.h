@@ -137,6 +137,7 @@ class ScreenshotToolPalette final : public QWidget {
         bool showDrawingModeShortcutOnConfirm = false;
         Actions actions = NoActions;
         std::optional<snow_shot::storage::ScreenshotToolbarLayout> toolbarLayout;
+        std::optional<snow_shot::storage::ScreenshotToolbarLayout> actionToolsLayout;
         SnowCanvasStyleDefaults styleDefaults =
             snow_shot::presentation::screenshotCanvasStyleDefaults();
     };
@@ -167,6 +168,7 @@ class ScreenshotToolPalette final : public QWidget {
     bool setPhysicalScale(qreal scale);
     qreal physicalScale() const;
     void setToolbarLayout(const snow_shot::storage::ScreenshotToolbarLayout& layout);
+    void setActionToolsLayout(const snow_shot::storage::ScreenshotToolbarLayout& layout);
     bool stepStrokeWidth(int direction);
     bool stepSelectionOpacity(int direction);
     bool stepSpotlightOpacity(int direction);
@@ -478,8 +480,29 @@ class ScreenshotToolPalette final : public QWidget {
         bool popoverConstructing = false;
     };
 
+    struct ActionToolGroup {
+        QStringList itemIds;
+        QString entryItemId;
+        adqt::widgets::AdButton* trigger = nullptr;
+        adqt::widgets::AdPopover* popover = nullptr;
+        QVector<adqt::widgets::AdButton*> optionButtons;
+        QVector<int> optionValues;
+        QStringList popoverItemIds;
+        bool ownsTrigger = false;
+        bool popoverConstructing = false;
+    };
+
     void ensureDrawingToolGroupPopover(adqt::widgets::AdButton* trigger);
+    void ensureActionToolGroupPopover(adqt::widgets::AdButton* trigger);
     void ensureTableQrPopover();
+    void clearActionToolGroups();
+    [[nodiscard]] adqt::widgets::AdButton* actionToolSourceButton(const QString& itemId) const;
+    [[nodiscard]] adqt::widgets::AdButton* actionToolEntryButton(const QString& itemId) const;
+    [[nodiscard]] bool actionToolAvailable(const QString& itemId) const;
+    void activateActionTool(const QString& itemId, bool toggleVisibleButton = true);
+    void selectActionToolGroupEntry(const QString& itemId);
+    void refreshActionToolGroup(int groupIndex);
+    void refreshActionToolGroups();
 
     ScreenshotToolbarMainPanel* m_mainPanel = nullptr;
     QWidget* m_selectActionPanel = nullptr;
@@ -629,7 +652,9 @@ class ScreenshotToolPalette final : public QWidget {
     const SnowCanvasStyleDefaults m_styleDefaults;
     const Options m_options;
     std::optional<snow_shot::storage::ScreenshotToolbarLayout> m_toolbarLayout;
+    snow_shot::storage::ScreenshotToolbarLayout m_actionToolsLayout;
     QVector<DrawingToolGroup> m_drawingToolGroups;
+    QVector<ActionToolGroup> m_actionToolGroups;
     FilterEditor m_filterEditor;
     FilterEditor m_penFilterEditor;
     QLabel* m_spotlightOpacityIcon = nullptr;

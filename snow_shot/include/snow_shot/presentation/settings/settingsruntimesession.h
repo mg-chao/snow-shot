@@ -108,8 +108,10 @@ class SettingsRuntimeSession final : public QObject {
                                                const QString& value);
     [[nodiscard]] QString textValue(SettingsTextBinding binding) const;
     [[nodiscard]] bool applyTextValue(SettingsTextBinding binding, const QString& value);
-    [[nodiscard]] storage::ScreenshotToolbarLayout toolbarLayout() const;
-    [[nodiscard]] bool applyToolbarLayout(const storage::ScreenshotToolbarLayout& layout);
+    [[nodiscard]] storage::ScreenshotToolbarLayout
+    toolbarLayout(storage::ScreenshotToolbarLayoutKind kind) const;
+    [[nodiscard]] bool applyToolbarLayout(storage::ScreenshotToolbarLayoutKind kind,
+                                          const storage::ScreenshotToolbarLayout& layout);
     [[nodiscard]] GlobalShortcutRegistrationState shortcutState(GlobalShortcutAction action) const;
     [[nodiscard]] GlobalShortcutValidationResult validateShortcut(const QString& shortcut) const;
     [[nodiscard]] bool applyShortcuts(GlobalShortcutAction action, const QStringList& shortcuts);

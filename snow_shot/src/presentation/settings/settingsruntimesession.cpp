@@ -859,7 +859,11 @@ QVariant SettingsRuntimeSession::readValue(const SettingsFieldDescriptor& descri
             } else if constexpr (std::is_same_v<Payload, SettingsCustomDefinition>) {
                 switch (payload.renderer) {
                 case SettingsCustomRenderer::DrawingToolbarEditor:
-                    return QVariant::fromValue(m_backend.toolbarLayout());
+                    return QVariant::fromValue(m_backend.toolbarLayout(
+                        storage::ScreenshotToolbarLayoutKind::DrawingTools));
+                case SettingsCustomRenderer::ScreenshotToolbarEditor:
+                    return QVariant::fromValue(
+                        m_backend.toolbarLayout(storage::ScreenshotToolbarLayoutKind::ActionTools));
                 case SettingsCustomRenderer::TrayMenuOptions:
                     return m_backend.multiSelectValue(SettingsMultiSelectBinding::TrayMenuOptions);
                 case SettingsCustomRenderer::StorageStatus:
@@ -909,10 +913,14 @@ bool SettingsRuntimeSession::writeValue(const SettingsFieldDescriptor& descripto
             } else if constexpr (std::is_same_v<Payload, SettingsCustomDefinition>) {
                 switch (payload.renderer) {
                 case SettingsCustomRenderer::DrawingToolbarEditor:
+                case SettingsCustomRenderer::ScreenshotToolbarEditor:
                     if (!value.canConvert<storage::ScreenshotToolbarLayout>()) {
                         return false;
                     }
                     return m_backend.applyToolbarLayout(
+                        payload.renderer == SettingsCustomRenderer::DrawingToolbarEditor
+                            ? storage::ScreenshotToolbarLayoutKind::DrawingTools
+                            : storage::ScreenshotToolbarLayoutKind::ActionTools,
                         value.value<storage::ScreenshotToolbarLayout>());
                 case SettingsCustomRenderer::TrayMenuOptions:
                     return m_backend.applyMultiSelectValue(
@@ -974,7 +982,8 @@ bool SettingsRuntimeSession::valuesEqual(const SettingsFieldDescriptor& descript
     }
     if (std::holds_alternative<SettingsCustomDefinition>(descriptor.definition->payload)) {
         const auto& custom = std::get<SettingsCustomDefinition>(descriptor.definition->payload);
-        if (custom.renderer == SettingsCustomRenderer::DrawingToolbarEditor) {
+        if (custom.renderer == SettingsCustomRenderer::DrawingToolbarEditor ||
+            custom.renderer == SettingsCustomRenderer::ScreenshotToolbarEditor) {
             return first.value<storage::ScreenshotToolbarLayout>() ==
                    second.value<storage::ScreenshotToolbarLayout>();
         }
@@ -1210,23 +1219,31 @@ bool SettingsRuntimeSession::applyTextValue(SettingsTextBinding binding, const Q
     return descriptor != nullptr && submitDraft(descriptor->id, value);
 }
 
-storage::ScreenshotToolbarLayout SettingsRuntimeSession::toolbarLayout() const {
-    if (const auto* descriptor =
-            descriptorForCustom(SettingsCustomRenderer::DrawingToolbarEditor)) {
+storage::ScreenshotToolbarLayout
+SettingsRuntimeSession::toolbarLayout(storage::ScreenshotToolbarLayoutKind kind) const {
+    const SettingsCustomRenderer renderer =
+        kind == storage::ScreenshotToolbarLayoutKind::DrawingTools
+            ? SettingsCustomRenderer::DrawingToolbarEditor
+            : SettingsCustomRenderer::ScreenshotToolbarEditor;
+    if (const auto* descriptor = descriptorForCustom(renderer)) {
         const QVariant value = state(descriptor->id).draftValue;
         if (value.canConvert<storage::ScreenshotToolbarLayout>()) {
             return value.value<storage::ScreenshotToolbarLayout>();
         }
     }
-    return m_backend.toolbarLayout();
+    return m_backend.toolbarLayout(kind);
 }
 
-bool SettingsRuntimeSession::applyToolbarLayout(const storage::ScreenshotToolbarLayout& layout) {
-    if (const auto* descriptor =
-            descriptorForCustom(SettingsCustomRenderer::DrawingToolbarEditor)) {
+bool SettingsRuntimeSession::applyToolbarLayout(storage::ScreenshotToolbarLayoutKind kind,
+                                                const storage::ScreenshotToolbarLayout& layout) {
+    const SettingsCustomRenderer renderer =
+        kind == storage::ScreenshotToolbarLayoutKind::DrawingTools
+            ? SettingsCustomRenderer::DrawingToolbarEditor
+            : SettingsCustomRenderer::ScreenshotToolbarEditor;
+    if (const auto* descriptor = descriptorForCustom(renderer)) {
         return submitDraft(descriptor->id, QVariant::fromValue(layout));
     }
-    return m_backend.applyToolbarLayout(layout);
+    return m_backend.applyToolbarLayout(kind, layout);
 }
 
 GlobalShortcutRegistrationState

@@ -263,6 +263,7 @@ struct SettingsActionDefinition {
 enum class SettingsCustomRenderer {
     StorageStatus,
     DrawingToolbarEditor,
+    ScreenshotToolbarEditor,
     TrayMenuOptions,
 };
 

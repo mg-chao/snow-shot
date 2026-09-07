@@ -1,6 +1,6 @@
 #include "snow_shot/presentation/components/settingscustomwidget.h"
 
-#include "snow_shot/presentation/components/drawingtoolbareditorsettingswidget.h"
+#include "snow_shot/presentation/components/toolbareditorsettingswidget.h"
 #include "snow_shot/presentation/components/storagestatussettingswidget.h"
 #include "snow_shot/presentation/screenshottoolbarlayoutmodel.h"
 #include "snow_shot/presentation/settings/settingsregistry.h"
@@ -51,7 +51,7 @@ constexpr int kToolbarStackSpacing = 4;
 constexpr int kToolbarRadius = 8;
 constexpr int kDropIndicatorThickness = 3;
 constexpr int kHiddenZoneHeight = 56;
-[[maybe_unused]] constexpr const char* kEditorTranslations[] = {
+[[maybe_unused]] constexpr const char* kDrawingEditorTranslations[] = {
     QT_TRANSLATE_NOOP(
         "DrawingToolbarEditorSettingsWidget",
         "Drop beside a tool to create a position. Drop above a tool to stack it. The bottom "
@@ -64,8 +64,21 @@ constexpr int kHiddenZoneHeight = 56;
     QT_TRANSLATE_NOOP("DrawingToolbarEditorSettingsWidget", "Hidden drawing toolbar tools"),
 };
 
-QString translatedToolbarText(const char* sourceText) {
-    return QApplication::translate("DrawingToolbarEditorSettingsWidget", sourceText);
+[[maybe_unused]] constexpr const char* kScreenshotEditorTranslations[] = {
+    QT_TRANSLATE_NOOP(
+        "ScreenshotToolbarEditorSettingsWidget",
+        "Drop beside a tool to create a position. Drop above a tool to stack it. The bottom "
+        "tool stays on the main toolbar row."),
+    QT_TRANSLATE_NOOP("ScreenshotToolbarEditorSettingsWidget", "Screenshot toolbar preview"),
+    QT_TRANSLATE_NOOP("ScreenshotToolbarEditorSettingsWidget", "Hidden tools"),
+    QT_TRANSLATE_NOOP("ScreenshotToolbarEditorSettingsWidget",
+                      "Drag tools here to hide them from the screenshot toolbar."),
+    QT_TRANSLATE_NOOP("ScreenshotToolbarEditorSettingsWidget", "No hidden tools"),
+    QT_TRANSLATE_NOOP("ScreenshotToolbarEditorSettingsWidget", "Hidden screenshot toolbar tools"),
+};
+
+QString translatedToolbarText(const char* context, const char* sourceText) {
+    return QApplication::translate(context, sourceText);
 }
 
 QString cssColor(const QColor& color) {
@@ -81,10 +94,11 @@ QString cssColor(const QColor& color) {
 
 class ToolbarDragButton final : public adqt::widgets::AdButton {
   public:
-    explicit ToolbarDragButton(const QString& itemId, QWidget* parent)
+    explicit ToolbarDragButton(const QString& itemId, const QString& objectNamePrefix,
+                               QWidget* parent)
         : adqt::widgets::AdButton(parent), m_itemId(itemId) {
         setProperty(kToolbarItemProperty, itemId);
-        setObjectName(QStringLiteral("settings-drawing-toolbar-item-%1").arg(itemId));
+        setObjectName(QStringLiteral("%1-item-%2").arg(objectNamePrefix, itemId));
         setButtonStyle(ButtonStyle::Text);
         setAccentRole(AccentRole::Neutral);
         setCursor(Qt::OpenHandCursor);
@@ -131,8 +145,9 @@ class ToolbarDragButton final : public adqt::widgets::AdButton {
 
 class ToolbarPositionWidget final : public QWidget {
   public:
-    explicit ToolbarPositionWidget(int index, QWidget* parent) : QWidget(parent) {
-        setObjectName(QStringLiteral("settings-drawing-toolbar-position-%1").arg(index));
+    explicit ToolbarPositionWidget(int index, const QString& objectNamePrefix, QWidget* parent)
+        : QWidget(parent) {
+        setObjectName(QStringLiteral("%1-position-%2").arg(objectNamePrefix).arg(index));
         setProperty("screenshotToolbarPosition", true);
         setProperty("screenshotToolbarPositionIndex", index);
         setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
@@ -177,9 +192,12 @@ class ToolbarDropSurface final : public QFrame {
 
     using DropHandler = std::function<void(const QString&, const DropLocation&)>;
 
-    explicit ToolbarDropSurface(DropHandler handler, QWidget* parent)
-        : QFrame(parent), m_dropHandler(std::move(handler)) {
-        setObjectName(QStringLiteral("settings-drawing-toolbar-surface"));
+    explicit ToolbarDropSurface(DropHandler handler,
+                                std::function<bool(const QString&)> itemValidator,
+                                const QString& objectNamePrefix, QWidget* parent)
+        : QFrame(parent), m_dropHandler(std::move(handler)),
+          m_itemValidator(std::move(itemValidator)) {
+        setObjectName(QStringLiteral("%1-surface").arg(objectNamePrefix));
         setAcceptDrops(true);
         setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         setMinimumSize(kToolbarButtonSize + kToolbarHorizontalMargin * 2,
@@ -194,11 +212,11 @@ class ToolbarDropSurface final : public QFrame {
 
         m_positionIndicator = new QFrame(this);
         m_positionIndicator->setObjectName(
-            QStringLiteral("settings-drawing-toolbar-position-indicator"));
+            QStringLiteral("%1-position-indicator").arg(objectNamePrefix));
         m_positionIndicator->setAttribute(Qt::WA_TransparentForMouseEvents, true);
         m_positionIndicator->hide();
         m_stackIndicator = new QFrame(this);
-        m_stackIndicator->setObjectName(QStringLiteral("settings-drawing-toolbar-stack-indicator"));
+        m_stackIndicator->setObjectName(QStringLiteral("%1-stack-indicator").arg(objectNamePrefix));
         m_stackIndicator->setAttribute(Qt::WA_TransparentForMouseEvents, true);
         m_stackIndicator->hide();
 
@@ -274,7 +292,7 @@ class ToolbarDropSurface final : public QFrame {
             return;
         }
         const QString itemId = QString::fromUtf8(event->mimeData()->data(kToolbarItemMimeType));
-        if (toolbar_layout::descriptor(itemId) == nullptr) {
+        if (!m_itemValidator || !m_itemValidator(itemId)) {
             event->ignore();
             return;
         }
@@ -400,6 +418,7 @@ class ToolbarDropSurface final : public QFrame {
     }
 
     DropHandler m_dropHandler;
+    std::function<bool(const QString&)> m_itemValidator;
     QHBoxLayout* m_layout = nullptr;
     QVector<ToolbarPositionWidget*> m_positions;
     QFrame* m_positionIndicator = nullptr;
@@ -413,9 +432,12 @@ class ToolbarHiddenDropZone final : public QFrame {
   public:
     using DropHandler = std::function<void(const QString&, int)>;
 
-    explicit ToolbarHiddenDropZone(DropHandler handler, QWidget* parent)
-        : QFrame(parent), m_dropHandler(std::move(handler)) {
-        setObjectName(QStringLiteral("settings-drawing-toolbar-hidden-zone"));
+    explicit ToolbarHiddenDropZone(DropHandler handler,
+                                   std::function<bool(const QString&)> itemValidator,
+                                   const QString& objectNamePrefix, QWidget* parent)
+        : QFrame(parent), m_dropHandler(std::move(handler)),
+          m_itemValidator(std::move(itemValidator)) {
+        setObjectName(QStringLiteral("%1-hidden-zone").arg(objectNamePrefix));
         setAcceptDrops(true);
         setAttribute(Qt::WA_StyledBackground, false);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -427,7 +449,7 @@ class ToolbarHiddenDropZone final : public QFrame {
         m_layout->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
         m_emptyLabel = new QLabel(this);
-        m_emptyLabel->setObjectName(QStringLiteral("settings-drawing-toolbar-hidden-empty"));
+        m_emptyLabel->setObjectName(QStringLiteral("%1-hidden-empty").arg(objectNamePrefix));
         m_emptyLabel->setAlignment(Qt::AlignCenter);
         m_layout->addWidget(m_emptyLabel, 1);
     }
@@ -520,7 +542,7 @@ class ToolbarHiddenDropZone final : public QFrame {
             return;
         }
         const QString itemId = QString::fromUtf8(event->mimeData()->data(kToolbarItemMimeType));
-        if (toolbar_layout::descriptor(itemId) == nullptr) {
+        if (!m_itemValidator || !m_itemValidator(itemId)) {
             event->ignore();
             return;
         }
@@ -538,8 +560,8 @@ class ToolbarHiddenDropZone final : public QFrame {
         painter.setBrush(m_backgroundColor.isValid() ? m_backgroundColor : QColor(Qt::transparent));
         QColor outline = m_dragActive && m_accentColor.isValid() ? m_accentColor : m_borderColor;
         painter.setPen(outline.isValid() ? QPen(outline, m_dragActive ? 1.5 : 1.0) : Qt::NoPen);
-        painter.drawRoundedRect(QRectF(rect()).adjusted(0.75, 0.75, -0.75, -0.75),
-                                kToolbarRadius, kToolbarRadius);
+        painter.drawRoundedRect(QRectF(rect()).adjusted(0.75, 0.75, -0.75, -0.75), kToolbarRadius,
+                                kToolbarRadius);
     }
 
   private:
@@ -558,6 +580,7 @@ class ToolbarHiddenDropZone final : public QFrame {
     }
 
     DropHandler m_dropHandler;
+    std::function<bool(const QString&)> m_itemValidator;
     QHBoxLayout* m_layout = nullptr;
     QLabel* m_emptyLabel = nullptr;
     QVector<ToolbarDragButton*> m_buttons;
@@ -644,8 +667,8 @@ class TrayMenuOptionsSettingsWidget final : public SettingsCustomWidget {
             snow_shot::presentation::settings::SettingsTrayMenuOptionKind::QuickAction) {
             const QString title = m_registry.catalog().shortcutActionTitle(
                 option.shortcutAction,
-                m_runtimeSession.integerValue(
-                    snow_shot::presentation::settings::SettingsIntegerBinding::ScreenshotDelaySeconds));
+                m_runtimeSession.integerValue(snow_shot::presentation::settings::
+                                                  SettingsIntegerBinding::ScreenshotDelaySeconds));
             Q_ASSERT(!title.isEmpty());
             return title;
         }
@@ -673,10 +696,9 @@ class TrayMenuOptionsSettingsWidget final : public SettingsCustomWidget {
         options->setObjectName(QStringLiteral("settings-tray-menu-options-grid"));
         auto* grid = new QGridLayout(options);
         grid->setContentsMargins(0, 6, 0, 0);
-        grid->setHorizontalSpacing(
-            snow_shot::presentation::styles::ThemeManager::instance()
-                .themeColorScheme()
-                .metricAlias.marginLG);
+        grid->setHorizontalSpacing(snow_shot::presentation::styles::ThemeManager::instance()
+                                       .themeColorScheme()
+                                       .metricAlias.marginLG);
         grid->setVerticalSpacing(6);
         grid->setColumnStretch(0, 1);
         grid->setColumnStretch(1, 1);
@@ -721,16 +743,15 @@ class TrayMenuOptionsSettingsWidget final : public SettingsCustomWidget {
                         syncFromRuntime();
                     }
                 });
-        connect(
-            &m_runtimeSession,
-            &snow_shot::presentation::settings::SettingsRuntimeSession::auxiliaryIntegerChanged,
-            this,
-            [this](snow_shot::presentation::settings::SettingsIntegerBinding binding, int) {
-                if (binding == snow_shot::presentation::settings::SettingsIntegerBinding::
-                                   ScreenshotDelaySeconds) {
-                    retranslateUi();
-                }
-            });
+        connect(&m_runtimeSession,
+                &snow_shot::presentation::settings::SettingsRuntimeSession::auxiliaryIntegerChanged,
+                this,
+                [this](snow_shot::presentation::settings::SettingsIntegerBinding binding, int) {
+                    if (binding == snow_shot::presentation::settings::SettingsIntegerBinding::
+                                       ScreenshotDelaySeconds) {
+                        retranslateUi();
+                    }
+                });
         retranslateUi();
         applyTheme(snow_shot::presentation::styles::ThemeManager::instance().themeColorScheme());
         syncFromRuntime();
@@ -780,21 +801,30 @@ class TrayMenuOptionsSettingsWidget final : public SettingsCustomWidget {
     bool m_syncing = false;
 };
 
-struct DrawingToolbarEditorSettingsWidget::Private {
-    Private(DrawingToolbarEditorSettingsWidget& sourceOwner,
+struct ToolbarEditorSettingsWidget::Private {
+    Private(ToolbarEditorSettingsWidget& sourceOwner,
+            snow_shot::presentation::settings::SettingsCustomRenderer sourceRenderer,
+            storage::ScreenshotToolbarLayoutKind sourceLayoutKind,
             snow_shot::presentation::settings::SettingsRuntimeSession& sourceRuntimeBindings)
-        : owner(sourceOwner), runtimeSession(sourceRuntimeBindings),
-          colorScheme(
-              snow_shot::presentation::styles::ThemeManager::instance().themeColorScheme()) {}
+        : owner(sourceOwner), renderer(sourceRenderer), layoutKind(sourceLayoutKind),
+          runtimeSession(sourceRuntimeBindings),
+          colorScheme(snow_shot::presentation::styles::ThemeManager::instance().themeColorScheme()),
+          descriptors(toolbar_layout::editorDescriptors(layoutKind)) {
+        const bool drawing = layoutKind == storage::ScreenshotToolbarLayoutKind::DrawingTools;
+        objectNamePrefix = drawing ? QStringLiteral("settings-drawing-toolbar")
+                                   : QStringLiteral("settings-screenshot-toolbar");
+        translationContext = drawing ? "DrawingToolbarEditorSettingsWidget"
+                                     : "ScreenshotToolbarEditorSettingsWidget";
+    }
 
     void initialize() {
-        owner.setObjectName(QStringLiteral("settings-drawing-toolbar-editor"));
+        owner.setObjectName(QStringLiteral("%1-editor").arg(objectNamePrefix));
         auto* rootLayout = new QVBoxLayout(&owner);
         rootLayout->setContentsMargins(0, 0, 0, 0);
         rootLayout->setSpacing(8);
 
         previewStage = new QWidget(&owner);
-        previewStage->setObjectName(QStringLiteral("settings-drawing-toolbar-preview-stage"));
+        previewStage->setObjectName(QStringLiteral("%1-preview-stage").arg(objectNamePrefix));
         previewStage->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         auto* previewLayout = new QHBoxLayout(previewStage);
         previewLayout->setContentsMargins(24, 24, 24, 28);
@@ -804,38 +834,40 @@ struct DrawingToolbarEditorSettingsWidget::Private {
             [this](const QString& itemId, const ToolbarDropSurface::DropLocation& location) {
                 applyDrop(itemId, location);
             },
+            [this](const QString& itemId) { return buttons.contains(itemId); }, objectNamePrefix,
             previewStage);
         previewLayout->addWidget(toolbarSurface, 0, Qt::AlignHCenter | Qt::AlignBottom);
         rootLayout->addWidget(previewStage);
 
         instructionLabel = new QLabel(&owner);
-        instructionLabel->setObjectName(QStringLiteral("settings-drawing-toolbar-instruction"));
+        instructionLabel->setObjectName(QStringLiteral("%1-instruction").arg(objectNamePrefix));
         instructionLabel->setWordWrap(true);
         instructionLabel->setAlignment(Qt::AlignHCenter);
         rootLayout->addWidget(instructionLabel);
 
         hiddenSection = new QWidget(&owner);
-        hiddenSection->setObjectName(QStringLiteral("settings-drawing-toolbar-hidden-section"));
+        hiddenSection->setObjectName(QStringLiteral("%1-hidden-section").arg(objectNamePrefix));
         auto* hiddenLayout = new QVBoxLayout(hiddenSection);
         hiddenLayout->setContentsMargins(0, 8, 0, 0);
         hiddenLayout->setSpacing(4);
         hiddenTitleLabel = new QLabel(hiddenSection);
-        hiddenTitleLabel->setObjectName(QStringLiteral("settings-drawing-toolbar-hidden-title"));
+        hiddenTitleLabel->setObjectName(QStringLiteral("%1-hidden-title").arg(objectNamePrefix));
         hiddenLayout->addWidget(hiddenTitleLabel);
         hiddenDescriptionLabel = new QLabel(hiddenSection);
         hiddenDescriptionLabel->setObjectName(
-            QStringLiteral("settings-drawing-toolbar-hidden-description"));
+            QStringLiteral("%1-hidden-description").arg(objectNamePrefix));
         hiddenDescriptionLabel->setWordWrap(true);
         hiddenLayout->addWidget(hiddenDescriptionLabel);
         hiddenZone = new ToolbarHiddenDropZone(
             [this](const QString& itemId, int index) { applyHiddenDrop(itemId, index); },
+            [this](const QString& itemId) { return buttons.contains(itemId); }, objectNamePrefix,
             hiddenSection);
         hiddenLayout->addWidget(hiddenZone);
         rootLayout->addWidget(hiddenSection);
 
-        for (const toolbar_layout::Descriptor& descriptor : toolbar_layout::descriptors()) {
+        for (const toolbar_layout::EditorDescriptor& descriptor : descriptors) {
             const QString itemId = QString::fromLatin1(descriptor.id);
-            auto* button = new ToolbarDragButton(itemId, &owner);
+            auto* button = new ToolbarDragButton(itemId, objectNamePrefix, &owner);
             button->setIconRef(toolbar_layout::icon(descriptor.icon));
             buttons.insert(itemId, button);
         }
@@ -845,14 +877,14 @@ struct DrawingToolbarEditorSettingsWidget::Private {
             &snow_shot::presentation::settings::SettingsRuntimeSession::fieldChanged, &owner,
             [this](const QString& fieldId,
                    const snow_shot::presentation::settings::SettingsFieldState&) {
-                const auto* descriptor = runtimeSession.registry().fieldForCustom(
-                    snow_shot::presentation::settings::SettingsCustomRenderer::DrawingToolbarEditor);
+                const auto* descriptor = runtimeSession.registry().fieldForCustom(renderer);
                 if (descriptor != nullptr && descriptor->id == fieldId) {
                     syncFromRuntime();
                 }
             });
 
-        layout = toolbar_layout::normalizedLayout(runtimeSession.toolbarLayout());
+        layout =
+            toolbar_layout::normalizedLayout(runtimeSession.toolbarLayout(layoutKind), layoutKind);
         owner.retranslateUi();
         owner.applyTheme(colorScheme);
         rebuild();
@@ -874,7 +906,8 @@ struct DrawingToolbarEditorSettingsWidget::Private {
         }
         for (int positionIndex = 0; positionIndex < layout.positions.size(); ++positionIndex) {
             const QStringList& itemIds = layout.positions.at(positionIndex);
-            auto* position = new ToolbarPositionWidget(positionIndex, toolbarSurface);
+            auto* position =
+                new ToolbarPositionWidget(positionIndex, objectNamePrefix, toolbarSurface);
             for (const QString& itemId : itemIds) {
                 ToolbarDragButton* button = buttons.value(itemId);
                 if (button == nullptr) {
@@ -913,7 +946,7 @@ struct DrawingToolbarEditorSettingsWidget::Private {
 
     void syncFromRuntime() {
         const storage::ScreenshotToolbarLayout synchronized =
-            toolbar_layout::normalizedLayout(runtimeSession.toolbarLayout());
+            toolbar_layout::normalizedLayout(runtimeSession.toolbarLayout(layoutKind), layoutKind);
         if (synchronized != layout) {
             layout = synchronized;
             rebuild();
@@ -921,112 +954,34 @@ struct DrawingToolbarEditorSettingsWidget::Private {
     }
 
     void applyDrop(const QString& itemId, const ToolbarDropSurface::DropLocation& dropLocation) {
-        if (toolbar_layout::descriptor(itemId) == nullptr) {
+        if (!buttons.contains(itemId)) {
             return;
         }
-        const storage::ScreenshotToolbarLayout previous = layout;
-        storage::ScreenshotToolbarLayout candidate = previous;
-
-        int sourcePositionIndex = -1;
-        int sourceItemIndex = -1;
-        for (int positionIndex = 0; positionIndex < candidate.positions.size(); ++positionIndex) {
-            const int itemIndex = candidate.positions.at(positionIndex).indexOf(itemId);
-            if (itemIndex >= 0) {
-                sourcePositionIndex = positionIndex;
-                sourceItemIndex = itemIndex;
-                break;
-            }
-        }
-        const int sourceHiddenIndex = candidate.hidden.indexOf(itemId);
-        if (sourcePositionIndex < 0 && sourceHiddenIndex < 0) {
-            return;
-        }
-        if (sourceHiddenIndex >= 0) {
-            candidate.hidden.removeAt(sourceHiddenIndex);
-        }
-
+        storage::ScreenshotToolbarLayout candidate;
         if (dropLocation.kind == ToolbarDropSurface::DropKind::NewPosition) {
-            int targetPositionIndex = dropLocation.positionIndex;
-            if (sourcePositionIndex >= 0) {
-                candidate.positions[sourcePositionIndex].removeAt(sourceItemIndex);
-                if (candidate.positions.at(sourcePositionIndex).isEmpty()) {
-                    candidate.positions.removeAt(sourcePositionIndex);
-                    if (sourcePositionIndex < targetPositionIndex) {
-                        --targetPositionIndex;
-                    }
-                }
-            }
-            targetPositionIndex =
-                std::clamp(targetPositionIndex, 0, static_cast<int>(candidate.positions.size()));
-            candidate.positions.insert(targetPositionIndex, QStringList{itemId});
+            candidate = toolbar_layout::moveItemToPosition(layout, layoutKind, itemId,
+                                                           dropLocation.positionIndex);
         } else {
-            if (candidate.positions.isEmpty()) {
-                candidate.positions.push_back({itemId});
-                submitLayout(candidate);
-                return;
-            }
-            int targetPositionIndex = std::clamp(dropLocation.positionIndex, 0,
-                                                 static_cast<int>(candidate.positions.size()) - 1);
-            int targetItemIndex = dropLocation.itemIndex;
-            if (sourcePositionIndex >= 0 && sourcePositionIndex == targetPositionIndex) {
-                candidate.positions[sourcePositionIndex].removeAt(sourceItemIndex);
-                if (sourceItemIndex < targetItemIndex) {
-                    --targetItemIndex;
-                }
-            } else if (sourcePositionIndex >= 0) {
-                candidate.positions[sourcePositionIndex].removeAt(sourceItemIndex);
-                if (candidate.positions.at(sourcePositionIndex).isEmpty()) {
-                    candidate.positions.removeAt(sourcePositionIndex);
-                    if (sourcePositionIndex < targetPositionIndex) {
-                        --targetPositionIndex;
-                    }
-                }
-            }
-            targetItemIndex =
-                std::clamp(targetItemIndex, 0,
-                           static_cast<int>(candidate.positions.at(targetPositionIndex).size()));
-            candidate.positions[targetPositionIndex].insert(targetItemIndex, itemId);
+            candidate = toolbar_layout::stackItemInPosition(
+                layout, layoutKind, itemId, dropLocation.positionIndex, dropLocation.itemIndex);
         }
         submitLayout(candidate);
     }
 
     void applyHiddenDrop(const QString& itemId, int targetIndex) {
-        if (toolbar_layout::descriptor(itemId) == nullptr) {
+        if (!buttons.contains(itemId)) {
             return;
         }
-        const storage::ScreenshotToolbarLayout previous = layout;
-        storage::ScreenshotToolbarLayout candidate = previous;
-
-        for (int positionIndex = 0; positionIndex < candidate.positions.size(); ++positionIndex) {
-            const int itemIndex = candidate.positions.at(positionIndex).indexOf(itemId);
-            if (itemIndex < 0) {
-                continue;
-            }
-            candidate.positions[positionIndex].removeAt(itemIndex);
-            if (candidate.positions.at(positionIndex).isEmpty()) {
-                candidate.positions.removeAt(positionIndex);
-            }
-            break;
-        }
-        const int sourceHiddenIndex = candidate.hidden.indexOf(itemId);
-        if (sourceHiddenIndex >= 0) {
-            candidate.hidden.removeAt(sourceHiddenIndex);
-            if (sourceHiddenIndex < targetIndex) {
-                --targetIndex;
-            }
-        }
-        targetIndex = std::clamp(targetIndex, 0, static_cast<int>(candidate.hidden.size()));
-        candidate.hidden.insert(targetIndex, itemId);
-        submitLayout(candidate);
+        submitLayout(toolbar_layout::moveItemToHidden(layout, layoutKind, itemId, targetIndex));
     }
 
     void submitLayout(storage::ScreenshotToolbarLayout candidate) {
-        candidate = toolbar_layout::normalizedLayout(candidate);
+        candidate = toolbar_layout::normalizedLayout(candidate, layoutKind);
 
         if (candidate == layout) {
             return;
         }
-        const bool accepted = runtimeSession.applyToolbarLayout(candidate);
+        const bool accepted = runtimeSession.applyToolbarLayout(layoutKind, candidate);
         if (!accepted || layout != candidate) {
             syncFromRuntime();
         }
@@ -1045,9 +1000,8 @@ struct DrawingToolbarEditorSettingsWidget::Private {
         const QColor hiddenBackground = scheme.map.colorFillSecondary.isValid()
                                             ? scheme.map.colorFillSecondary
                                             : QColor(0, 0, 0, 10);
-        const QColor hiddenBorder = scheme.map.colorBorderSecondary.isValid()
-                                        ? scheme.map.colorBorderSecondary
-                                        : border;
+        const QColor hiddenBorder =
+            scheme.map.colorBorderSecondary.isValid() ? scheme.map.colorBorderSecondary : border;
         hiddenZone->applyTheme(hiddenBackground, hiddenBorder, activeBorder,
                                scheme.map.colorTextTertiary);
 
@@ -1067,25 +1021,35 @@ struct DrawingToolbarEditorSettingsWidget::Private {
 
     void retranslateUi() {
         instructionLabel->setText(translatedToolbarText(
+            translationContext,
             "Drop beside a tool to create a position. Drop above a tool to stack it. The bottom "
             "tool stays on the main toolbar row."));
-        toolbarSurface->setAccessibleName(translatedToolbarText("Drawing toolbar preview"));
-        hiddenTitleLabel->setText(translatedToolbarText("Hidden tools"));
+        toolbarSurface->setAccessibleName(translatedToolbarText(
+            translationContext, layoutKind == storage::ScreenshotToolbarLayoutKind::DrawingTools
+                                    ? "Drawing toolbar preview"
+                                    : "Screenshot toolbar preview"));
+        hiddenTitleLabel->setText(translatedToolbarText(translationContext, "Hidden tools"));
         hiddenDescriptionLabel->setText(translatedToolbarText(
-            "Drag tools here to hide them from the screenshot toolbar."));
-        hiddenZone->setEmptyText(translatedToolbarText("No hidden tools"));
-        hiddenZone->setAccessibleName(translatedToolbarText("Hidden drawing toolbar tools"));
-        for (const toolbar_layout::Descriptor& descriptor : toolbar_layout::descriptors()) {
+            translationContext, "Drag tools here to hide them from the screenshot toolbar."));
+        hiddenZone->setEmptyText(translatedToolbarText(translationContext, "No hidden tools"));
+        hiddenZone->setAccessibleName(translatedToolbarText(
+            translationContext, layoutKind == storage::ScreenshotToolbarLayoutKind::DrawingTools
+                                    ? "Hidden drawing toolbar tools"
+                                    : "Hidden screenshot toolbar tools"));
+        for (const toolbar_layout::EditorDescriptor& descriptor : descriptors) {
             ToolbarDragButton* button = buttons.value(QString::fromLatin1(descriptor.id));
             if (button != nullptr) {
-                const QString label = translatedToolbarText(descriptor.label);
+                const QString label =
+                    translatedToolbarText(descriptor.translationContext, descriptor.label);
                 button->setToolTip(label);
                 button->setAccessibleName(label);
             }
         }
     }
 
-    DrawingToolbarEditorSettingsWidget& owner;
+    ToolbarEditorSettingsWidget& owner;
+    snow_shot::presentation::settings::SettingsCustomRenderer renderer;
+    storage::ScreenshotToolbarLayoutKind layoutKind;
     snow_shot::presentation::settings::SettingsRuntimeSession& runtimeSession;
     snow_shot::presentation::styles::ThemeColorScheme colorScheme;
     storage::ScreenshotToolbarLayout layout;
@@ -1098,26 +1062,32 @@ struct DrawingToolbarEditorSettingsWidget::Private {
     ToolbarHiddenDropZone* hiddenZone = nullptr;
     QVector<ToolbarPositionWidget*> positionWidgets;
     QHash<QString, ToolbarDragButton*> buttons;
+    QString objectNamePrefix;
+    const char* translationContext = nullptr;
+    QVector<toolbar_layout::EditorDescriptor> descriptors;
 };
 
-DrawingToolbarEditorSettingsWidget::DrawingToolbarEditorSettingsWidget(
+ToolbarEditorSettingsWidget::ToolbarEditorSettingsWidget(
+    snow_shot::presentation::settings::SettingsCustomRenderer renderer,
+    storage::ScreenshotToolbarLayoutKind layoutKind,
     snow_shot::presentation::settings::SettingsRuntimeSession& runtimeSession, QWidget* parent)
-    : SettingsCustomWidget(parent), m_private(std::make_unique<Private>(*this, runtimeSession)) {
+    : SettingsCustomWidget(parent),
+      m_private(std::make_unique<Private>(*this, renderer, layoutKind, runtimeSession)) {
     m_private->initialize();
 }
 
-DrawingToolbarEditorSettingsWidget::~DrawingToolbarEditorSettingsWidget() = default;
+ToolbarEditorSettingsWidget::~ToolbarEditorSettingsWidget() = default;
 
-void DrawingToolbarEditorSettingsWidget::applyTheme(
+void ToolbarEditorSettingsWidget::applyTheme(
     const snow_shot::presentation::styles::ThemeColorScheme& scheme) {
     m_private->applyTheme(scheme);
 }
 
-void DrawingToolbarEditorSettingsWidget::retranslateUi() {
+void ToolbarEditorSettingsWidget::retranslateUi() {
     m_private->retranslateUi();
 }
 
-void DrawingToolbarEditorSettingsWidget::changeEvent(QEvent* event) {
+void ToolbarEditorSettingsWidget::changeEvent(QEvent* event) {
     SettingsCustomWidget::changeEvent(event);
     if (event != nullptr && event->type() == QEvent::LanguageChange) {
         retranslateUi();
@@ -1134,7 +1104,11 @@ SettingsCustomWidget* createSettingsCustomWidget(
     case SettingsCustomRenderer::StorageStatus:
         return new StorageStatusSettingsWidget(runtimeSession, parent);
     case SettingsCustomRenderer::DrawingToolbarEditor:
-        return new DrawingToolbarEditorSettingsWidget(runtimeSession, parent);
+        return new ToolbarEditorSettingsWidget(
+            renderer, storage::ScreenshotToolbarLayoutKind::DrawingTools, runtimeSession, parent);
+    case SettingsCustomRenderer::ScreenshotToolbarEditor:
+        return new ToolbarEditorSettingsWidget(
+            renderer, storage::ScreenshotToolbarLayoutKind::ActionTools, runtimeSession, parent);
     case SettingsCustomRenderer::TrayMenuOptions:
         return new TrayMenuOptionsSettingsWidget(registry, definition, runtimeSession, parent);
     }

@@ -608,12 +608,14 @@ bool BuiltInSettingsBackend::applyTextValue(SettingsTextBinding binding, const Q
     return false;
 }
 
-storage::ScreenshotToolbarLayout BuiltInSettingsBackend::toolbarLayout() const {
-    return storage::ScreenshotToolbarSettings().layout();
+storage::ScreenshotToolbarLayout
+BuiltInSettingsBackend::toolbarLayout(storage::ScreenshotToolbarLayoutKind kind) const {
+    return storage::ScreenshotToolbarSettings().layout(kind);
 }
 
-bool BuiltInSettingsBackend::applyToolbarLayout(const storage::ScreenshotToolbarLayout& layout) {
-    return storage::ScreenshotToolbarSettings().setLayout(layout);
+bool BuiltInSettingsBackend::applyToolbarLayout(storage::ScreenshotToolbarLayoutKind kind,
+                                                const storage::ScreenshotToolbarLayout& layout) {
+    return storage::ScreenshotToolbarSettings().setLayout(kind, layout);
 }
 
 GlobalShortcutRegistrationState
@@ -910,6 +912,9 @@ bool BuiltInSettingsBackend::resetSection(SettingsSectionReset reset) {
             {QStringLiteral("screenshot_ui/color_picker_center_guide_line_color"),
              storage::ConfigurationSchema::defaultValue(
                  QStringLiteral("screenshot_ui/color_picker_center_guide_line_color"))},
+            {QStringLiteral("screenshot_toolbar/action_tools_layout"),
+             storage::ConfigurationSchema::defaultValue(
+                 QStringLiteral("screenshot_toolbar/action_tools_layout"))},
         });
     case SettingsSectionReset::Toolbar:
         return storage::ApplicationStorage::instance().configuration().setValue(

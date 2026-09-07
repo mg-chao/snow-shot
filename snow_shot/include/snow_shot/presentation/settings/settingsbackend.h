@@ -85,9 +85,11 @@ class SettingsBackend : public QObject {
     [[nodiscard]] virtual bool applyTextValue(SettingsTextBinding binding,
                                               const QString& value) = 0;
 
-    [[nodiscard]] virtual storage::ScreenshotToolbarLayout toolbarLayout() const = 0;
+    [[nodiscard]] virtual storage::ScreenshotToolbarLayout
+    toolbarLayout(storage::ScreenshotToolbarLayoutKind kind) const = 0;
     [[nodiscard]] virtual bool
-    applyToolbarLayout(const storage::ScreenshotToolbarLayout& layout) = 0;
+    applyToolbarLayout(storage::ScreenshotToolbarLayoutKind kind,
+                       const storage::ScreenshotToolbarLayout& layout) = 0;
 
     [[nodiscard]] virtual GlobalShortcutRegistrationState
     shortcutState(GlobalShortcutAction action) const = 0;
@@ -166,8 +168,10 @@ class BuiltInSettingsBackend final : public SettingsBackend {
                                                const QString& value) override;
     [[nodiscard]] QString textValue(SettingsTextBinding binding) const override;
     [[nodiscard]] bool applyTextValue(SettingsTextBinding binding, const QString& value) override;
-    [[nodiscard]] storage::ScreenshotToolbarLayout toolbarLayout() const override;
-    [[nodiscard]] bool applyToolbarLayout(const storage::ScreenshotToolbarLayout& layout) override;
+    [[nodiscard]] storage::ScreenshotToolbarLayout
+    toolbarLayout(storage::ScreenshotToolbarLayoutKind kind) const override;
+    [[nodiscard]] bool applyToolbarLayout(storage::ScreenshotToolbarLayoutKind kind,
+                                          const storage::ScreenshotToolbarLayout& layout) override;
     [[nodiscard]] GlobalShortcutRegistrationState
     shortcutState(GlobalShortcutAction action) const override;
     [[nodiscard]] GlobalShortcutValidationResult
