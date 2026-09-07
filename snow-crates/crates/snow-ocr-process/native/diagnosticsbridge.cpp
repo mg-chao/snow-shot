@@ -87,6 +87,8 @@ void configure(const char* role, const char* session) {
     annotations.SetKeyValue("session", session);
 #ifdef SNOW_DIAGNOSTICS_BUILD
     annotations.SetKeyValue("build", SNOW_DIAGNOSTICS_BUILD);
+#endif
+#ifdef SNOW_DIAGNOSTICS_REVISION
     annotations.SetKeyValue("revision", SNOW_DIAGNOSTICS_REVISION);
 #endif
     crashpad::CrashpadInfo::GetCrashpadInfo()->set_simple_annotations(&annotations);

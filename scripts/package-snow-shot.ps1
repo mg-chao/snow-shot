@@ -605,7 +605,7 @@ if ($versionInfo.FileVersion -ne "$packageVersionNumeric.0" -or
     throw "Snow Shot binary version '$($versionInfo.FileVersion)'/'$($versionInfo.ProductVersion)' does not match package version '$packageVersion'."
 }
 
-$ocrRuntimeVersion = "1.0.1"
+$ocrRuntimeVersion = "1.0.2"
 $ocrPlatform = "windows-x64"
 $ocrModelId = "ppocrv6-small-463ea9f"
 $ocrModelBaseUrl = "https://www.modelscope.cn/models/mgchao/SnowShotOCR/resolve/master/PP-OCRv6/small"
@@ -703,18 +703,18 @@ Copy-Item -LiteralPath $runtimeSource -Destination (Join-Path $runtimeWork $ocrR
 Copy-Item -LiteralPath $directMlSource -Destination (Join-Path $runtimeWork "DirectML.dll")
 $ocrVersionOutput = & (Join-Path $runtimeWork $ocrRuntimeFileName) --version 2>$null
 if ($LASTEXITCODE -ne 0 -or $ocrVersionOutput -notmatch
-    '^snow-ocr-process 1\.0\.1 windows-x86_64 protocol 2$') {
+    '^snow-ocr-process 1\.0\.2 windows-x86_64 protocol 2$') {
     throw "The staged OCR runtime reported an unexpected version: $ocrVersionOutput"
 }
 $ocrRuntimeVersionInfo = (Get-Item -LiteralPath (Join-Path $runtimeWork $ocrRuntimeFileName)).VersionInfo
 $expectedOcrMetadata = @{
     CompanyName = "Snow Apps"
     FileDescription = "Snow Shot OCR runtime"
-    FileVersion = "1.0.1.0"
+    FileVersion = "1.0.2.0"
     InternalName = "snow-ocr-process"
     OriginalFilename = $ocrRuntimeFileName
     ProductName = "Snow Shot OCR Runtime"
-    ProductVersion = "1.0.1"
+    ProductVersion = "1.0.2"
 }
 foreach ($property in $expectedOcrMetadata.Keys) {
     if ($ocrRuntimeVersionInfo.$property -ne $expectedOcrMetadata[$property]) {
