@@ -155,9 +155,13 @@ class NoOpToolbarCommands final : public ScreenshotToolbarCommandSink {
     void repositionToolbarForContentChange() override {
         ++repositionCount;
     }
+    void repositionToolbarForPresentationChange() override {
+        ++presentationRepositionCount;
+    }
     void hideColorPickersForScreenshotUi() override {}
 
     int repositionCount = 0;
+    int presentationRepositionCount = 0;
     int textTranslationToolCount = 0;
     int textTranslationToggleCount = 0;
 };
@@ -1537,6 +1541,25 @@ void floatingToolbarsUseTheFixedWindowPreset() {
                                      "pinned toolbar content must fit the fixed preset");
 }
 
+void scrollingModeRequestsPresentationReposition() {
+    NoOpToolbarCommands commands;
+    ScreenshotToolbarWindow screenshotToolbar(commands);
+
+    screenshotToolbar.setScrollingScreenshotMode(true);
+    require(commands.presentationRepositionCount == 1,
+            "entering scrolling mode should recompute toolbar placement after the sub-toolbar "
+            "appears");
+
+    screenshotToolbar.setScrollingScreenshotMode(true);
+    require(commands.presentationRepositionCount == 1,
+            "reapplying scrolling mode should not trigger a redundant placement pass");
+
+    screenshotToolbar.setScrollingScreenshotMode(false);
+    require(commands.presentationRepositionCount == 2,
+            "leaving scrolling mode should recompute toolbar placement after the sub-toolbar "
+            "hides");
+}
+
 void firstDisplayUsesThePreparedToolbarGeometry() {
     constexpr int toolbarGap = 4;
     const QRect bounds(0, 0, 1920, 1080);
@@ -1805,6 +1828,7 @@ int main(int argc, char* argv[]) {
         unchangedShadowMarginsAreNoOps();
         screenshotToolbarSizeMultiplierSurvivesCaptureReset();
         floatingToolbarsUseTheFixedWindowPreset();
+        scrollingModeRequestsPresentationReposition();
         firstDisplayUsesThePreparedToolbarGeometry();
         captureResetRestoresTheNormalFrameAnchor();
         toolbarNativeSurfaceCanBeRetiredAndRestored();

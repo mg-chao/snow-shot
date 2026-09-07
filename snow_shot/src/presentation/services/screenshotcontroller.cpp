@@ -379,6 +379,7 @@ struct ScreenshotController::Impl final : public ScreenshotToolbarCommandSink,
     void duplicateSelectedElements() override;
     void deleteSelectedElements() override;
     void repositionToolbarForContentChange() override;
+    void repositionToolbarForPresentationChange() override;
     void toggleSelectionAspectRatioLockFromToolbar() override;
     void openSelectionResizeModalFromToolbar() override;
     void hideColorPickersForScreenshotUi() override;
@@ -3297,6 +3298,10 @@ void ScreenshotController::Impl::createTextForSelectedSerialNumber() {
 
 void ScreenshotController::Impl::repositionToolbarForContentChange() {
     m_selectionEditWorkflow->repositionToolbarForContentChange();
+}
+
+void ScreenshotController::Impl::repositionToolbarForPresentationChange() {
+    m_presentationServices->moveToolbar();
 }
 
 void ScreenshotController::Impl::toggleSelectionAspectRatioLockFromToolbar() {
