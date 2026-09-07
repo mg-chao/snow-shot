@@ -97,6 +97,39 @@ int32_t SNOW_SHOT_IMAGE_CODEC_CALL cancelled(void* rawContext) {
     return context != nullptr && context->cancelled ? 1 : 0;
 }
 
+SnowShotImageCodecRgba8Source bridgeSource(StreamContext* context) {
+    SnowShotImageCodecRgba8Source source{};
+    source.struct_size = sizeof(source);
+    source.abi_version = SNOW_SHOT_IMAGE_CODEC_ABI_VERSION;
+    source.context = context;
+    source.width = context->width;
+    source.height = context->height;
+    source.read_rows = &readRows;
+    source.is_cancelled = &cancelled;
+    return source;
+}
+
+SnowShotImageCodecByteSink bridgeSink(StreamContext* context) {
+    SnowShotImageCodecByteSink sink{};
+    sink.struct_size = sizeof(sink);
+    sink.abi_version = SNOW_SHOT_IMAGE_CODEC_ABI_VERSION;
+    sink.context = context;
+    sink.write = &writeBytes;
+    sink.position = &position;
+    sink.seek = &seek;
+    sink.flush = &flush;
+    sink.is_cancelled = &cancelled;
+    sink.seekable = 1;
+    return sink;
+}
+
+SnowShotImageCodecEncodeResult encodeResult() {
+    SnowShotImageCodecEncodeResult result{};
+    result.struct_size = sizeof(result);
+    result.abi_version = SNOW_SHOT_IMAGE_CODEC_ABI_VERSION;
+    return result;
+}
+
 bool roundTripRequiredFormats(const std::array<uint8_t, 3U * 2U * 4U>& pixels,
                               SnowShotImageCodecEncodeOptions options,
                               std::array<char, 512>* error) {
@@ -104,13 +137,16 @@ bool roundTripRequiredFormats(const std::array<uint8_t, 3U * 2U * 4U>& pixels,
         uint32_t format;
         const char* name;
         bool lossless;
+        bool exact;
     };
     constexpr std::array formats{
-        FormatCase{SNOW_SHOT_IMAGE_CODEC_FORMAT_PNG, "PNG", true},
-        FormatCase{SNOW_SHOT_IMAGE_CODEC_FORMAT_JPEG, "JPEG", false},
-        FormatCase{SNOW_SHOT_IMAGE_CODEC_FORMAT_AVIF, "AVIF (libheif/AOM)", true},
-        FormatCase{SNOW_SHOT_IMAGE_CODEC_FORMAT_JXL, "JPEG XL", true},
-        FormatCase{SNOW_SHOT_IMAGE_CODEC_FORMAT_WEBP, "WebP", true},
+        FormatCase{SNOW_SHOT_IMAGE_CODEC_FORMAT_PNG, "PNG", true, true},
+        FormatCase{SNOW_SHOT_IMAGE_CODEC_FORMAT_JPEG, "JPEG", false, false},
+        FormatCase{SNOW_SHOT_IMAGE_CODEC_FORMAT_AVIF, "AVIF (libheif/AOM)", true, false},
+        FormatCase{SNOW_SHOT_IMAGE_CODEC_FORMAT_JXL, "lossless JPEG XL", true, true},
+        FormatCase{SNOW_SHOT_IMAGE_CODEC_FORMAT_JXL, "lossy JPEG XL", false, false},
+        FormatCase{SNOW_SHOT_IMAGE_CODEC_FORMAT_WEBP, "lossless WebP", true, true},
+        FormatCase{SNOW_SHOT_IMAGE_CODEC_FORMAT_WEBP, "lossy WebP", false, false},
     };
 
     for (const FormatCase& format : formats) {
@@ -143,9 +179,26 @@ bool roundTripRequiredFormats(const std::array<uint8_t, 3U * 2U * 4U>& pixels,
                                                error->data(), error->size()) != 0 &&
             decoded.data != nullptr && decoded.width == 3 && decoded.height == 2 &&
             decoded.row_stride == 3U * 4U && decoded.size == 3U * 2U * 4U;
+
+        StreamContext streamContext{pixels.data()};
+        SnowShotImageCodecRgba8Source source = bridgeSource(&streamContext);
+        SnowShotImageCodecByteSink sink = bridgeSink(&streamContext);
+        SnowShotImageCodecEncodeResult receipt = encodeResult();
+        error->fill('\0');
+        const bool receiptMatches =
+            snow_shot_image_codec_encode_rgba8_stream(&source, &sink, &options, &receipt,
+                                                      error->data(), error->size()) != 0 &&
+            receipt.bytes_written == streamContext.output.size() &&
+            receipt.encoded_format == format.format && receipt.canvas_width == 3 &&
+            receipt.canvas_height == 2 && receipt.emitted_frame_count == 1 &&
+            receipt.encoder_finalized_and_sink_flushed != 0 &&
+            receipt.pixel_round_trip ==
+                static_cast<uint8_t>(format.exact
+                                         ? SNOW_SHOT_IMAGE_CODEC_PIXEL_ROUND_TRIP_EXACT
+                                         : SNOW_SHOT_IMAGE_CODEC_PIXEL_ROUND_TRIP_CODEC_ARTIFACT);
         snow_shot_image_codec_release_buffer(&decoded);
         snow_shot_image_codec_release_buffer(&encoded);
-        if (!inspected || !roundTripped) {
+        if (!inspected || !roundTripped || !receiptMatches) {
             std::cerr << format.name << " inspect/decode failed: " << error->data() << '\n';
             return false;
         }
@@ -158,18 +211,40 @@ int main() {
     constexpr std::array<uint8_t, 12> resizePixels{0, 0, 0, 255, 255, 255, 255, 255, 0, 0, 0, 255};
     std::array<uint8_t, 20> resized{};
     std::array<char, 512> resizeError{};
-    if (!snow_shot_image_codec_resize_rgba8(resizePixels.data(), 3, 1, resized.data(), 5, 1,
-                                            nullptr, nullptr, resizeError.data(),
-                                            resizeError.size()) ||
+    StreamContext resizeContext{resizePixels.data(), 3, 1};
+    SnowShotImageCodecRgba8Source resizeSource = bridgeSource(&resizeContext);
+    SnowShotImageCodecRgba8Source invalidResizeSource = resizeSource;
+    invalidResizeSource.abi_version = SNOW_SHOT_IMAGE_CODEC_ABI_VERSION + 1U;
+    const bool rejectedInvalidResizeSource =
+        snow_shot_image_codec_resize_rgba8(&invalidResizeSource, resized.data(), 5U * 4U,
+                                           resized.size(), 5, 1, resizeError.data(),
+                                           resizeError.size()) == 0 &&
+        resizeError[0] != '\0';
+    resizeError.fill('\0');
+    if (!snow_shot_image_codec_resize_rgba8(&resizeSource, resized.data(), 5U * 4U, resized.size(),
+                                            5, 1, resizeError.data(), resizeError.size()) ||
         resized[0] != 0 || resized[8] != 255 || resized[16] != 0 ||
         std::abs(int(resized[4]) - 170) > 1 || std::abs(int(resized[12]) - 170) > 1) {
         std::cerr << "Export resizing must use linear interpolation in linear RGB: "
                   << resizeError.data() << '\n';
         return EXIT_FAILURE;
     }
+    StreamContext tallResizeContext;
+    tallResizeContext.width = 7;
+    tallResizeContext.height = 5000;
+    SnowShotImageCodecRgba8Source tallResizeSource = bridgeSource(&tallResizeContext);
+    std::array<uint8_t, 2U * 3U * 4U> tallResized{};
+    resizeError.fill('\0');
+    const bool tallResizeStreamed =
+        snow_shot_image_codec_resize_rgba8(&tallResizeSource, tallResized.data(), 2U * 4U,
+                                           tallResized.size(), 2, 3, resizeError.data(),
+                                           resizeError.size()) != 0 &&
+        tallResizeContext.maximumRequestedRows == 1 &&
+        tallResizeContext.readCount <= tallResizeContext.height;
     constexpr std::array<uint8_t, 12> alphaPixels{255, 0, 0, 255, 0, 0, 255, 0, 255, 0, 0, 255};
-    if (!snow_shot_image_codec_resize_rgba8(alphaPixels.data(), 3, 1, resized.data(), 5, 1, nullptr,
-                                            nullptr, resizeError.data(), resizeError.size()) ||
+    resizeContext.pixels = alphaPixels.data();
+    if (!snow_shot_image_codec_resize_rgba8(&resizeSource, resized.data(), 5U * 4U, resized.size(),
+                                            5, 1, resizeError.data(), resizeError.size()) ||
         resized[4] != 255 || resized[5] != 0 || resized[6] != 0 || resized[7] != 153 ||
         resized[11] != 0) {
         std::cerr << "Linear export resizing must premultiply alpha: " << resizeError.data()
@@ -218,29 +293,32 @@ int main() {
                                      output.size == originalSize && error[0] != '\0';
 
     StreamContext streamContext{pixels.data()};
-    SnowShotImageCodecRgba8Source source{};
-    source.struct_size = sizeof(source);
-    source.abi_version = SNOW_SHOT_IMAGE_CODEC_ABI_VERSION;
-    source.context = &streamContext;
-    source.width = 3;
-    source.height = 2;
-    source.read_rows = &readRows;
-    source.is_cancelled = &cancelled;
-    SnowShotImageCodecByteSink sink{};
-    sink.struct_size = sizeof(sink);
-    sink.abi_version = SNOW_SHOT_IMAGE_CODEC_ABI_VERSION;
-    sink.context = &streamContext;
-    sink.write = &writeBytes;
-    sink.position = &position;
-    sink.seek = &seek;
-    sink.flush = &flush;
-    sink.is_cancelled = &cancelled;
-    sink.seekable = 1;
-    uint64_t streamBytes = 0;
+    SnowShotImageCodecRgba8Source source = bridgeSource(&streamContext);
+    SnowShotImageCodecByteSink sink = bridgeSink(&streamContext);
+    SnowShotImageCodecEncodeResult streamResult = encodeResult();
+    SnowShotImageCodecEncodeResult invalidResult = encodeResult();
+    invalidResult.abi_version = SNOW_SHOT_IMAGE_CODEC_ABI_VERSION + 1U;
+    error.fill('\0');
+    const bool rejectedInvalidResult =
+        snow_shot_image_codec_encode_rgba8_stream(&source, &sink, &options, &invalidResult,
+                                                  error.data(), error.size()) == 0 &&
+        streamContext.output.empty() && error[0] != '\0';
+
+    SnowShotImageCodecRgba8Source invalidSource = source;
+    invalidSource.struct_size = sizeof(invalidSource) - 1U;
+    streamResult = encodeResult();
+    error.fill('\0');
+    const bool rejectedInvalidSource =
+        snow_shot_image_codec_encode_rgba8_stream(&invalidSource, &sink, &options, &streamResult,
+                                                  error.data(), error.size()) == 0 &&
+        streamResult.bytes_written == 0 && streamContext.output.empty() && error[0] != '\0';
+
+    streamResult = encodeResult();
     error.fill('\0');
     const int32_t streamed = snow_shot_image_codec_encode_rgba8_stream(
-        &source, &sink, &options, &streamBytes, error.data(), error.size());
-    const bool streamedPng = streamed != 0 && streamBytes == streamContext.output.size() &&
+        &source, &sink, &options, &streamResult, error.data(), error.size());
+    const bool streamedPng = streamed != 0 &&
+                             streamResult.bytes_written == streamContext.output.size() &&
                              streamContext.output.size() >= 8 && streamContext.output[0] == 0x89 &&
                              streamContext.output[1] == 'P' && streamContext.output[2] == 'N' &&
                              streamContext.output[3] == 'G';
@@ -252,11 +330,11 @@ int main() {
     source.width = tallPngContext.width;
     source.height = tallPngContext.height;
     sink.context = &tallPngContext;
-    streamBytes = 0;
+    streamResult = encodeResult();
     error.fill('\0');
     const int32_t tallPng = snow_shot_image_codec_encode_rgba8_stream(
-        &source, &sink, &options, &streamBytes, error.data(), error.size());
-    const bool tallPngStreamedRows = tallPng != 0 && streamBytes > 0 &&
+        &source, &sink, &options, &streamResult, error.data(), error.size());
+    const bool tallPngStreamedRows = tallPng != 0 && streamResult.bytes_written > 0 &&
                                      tallPngContext.maximumRequestedRows == 1 &&
                                      tallPngContext.readCount == tallPngContext.height;
 
@@ -268,12 +346,12 @@ int main() {
     source.height = tallJpegContext.height;
     sink.context = &tallJpegContext;
     options.format = SNOW_SHOT_IMAGE_CODEC_FORMAT_JPEG;
-    streamBytes = 0;
+    streamResult = encodeResult();
     error.fill('\0');
     const int32_t tallJpeg = snow_shot_image_codec_encode_rgba8_stream(
-        &source, &sink, &options, &streamBytes, error.data(), error.size());
+        &source, &sink, &options, &streamResult, error.data(), error.size());
     const bool tallJpegStreamedRows =
-        tallJpeg != 0 && streamBytes > 2 && tallJpegContext.output[0] == 0xff &&
+        tallJpeg != 0 && streamResult.bytes_written > 2 && tallJpegContext.output[0] == 0xff &&
         tallJpegContext.output[1] == 0xd8 && tallJpegContext.maximumRequestedRows == 1 &&
         tallJpegContext.readCount == tallJpegContext.height;
 
@@ -285,20 +363,22 @@ int main() {
     streamContext.cancelled = true;
     streamContext.output.clear();
     streamContext.position = 0;
-    streamBytes = 0;
+    streamResult = encodeResult();
     error.fill('\0');
     const int32_t cancelledStream = snow_shot_image_codec_encode_rgba8_stream(
-        &source, &sink, &options, &streamBytes, error.data(), error.size());
+        &source, &sink, &options, &streamResult, error.data(), error.size());
     const bool propagatedCancellation =
-        cancelledStream == 0 && streamBytes == 0 && error[0] != '\0';
+        cancelledStream == 0 && streamResult.bytes_written == 0 && error[0] != '\0';
 
     snow_shot_image_codec_release_buffer(&output);
     snow_shot_image_codec_release_buffer(&output);
     const bool requiredFormatsRoundTrip = roundTripRequiredFormats(pixels, options, &error);
     if (snow_shot_image_codec_abi_version() != SNOW_SHOT_IMAGE_CODEC_ABI_VERSION ||
         succeeded == 0 || !hasPngSignature || !rejectedUnsafeReuse || output.data != nullptr ||
-        output.size != 0 || !streamedPng || !tallPngStreamedRows || !tallJpegStreamedRows ||
-        !propagatedCancellation || !requiredFormatsRoundTrip || !hasBgraPixels) {
+        output.size != 0 || !rejectedInvalidResult || !rejectedInvalidSource ||
+        !rejectedInvalidResizeSource || !tallResizeStreamed || !streamedPng ||
+        !tallPngStreamedRows || !tallJpegStreamedRows || !propagatedCancellation ||
+        !requiredFormatsRoundTrip || !hasBgraPixels) {
         std::cerr << (error[0] == '\0' ? "The C ABI PNG smoke test failed." : error.data()) << '\n';
         return EXIT_FAILURE;
     }

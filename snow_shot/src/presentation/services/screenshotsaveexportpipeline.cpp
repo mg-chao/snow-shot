@@ -31,6 +31,32 @@ uint32_t bridgeFormat(ScreenshotImageFileFormat format) {
     }
     return SNOW_SHOT_IMAGE_CODEC_FORMAT_UNKNOWN;
 }
+
+void classifyAlpha(const uchar* pixels, int width, int height, qsizetype stride,
+                   snow::image::AlphaContent* classification) {
+    if (*classification == snow::image::AlphaContent::non_opaque)
+        return;
+    for (int row = 0; row < height; ++row) {
+        const uchar* line = pixels + static_cast<qsizetype>(row) * stride;
+        for (int column = 0; column < width; ++column) {
+            if (line[static_cast<qsizetype>(column) * 4 + 3] != 255) {
+                *classification = snow::image::AlphaContent::non_opaque;
+                return;
+            }
+        }
+    }
+}
+
+ScreenshotImageRowSource withCancellation(const ScreenshotImageRowSource& source,
+                                          const ScreenshotExportCancellation& cancellation) {
+    ScreenshotImageRowSource result = source;
+    const auto sourceCancellation = source.cancellationRequested;
+    result.cancellationRequested = [sourceCancellation, &cancellation] {
+        return cancellation.isCancellationRequested() ||
+               (sourceCancellation && sourceCancellation());
+    };
+    return result;
+}
 } // namespace
 
 MappedRaster::~MappedRaster() {
@@ -70,6 +96,7 @@ ScreenshotImageRowSource MappedRaster::rows(std::function<bool()> cancellation) 
     ScreenshotImageRowSource result;
     result.size = size;
     result.cancellationRequested = std::move(cancellation);
+    result.backingImage = image();
     const uchar* data = pixels;
     const QSize dimensions = size;
     result.readRows = [data, dimensions](int first, int count, qsizetype stride, uchar* target,
@@ -106,6 +133,22 @@ Source prepare(const ScreenshotImageRowSource& rows,
     if (size.width() > 2048 || size.height() > 2048)
         size.scale(2048, 2048, Qt::KeepAspectRatio);
     size = size.expandedTo(QSize(1, 1));
+    snow::image::AlphaContent alpha = snow::image::AlphaContent::opaque;
+    const bool hasBacking = !rows.backingImage.isNull() && rows.backingImage.size() == rows.size &&
+                            rows.backingImage.format() == QImage::Format_RGBA8888;
+    if (hasBacking) {
+        for (int first = 0; first < rows.size.height(); first += 64) {
+            if (cancellation.isCancellationRequested())
+                return {};
+            const int count = qMin(64, rows.size.height() - first);
+            classifyAlpha(rows.backingImage.constScanLine(first), rows.size.width(), count,
+                          rows.backingImage.bytesPerLine(), &alpha);
+        }
+        QImage preview = size == rows.size ? rows.backingImage
+                                           : rows.backingImage.scaled(size, Qt::IgnoreAspectRatio,
+                                                                      Qt::SmoothTransformation);
+        return preview.isNull() ? Source{} : Source{rows, std::move(preview), alpha};
+    }
     if (size == rows.size) {
         QImage preview(size, QImage::Format_RGBA8888);
         if (preview.isNull() || !rows.readRows(0, size.height(), preview.bytesPerLine(),
@@ -114,8 +157,10 @@ Source prepare(const ScreenshotImageRowSource& rows,
                                                  "The screenshot pixels could not be read");
             return {};
         }
+        classifyAlpha(preview.constBits(), preview.width(), preview.height(),
+                      preview.bytesPerLine(), &alpha);
         preview.setColorSpace(QColorSpace::SRgb);
-        return {rows, preview};
+        return {rows, preview, alpha};
     }
     QImage preview(size, QImage::Format_RGBA8888_Premultiplied);
     if (preview.isNull())
@@ -138,6 +183,8 @@ Source prepare(const ScreenshotImageRowSource& rows,
                                                      "The screenshot pixels could not be read");
                 return {};
             }
+            classifyAlpha(strip.constBits(), strip.width(), strip.height(), strip.bytesPerLine(),
+                          &alpha);
             strip = strip.convertToFormat(QImage::Format_RGBA8888_Premultiplied);
             if (strip.width() != size.width())
                 strip = strip.scaled(size.width(), count, Qt::IgnoreAspectRatio,
@@ -154,7 +201,7 @@ Source prepare(const ScreenshotImageRowSource& rows,
     }
     preview = preview.convertToFormat(QImage::Format_RGBA8888);
     preview.setColorSpace(QColorSpace::SRgb);
-    return {rows, preview};
+    return {rows, preview, alpha};
 }
 QSize encoderLimits(ScreenshotImageFileFormat format) {
     uint32_t width = 0;
@@ -169,10 +216,46 @@ ScreenshotSaveExportOptions normalizedOptions(ScreenshotSaveExportOptions option
         options.format == ScreenshotImageFileFormat::Png ? 100 : qBound(1, options.quality, 100);
     return options;
 }
-std::shared_ptr<Encoded> render(const Source& source, const ScreenshotSaveExportOptions& options,
-                                const ScreenshotExportCancellation& cancellation, QString* error) {
-    if (!source.rows.isValid() || cancellation.isCancellationRequested())
+
+std::shared_ptr<PreparedPixels> preparePixels(const Source& source, QSize size,
+                                              const ScreenshotExportCancellation& cancellation,
+                                              QString* error) {
+    if (!source.rows.isValid() || size.isEmpty() || cancellation.isCancellationRequested())
         return {};
+    auto result = std::make_shared<PreparedPixels>();
+    result->size = size;
+    if (size == source.rows.size) {
+        result->rows = source.rows;
+        result->exactImage = source.rows.backingImage;
+        result->alphaContent = source.alphaContent;
+        return result;
+    }
+
+    auto raster = MappedRaster::create(size, error);
+    if (!raster)
+        return {};
+    const ScreenshotImageRowSource input = withCancellation(source.rows, cancellation);
+    const qsizetype stride = static_cast<qsizetype>(size.width()) * 4;
+    if (!snow_shot::image_codec::resizeToRgba8(input, size, raster->pixels, stride,
+                                               stride * size.height(), error)) {
+        return {};
+    }
+    if (cancellation.isCancellationRequested())
+        return {};
+    result->alphaContent = snow::image::AlphaContent::opaque;
+    classifyAlpha(raster->pixels, size.width(), size.height(), stride, &result->alphaContent);
+    result->rows = raster->rows(source.rows.cancellationRequested);
+    result->exactImage = result->rows.backingImage;
+    return result;
+}
+
+std::shared_ptr<Encoded> render(std::shared_ptr<PreparedPixels> pixels,
+                                const ScreenshotSaveExportOptions& options,
+                                const ScreenshotExportCancellation& cancellation, QString* error) {
+    if (!pixels || !pixels->rows.isValid() || pixels->size != options.size ||
+        cancellation.isCancellationRequested()) {
+        return {};
+    }
     const QSize limits = encoderLimits(options.format);
     if (options.size.isEmpty() || options.size.width() > limits.width() ||
         options.size.height() > limits.height()) {
@@ -180,47 +263,13 @@ std::shared_ptr<Encoded> render(const Source& source, const ScreenshotSaveExport
             "ScreenshotSaveAsFileDialog", "The dimensions are not supported by this image format");
         return {};
     }
-    const QSize outputSize = options.size;
-    auto rows = source.rows;
-    std::shared_ptr<MappedRaster> raster;
-    std::array<char, 1024> backendError{};
-    auto* context = const_cast<ScreenshotExportCancellation*>(&cancellation);
-    if (outputSize != rows.size) {
-        auto input = MappedRaster::create(rows.size, error);
-        if (!input)
-            return {};
-        const qsizetype stride = qsizetype(rows.size.width()) * 4;
-        for (int first = 0; first < rows.size.height(); first += 64) {
-            if (cancellation.isCancellationRequested())
-                return {};
-            const int count = qMin(64, rows.size.height() - first);
-            if (!rows.readRows(first, count, stride, input->pixels + first * stride,
-                               count * stride)) {
-                *error = QCoreApplication::translate("ScreenshotSaveAsFileDialog",
-                                                     "The screenshot pixels could not be read");
-                return {};
-            }
-        }
-        raster = MappedRaster::create(outputSize, error);
-        if (!raster)
-            return {};
-        if (!snow_shot_image_codec_resize_rgba8(
-                input->pixels, uint32_t(input->size.width()), uint32_t(input->size.height()),
-                raster->pixels, uint32_t(outputSize.width()), uint32_t(outputSize.height()),
-                context, cancelled, backendError.data(), backendError.size())) {
-            *error = QString::fromUtf8(backendError.data());
-            return {};
-        }
-        rows = raster->rows();
-    }
-    if (cancellation.isCancellationRequested())
-        return {};
     auto result = std::make_shared<Encoded>();
     if (!result->directory.isValid()) {
         *error = result->directory.errorString();
         return {};
     }
     result->options = normalizedOptions(options);
+    result->pixels = std::move(pixels);
     result->path = result->directory.filePath(
         QStringLiteral("export.") + ScreenshotImageFileService::extension(options.format));
     QFile output(result->path);
@@ -228,11 +277,15 @@ std::shared_ptr<Encoded> render(const Source& source, const ScreenshotSaveExport
         *error = output.errorString();
         return {};
     }
-    rows.cancellationRequested = [&cancellation] { return cancellation.isCancellationRequested(); };
+    ScreenshotImageRowSource rows = withCancellation(result->pixels->rows, cancellation);
+    snow::image::EncodeOptions encodeOptions =
+        ScreenshotImageFileService::encodeOptions(result->options.format, result->options.quality);
+    encodeOptions.verified_alpha_content = result->pixels->alphaContent;
     if (!snow_shot::image_codec::encodeToDevice(
-            rows, &output, ScreenshotImageFileService::snowImageFormat(options.format),
-            ScreenshotImageFileService::encodeOptions(options.format, options.quality), error))
+            rows, &output, ScreenshotImageFileService::snowImageFormat(result->options.format),
+            encodeOptions, error, &result->codecResult)) {
         return {};
+    }
     if (!output.flush()) {
         *error = output.errorString();
         return {};
@@ -242,6 +295,13 @@ std::shared_ptr<Encoded> render(const Source& source, const ScreenshotSaveExport
         return {};
     return result;
 }
+
+std::shared_ptr<Encoded> render(const Source& source, const ScreenshotSaveExportOptions& options,
+                                const ScreenshotExportCancellation& cancellation, QString* error) {
+    auto pixels = preparePixels(source, options.size, cancellation, error);
+    return pixels ? render(std::move(pixels), options, cancellation, error) : nullptr;
+}
+
 QImage decode(const Encoded& encoded, const ScreenshotExportCancellation& cancellation,
               QString* error) {
     if (cancellation.isCancellationRequested())

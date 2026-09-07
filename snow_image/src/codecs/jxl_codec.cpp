@@ -1101,4 +1101,87 @@ Result<EncodedArtifactReceipt> JxlCodec::encode_to_sink(const Document& document
     return receipt_for_document(document, format());
 }
 
+Result<EncodedArtifactReceipt> JxlCodec::encode_raster_to_sink(const RasterSource& source,
+                                                               const Output& output,
+                                                               const EncodeOptions& options,
+                                                               std::stop_token stop) const {
+    const DocumentDescriptor& descriptor = source.descriptor();
+    if (raster_encode_route(descriptor, options) != RasterEncodeRoute::native)
+        return Codec::encode_raster_to_sink(source, output, options, stop);
+    Result<void> descriptor_status = descriptor.validate();
+    if (!descriptor_status)
+        return descriptor_status.error();
+
+    const RasterFrameDescriptor& source_frame = descriptor.frames.front();
+    const std::size_t row_bytes = static_cast<std::size_t>(source_frame.width) * 4U;
+    if (source_frame.height > std::numeric_limits<std::size_t>::max() / row_bytes) {
+        return jxl_error(ErrorCode::limit_exceeded,
+                         "JPEG XL raster input size overflows addressable memory.");
+    }
+    try {
+        auto pixels = std::make_shared<std::vector<std::byte>>(row_bytes * source_frame.height);
+        constexpr std::uint32_t kRowsPerRead = 64;
+        for (std::uint32_t first = 0; first < source_frame.height; first += kRowsPerRead) {
+            if (stop.stop_requested())
+                return cancelled_status();
+            const std::uint32_t count = std::min(kRowsPerRead, source_frame.height - first);
+            const std::size_t offset = static_cast<std::size_t>(first) * row_bytes;
+            Result<void> read =
+                source.read_rows(0, 0, first, count, row_bytes,
+                                 std::span<std::byte>(*pixels).subspan(
+                                     offset, static_cast<std::size_t>(count) * row_bytes),
+                                 stop);
+            if (!read)
+                return read.error();
+        }
+        Result<SharedPixelBuffer> buffer = SharedPixelBuffer::adopt(
+            std::static_pointer_cast<const void>(pixels), std::span<const std::byte>(*pixels));
+        if (!buffer)
+            return buffer.error();
+        Result<Image> image = Image::adopt(source_frame.width, source_frame.height, kRgba8,
+                                           row_bytes, std::move(buffer).value());
+        if (!image)
+            return image.error();
+
+        Document document;
+        document.format = descriptor.format;
+        document.canvas_width = descriptor.canvas_width;
+        document.canvas_height = descriptor.canvas_height;
+        document.loop_count = descriptor.loop_count;
+        document.metadata = descriptor.metadata;
+        document.color = descriptor.color;
+        Frame frame;
+        frame.image = std::move(image).value();
+        frame.x = source_frame.x;
+        frame.y = source_frame.y;
+        frame.duration = source_frame.duration;
+        frame.blend = source_frame.blend;
+        frame.disposal = source_frame.disposal;
+        frame.metadata = source_frame.metadata;
+        frame.color = source_frame.color;
+        frame.cursor_hotspot = source_frame.cursor_hotspot;
+        document.frames.push_back(std::move(frame));
+        return encode_to_sink(document, output, options, stop);
+    } catch (const std::bad_alloc&) {
+        return jxl_error(ErrorCode::out_of_memory, "Could not allocate the JPEG XL input frame.");
+    }
+}
+
+RasterEncodeRoute
+JxlCodec::raster_encode_route(const DocumentDescriptor& descriptor,
+                              const EncodeOptions& normalized_options) const noexcept {
+    if (!normalized_options.verified_alpha_content || descriptor.kind != DocumentKind::raster ||
+        descriptor.frames.size() != 1U)
+        return RasterEncodeRoute::materialized;
+    const RasterFrameDescriptor& frame = descriptor.frames.front();
+    if (frame.x != 0 || frame.y != 0 || frame.width != descriptor.canvas_width ||
+        frame.height != descriptor.canvas_height || frame.layout.planes.size() != 1U)
+        return RasterEncodeRoute::materialized;
+    const PlaneDescriptor& plane = frame.layout.planes.front();
+    return plane.semantic == PlaneSemantic::packed && plane.width == frame.width &&
+                   plane.height == frame.height && plane.format == kRgba8
+               ? RasterEncodeRoute::native
+               : RasterEncodeRoute::materialized;
+}
+
 } // namespace snow::image::internal

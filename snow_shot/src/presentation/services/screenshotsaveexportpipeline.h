@@ -2,6 +2,7 @@
 
 #include "snow_shot/presentation/screenshotsaveasfiledialog.h"
 #include "snow_shot/presentation/screenshotexportcoordinator.h"
+#include "snowimageqtcodec.h"
 #include <QTemporaryDir>
 #include <QFile>
 
@@ -22,15 +23,31 @@ class MappedRaster final : public std::enable_shared_from_this<MappedRaster> {
 struct Source {
     ScreenshotImageRowSource rows;
     QImage preview;
+    snow::image::AlphaContent alphaContent = snow::image::AlphaContent::opaque;
+};
+struct PreparedPixels {
+    QSize size;
+    ScreenshotImageRowSource rows;
+    QImage exactImage;
+    snow::image::AlphaContent alphaContent = snow::image::AlphaContent::opaque;
 };
 struct Encoded {
     QTemporaryDir directory;
     QString path;
     ScreenshotSaveExportOptions options;
+    std::shared_ptr<PreparedPixels> pixels;
+    snow_shot::image_codec::EncodeResult codecResult;
 };
 [[nodiscard]] Source prepare(const ScreenshotImageRowSource& rows,
                              const ScreenshotExportCancellation& cancellation, QString* error);
+[[nodiscard]] std::shared_ptr<PreparedPixels>
+preparePixels(const Source& source, QSize size, const ScreenshotExportCancellation& cancellation,
+              QString* error);
 [[nodiscard]] ScreenshotSaveExportOptions normalizedOptions(ScreenshotSaveExportOptions options);
+[[nodiscard]] std::shared_ptr<Encoded> render(std::shared_ptr<PreparedPixels> pixels,
+                                              const ScreenshotSaveExportOptions& options,
+                                              const ScreenshotExportCancellation& cancellation,
+                                              QString* error);
 [[nodiscard]] std::shared_ptr<Encoded> render(const Source& source,
                                               const ScreenshotSaveExportOptions& options,
                                               const ScreenshotExportCancellation& cancellation,

@@ -20,7 +20,7 @@
 #define SNOW_SHOT_IMAGE_CODEC_CALL
 #endif
 
-#define SNOW_SHOT_IMAGE_CODEC_ABI_VERSION 1U
+#define SNOW_SHOT_IMAGE_CODEC_ABI_VERSION 2U
 
 #ifdef __cplusplus
 extern "C" {
@@ -61,6 +61,11 @@ enum SnowShotImageCodecChromaSubsampling {
 enum SnowShotImageCodecAlphaContent {
     SNOW_SHOT_IMAGE_CODEC_ALPHA_OPAQUE = 0,
     SNOW_SHOT_IMAGE_CODEC_ALPHA_NON_OPAQUE = 1,
+};
+
+enum SnowShotImageCodecPixelRoundTrip {
+    SNOW_SHOT_IMAGE_CODEC_PIXEL_ROUND_TRIP_EXACT = 0,
+    SNOW_SHOT_IMAGE_CODEC_PIXEL_ROUND_TRIP_CODEC_ARTIFACT = 1,
 };
 
 typedef struct SnowShotImageCodecEncodeOptions {
@@ -130,6 +135,19 @@ typedef struct SnowShotImageCodecByteSink {
     uint8_t reserved[7];
 } SnowShotImageCodecByteSink;
 
+typedef struct SnowShotImageCodecEncodeResult {
+    uint32_t struct_size;
+    uint32_t abi_version;
+    uint64_t bytes_written;
+    uint32_t encoded_format;
+    uint32_t canvas_width;
+    uint32_t canvas_height;
+    uint32_t emitted_frame_count;
+    uint8_t pixel_round_trip;
+    uint8_t encoder_finalized_and_sink_flushed;
+    uint8_t reserved[6];
+} SnowShotImageCodecEncodeResult;
+
 SNOW_SHOT_IMAGE_CODEC_API uint32_t SNOW_SHOT_IMAGE_CODEC_CALL
 snow_shot_image_codec_abi_version(void);
 
@@ -143,7 +161,7 @@ SNOW_SHOT_IMAGE_CODEC_API int32_t SNOW_SHOT_IMAGE_CODEC_CALL
 snow_shot_image_codec_encode_rgba8_stream(const SnowShotImageCodecRgba8Source* source,
                                           const SnowShotImageCodecByteSink* sink,
                                           const SnowShotImageCodecEncodeOptions* options,
-                                          uint64_t* bytes_written, char* error,
+                                          SnowShotImageCodecEncodeResult* result, char* error,
                                           uint64_t error_capacity);
 
 SNOW_SHOT_IMAGE_CODEC_API int32_t SNOW_SHOT_IMAGE_CODEC_CALL snow_shot_image_codec_decode_rgba8(
@@ -163,9 +181,9 @@ snow_shot_image_codec_release_buffer(SnowShotImageCodecBuffer* buffer);
 
 // Export-only operations use caller-owned, optionally file-mapped RGBA buffers.
 SNOW_SHOT_IMAGE_CODEC_API int32_t SNOW_SHOT_IMAGE_CODEC_CALL snow_shot_image_codec_resize_rgba8(
-    const uint8_t* source, uint32_t width, uint32_t height, uint8_t* destination,
-    uint32_t output_width, uint32_t output_height, void* cancel_context,
-    SnowShotImageCodecCancelCallback cancelled, char* error, uint64_t error_capacity);
+    const SnowShotImageCodecRgba8Source* source, uint8_t* destination, uint64_t destination_stride,
+    uint64_t destination_size, uint32_t output_width, uint32_t output_height, char* error,
+    uint64_t error_capacity);
 SNOW_SHOT_IMAGE_CODEC_API int32_t SNOW_SHOT_IMAGE_CODEC_CALL snow_shot_image_codec_decode_file_into(
     const char* utf8_path, uint8_t* destination, uint32_t width, uint32_t height,
     void* cancel_context, SnowShotImageCodecCancelCallback cancelled, char* error,

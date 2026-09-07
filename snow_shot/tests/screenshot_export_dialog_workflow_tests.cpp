@@ -20,6 +20,7 @@
 #include "widgets/input_number.h"
 #include "widgets/modal.h"
 #include "widgets/select.h"
+#include "widgets/segmented.h"
 #include "widgets/slider.h"
 #include "theme/theme_manager.h"
 
@@ -30,6 +31,7 @@
 #include <QElapsedTimer>
 #include <QEnterEvent>
 #include <QFile>
+#include <QFileDialog>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -38,6 +40,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPointer>
+#include <QRegularExpression>
 #include <QScrollArea>
 #include <QScopeGuard>
 #include <QScreen>
@@ -811,6 +814,41 @@ void shortcutPopupInteraction(QWidget& owner, const QTemporaryDir& temp) {
     require(settings.setSavePathShortcuts({}), "hover shortcut cleanup failed");
 }
 
+void browseShortcutDirectory(AdModal* editor, const QString& selectedPath, bool accept) {
+    auto* path = child<DirectoryPathInput>(editor->contentWidget(), "savePathValuePathInput");
+    requireJoinedPathControl(path);
+    require(adqt::icons::describeIcon(path->browseButton()->iconRef()).key.name ==
+                    QStringLiteral("folder-open") &&
+                path->browseButton()->toolTip() == QStringLiteral("Select save directory") &&
+                path->browseButton()->accessibleName() == path->browseButton()->toolTip(),
+            "shortcut path must use the save directory icon and accessible browse label");
+    const QString previousPath = path->text();
+    const bool nativeDialogsDisabled = QApplication::testAttribute(Qt::AA_DontUseNativeDialogs);
+    QApplication::setAttribute(Qt::AA_DontUseNativeDialogs, true);
+    const auto restoreDialogs = qScopeGuard([nativeDialogsDisabled] {
+        QApplication::setAttribute(Qt::AA_DontUseNativeDialogs, nativeDialogsDisabled);
+    });
+    bool opened = false;
+    bool correctDirectory = false;
+    QTimer::singleShot(0, path, [&] {
+        auto* picker = qobject_cast<QFileDialog*>(QApplication::activeModalWidget());
+        if (!picker)
+            return;
+        opened = true;
+        correctDirectory = picker->directory().absolutePath() == QDir(previousPath).absolutePath();
+        if (accept) {
+            picker->selectFile(selectedPath);
+            QMetaObject::invokeMethod(picker, "accept", Qt::DirectConnection);
+        } else {
+            picker->reject();
+        }
+    });
+    path->browseButton()->click();
+    require(opened && correctDirectory, "shortcut picker must open at the current input path");
+    require(QDir::cleanPath(path->text()) == QDir::cleanPath(accept ? selectedPath : previousPath),
+            "folder selection must update the shortcut path and cancellation must preserve it");
+}
+
 void shortcutsAndCancellation(QWidget& owner, const QTemporaryDir& temp) {
     int saved = 0;
     int finished = 0;
@@ -837,11 +875,17 @@ void shortcutsAndCancellation(QWidget& owner, const QTemporaryDir& temp) {
     snapshot(modal, QStringLiteral("shortcut-validation"));
     child<AdLineEdit>(editor->contentWidget(), "savePathNameInput")
         ->setText(QStringLiteral("Projects"));
-    child<AdLineEdit>(editor->contentWidget(), "savePathValueInput")
-        ->setText(temp.filePath("projects"));
+    child<AdLineEdit>(editor->contentWidget(), "savePathValueInput")->setText(temp.path());
+    const QString projectsPath = temp.filePath("projects");
+    require(QDir().mkpath(projectsPath), "shortcut browse directory setup failed");
+    browseShortcutDirectory(editor, projectsPath, true);
+    browseShortcutDirectory(editor, temp.path(), false);
+    require(storage::ScreenshotSettings().savePathShortcuts().isEmpty(),
+            "browsing must not persist a shortcut before confirmation");
     editor->acceptButton()->click();
     flush();
-    require(storage::ScreenshotSettings().savePathShortcuts().size() == 1,
+    require(storage::ScreenshotSettings().savePathShortcuts().size() == 1 &&
+                storage::ScreenshotSettings().savePathShortcuts()[0].path == projectsPath,
             "confirmed shortcut must persist immediately");
     auto* shortcutGroup = child<AdFieldGroup>(content, "savePathShortcutGroup_0");
     require(shortcutGroup->controlCount() == 2,
@@ -859,11 +903,15 @@ void shortcutsAndCancellation(QWidget& owner, const QTemporaryDir& temp) {
     menu->hide();
     menu->actions()[0]->trigger();
     editor = child<AdModal>(content, "savePathEditorModal");
+    browseShortcutDirectory(editor, temp.path(), true);
+    browseShortcutDirectory(editor, projectsPath, false);
     child<AdLineEdit>(editor->contentWidget(), "savePathNameInput")
         ->setText(QStringLiteral("Exports"));
     editor->acceptButton()->click();
     flush();
-    require(storage::ScreenshotSettings().savePathShortcuts()[0].name == QStringLiteral("Exports"),
+    require(storage::ScreenshotSettings().savePathShortcuts()[0].name ==
+                    QStringLiteral("Exports") &&
+                storage::ScreenshotSettings().savePathShortcuts()[0].path == temp.path(),
             "shortcut edit did not persist");
     child<AdButton>(content, "savePathAddButton")->click();
     editor = child<AdModal>(content, "savePathEditorModal");
@@ -915,16 +963,18 @@ void previewAndSave(QWidget& owner, const QTemporaryDir& temp) {
     }
     auto* directoryControl = child<DirectoryPathInput>(content, "saveDirectoryPathInput");
     requireJoinedPathControl(directoryControl);
-    auto* dimensions = child<AdForm>(content, "saveDimensionsForm");
-    require(
-        dimensions->formLayout() == AdForm::FormLayout::Inline &&
-            dimensions->itemForName(QStringLiteral("width")) != nullptr &&
-            dimensions->itemForName(QStringLiteral("height")) != nullptr &&
-            dimensions->itemForName(QStringLiteral("width"))->label() == QStringLiteral("Width") &&
-            dimensions->itemForName(QStringLiteral("height"))->label() == QStringLiteral("Height"),
-        "dimensions must be standard fields in a two-column Ant form");
-    auto* widthItem = dimensions->itemForName(QStringLiteral("width"));
-    auto* heightItem = dimensions->itemForName(QStringLiteral("height"));
+    auto* dimensions = child<QWidget>(content, "saveDimensionsForm");
+    auto* sizeLabel = child<QLabel>(dimensions, "saveSizeLabel");
+    auto* unit = child<AdSegmented>(dimensions, "saveSizeUnitSegmented");
+    require(sizeLabel->text() == QStringLiteral("Size") && unit->count() == 2 &&
+                unit->currentValue() == QStringLiteral("pixels") &&
+                unit->optionLabel(0) == QStringLiteral("Pixels") &&
+                unit->optionLabel(1) == QStringLiteral("Percentage") &&
+                sizeLabel->geometry().right() < unit->geometry().left() &&
+                unit->geometry().right() == dimensions->rect().right(),
+            "size header must have a single label and a right-aligned unit selector");
+    auto* widthItem = child<AdInputNumber>(dimensions, "saveWidthInput");
+    auto* heightItem = child<AdInputNumber>(dimensions, "saveHeightInput");
     require(widthItem->isVisible() && heightItem->isVisible() &&
                 widthItem->geometry().top() == heightItem->geometry().top() &&
                 widthItem->geometry().right() < heightItem->geometry().left(),
@@ -937,7 +987,9 @@ void previewAndSave(QWidget& owner, const QTemporaryDir& temp) {
             "Save as File must start with the selection editor aspect lock active");
     const QRect lockGeometry(lock->mapTo(dimensions, QPoint()), lock->size());
     require(widthItem->geometry().right() < lockGeometry.left() &&
-                lockGeometry.right() < heightItem->geometry().left(),
+                lockGeometry.right() < heightItem->geometry().left() &&
+                lockGeometry.center().y() == widthItem->geometry().center().y() &&
+                unit->geometry().bottom() < widthItem->geometry().top(),
             "aspect lock must remain between the width and height fields");
     require(quality->marks().value(quality->minimum()).label == QStringLiteral("0%") &&
                 quality->marks().value(quality->maximum()).label == QStringLiteral("100%"),
@@ -1075,6 +1127,184 @@ class ExportTestTranslator final : public QTranslator {
     }
 };
 
+void sizeUnits(QWidget& owner, const QTemporaryDir& temp) {
+    QString savedPath;
+    auto source = fixture();
+    source.setDevicePixelRatio(2);
+    auto* modal = openDialog(owner, source, [&](const QString& path) { savedPath = path; });
+    auto* content = modal->contentWidget();
+    auto* unit = child<AdSegmented>(content, "saveSizeUnitSegmented");
+    auto* width = child<AdInputNumber>(content, "saveWidthInput");
+    auto* height = child<AdInputNumber>(content, "saveHeightInput");
+    auto* lock = child<AdButton>(content, "saveAspectLockButton");
+    auto* footer = modal->footerWidget();
+    require(footer != nullptr && footer->objectName() == QStringLiteral("saveDialogFooter"),
+            "save dialog custom footer is missing");
+    auto* description = child<QLabel>(footer, "saveOutputDescription");
+    auto* reject = modal->rejectButton();
+    auto* accept = modal->acceptButton();
+    const auto globalGeometry = [](QWidget* widget) {
+        return QRect(widget->mapToGlobal(QPoint()), widget->size());
+    };
+    const QRect descriptionGeometry = globalGeometry(description);
+    const QRect rejectGeometry = globalGeometry(reject);
+    const QRect acceptGeometry = globalGeometry(accept);
+    const QRegularExpression descriptionPattern(
+        QStringLiteral("^160x100\\(100%\\) · \\d+(?:B|KB|MB|GB)$"));
+    require(descriptionPattern.match(description->text()).hasMatch() &&
+                std::abs(descriptionGeometry.center().y() - acceptGeometry.center().y()) <= 1 &&
+                descriptionGeometry.right() < rejectGeometry.left() &&
+                !descriptionGeometry.intersects(rejectGeometry) &&
+                !descriptionGeometry.intersects(acceptGeometry),
+            "output dimensions, scale and encoded size must occupy the footer left of its actions");
+    const auto generation = [&] { return content->property("previewGeneration").toULongLong(); };
+    const auto percentage = [&] { unit->setCurrentValue(QStringLiteral("percentage")); };
+    const auto pixels = [&] { unit->setCurrentValue(QStringLiteral("pixels")); };
+    const auto requirePixels = [&](QSize expected) {
+        const auto before = generation();
+        pixels();
+        require(width->value() == expected.width() && height->value() == expected.height(),
+                "unit conversion must preserve the exact pixel dimensions");
+        percentage();
+        require(generation() == before, "unit-only changes must not regenerate the export");
+    };
+    const auto initialGeneration = generation();
+    require(width->value() == 160 && height->value() == 100 && width->decimals() == 0,
+            "pixel mode must use physical source pixels even for high-DPI images");
+    percentage();
+    require(width->value() == 100 && height->value() == 100 && width->decimals() == 2 &&
+                width->singleStep() == 1 && width->suffixText() == QStringLiteral("%") &&
+                height->suffixText() == QStringLiteral("%") && generation() == initialGeneration,
+            "percentage mode must initially show 100 percent without calculating again");
+    width->setValue(50);
+    require(height->value() == 50 && description->text().isEmpty(),
+            "locked percentages must follow width edits and clear stale output details");
+    processUntil([&] { return !description->text().isEmpty(); });
+    require(QRegularExpression(QStringLiteral("^80x50\\(50%\\) · \\d+(?:B|KB|MB|GB)$"))
+                .match(description->text())
+                .hasMatch(),
+            "output details must update to the latest dimensions, scale and encoded size");
+    requirePixels(QSize(80, 50));
+    height->setValue(25);
+    require(width->value() == 25, "locked percentages must follow height edits");
+    requirePixels(QSize(40, 25));
+    width->setValue(12.5);
+    requirePixels(QSize(20, 13));
+    height->setValue(150);
+    requirePixels(QSize(240, 150));
+    lock->click();
+    width->setValue(50);
+    height->setValue(75);
+    requirePixels(QSize(80, 75));
+    lock->click();
+    requirePixels(QSize(80, 50));
+    width->setValue(0.01);
+    requirePixels(QSize(1, 1));
+    width->setValue(0);
+    require(!modal->acceptButton()->isEnabled(), "zero percentage must prevent saving");
+    width->setValue(50);
+    height->clear();
+    pixels();
+    percentage();
+    require(!height->hasValue() && !modal->acceptButton()->isEnabled(),
+            "switching units must preserve an empty, invalid dimension");
+    height->setValue(50);
+    auto* format = child<AdSelect>(content, "saveFormatSelect");
+    format->setCurrentValue(QStringLiteral("webp"));
+    width->setValue(11000);
+    require(!modal->acceptButton()->isEnabled(), "percentage must enforce encoder limits");
+    width->setValue(50);
+    format->setCurrentValue(QStringLiteral("png"));
+    pixels();
+    width->setValue(79);
+    for (int i = 0; i < 5; ++i)
+        requirePixels(QSize(79, 49));
+    pixels();
+    require(width->decimals() == 0 && width->suffixText().isEmpty(),
+            "returning to pixels must restore integer inputs without percentage suffixes");
+
+    auto* editor = width->findChild<QLineEdit*>();
+    require(editor != nullptr, "size editor is missing");
+    const auto typeWidth = [&](const QString& text) {
+        editor->setFocus();
+        editor->selectAll();
+        for (const auto character : text) {
+            QKeyEvent key(QEvent::KeyPress, character.unicode(), Qt::NoModifier,
+                          QString(character));
+            QApplication::sendEvent(editor, &key);
+        }
+    };
+    processUntil([&] { return child<QLabel>(content, "savePreviewStatus")->isHidden(); });
+    auto before = generation();
+    typeWidth(QStringLiteral("64"));
+    require(generation() == before && width->value() == 79,
+            "typing a dimension must wait for a commit");
+    percentage();
+    processUntil([&] { return generation() > before; });
+    require(width->value() == 40 && height->value() == 40 && generation() == before + 1,
+            "switching units must commit pending pixels using the old unit exactly once");
+    before = generation();
+    typeWidth(QStringLiteral("25"));
+    pixels();
+    processUntil([&] { return generation() > before; });
+    require(width->value() == 40 && height->value() == 25 && generation() == before + 1,
+            "switching to pixels must first commit pending percentages");
+    percentage();
+    ExportTestTranslator translator;
+    require(QApplication::installTranslator(&translator), "size translator unavailable");
+    flush();
+    require(child<QLabel>(content, "saveSizeLabel")->text() == QStringLiteral("Translated Size") &&
+                unit->optionLabel(0) == QStringLiteral("Translated Pixels") &&
+                unit->optionLabel(1) == QStringLiteral("Translated Percentage") &&
+                unit->accessibleName() == QStringLiteral("Translated Size unit") &&
+                width->toolTip() == QStringLiteral("Translated Width") &&
+                height->accessibleName() == QStringLiteral("Translated Height") &&
+                unit->currentValue() == QStringLiteral("percentage") && width->value() == 25 &&
+                height->value() == 25,
+            "size controls must retranslate without changing values or unit selection");
+    QApplication::removeTranslator(&translator);
+    flush();
+    processUntil([&] { return child<QLabel>(content, "savePreviewStatus")->isHidden(); });
+    snapshot(modal, QStringLiteral("export-percentage"));
+    const auto translationDir = qEnvironmentVariable("SNOW_EXPORT_TEST_TRANSLATION_DIR");
+    if (!translationDir.isEmpty()) {
+        for (const auto& language : {QStringLiteral("zh_CN"), QStringLiteral("zh_TW")}) {
+            QTranslator catalog;
+            require(
+                catalog.load(
+                    QDir(translationDir).filePath(QStringLiteral("snow_shot_%1.qm").arg(language))),
+                "export screenshot translation catalog is missing");
+            require(QApplication::installTranslator(&catalog), "catalog installation failed");
+            flush();
+            auto* dimensions = child<QWidget>(content, "saveDimensionsForm");
+            auto* label = child<QLabel>(content, "saveSizeLabel");
+            require(label->geometry().right() < unit->geometry().left() &&
+                        dimensions->rect().contains(unit->geometry()) &&
+                        unit->width() >= unit->minimumSizeHint().width(),
+                    "translated size header must fit without clipping");
+            snapshot(modal, QStringLiteral("export-percentage-%1").arg(language));
+            QApplication::removeTranslator(&catalog);
+            flush();
+        }
+    }
+    child<AdLineEdit>(content, "saveDirectoryInput")->setText(temp.path());
+    child<AdLineEdit>(content, "saveFilenameInput")->setText(QStringLiteral("percentage-save"));
+    before = generation();
+    typeWidth(QStringLiteral("37.5"));
+    require(generation() == before, "pending percentage must not start a preview");
+    modal->acceptButton()->click();
+    processUntil([&] { return !savedPath.isEmpty(); });
+    require(snow_shot::image_codec::inspectFile(savedPath, snow::image::Format::png, QSize(60, 38)),
+            "saving must commit fractional percentages and write the resulting pixel size");
+    flush();
+    modal = openDialog(owner, fixture());
+    require(child<AdSegmented>(modal->contentWidget(), "saveSizeUnitSegmented")->currentValue() ==
+                QStringLiteral("pixels"),
+            "reopening the dialog must default to pixels");
+    modal->rejectButton()->click();
+    flush();
+}
+
 void shortcutWrappingAndLanguageChange(QWidget& owner, const QTemporaryDir& temp) {
     const storage::ScreenshotSettings settings;
     require(
@@ -1111,6 +1341,10 @@ void shortcutWrappingAndLanguageChange(QWidget& owner, const QTemporaryDir& temp
                 child<AdLineEdit>(editor->contentWidget(), "savePathNameInput")->accessibleName() ==
                     QStringLiteral("Translated Name"),
             "open dialogs must retranslate captions and accessible names");
+    const auto* browse = child<AdButton>(editor->contentWidget(), "savePathValueBrowseButton");
+    require(browse->toolTip() == QStringLiteral("Translated Select save directory") &&
+                browse->accessibleName() == browse->toolTip(),
+            "shortcut browse button must retranslate its tooltip and accessible name");
     auto* quality = child<AdSlider>(content, "saveQualitySlider");
     require(
         quality->marks().size() == 2 &&
@@ -1334,8 +1568,169 @@ AdModal* openCountedDialog(QWidget& owner, const std::shared_ptr<ExportProbe>& p
     auto* modal = child<AdModal>(&owner, "screenshotSaveAsFileModal");
     processUntil(
         [&] { return modal->contentWidget()->property("previewGeneration").toULongLong() > 0; });
-    require(probe->passes == 2, "initial display must prepare the source and encode it only once");
+    require(probe->passes == 1,
+            "initial image-backed display must encode from its retained pixels only once");
     return modal;
+}
+
+void optimizedPipelineBehavior(QWidget& owner) {
+    const QImage image = fixture();
+    ScreenshotImageRowSource rows = snow_shot::image_codec::srgbRowSource(image);
+    auto entered = std::make_shared<std::atomic_bool>(false);
+    auto released = std::make_shared<std::atomic_bool>(false);
+    const auto releaseEncoding = qScopeGuard([released] { *released = true; });
+    rows.readRows = [read = rows.readRows, entered, released](
+                        int first, int count, qsizetype stride, uchar* target, qsizetype capacity) {
+        entered->store(true, std::memory_order_release);
+        while (!released->load(std::memory_order_acquire))
+            QThread::msleep(1);
+        return read(first, count, stride, target, capacity);
+    };
+    auto artifact = std::make_shared<ScreenshotExportArtifact>(ScreenshotExportSource::fromProducer(
+        {}, [rows](std::function<bool()> cancellation) mutable {
+            rows.cancellationRequested = std::move(cancellation);
+            return rows;
+        }));
+    require(ScreenshotSaveAsFileDialog::open(&owner, &owner, artifact),
+            "optimized pipeline dialog did not open");
+    auto* modal = child<AdModal>(&owner, "screenshotSaveAsFileModal");
+    QPointer<QWidget> content = modal->contentWidget();
+    const auto closeDialog = qScopeGuard([&] {
+        if (content) {
+            modal->reject();
+            flush();
+        }
+    });
+    processUntil([&] { return entered->load(std::memory_order_acquire); });
+    auto* canvas = child<ScreenshotSavePreviewCanvas>(content, "savePreviewCanvas");
+    auto* description = child<QLabel>(modal->footerWidget(), "saveOutputDescription");
+    require(content->property("previewGeneration").toULongLong() == 0 &&
+                !child<QLabel>(content, "savePreviewStatus")->isHidden() &&
+                samePixels(canvas->outputImage(), image) && description->text().isEmpty(),
+            "source preview was not published provisionally while encoding remained busy");
+    require(content->property("previewDecodeCount").toInt() == 0,
+            "provisional preview unexpectedly started a decode");
+    ExportTestTranslator translator;
+    require(QApplication::installTranslator(&translator), "pending export translator unavailable");
+    flush();
+    require(description->text().isEmpty(),
+            "language changes must not restore stale output details while encoding");
+    QApplication::removeTranslator(&translator);
+    flush();
+
+    released->store(true, std::memory_order_release);
+    processUntil([&] { return content->property("previewGeneration").toULongLong() > 0; });
+    require(child<QLabel>(content, "savePreviewStatus")->isHidden() &&
+                content->property("previewDecodeCount").toInt() == 0 &&
+                samePixels(canvas->outputImage(), image),
+            "exact PNG preview did not reuse retained prepared pixels");
+    const qulonglong preparedIdentity = content->property("preparedPixelsIdentity").toULongLong();
+    require(preparedIdentity != 0, "dialog did not retain its prepared pixel source");
+
+    auto* format = child<AdSelect>(content, "saveFormatSelect");
+    auto* quality = child<AdSlider>(content, "saveQualitySlider");
+    const auto selectFormat = [&](const QString& value) {
+        const quint64 previous = content->property("previewGeneration").toULongLong();
+        format->setCurrentValue(value);
+        processUntil(
+            [&] { return content->property("previewGeneration").toULongLong() > previous; });
+    };
+    selectFormat(QStringLiteral("webp"));
+    selectFormat(QStringLiteral("jxl"));
+    require(content->property("previewDecodeCount").toInt() == 0 &&
+                content->property("preparedPixelsIdentity").toULongLong() == preparedIdentity,
+            "lossless WebP or JPEG XL did not reuse exact prepared pixels");
+
+    selectFormat(QStringLiteral("avif"));
+    require(content->property("previewDecodeCount").toInt() == 1,
+            "AVIF did not decode its codec artifact");
+    selectFormat(QStringLiteral("jpeg"));
+    require(content->property("previewDecodeCount").toInt() == 2 &&
+                content->property("preparedPixelsIdentity").toULongLong() == preparedIdentity,
+            "JPEG did not decode its artifact or reused-size pixels were replaced");
+
+    quint64 previous = content->property("previewGeneration").toULongLong();
+    quality->setValue(72);
+    processUntil([&] { return content->property("previewGeneration").toULongLong() > previous; });
+    selectFormat(QStringLiteral("webp"));
+    selectFormat(QStringLiteral("jxl"));
+    require(content->property("previewDecodeCount").toInt() == 5 &&
+                content->property("preparedPixelsIdentity").toULongLong() == preparedIdentity,
+            "lossy same-size exports did not reuse prepared pixels and decode codec artifacts");
+}
+
+void unbackedExactPreviewDecodesArtifact(QWidget& owner) {
+    const QImage image = fixture();
+    ScreenshotImageRowSource rows = snow_shot::image_codec::srgbRowSource(image);
+    rows.backingImage = {};
+    auto artifact = std::make_shared<ScreenshotExportArtifact>(ScreenshotExportSource::fromProducer(
+        {}, [rows](std::function<bool()> cancellation) mutable {
+            rows.cancellationRequested = std::move(cancellation);
+            return rows;
+        }));
+    require(ScreenshotSaveAsFileDialog::open(&owner, &owner, artifact),
+            "unbacked exact-preview dialog did not open");
+    auto* modal = child<AdModal>(&owner, "screenshotSaveAsFileModal");
+    QPointer<QWidget> content = modal->contentWidget();
+    processUntil([&] { return content->property("previewGeneration").toULongLong() > 0; });
+    require(content->property("previewDecodeCount").toInt() == 1 &&
+                samePixels(
+                    child<ScreenshotSavePreviewCanvas>(content, "savePreviewCanvas")->outputImage(),
+                    image),
+            "source-sized exact output without backing pixels did not decode its artifact");
+    modal->reject();
+    flush();
+}
+
+void sourceSizedPngAdoptsHistoryEncoding(QWidget& owner, const QTemporaryDir& temp) {
+    const QImage image = fixture();
+    auto reads = std::make_shared<std::atomic_int>(0);
+    ScreenshotImageRowSource rows = snow_shot::image_codec::srgbRowSource(image);
+    rows.readRows = [read = rows.readRows, reads](int first, int count, qsizetype stride,
+                                                  uchar* target, qsizetype capacity) {
+        ++*reads;
+        return read(first, count, stride, target, capacity);
+    };
+    auto artifact = std::make_shared<ScreenshotExportArtifact>(ScreenshotExportSource::fromProducer(
+        {}, [rows](std::function<bool()> cancellation) mutable {
+            rows.cancellationRequested = std::move(cancellation);
+            return rows;
+        }));
+
+    QString savedPath;
+    QByteArray historyPng;
+    int historyCallbacks = 0;
+    require(ScreenshotSaveAsFileDialog::open(
+                &owner, &owner, artifact,
+                [&, artifact](const QString& path) {
+                    savedPath = path;
+                    require(artifact->requestCanonicalPng(
+                                &owner,
+                                [&](ScreenshotExportEncodingResult result) {
+                                    require(result.succeeded(),
+                                            "history canonical PNG request failed after save");
+                                    historyPng = result.image.bytes();
+                                    ++historyCallbacks;
+                                }),
+                            "history canonical PNG request was rejected after save");
+                }),
+            "history-adoption export dialog did not open");
+    auto* modal = child<AdModal>(&owner, "screenshotSaveAsFileModal");
+    QPointer<QWidget> content = modal->contentWidget();
+    processUntil([&] { return content->property("previewGeneration").toULongLong() > 0; });
+    const int readsBeforeSave = reads->load();
+    require(readsBeforeSave > 0, "initial source-sized PNG did not read its row source");
+
+    child<AdLineEdit>(content, "saveDirectoryInput")->setText(temp.path());
+    child<AdLineEdit>(content, "saveFilenameInput")->setText(QStringLiteral("history-adoption"));
+    modal->acceptButton()->click();
+    processUntil([&] { return !savedPath.isEmpty() && historyCallbacks == 1; });
+
+    QFile saved(savedPath);
+    require(reads->load() == readsBeforeSave && saved.open(QIODevice::ReadOnly) &&
+                saved.readAll() == historyPng,
+            "source-sized PNG save did not seed history with the retained encoded artifact");
+    flush();
 }
 
 void saveReusesCalculatedResult(QWidget& owner, const QTemporaryDir& temp) {
@@ -1352,6 +1747,14 @@ void saveReusesCalculatedResult(QWidget& owner, const QTemporaryDir& temp) {
             if (content)
                 modal->reject();
         });
+        const auto format = moment == Moment::QueuedDecode ? Format::Jpeg : Format::Png;
+        if (format == Format::Jpeg) {
+            const auto previewGeneration = content->property("previewGeneration").toULongLong();
+            child<AdSelect>(content, "saveFormatSelect")->setCurrentValue(QStringLiteral("jpeg"));
+            processUntil([&] {
+                return content->property("previewGeneration").toULongLong() > previewGeneration;
+            });
+        }
         ExportObserver observer(content);
         WorkerGate gate;
         child<AdLineEdit>(content, "saveDirectoryInput")->setText(temp.path());
@@ -1398,17 +1801,18 @@ void saveReusesCalculatedResult(QWidget& owner, const QTemporaryDir& temp) {
             save();
         }
         processUntil([&] { return !savedPath.isEmpty(); });
-        if (probe->passes != 3 || observer.encodes != 1)
+        const int expectedPasses = moment == Moment::QueuedDecode ? 3 : 2;
+        if (probe->passes != expectedPasses || observer.encodes != 1)
             std::cerr << "Save moment " << int(moment) << ": source passes=" << probe->passes
                       << ", encodes=" << observer.encodes
                       << ", publications=" << observer.publications << '\n';
         require(
-            probe->passes == 3 && observer.encodes == 1,
+            probe->passes == expectedPasses && observer.encodes == 1,
             "Save must reuse the single committed calculation without reading source pixels again");
         require(publicationsAtSave >= 0 && observer.publications == publicationsAtSave,
                 "Save must suppress all subsequent canvas publication");
-        const QImage saved =
-            snow_shot::image_codec::decodeFile(savedPath, snow::image::Format::png);
+        const QImage saved = snow_shot::image_codec::decodeFile(
+            savedPath, ScreenshotImageFileService::snowImageFormat(format));
         require(saved.size() == QSize(80, 50), "saving must use the latest committed dimensions");
         if (moment == Moment::Displayed)
             require(samePixels(saved, observer.displayed),
@@ -1440,11 +1844,11 @@ void committedControlsAndSave(QWidget& owner, const QTemporaryDir& temp) {
         }
     };
     typeWidth(QStringLiteral("80"));
-    require(width->value() == 160 && probe->passes == 2 && observer.encodes == 0,
+    require(width->value() == 160 && probe->passes == 1 && observer.encodes == 0,
             "uncommitted numeric typing must not trigger encoding");
     editor->clearFocus();
     processUntil([&] { return observer.publications == 1; });
-    require(width->value() == 80 && height->value() == 50 && probe->passes == 3,
+    require(width->value() == 80 && height->value() == 50 && probe->passes == 2,
             "committing width and its aspect-ratio partner must calculate exactly once");
     child<AdSelect>(content, "saveFormatSelect")->setCurrentValue(QStringLiteral("jpeg"));
     processUntil([&] { return observer.publications == 2; });
@@ -1463,8 +1867,8 @@ void committedControlsAndSave(QWidget& owner, const QTemporaryDir& temp) {
             "slider dragging must not encode intermediate values");
     QApplication::sendEvent(quality, &release);
     processUntil([&] { return observer.publications == 3; });
-    require(quality->value() < 100 && probe->passes == beforeDrag + 1,
-            "slider release must calculate the committed quality exactly once");
+    require(quality->value() < 100 && probe->passes == beforeDrag,
+            "same-size quality changes must reuse the prepared pixels");
     child<AdLineEdit>(content, "saveDirectoryInput")->setText(temp.path());
     child<AdLineEdit>(content, "saveFilenameInput")->setText(QStringLiteral("commit-on-save"));
     typeWidth(QStringLiteral("64"));
@@ -1483,6 +1887,10 @@ void retainedResultFailures(QWidget& owner, const QTemporaryDir& temp) {
     QString savedPath;
     auto* modal = openCountedDialog(owner, probe, [&](const QString& path) { savedPath = path; });
     auto* content = modal->contentWidget();
+    const auto previewGeneration = content->property("previewGeneration").toULongLong();
+    child<AdSelect>(content, "saveFormatSelect")->setCurrentValue(QStringLiteral("jpeg"));
+    processUntil(
+        [&] { return content->property("previewGeneration").toULongLong() > previewGeneration; });
     ExportObserver observer(content);
     WorkerGate gate;
     observer.onEncoded = [&] { gate.block(&owner, 16); };
@@ -1537,7 +1945,7 @@ void failedAndClosedCalculations(QWidget& owner, const QTemporaryDir& temp) {
             "failed source reads must leave Save retryable without publishing stale pixels");
     modal->acceptButton()->click();
     processUntil([&] { return !savedPath.isEmpty(); });
-    require(observer.encodes == 1 && observer.publications == 0 && probe->passes == 4,
+    require(observer.encodes == 1 && observer.publications == 0 && probe->passes == 3,
             "a failed calculation may retry once and must save the new successful result");
     flush();
 
@@ -1567,7 +1975,7 @@ void rejectedCalculationRetries(QWidget& owner, const QTemporaryDir& temp) {
     WorkerGate gate;
     gate.block(&owner, 16);
     child<AdInputNumber>(content, "saveWidthInput")->setValue(80);
-    require(!child<QLabel>(content, "saveErrorLabel")->isHidden() && probe->passes == 2 &&
+    require(!child<QLabel>(content, "saveErrorLabel")->isHidden() && probe->passes == 1 &&
                 observer.encodes == 0 && modal->acceptButton()->isEnabled(),
             "a rejected calculation must preserve the latest options and allow retry");
     *gate.released = true;
@@ -1576,7 +1984,7 @@ void rejectedCalculationRetries(QWidget& owner, const QTemporaryDir& temp) {
     child<AdLineEdit>(content, "saveFilenameInput")->setText(QStringLiteral("retry-queue"));
     modal->acceptButton()->click();
     processUntil([&] { return !savedPath.isEmpty(); });
-    require(probe->passes == 3 && observer.encodes == 1 && observer.publications == 0,
+    require(probe->passes == 2 && observer.encodes == 1 && observer.publications == 0,
             "Save must retry a rejected calculation once and skip canvas publication");
     flush();
 }
@@ -1624,6 +2032,15 @@ int main(int argc, char* argv[]) {
             std::cout << "Shared export calculation tests passed\n";
             return 0;
         }
+        if (app.arguments().contains(QStringLiteral("--optimized-pipeline"))) {
+            optimizedPipelineBehavior(owner);
+            unbackedExactPreviewDecodesArtifact(owner);
+            sourceSizedPngAdoptsHistoryEncoding(owner, temp);
+            ScreenshotExportCoordinator::shared().shutdown();
+            storage::ApplicationStorage::instance().shutdown();
+            std::cout << "Optimized export pipeline tests passed\n";
+            return 0;
+        }
         if (app.arguments().contains(QStringLiteral("--zoom-hint")) ||
             app.arguments().contains(QStringLiteral("--canvas-baseline")) ||
             app.arguments().contains(QStringLiteral("--unchanged-edits")) ||
@@ -1648,6 +2065,21 @@ int main(int argc, char* argv[]) {
             std::cout << "Export preview and save tests passed\n";
             return 0;
         }
+        if (app.arguments().contains(QStringLiteral("--size-units"))) {
+            sizeUnits(owner, temp);
+            ScreenshotExportCoordinator::shared().shutdown();
+            storage::ApplicationStorage::instance().shutdown();
+            std::cout << "Export dialog size unit tests passed\n";
+            return 0;
+        }
+        if (app.arguments().contains(QStringLiteral("--shortcuts"))) {
+            shortcutsAndCancellation(owner, temp);
+            shortcutWrappingAndLanguageChange(owner, temp);
+            ScreenshotExportCoordinator::shared().shutdown();
+            storage::ApplicationStorage::instance().shutdown();
+            std::cout << "Export dialog shortcut tests passed\n";
+            return 0;
+        }
         shortcutPopupInteraction(owner, temp);
         centersOnDisplayOverlay();
         reusablePathInputsAndSettings();
@@ -1660,9 +2092,13 @@ int main(int argc, char* argv[]) {
         unchangedPreviewEdits(owner);
         shortcutsAndCancellation(owner, temp);
         previewAndSave(owner, temp);
+        sizeUnits(owner, temp);
         overwriteRequiresConfirmation(owner, temp);
         shortcutWrappingAndLanguageChange(owner, temp);
         rowBackedDialogAndStalePreview(owner, temp);
+        optimizedPipelineBehavior(owner);
+        unbackedExactPreviewDecodesArtifact(owner);
+        sourceSizedPngAdoptsHistoryEncoding(owner, temp);
         saveReusesCalculatedResult(owner, temp);
         committedControlsAndSave(owner, temp);
         retainedResultFailures(owner, temp);

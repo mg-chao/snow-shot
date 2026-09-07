@@ -15,6 +15,7 @@
 #include "widgets/input_number.h"
 #include "widgets/modal.h"
 #include "widgets/select.h"
+#include "widgets/segmented.h"
 #include "widgets/scroll_area.h"
 #include "widgets/slider.h"
 #include "theme/theme_manager.h"
@@ -50,8 +51,7 @@ using Shortcut = snow_shot::storage::ScreenshotSavePathShortcut;
 
 constexpr int kSaveFormContentWidth = 328;
 constexpr int kAspectRatioLockButtonSize = 32;
-constexpr int kDimensionFieldWidth = (kSaveFormContentWidth - kAspectRatioLockButtonSize) / 2;
-constexpr int kDimensionLockControlHeight = 62;
+constexpr int kMaximumDimension = 1000000;
 
 bool formatSupportsLossless(Format format) {
     return format == Format::Webp || format == Format::Jxl || format == Format::Avif;
@@ -81,6 +81,10 @@ class SaveContent final : public QWidget {
         layout->setSpacing(20);
         m_preview = new ScreenshotSavePreviewCanvas(this);
         layout->addWidget(m_preview, 1);
+        m_outputDescription = new QLabel(this);
+        m_outputDescription->setObjectName(QStringLiteral("saveOutputDescription"));
+        m_outputDescription->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        m_outputDescription->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         auto* scroll = new AdScrollArea(this);
         scroll->setFrameShape(QFrame::NoFrame);
         scroll->setWidgetResizable(true);
@@ -129,38 +133,40 @@ class SaveContent final : public QWidget {
         m_format->setObjectName(QStringLiteral("saveFormatSelect"));
         addField("Image format", m_format, "format");
 
-        auto* dimensions = new AdForm(m_form);
-        configureForm(dimensions);
+        auto* dimensions = new QWidget(m_form);
         dimensions->setObjectName(QStringLiteral("saveDimensionsForm"));
-        dimensions->setFormLayout(AdForm::FormLayout::Inline);
         dimensions->setFixedWidth(kSaveFormContentWidth);
+        auto* dimensionsLayout = new QVBoxLayout(dimensions);
+        dimensionsLayout->setContentsMargins(0, 0, 0, 0);
+        dimensionsLayout->setSpacing(8);
+        auto* header = new QHBoxLayout;
+        header->setSpacing(8);
+        m_sizeLabel = new QLabel(dimensions);
+        m_sizeLabel->setObjectName(QStringLiteral("saveSizeLabel"));
+        m_sizeLabel->setWordWrap(true);
+        header->addWidget(m_sizeLabel, 1);
+        m_sizeUnit = new AdSegmented(dimensions);
+        m_sizeUnit->setObjectName(QStringLiteral("saveSizeUnitSegmented"));
+        m_sizeUnit->setControlSize(AdSegmented::ControlSize::Small);
+        m_sizeUnit->setDistribution(AdSegmented::Distribution::Content);
+        m_sizeUnit->addOption({}, QStringLiteral("pixels"));
+        m_sizeUnit->addOption({}, QStringLiteral("percentage"));
+        m_sizeUnit->setCurrentValue(QStringLiteral("pixels"));
+        header->addWidget(m_sizeUnit, 0, Qt::AlignRight | Qt::AlignVCenter);
+        dimensionsLayout->addLayout(header);
+        auto* inputs = new QHBoxLayout;
+        inputs->setSpacing(0);
         m_width = number("saveWidthInput");
         m_height = number("saveHeightInput");
-        auto* widthItem = dimensions->addField({}, m_width, QStringLiteral("width"));
-        widthItem->setProperty("exportLabel", "Width");
-        widthItem->setItemLayout(AdFormItem::ItemLayout::Vertical);
-        widthItem->setFixedWidth(kDimensionFieldWidth);
-
-        auto* lockControl = new QWidget(dimensions);
-        lockControl->setFixedSize(kAspectRatioLockButtonSize, kDimensionLockControlHeight);
-        auto* lockLayout = new QVBoxLayout(lockControl);
-        lockLayout->setContentsMargins(0, 30, 0, 0);
-        lockLayout->setSpacing(0);
-        m_lock = new AspectRatioLockButton(lockControl);
+        inputs->addWidget(m_width, 1);
+        m_lock = new AspectRatioLockButton(dimensions);
         m_lock->setObjectName(QStringLiteral("saveAspectLockButton"));
+        m_lock->setFixedSize(kAspectRatioLockButtonSize, kAspectRatioLockButtonSize);
         m_lock->setChecked(true);
-        lockLayout->addWidget(m_lock);
-        auto* lockItem = dimensions->addField({}, lockControl);
-        lockItem->setItemLayout(AdFormItem::ItemLayout::Vertical);
-        lockItem->setNoStyle(true);
-        lockItem->setFixedWidth(kAspectRatioLockButtonSize);
-
-        auto* heightItem = dimensions->addField({}, m_height, QStringLiteral("height"));
-        heightItem->setProperty("exportLabel", "Height");
-        heightItem->setItemLayout(AdFormItem::ItemLayout::Vertical);
-        heightItem->setFixedWidth(kDimensionFieldWidth);
-        auto* dimensionsItem = m_form->addField({}, dimensions, QStringLiteral("dimensions"));
-        dimensionsItem->setNoStyle(true);
+        inputs->addWidget(m_lock, 0, Qt::AlignVCenter);
+        inputs->addWidget(m_height, 1);
+        dimensionsLayout->addLayout(inputs);
+        m_form->addField({}, dimensions, QStringLiteral("dimensions"));
 
         m_quality = new AdSlider(m_form);
         m_quality->setTracking(false);
@@ -178,6 +184,8 @@ class SaveContent final : public QWidget {
         m_form->layout()->setAlignment(Qt::AlignTop);
         connect(&adqt::theme::ThemeManager::instance(), &adqt::theme::ThemeManager::themeChanged,
                 this, [this] {
+                    updateSizeLabelTheme();
+                    updateOutputDescriptionTheme();
                     showError(m_error->text());
                     m_preview->update();
                 });
@@ -215,8 +223,14 @@ class SaveContent final : public QWidget {
         connect(m_lock, &QAbstractButton::toggled, this, [this](bool checked) {
             m_state.lockAspectRatio = checked;
             if (checked && m_state.output.size.width() > 0)
-                dimensionChanged(true, m_state.output.size.width());
+                dimensionChanged(true,
+                                 m_percentage ? m_width->value() : m_state.output.size.width());
             updateControls();
+        });
+        connect(m_sizeUnit, &AdSegmented::currentValueChanged, this, [this](const QVariant& value) {
+            commitDimensionEdit();
+            m_percentage = value.toString() == QStringLiteral("percentage");
+            syncDimensionInputs(true);
         });
         connect(m_quality, &AdSlider::valueChanged, this, [this](double value) {
             m_state.output.quality = qRound(value);
@@ -244,13 +258,22 @@ class SaveContent final : public QWidget {
     bool saving() const {
         return m_saving;
     }
+    void installFooter() {
+        auto* footer = new QWidget;
+        footer->setObjectName(QStringLiteral("saveDialogFooter"));
+        footer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        auto* layout = new QHBoxLayout(footer);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(8);
+        layout->addWidget(m_outputDescription, 1, Qt::AlignVCenter);
+        layout->addWidget(m_modal->rejectButton(), 0, Qt::AlignVCenter);
+        layout->addWidget(m_modal->acceptButton(), 0, Qt::AlignVCenter);
+        m_modal->setFooterWidget(footer);
+    }
     void save() {
         if (m_saving || !m_source.rows.isValid())
             return;
-        if (auto* focus = QApplication::focusWidget();
-            focus && (focus == m_width || m_width->isAncestorOf(focus) || focus == m_height ||
-                      m_height->isAncestorOf(focus)))
-            focus->clearFocus();
+        commitDimensionEdit();
         m_state.directory = m_directory->text();
         m_state.filename = m_filename->text();
         const QString error = m_state.validationError();
@@ -330,7 +353,7 @@ class SaveContent final : public QWidget {
         input->setObjectName(QString::fromLatin1(name));
         input->setDecimals(0);
         input->setKeyboardTracking(false);
-        input->setRange(0, 1000000);
+        input->setRange(0, kMaximumDimension);
         input->setSingleStep(1);
         input->setStepButtonLayout(AdInputNumber::StepButtonLayout::Compact);
         input->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -382,6 +405,15 @@ class SaveContent final : public QWidget {
         m_format->setAccessibleName(tr("Image format"));
         m_width->setAccessibleName(tr("Width"));
         m_height->setAccessibleName(tr("Height"));
+        m_width->setToolTip(tr("Width"));
+        m_height->setToolTip(tr("Height"));
+        m_sizeLabel->setText(tr("Size"));
+        m_sizeUnit->setAccessibleName(tr("Size unit"));
+        m_sizeUnit->setOptionLabel(0, tr("Pixels"));
+        m_sizeUnit->setOptionLabel(1, tr("Percentage"));
+        updateSizeLabelTheme();
+        updateOutputDescriptionTheme();
+        updateOutputDescription();
         m_quality->setAccessibleName(tr("Quality"));
         for (auto* item : findChildren<AdFormItem*>()) {
             const QByteArray source = item->property("exportLabel").toByteArray();
@@ -439,6 +471,8 @@ class SaveContent final : public QWidget {
                     ->setAccessibleName(tr("Name"));
                 form->findChild<AdLineEdit*>(QStringLiteral("savePathValueInput"))
                     ->setAccessibleName(tr("Path"));
+                form->findChild<DirectoryPathInput*>(QStringLiteral("savePathValuePathInput"))
+                    ->setBrowseButtonText(tr("Select save directory"));
                 if (form->property("validationAttempted").toBool())
                     static_cast<void>(
                         validateShortcut(form, m_editor->property("shortcutIndex").toInt()));
@@ -562,9 +596,16 @@ class SaveContent final : public QWidget {
         auto* name = new AdLineEdit(form);
         name->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         name->setObjectName(QStringLiteral("savePathNameInput"));
-        auto* path = new AdLineEdit(form);
-        path->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        path->setObjectName(QStringLiteral("savePathValueInput"));
+        auto* path = new DirectoryPathInput(form);
+        path->setObjectName(QStringLiteral("savePathValuePathInput"));
+        path->lineEdit()->setObjectName(QStringLiteral("savePathValueInput"));
+        path->browseButton()->setObjectName(QStringLiteral("savePathValueBrowseButton"));
+        connect(path, &DirectoryPathInput::browseRequested, path, [this, path] {
+            const QString directory = QFileDialog::getExistingDirectory(
+                window(), tr("Select save directory"), path->text());
+            if (!directory.isEmpty())
+                path->setText(directory);
+        });
         if (index >= 0) {
             name->setText(m_shortcuts.at(index).name);
             path->setText(m_shortcuts.at(index).path);
@@ -625,14 +666,107 @@ class SaveContent final : public QWidget {
             ->setErrorMessages(pathError.isEmpty() ? QStringList{} : QStringList{pathError});
         return nameError.isEmpty() && pathError.isEmpty();
     }
+    void updateSizeLabelTheme() {
+        const auto theme = adqt::theme::ThemeManager::instance().resolveTheme(this);
+        auto font = m_form->font();
+        font.setPixelSize(qMax(12, qRound(theme.fontSize)));
+        font.setWeight(QFont::Normal);
+        m_sizeLabel->setFont(font);
+        auto palette = m_sizeLabel->palette();
+        palette.setColor(QPalette::WindowText, theme.colorText);
+        palette.setColor(QPalette::Disabled, QPalette::WindowText, theme.colorTextDisabled);
+        m_sizeLabel->setPalette(palette);
+    }
+    void updateOutputDescriptionTheme() {
+        const auto theme = adqt::theme::ThemeManager::instance().resolveTheme(this);
+        auto font = m_form->font();
+        font.setPixelSize(qMax(10, qRound(theme.fontSizeSM)));
+        font.setWeight(QFont::Normal);
+        m_outputDescription->setFont(font);
+        m_outputDescription->setFixedHeight(m_outputDescription->fontMetrics().height());
+        auto palette = m_outputDescription->palette();
+        palette.setColor(QPalette::WindowText, theme.colorTextSecondary);
+        m_outputDescription->setPalette(palette);
+    }
+    QString formattedOutputBytes(qint64 bytes) const {
+        constexpr qint64 kibibyte = 1024;
+        constexpr qint64 mebibyte = kibibyte * 1024;
+        constexpr qint64 gibibyte = mebibyte * 1024;
+        if (bytes < kibibyte)
+            return tr("%1B").arg(bytes);
+        if (bytes < mebibyte)
+            return tr("%1KB").arg(qRound64(double(bytes) / kibibyte));
+        if (bytes < gibibyte)
+            return tr("%1MB").arg(qRound64(double(bytes) / mebibyte));
+        return tr("%1GB").arg(qRound64(double(bytes) / gibibyte));
+    }
+    void updateOutputDescription() {
+        if (!m_encoded || !m_requestedOptions || m_encoded->options != *m_requestedOptions ||
+            m_state.sourceSize.width() <= 0 || !QFileInfo::exists(m_encoded->path)) {
+            m_outputDescription->clear();
+            return;
+        }
+        const QSize size = m_encoded->options.size;
+        QString scale = QString::number(100.0 * size.width() / m_state.sourceSize.width(), 'f', 2);
+        while (scale.endsWith(QLatin1Char('0')))
+            scale.chop(1);
+        if (scale.endsWith(QLatin1Char('.')))
+            scale.chop(1);
+        m_outputDescription->setText(
+            tr("%1x%2(%3%) · %4")
+                .arg(size.width())
+                .arg(size.height())
+                .arg(scale)
+                .arg(formattedOutputBytes(QFileInfo(m_encoded->path).size())));
+    }
+    void commitDimensionEdit() {
+        if (auto* focus = QApplication::focusWidget();
+            focus && (focus == m_width || m_width->isAncestorOf(focus) || focus == m_height ||
+                      m_height->isAncestorOf(focus)))
+            focus->clearFocus();
+    }
+    void syncDimensionInputs(bool preserveEmpty = false) {
+        const auto sync = [this, preserveEmpty](AdInputNumber* input, int pixels, int source) {
+            const QSignalBlocker blocker(input);
+            const bool empty = preserveEmpty && !input->hasValue();
+            input->setDecimals(m_percentage ? 2 : 0);
+            input->setRange(0, m_percentage && source > 0 ? 100.0 * kMaximumDimension / source
+                                                          : kMaximumDimension);
+            input->setSuffixText(m_percentage ? QStringLiteral("%") : QString());
+            if (empty)
+                input->clear();
+            else
+                input->setValue(m_percentage && source > 0 ? 100.0 * pixels / source : pixels);
+        };
+        // Display rounding must never feed back into the exact pixel export dimensions.
+        sync(m_width, m_state.output.size.width(), m_state.sourceSize.width());
+        sync(m_height, m_state.output.size.height(), m_state.sourceSize.height());
+    }
     void dimensionChanged(bool width, double value) {
-        m_state.setDimension(width, qRound(value));
         const QSignalBlocker widthBlock(m_width);
         const QSignalBlocker heightBlock(m_height);
-        if (width && m_state.lockAspectRatio)
-            m_height->setValue(m_state.output.size.height());
-        if (!width && m_state.lockAspectRatio)
-            m_width->setValue(m_state.output.size.width());
+        if (m_percentage) {
+            const auto pixels = [value](int source) {
+                return value > 0 ? qRound(std::clamp(value * source / 100.0, 1.0,
+                                                     double(kMaximumDimension)))
+                                 : 0;
+            };
+            if (width)
+                m_state.output.size.setWidth(pixels(m_state.sourceSize.width()));
+            else
+                m_state.output.size.setHeight(pixels(m_state.sourceSize.height()));
+            if (m_state.lockAspectRatio && value > 0) {
+                m_state.output.size =
+                    QSize(pixels(m_state.sourceSize.width()), pixels(m_state.sourceSize.height()));
+                (width ? m_height : m_width)->setValue(value);
+            }
+        } else {
+            m_state.setDimension(width, qRound(value));
+            if (width && m_state.lockAspectRatio)
+                m_height->setValue(m_state.output.size.height());
+            if (!width && m_state.lockAspectRatio)
+                m_width->setValue(m_state.output.size.width());
+        }
         changed();
     }
     void updateControls() {
@@ -657,6 +791,7 @@ class SaveContent final : public QWidget {
         if (options && options == m_requestedOptions)
             return;
         m_requestedOptions = options;
+        m_outputDescription->clear();
         ++m_generation;
         m_job.cancel();
         cancelDecode();
@@ -698,13 +833,11 @@ class SaveContent final : public QWidget {
                         m_source = *result;
                         m_state.sourceSize = result->rows.size;
                         m_state.output.size = m_state.sourceSize;
-                        const QSignalBlocker widthBlock(m_width);
-                        const QSignalBlocker heightBlock(m_height);
-                        m_width->setValue(m_state.sourceSize.width());
-                        m_height->setValue(m_state.sourceSize.height());
+                        syncDimensionInputs();
                         m_form->setDisabled(false);
                         m_modal->acceptButton()->setEnabled(true);
                         m_preview->setSource(m_source.preview, m_state.sourceSize);
+                        m_preview->setOutput(m_source.preview);
                         changed();
                     });
                 if (!m_job.isValid())
@@ -721,6 +854,7 @@ class SaveContent final : public QWidget {
         if (m_closed || !m_source.rows.isValid() || !m_requestedOptions)
             return;
         if (m_encoded && m_encoded->options == *m_requestedOptions) {
+            updateOutputDescription();
             if (m_saving)
                 writeFile();
             else
@@ -731,14 +865,22 @@ class SaveContent final : public QWidget {
             return;
         const quint64 generation = m_generation;
         const auto options = *m_requestedOptions;
+        const auto prepared =
+            m_preparedPixels && m_preparedPixels->size == options.size ? m_preparedPixels : nullptr;
         auto encoded = std::make_shared<std::shared_ptr<pipeline::Encoded>>();
         m_renderRunning = true;
         m_job = ScreenshotExportCoordinator::shared().submit(
             this, ScreenshotExportCoordinator::Priority::Foreground,
-            [source = m_source, options,
+            [source = m_source, options, prepared,
              encoded](const ScreenshotExportCancellation& cancellation) {
                 ScreenshotExportTaskResult result;
-                *encoded = pipeline::render(source, options, cancellation, &result.error);
+                auto pixels = prepared;
+                if (!pixels)
+                    pixels =
+                        pipeline::preparePixels(source, options.size, cancellation, &result.error);
+                if (pixels)
+                    *encoded =
+                        pipeline::render(std::move(pixels), options, cancellation, &result.error);
                 if (!*encoded)
                     result.failureStage = ScreenshotExportFailureStage::Render;
                 return result;
@@ -748,6 +890,12 @@ class SaveContent final : public QWidget {
                 m_job = {};
                 if (m_closed)
                     return;
+                if (*encoded && (*encoded)->pixels) {
+                    m_preparedPixels = (*encoded)->pixels;
+                    setProperty("preparedPixelsIdentity",
+                                QVariant::fromValue<qulonglong>(
+                                    reinterpret_cast<quintptr>(m_preparedPixels.get())));
+                }
                 if (generation != m_generation) {
                     startRender();
                     return;
@@ -757,6 +905,7 @@ class SaveContent final : public QWidget {
                     return;
                 }
                 m_encoded = *encoded;
+                updateOutputDescription();
                 setProperty("encodedGeneration", QVariant::fromValue(generation));
                 startRender();
             });
@@ -778,9 +927,18 @@ class SaveContent final : public QWidget {
             m_preview->setBusy(false);
             return;
         }
+        if (m_encoded->codecResult.roundTrip == snow::image::PixelRoundTrip::exact &&
+            m_encoded->pixels && !m_encoded->pixels->exactImage.isNull()) {
+            m_renderedPreviewOptions = m_encoded->options;
+            m_preview->setOutput(m_encoded->pixels->exactImage);
+            m_preview->setBusy(false);
+            setProperty("previewGeneration", QVariant::fromValue(m_generation));
+            return;
+        }
         if (m_decodeJob.isValid())
             return;
         m_preview->setBusy(true);
+        setProperty("previewDecodeCount", property("previewDecodeCount").toInt() + 1);
         const quint64 generation = m_generation;
         const quint64 serial = ++m_decodeSerial;
         const auto options = m_encoded->options;
@@ -842,10 +1000,11 @@ class SaveContent final : public QWidget {
     void writeFile() {
         if (m_saveJob.isValid())
             return;
+        auto adoptedPng = std::make_shared<std::optional<snow_shot::storage::PreparedPngImage>>();
         m_saveJob = ScreenshotExportCoordinator::shared().submit(
             this, ScreenshotExportCoordinator::Priority::Foreground,
-            [encoded = m_encoded,
-             path = m_savePath](const ScreenshotExportCancellation& cancellation) {
+            [encoded = m_encoded, path = m_savePath, sourceSize = m_state.sourceSize,
+             adoptedPng](const ScreenshotExportCancellation& cancellation) {
                 ScreenshotExportTaskResult result;
                 const auto saved = ScreenshotImageFileService::writeEncodedFile(
                     encoded->path, path, encoded->options.format,
@@ -854,9 +1013,18 @@ class SaveContent final : public QWidget {
                 result.error = saved.error;
                 if (!saved.succeeded())
                     result.failureStage = ScreenshotExportFailureStage::File;
+                if (saved.succeeded() && encoded->options.format == Format::Png &&
+                    encoded->options.size == sourceSize &&
+                    !cancellation.isCancellationRequested()) {
+                    QFile file(encoded->path);
+                    if (file.open(QIODevice::ReadOnly)) {
+                        *adoptedPng = snow_shot::storage::PreparedPngImage::fromBytes(
+                            sourceSize, file.readAll());
+                    }
+                }
                 return result;
             },
-            [this](ScreenshotExportTaskResult result) {
+            [this, adoptedPng](ScreenshotExportTaskResult result) {
                 m_saveJob = {};
                 if (m_closed)
                     return;
@@ -864,6 +1032,8 @@ class SaveContent final : public QWidget {
                     saveFailed(tr("The screenshot could not be saved: %1").arg(result.error));
                     return;
                 }
+                if (adoptedPng->has_value())
+                    static_cast<void>(m_artifact->adoptCanonicalPng(std::move(**adoptedPng)));
                 static_cast<void>(
                     snow_shot::storage::ScreenshotSettings().setLastManualSaveDirectory(
                         QFileInfo(result.savedPath).absolutePath()));
@@ -885,6 +1055,7 @@ class SaveContent final : public QWidget {
     pipeline::Source m_source;
     std::optional<ScreenshotSaveExportOptions> m_requestedOptions;
     std::optional<ScreenshotSaveExportOptions> m_renderedPreviewOptions;
+    std::shared_ptr<pipeline::PreparedPixels> m_preparedPixels;
     std::shared_ptr<pipeline::Encoded> m_encoded;
     QString m_savePath;
     ScreenshotExportJobHandle m_job;
@@ -896,12 +1067,16 @@ class SaveContent final : public QWidget {
     bool m_saving = false;
     bool m_renderRunning = false;
     ScreenshotSavePreviewCanvas* m_preview = nullptr;
+    QLabel* m_outputDescription = nullptr;
     AdForm* m_form = nullptr;
     DirectoryPathInput* m_directory = nullptr;
     AdLineEdit* m_filename = nullptr;
     AdSelect* m_format = nullptr;
     AdInputNumber* m_width = nullptr;
     AdInputNumber* m_height = nullptr;
+    QLabel* m_sizeLabel = nullptr;
+    AdSegmented* m_sizeUnit = nullptr;
+    bool m_percentage = false;
     AspectRatioLockButton* m_lock = nullptr;
     AdSlider* m_quality = nullptr;
     QLabel* m_error = nullptr;
@@ -1035,6 +1210,7 @@ bool ScreenshotSaveAsFileDialog::open(QObject* lifetime, QWidget* owner,
     if (lifetime != owner)
         QObject::connect(owner, &QObject::destroyed, modal, &AdModal::reject);
     modal->open();
+    content->installFooter();
     modal->acceptButton()->setEnabled(false);
     return true;
 }

@@ -2545,6 +2545,8 @@ if(SNOW_SHOT_BUILD_TESTS)
     snow_shot_import_offscreen_platform(snow-shot-export-dialog-workflow-tests)
     add_test(NAME snow-shot-export-dialog-workflow-tests
         COMMAND snow-shot-export-dialog-workflow-tests)
+    add_test(NAME snow-shot-export-dialog-pipeline-tests
+        COMMAND snow-shot-export-dialog-workflow-tests --optimized-pipeline)
     add_test(NAME snow-shot-export-dialog-placement-tests
         COMMAND snow-shot-export-dialog-workflow-tests --placement)
     set_tests_properties(snow-shot-export-dialog-placement-tests PROPERTIES
@@ -2553,6 +2555,10 @@ if(SNOW_SHOT_BUILD_TESTS)
     )
     set_tests_properties(snow-shot-export-dialog-workflow-tests PROPERTIES
         TIMEOUT 180
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    )
+    set_tests_properties(snow-shot-export-dialog-pipeline-tests PROPERTIES
+        TIMEOUT 90
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
     )
 
@@ -3621,6 +3627,26 @@ if(WIN32 AND SNOW_SHOT_BUILD_BENCHMARKS)
         snow_draw_engine_qt_canvas
         Psapi
         user32
+    )
+
+    # This is intentionally not registered with CTest. It exercises the real
+    # Save-to-File pixel preparation, encoding, and preview decode routes and
+    # reports hardware-sensitive medians for explicit Release sessions.
+    add_executable(snow-shot-save-to-file-performance-benchmark
+        tests/screenshot_save_to_file_performance_benchmark.cpp
+        src/presentation/services/screenshotsaveexportpipeline.cpp
+        src/presentation/services/screenshotimagefileservice.cpp
+        src/presentation/services/screenshotexportcoordinator.cpp
+    )
+    target_include_directories(snow-shot-save-to-file-performance-benchmark PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/image"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/presentation/services"
+    )
+    target_link_libraries(snow-shot-save-to-file-performance-benchmark PRIVATE
+        snow_shot_image_codec
+        snow_shot_storage
+        Qt6::Gui
     )
 endif()
 

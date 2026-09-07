@@ -96,6 +96,7 @@ class ScreenshotExportArtifact final : public QObject {
     using RowSourceCallback = std::function<void(ScreenshotImageRowSource, QString)>;
     [[nodiscard]] bool requestRowSource(QObject* receiver, RowSourceCallback callback);
     [[nodiscard]] bool requestCanonicalPng(QObject* receiver, EncodingCallback callback);
+    [[nodiscard]] bool adoptCanonicalPng(snow_shot::storage::PreparedPngImage image);
     [[nodiscard]] bool requestClipboard(QObject* receiver, ClipboardCallback callback);
     [[nodiscard]] bool requestAutomaticSave(QObject* receiver, QStringList directories,
                                             ScreenshotImageFileFormat format,
@@ -112,8 +113,11 @@ class ScreenshotExportArtifact final : public QObject {
 
     void startImage();
     void completeImage(ScreenshotExportImageResult result);
+    void startRowSource();
+    void startRowSourceFromImage(QImage image);
+    void completeRowSource(ScreenshotImageRowSource source, QString error);
     void startCanonicalPng();
-    void startCanonicalPngFromImage(QImage image);
+    void startCanonicalPngFromRows(ScreenshotImageRowSource source);
     void completeCanonicalPng(ScreenshotExportEncodingResult result);
     [[nodiscard]] bool prepareClipboard(QObject* receiver, QByteArray canonicalPng,
                                         ClipboardCallback callback);

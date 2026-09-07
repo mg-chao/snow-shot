@@ -2,6 +2,7 @@
 
 #include "snow/image/document.h"
 #include "snow/image/export.h"
+#include "snow/image/raster.h"
 
 #include <cstdint>
 #include <array>
@@ -36,6 +37,14 @@ struct ResizeOptions final {
     // accumulator. UINT64_MAX permits an unbounded cache for controlled uses.
     std::uint64_t maximum_worker_cache_bytes = kDefaultResizeWorkerCacheBytes;
 };
+
+// Resizes a single full-canvas packed raster directly into caller-owned storage. The source must
+// describe exactly one frame and one packed plane; destination dimensions must match options and
+// its format must match the source plane.
+SNOW_IMAGE_API Result<void> resize_raster_into(const RasterSource& source,
+                                               const ResizeOptions& options,
+                                               MutablePlaneView destination,
+                                               std::stop_token stop = {});
 
 struct PaletteOptions final {
     std::uint16_t maximum_colors = 256;

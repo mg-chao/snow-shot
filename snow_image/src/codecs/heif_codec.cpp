@@ -1345,6 +1345,44 @@ bool is_sequence_document(const Document& document) {
                        [](const Frame& frame) { return frame.duration.count() > 0; });
 }
 
+Result<void> configure_heif_image(heif_image* image, const ColorEncoding& color, bool include_alpha,
+                                  AlphaMode alpha_mode, bool lossless_rgb) {
+    heif_image_set_premultiplied_alpha(
+        image, include_alpha && alpha_mode == AlphaMode::premultiplied ? 1 : 0);
+    if (!color.icc_profile.empty()) {
+        const heif_error error = heif_image_set_raw_color_profile(
+            image, "prof", color.icc_profile.data(), color.icc_profile.size());
+        if (error.code != heif_error_Ok)
+            return heif_status(error, ErrorCode::encode_failed, "HEIF ICC profile assignment");
+    }
+    NclxPtr nclx(heif_nclx_color_profile_alloc());
+    if (nclx && (lossless_rgb || color.primaries != ColorPrimaries::unknown ||
+                 color.transfer != TransferFunction::unknown)) {
+        nclx->color_primaries = color.primaries == ColorPrimaries::rec2020
+                                    ? heif_color_primaries_ITU_R_BT_2020_2_and_2100_0
+                                : color.primaries == ColorPrimaries::display_p3
+                                    ? heif_color_primaries_SMPTE_EG_432_1
+                                    : heif_color_primaries_ITU_R_BT_709_5;
+        nclx->transfer_characteristics = color.transfer == TransferFunction::linear
+                                             ? heif_transfer_characteristic_linear
+                                         : color.transfer == TransferFunction::pq
+                                             ? heif_transfer_characteristic_ITU_R_BT_2100_0_PQ
+                                         : color.transfer == TransferFunction::hlg
+                                             ? heif_transfer_characteristic_ITU_R_BT_2100_0_HLG
+                                             : heif_transfer_characteristic_IEC_61966_2_1;
+        nclx->matrix_coefficients =
+            lossless_rgb ? heif_matrix_coefficients_RGB_GBR
+            : color.primaries == ColorPrimaries::rec2020
+                ? heif_matrix_coefficients_ITU_R_BT_2020_2_non_constant_luminance
+                : heif_matrix_coefficients_ITU_R_BT_709_5;
+        nclx->full_range_flag = 1;
+        const heif_error error = heif_image_set_nclx_color_profile(image, nclx.get());
+        if (error.code != heif_error_Ok)
+            return heif_status(error, ErrorCode::encode_failed, "HEIF NCLX profile assignment");
+    }
+    return {};
+}
+
 Result<MutableImagePtr> make_heif_image(const ImageView& view, const ColorEncoding& color,
                                         bool include_alpha, bool lossless_rgb = false) {
     Result<void> valid = view.validate();
@@ -1469,41 +1507,74 @@ Result<MutableImagePtr> make_heif_image(const ImageView& view, const ColorEncodi
             }
         }
     }
-    heif_image_set_premultiplied_alpha(
-        image.get(), include_alpha && view.format.alpha == AlphaMode::premultiplied ? 1 : 0);
-    if (!color.icc_profile.empty()) {
-        error = heif_image_set_raw_color_profile(image.get(), "prof", color.icc_profile.data(),
-                                                 color.icc_profile.size());
-        if (error.code != heif_error_Ok) {
-            return heif_status(error, ErrorCode::encode_failed, "HEIF ICC profile assignment");
-        }
+    Result<void> configured =
+        configure_heif_image(image.get(), color, include_alpha, view.format.alpha, lossless_rgb);
+    if (!configured)
+        return configured.error();
+    return image;
+}
+
+Result<MutableImagePtr> make_heif_raster_image(const RasterSource& source,
+                                               const RasterFrameDescriptor& frame,
+                                               const ColorEncoding& color, bool include_alpha,
+                                               bool lossless_rgb, std::stop_token stop) {
+    const PlaneDescriptor& plane = frame.layout.planes.front();
+    if (plane.format != kRgba8 ||
+        frame.width > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
+        frame.height > static_cast<std::uint32_t>(std::numeric_limits<int>::max())) {
+        return Status::error(ErrorCode::unsupported_feature,
+                             "Native HEIF raster encoding requires RGBA8 pixels.", "libheif");
     }
-    NclxPtr nclx(heif_nclx_color_profile_alloc());
-    if (nclx && (lossless_rgb || color.primaries != ColorPrimaries::unknown ||
-                 color.transfer != TransferFunction::unknown)) {
-        nclx->color_primaries = color.primaries == ColorPrimaries::rec2020
-                                    ? heif_color_primaries_ITU_R_BT_2020_2_and_2100_0
-                                : color.primaries == ColorPrimaries::display_p3
-                                    ? heif_color_primaries_SMPTE_EG_432_1
-                                    : heif_color_primaries_ITU_R_BT_709_5;
-        nclx->transfer_characteristics = color.transfer == TransferFunction::linear
-                                             ? heif_transfer_characteristic_linear
-                                         : color.transfer == TransferFunction::pq
-                                             ? heif_transfer_characteristic_ITU_R_BT_2100_0_PQ
-                                         : color.transfer == TransferFunction::hlg
-                                             ? heif_transfer_characteristic_ITU_R_BT_2100_0_HLG
-                                             : heif_transfer_characteristic_IEC_61966_2_1;
-        nclx->matrix_coefficients =
-            lossless_rgb ? heif_matrix_coefficients_RGB_GBR
-            : color.primaries == ColorPrimaries::rec2020
-                ? heif_matrix_coefficients_ITU_R_BT_2020_2_non_constant_luminance
-                : heif_matrix_coefficients_ITU_R_BT_709_5;
-        nclx->full_range_flag = 1;
-        error = heif_image_set_nclx_color_profile(image.get(), nclx.get());
-        if (error.code != heif_error_Ok) {
-            return heif_status(error, ErrorCode::encode_failed, "HEIF NCLX profile assignment");
-        }
+    const heif_chroma chroma =
+        include_alpha ? heif_chroma_interleaved_RGBA : heif_chroma_interleaved_RGB;
+    heif_image* raw = nullptr;
+    heif_error error =
+        heif_image_create(static_cast<int>(frame.width), static_cast<int>(frame.height),
+                          heif_colorspace_RGB, chroma, &raw);
+    if (error.code != heif_error_Ok)
+        return heif_status(error, ErrorCode::encode_failed, "HEIF image allocation");
+    MutableImagePtr image(raw);
+    error = heif_image_add_plane(image.get(), heif_channel_interleaved,
+                                 static_cast<int>(frame.width), static_cast<int>(frame.height), 8);
+    if (error.code != heif_error_Ok) {
+        return heif_status(error, ErrorCode::encode_failed, "HEIF image-plane allocation");
     }
+    std::size_t destination_stride = 0;
+    std::uint8_t* destination =
+        heif_image_get_plane2(image.get(), heif_channel_interleaved, &destination_stride);
+    const std::size_t source_row_bytes = static_cast<std::size_t>(frame.width) * 4U;
+    const std::size_t destination_row_bytes =
+        static_cast<std::size_t>(frame.width) * (include_alpha ? 4U : 3U);
+    if (destination == nullptr || destination_stride < destination_row_bytes) {
+        return Status::error(ErrorCode::encode_failed,
+                             "libheif returned an invalid encoding image plane.", "libheif");
+    }
+    try {
+        std::vector<std::byte> source_row(source_row_bytes);
+        for (std::uint32_t y = 0; y < frame.height; ++y) {
+            if (stop.stop_requested())
+                return cancelled_status();
+            Result<void> read = source.read_rows(0, 0, y, 1, source_row_bytes, source_row, stop);
+            if (!read)
+                return read.error();
+            std::uint8_t* output = destination + static_cast<std::size_t>(y) * destination_stride;
+            if (include_alpha) {
+                std::memcpy(output, source_row.data(), source_row_bytes);
+                continue;
+            }
+            for (std::uint32_t x = 0; x < frame.width; ++x) {
+                std::memcpy(output + static_cast<std::size_t>(x) * 3U,
+                            source_row.data() + static_cast<std::size_t>(x) * 4U, 3U);
+            }
+        }
+    } catch (const std::bad_alloc&) {
+        return Status::error(ErrorCode::out_of_memory,
+                             "Could not allocate a HEIF raster input row.", "libheif");
+    }
+    Result<void> configured =
+        configure_heif_image(image.get(), color, include_alpha, plane.format.alpha, lossless_rgb);
+    if (!configured)
+        return configured.error();
     return image;
 }
 
@@ -1621,6 +1692,22 @@ const ColorEncoding& effective_color(const Document& document, const Frame& fram
 }
 
 const Metadata& effective_metadata(const Document& document, const Frame& frame) {
+    return frame.metadata.exif.empty() && frame.metadata.xmp.empty() &&
+                   frame.metadata.blocks.empty() && frame.metadata.comment.empty()
+               ? document.metadata
+               : frame.metadata;
+}
+
+const ColorEncoding& effective_color(const DocumentDescriptor& document,
+                                     const RasterFrameDescriptor& frame) {
+    return frame.color.icc_profile.empty() && frame.color.primaries == ColorPrimaries::unknown &&
+                   frame.color.transfer == TransferFunction::unknown
+               ? document.color
+               : frame.color;
+}
+
+const Metadata& effective_metadata(const DocumentDescriptor& document,
+                                   const RasterFrameDescriptor& frame) {
     return frame.metadata.exif.empty() && frame.metadata.xmp.empty() &&
                    frame.metadata.blocks.empty() && frame.metadata.comment.empty()
                ? document.metadata
@@ -2120,6 +2207,100 @@ Result<EncodedArtifactReceipt> HeifCodec::encode_to_sink(const Document& documen
         return heif_status(error, ErrorCode::encode_failed, "HEIF file writing");
     }
     return receipt_for_document(document, format());
+}
+
+Result<EncodedArtifactReceipt> HeifCodec::encode_raster_to_sink(const RasterSource& source,
+                                                                const Output& output,
+                                                                const EncodeOptions& options,
+                                                                std::stop_token stop) const {
+    const DocumentDescriptor& descriptor = source.descriptor();
+    if (raster_encode_route(descriptor, options) != RasterEncodeRoute::native)
+        return Codec::encode_raster_to_sink(source, output, options, stop);
+    Result<void> descriptor_status = descriptor.validate();
+    if (!descriptor_status)
+        return descriptor_status.error();
+    if (stop.stop_requested())
+        return cancelled_status();
+
+    ContextPtr context(heif_context_alloc());
+    if (!context) {
+        return Status::error(ErrorCode::out_of_memory, "Could not allocate a HEIF context.",
+                             "libheif");
+    }
+    Result<EncoderPtr> encoder = make_encoder(context.get(), format_, options);
+    if (!encoder)
+        return encoder.error();
+    heif_context_set_major_brand(context.get(),
+                                 format_ == Format::avif ? heif_brand2_avif : heif_brand2_heic);
+
+    const RasterFrameDescriptor& frame = descriptor.frames.front();
+    const bool include_alpha = *options.verified_alpha_content == AlphaContent::non_opaque;
+    const bool lossless_rgb = format_ == Format::avif && options.lossless;
+    const ColorEncoding& color = effective_color(descriptor, frame);
+    const Metadata& metadata = effective_metadata(descriptor, frame);
+    Result<MutableImagePtr> image =
+        make_heif_raster_image(source, frame, color, include_alpha, lossless_rgb, stop);
+    if (!image)
+        return image.error();
+
+    EncodeOptionsPtr encoding(heif_encoding_options_alloc());
+    if (!encoding) {
+        return Status::error(ErrorCode::out_of_memory, "Could not allocate HEIF encoding options.",
+                             "libheif");
+    }
+    encoding->save_alpha_channel = include_alpha ? 1 : 0;
+    encoding->save_two_colr_boxes_when_ICC_and_nclx_available = 1;
+    NclxPtr lossless_profile;
+    if (lossless_rgb) {
+        heif_color_profile_nclx* profile = nullptr;
+        const heif_error profile_error =
+            heif_image_get_nclx_color_profile(image.value().get(), &profile);
+        if (profile_error.code != heif_error_Ok) {
+            return heif_status(profile_error, ErrorCode::encode_failed,
+                               "AVIF lossless color profile");
+        }
+        lossless_profile.reset(profile);
+        encoding->output_nclx_profile = lossless_profile.get();
+    }
+    encoding->image_orientation = static_cast<heif_orientation>(
+        options.preserve_metadata ? metadata.orientation : Orientation::identity);
+    heif_image_handle* raw_handle = nullptr;
+    const heif_error encoded = heif_context_encode_image(
+        context.get(), image.value().get(), encoder.value().get(), encoding.get(), &raw_handle);
+    if (encoded.code != heif_error_Ok)
+        return heif_status(encoded, ErrorCode::encode_failed, "HEIF image encoding");
+    HandlePtr handle(raw_handle);
+    Result<void> metadata_status = add_metadata(context.get(), handle.get(), metadata, options);
+    if (!metadata_status)
+        return metadata_status.error();
+
+    heif_writer writer{};
+    writer.writer_api_version = 1;
+    writer.write = write_heif_chunk;
+    WriterContext writer_context{output.sink.get(), stop, {}};
+    const heif_error written = heif_context_write(context.get(), &writer, &writer_context);
+    if (!writer_context.failure.ok())
+        return writer_context.failure;
+    if (written.code != heif_error_Ok)
+        return heif_status(written, ErrorCode::encode_failed, "HEIF file writing");
+    return receipt_for_descriptor(descriptor, format());
+}
+
+RasterEncodeRoute
+HeifCodec::raster_encode_route(const DocumentDescriptor& descriptor,
+                               const EncodeOptions& normalized_options) const noexcept {
+    if (!normalized_options.verified_alpha_content || descriptor.kind != DocumentKind::raster ||
+        descriptor.frames.size() != 1U)
+        return RasterEncodeRoute::materialized;
+    const RasterFrameDescriptor& frame = descriptor.frames.front();
+    if (frame.x != 0 || frame.y != 0 || frame.width != descriptor.canvas_width ||
+        frame.height != descriptor.canvas_height || frame.layout.planes.size() != 1U)
+        return RasterEncodeRoute::materialized;
+    const PlaneDescriptor& plane = frame.layout.planes.front();
+    return plane.semantic == PlaneSemantic::packed && plane.width == frame.width &&
+                   plane.height == frame.height && plane.format == kRgba8
+               ? RasterEncodeRoute::native
+               : RasterEncodeRoute::materialized;
 }
 
 } // namespace snow::image::internal

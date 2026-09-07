@@ -141,6 +141,78 @@ bool formatFromBridge(uint32_t value, snow::image::Format* output) noexcept {
     }
 }
 
+uint32_t formatToBridge(snow::image::Format format) noexcept {
+    switch (format) {
+    case snow::image::Format::bmp:
+        return SNOW_SHOT_IMAGE_CODEC_FORMAT_BMP;
+    case snow::image::Format::cur:
+        return SNOW_SHOT_IMAGE_CODEC_FORMAT_CUR;
+    case snow::image::Format::gif:
+        return SNOW_SHOT_IMAGE_CODEC_FORMAT_GIF;
+    case snow::image::Format::ico:
+        return SNOW_SHOT_IMAGE_CODEC_FORMAT_ICO;
+    case snow::image::Format::jpeg:
+        return SNOW_SHOT_IMAGE_CODEC_FORMAT_JPEG;
+    case snow::image::Format::pbm:
+        return SNOW_SHOT_IMAGE_CODEC_FORMAT_PBM;
+    case snow::image::Format::pgm:
+        return SNOW_SHOT_IMAGE_CODEC_FORMAT_PGM;
+    case snow::image::Format::png:
+        return SNOW_SHOT_IMAGE_CODEC_FORMAT_PNG;
+    case snow::image::Format::ppm:
+        return SNOW_SHOT_IMAGE_CODEC_FORMAT_PPM;
+    case snow::image::Format::svg:
+        return SNOW_SHOT_IMAGE_CODEC_FORMAT_SVG;
+    case snow::image::Format::svgz:
+        return SNOW_SHOT_IMAGE_CODEC_FORMAT_SVGZ;
+    case snow::image::Format::xbm:
+        return SNOW_SHOT_IMAGE_CODEC_FORMAT_XBM;
+    case snow::image::Format::xpm:
+        return SNOW_SHOT_IMAGE_CODEC_FORMAT_XPM;
+    case snow::image::Format::heif:
+        return SNOW_SHOT_IMAGE_CODEC_FORMAT_HEIF;
+    case snow::image::Format::avif:
+        return SNOW_SHOT_IMAGE_CODEC_FORMAT_AVIF;
+    case snow::image::Format::jxl:
+        return SNOW_SHOT_IMAGE_CODEC_FORMAT_JXL;
+    case snow::image::Format::exr:
+        return SNOW_SHOT_IMAGE_CODEC_FORMAT_EXR;
+    case snow::image::Format::webp:
+        return SNOW_SHOT_IMAGE_CODEC_FORMAT_WEBP;
+    case snow::image::Format::unknown:
+        return SNOW_SHOT_IMAGE_CODEC_FORMAT_UNKNOWN;
+    }
+    return SNOW_SHOT_IMAGE_CODEC_FORMAT_UNKNOWN;
+}
+
+bool prepareEncodeResult(SnowShotImageCodecEncodeResult* result, char* error,
+                         uint64_t errorCapacity) noexcept {
+    if (result == nullptr || result->struct_size != sizeof(SnowShotImageCodecEncodeResult) ||
+        result->abi_version != SNOW_SHOT_IMAGE_CODEC_ABI_VERSION) {
+        setError(error, errorCapacity, "The image encoding result is invalid.");
+        return false;
+    }
+    *result = {};
+    result->struct_size = sizeof(SnowShotImageCodecEncodeResult);
+    result->abi_version = SNOW_SHOT_IMAGE_CODEC_ABI_VERSION;
+    return true;
+}
+
+void publishEncodeResult(const snow::image::EncodeResult& source,
+                         SnowShotImageCodecEncodeResult* destination) noexcept {
+    destination->bytes_written = source.bytes_written;
+    destination->encoded_format = formatToBridge(source.receipt.format);
+    destination->canvas_width = source.receipt.canvas_width;
+    destination->canvas_height = source.receipt.canvas_height;
+    destination->emitted_frame_count = source.receipt.emitted_frame_count;
+    destination->pixel_round_trip =
+        static_cast<uint8_t>(source.round_trip == snow::image::PixelRoundTrip::exact
+                                 ? SNOW_SHOT_IMAGE_CODEC_PIXEL_ROUND_TRIP_EXACT
+                                 : SNOW_SHOT_IMAGE_CODEC_PIXEL_ROUND_TRIP_CODEC_ARTIFACT);
+    destination->encoder_finalized_and_sink_flushed =
+        source.receipt.encoder_finalized_and_sink_flushed ? 1 : 0;
+}
+
 bool chromaSubsamplingFromBridge(uint8_t value, snow::image::ChromaSubsampling* output) noexcept {
     if (output == nullptr) {
         return false;
@@ -648,14 +720,13 @@ int32_t snow_shot_image_codec_encode_rgba8(const uint8_t* pixels, uint64_t pixel
 
 int32_t snow_shot_image_codec_encode_rgba8_stream(
     const SnowShotImageCodecRgba8Source* source, const SnowShotImageCodecByteSink* sink,
-    const SnowShotImageCodecEncodeOptions* bridgeOptions, uint64_t* bytesWritten, char* error,
-    uint64_t errorCapacity) {
+    const SnowShotImageCodecEncodeOptions* bridgeOptions,
+    SnowShotImageCodecEncodeResult* outputResult, char* error, uint64_t errorCapacity) {
     clearError(error, errorCapacity);
-    if (bytesWritten != nullptr) {
-        *bytesWritten = 0;
-    }
+    if (!prepareEncodeResult(outputResult, error, errorCapacity))
+        return 0;
     try {
-        if (source == nullptr || sink == nullptr || bytesWritten == nullptr ||
+        if (source == nullptr || sink == nullptr ||
             source->struct_size != sizeof(SnowShotImageCodecRgba8Source) ||
             sink->struct_size != sizeof(SnowShotImageCodecByteSink) ||
             source->abi_version != SNOW_SHOT_IMAGE_CODEC_ABI_VERSION ||
@@ -673,14 +744,14 @@ int32_t snow_shot_image_codec_encode_rgba8_stream(
         CallbackRasterSource raster(*source, options.format);
         auto outputSink = std::make_shared<CallbackByteSink>(*sink);
         snow::image::Output output{std::move(outputSink), nameHint(options.format)};
-        snow::image::Result<snow::image::EncodeResult> result =
+        snow::image::Result<snow::image::EncodeResult> encodedResult =
             service().encode(raster, output, options);
-        if (!result) {
-            setError(error, errorCapacity, result.error().message);
+        if (!encodedResult) {
+            setError(error, errorCapacity, encodedResult.error().message);
             return 0;
         }
-        *bytesWritten = result.value().bytes_written;
-        return *bytesWritten > 0 ? 1 : 0;
+        publishEncodeResult(encodedResult.value(), outputResult);
+        return outputResult->bytes_written > 0 ? 1 : 0;
     } catch (const std::bad_alloc&) {
         setError(error, errorCapacity, "Streaming image encoding ran out of memory.");
         return 0;
@@ -879,47 +950,38 @@ class ExportStop final {
 };
 } // namespace
 
-int32_t snow_shot_image_codec_resize_rgba8(const uint8_t* source, uint32_t width, uint32_t height,
-                                           uint8_t* destination, uint32_t outputWidth,
-                                           uint32_t outputHeight, void* context,
-                                           SnowShotImageCodecCancelCallback cancelled, char* error,
-                                           uint64_t capacity) {
+int32_t snow_shot_image_codec_resize_rgba8(const SnowShotImageCodecRgba8Source* source,
+                                           uint8_t* destination, uint64_t destinationStride,
+                                           uint64_t destinationSize, uint32_t outputWidth,
+                                           uint32_t outputHeight, char* error, uint64_t capacity) {
     clearError(error, capacity);
     try {
-        if (!source || !destination || !validExportDimensions(width, height) ||
-            !validExportDimensions(outputWidth, outputHeight)) {
+        std::size_t outputStride = 0;
+        std::size_t outputSize = 0;
+        if (source == nullptr || destination == nullptr ||
+            source->struct_size != sizeof(SnowShotImageCodecRgba8Source) ||
+            source->abi_version != SNOW_SHOT_IMAGE_CODEC_ABI_VERSION ||
+            source->read_rows == nullptr || !validExportDimensions(source->width, source->height) ||
+            !validExportDimensions(outputWidth, outputHeight) ||
+            !checkedSize(destinationStride, &outputStride) ||
+            !checkedSize(destinationSize, &outputSize)) {
             setError(error, capacity, "Invalid export raster.");
             return 0;
         }
-        auto owner = std::shared_ptr<const void>(source, [](const void*) {});
-        auto buffer = snow::image::SharedPixelBuffer::adopt(
-            owner, {reinterpret_cast<const std::byte*>(source), size_t(width) * height * 4});
-        if (!buffer) {
-            setError(error, capacity, buffer.error().message);
-            return 0;
-        }
-        auto image = snow::image::Image::adopt(width, height, snow::image::kRgba8,
-                                               size_t(width) * 4, std::move(buffer).value());
-        if (!image) {
-            setError(error, capacity, image.error().message);
-            return 0;
-        }
-        snow::image::Document document;
-        document.canvas_width = width;
-        document.canvas_height = height;
-        snow::image::Frame frame;
-        frame.image = std::move(image).value();
-        document.frames.push_back(std::move(frame));
-        snow::image::TransformOptions options;
-        options.resize = snow::image::ResizeOptions{outputWidth, outputHeight};
-        options.resize->method = snow::image::ResamplingMethod::linear;
-        options.resize->maximum_threads = 2;
-        options.animation_policy = snow::image::AnimationPolicy::first_frame;
-        ExportPixelSink sink(destination, outputWidth, outputHeight);
-        ExportStop stop(context, cancelled);
-        auto result = snow::image::transform_to_sink(document, options, sink, stop.token());
-        if (!result) {
-            setError(error, capacity, result.error().message);
+        CallbackRasterSource raster(*source, snow::image::Format::unknown);
+        snow::image::ResizeOptions options{outputWidth, outputHeight};
+        options.method = snow::image::ResamplingMethod::linear;
+        options.maximum_threads = 2;
+        ExportStop stop(source->context, source->is_cancelled);
+        snow::image::MutablePlaneView output{
+            outputWidth,
+            outputHeight,
+            snow::image::kRgba8,
+            outputStride,
+            {reinterpret_cast<std::byte*>(destination), outputSize}};
+        auto resized = snow::image::resize_raster_into(raster, options, output, stop.token());
+        if (!resized) {
+            setError(error, capacity, resized.error().message);
             return 0;
         }
         return 1;
