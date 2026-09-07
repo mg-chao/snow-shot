@@ -361,10 +361,22 @@ void ScreenshotToolbarWindow::resetForNewCapture() {
 }
 
 void ScreenshotToolbarWindow::setScrollingScreenshotMode(bool enabled) {
-    if (ScreenshotToolPaletteHost* host = paletteHost()) {
-        host->setScrollingScreenshotMode(enabled);
+    ScreenshotToolPaletteHost* host = paletteHost();
+    if (host == nullptr || host->palette() == nullptr) {
+        return;
     }
+
+    const bool changed = host->palette()->scrollingScreenshotMode() != enabled;
+    if (!changed) {
+        prepareForDisplay();
+        return;
+    }
+
+    host->setScrollingScreenshotMode(enabled);
     prepareForDisplay();
+    if (!m_manuallyDragged) {
+        m_commands.repositionToolbarForPresentationChange();
+    }
 }
 
 void ScreenshotToolbarWindow::setActiveTool(ScreenshotToolPalette::Tool tool) {

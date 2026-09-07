@@ -74,6 +74,10 @@ class ScreenshotToolbarCommandSink {
     virtual void duplicateSelectedElements() {}
     virtual void deleteSelectedElements() {}
     virtual void repositionToolbarForContentChange() = 0;
+    // Presentation changes may require placement while selection editing is unavailable.
+    virtual void repositionToolbarForPresentationChange() {
+        repositionToolbarForContentChange();
+    }
     virtual void hideColorPickersForScreenshotUi() = 0;
     virtual void beginCanvasColorSampling(adqt::widgets::AdColorPicker*) {}
 };
