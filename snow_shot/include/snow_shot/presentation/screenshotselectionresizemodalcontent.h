@@ -7,9 +7,9 @@
 #include <QWidget>
 
 class QEvent;
+class AspectRatioLockButton;
 
 namespace adqt::widgets {
-class AdButton;
 class AdColorPicker;
 class AdForm;
 class AdFormItem;
@@ -64,7 +64,6 @@ class ScreenshotSelectionResizeModalContent final : public QWidget {
     void deletePreset(const QString& presetKey);
     [[nodiscard]] QWidget* modalOwnerWindow() const;
     void updateGeometryRanges();
-    void updateAspectRatioLockIcon();
     void handleAspectRatioToggle(bool checked);
     void updateAspectRatioFromFields();
     void syncHeightFromWidth();
@@ -92,7 +91,7 @@ class ScreenshotSelectionResizeModalContent final : public QWidget {
     adqt::widgets::AdInputNumber* m_radiusInput = nullptr;
     adqt::widgets::AdInputNumber* m_shadowWidthInput = nullptr;
     adqt::widgets::AdColorPicker* m_shadowColorPicker = nullptr;
-    adqt::widgets::AdButton* m_lockAspectRatioButton = nullptr;
+    AspectRatioLockButton* m_lockAspectRatioButton = nullptr;
 
     QPointer<adqt::widgets::AdModal> m_createPresetModal;
     QPointer<adqt::widgets::AdFormItem> m_createPresetNameItem;

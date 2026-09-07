@@ -51,11 +51,7 @@ constexpr float normalized_byte(std::uint8_t value) noexcept {
     return static_cast<float>(value) / 255.0F;
 }
 
-Result<void> validate_processable(const ImageView& view) {
-    Result<void> valid = view.validate();
-    if (!valid)
-        return valid;
-    const PixelFormat& format = view.format;
+Result<void> validate_processable_format(const PixelFormat& format) {
     if ((format.sample_type != SampleType::unsigned_integer ||
          (format.bits_per_channel != 8 && format.bits_per_channel != 16)) &&
         format.sample_type != SampleType::floating_point) {
@@ -67,6 +63,11 @@ Result<void> validate_processable(const ImageView& view) {
                              "Image processing does not support this channel layout.");
     }
     return {};
+}
+
+Result<void> validate_processable(const ImageView& view) {
+    Result<void> valid = view.validate();
+    return valid ? validate_processable_format(view.format) : valid;
 }
 
 Pixel read_pixel(const ImageView& view, std::uint32_t x, std::uint32_t y, bool linear_rgb) {
@@ -608,6 +609,35 @@ bool filter_horizontal_row(const ImageView& source, std::uint32_t source_y,
     return true;
 }
 
+Result<void> filter_horizontal_input_row(
+    const ImageView* image_source, const RasterSource* raster_source, std::uint32_t source_width,
+    const PixelFormat& source_format, std::size_t source_row_bytes, std::uint32_t source_y,
+    const PackedWeights& horizontal, const ResizeOptions& options, bool specialized_rgba8,
+    bool bgra8, std::span<Pixel> output, std::vector<std::byte>& scratch, std::stop_token stop) {
+    if (image_source != nullptr) {
+        if (!filter_horizontal_row(*image_source, source_y, horizontal, options, specialized_rgba8,
+                                   bgra8, output, stop)) {
+            return Status::error(ErrorCode::cancelled, "Image operation was cancelled.");
+        }
+        return {};
+    }
+    if (raster_source == nullptr) {
+        return Status::error(ErrorCode::internal_error, "Resize source is unavailable.");
+    }
+    if (scratch.size() != source_row_bytes)
+        scratch.resize(source_row_bytes);
+    Result<void> read =
+        raster_source->read_rows(0, 0, source_y, 1, source_row_bytes, scratch, stop);
+    if (!read)
+        return read;
+    const ImageView row_view{source_width, 1, source_format, source_row_bytes, scratch};
+    if (!filter_horizontal_row(row_view, 0, horizontal, options, specialized_rgba8, bgra8, output,
+                               stop)) {
+        return Status::error(ErrorCode::cancelled, "Image operation was cancelled.");
+    }
+    return {};
+}
+
 bool write_resize_row(std::span<std::byte> output_pixels, std::size_t output_stride,
                       std::uint32_t output_y, std::size_t bytes_per_pixel,
                       const PixelFormat& format, const ResizeOptions& options,
@@ -637,9 +667,15 @@ bool exceeds_worker_cache(std::size_t ring_bytes, std::size_t ring_rows, std::ui
     return ring_rows > remaining / kIndexBytesPerRow;
 }
 
-Result<void> resize_image_into(const Image& source, const ResizeOptions& options,
-                               std::span<std::byte> output_pixels, std::size_t output_stride,
-                               std::stop_token stop) {
+Result<void> resize_packed_into(const ImageView* image_source, const RasterSource* raster_source,
+                                std::uint32_t source_width, std::uint32_t source_height,
+                                const PixelFormat& source_format, const ResizeOptions& options,
+                                std::span<std::byte> output_pixels, std::size_t output_stride,
+                                std::stop_token stop) {
+    if ((image_source == nullptr) == (raster_source == nullptr)) {
+        return Status::error(ErrorCode::internal_error,
+                             "Resize requires exactly one pixel source.");
+    }
     if (options.width == 0 || options.height == 0) {
         return Status::error(ErrorCode::invalid_argument, "Resize dimensions must be non-zero.");
     }
@@ -647,44 +683,61 @@ Result<void> resize_image_into(const Image& source, const ResizeOptions& options
     if (count > (std::uint64_t{1} << 32U)) {
         return Status::error(ErrorCode::limit_exceeded, "Resized image exceeds the pixel limit.");
     }
-    const ImageView source_view = source.view();
-    Result<void> processable = validate_processable(source_view);
+    Result<void> processable = image_source != nullptr ? validate_processable(*image_source)
+                                                       : validate_processable_format(source_format);
     if (!processable)
         return processable.error();
-    if (source.width() > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
-        source.height() > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
+    if (source_width > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
+        source_height > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
         options.width > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
         options.height > static_cast<std::uint32_t>(std::numeric_limits<int>::max())) {
         return Status::error(ErrorCode::limit_exceeded,
                              "Resize dimensions exceed the filter index range.");
     }
-    Result<std::size_t> bytes_per_pixel = source.format().bytes_per_pixel();
+    Result<std::size_t> bytes_per_pixel = source_format.bytes_per_pixel();
     if (!bytes_per_pixel)
         return bytes_per_pixel.error();
     if (options.width > std::numeric_limits<std::size_t>::max() / bytes_per_pixel.value()) {
         return Status::error(ErrorCode::limit_exceeded, "Resized image row size overflows.");
     }
     const std::size_t row_bytes = static_cast<std::size_t>(options.width) * bytes_per_pixel.value();
-    if (output_stride < row_bytes || options.height > output_pixels.size() / output_stride) {
+    if (output_stride < row_bytes || output_pixels.size() < row_bytes ||
+        options.height - 1U > (output_pixels.size() - row_bytes) / output_stride) {
         return Status::error(ErrorCode::invalid_argument, "Resize output storage is too small.");
     }
-    if (source.width() == options.width && source.height() == options.height) {
-        for (std::uint32_t y = 0; y < options.height; ++y) {
-            if (stop.stop_requested()) {
-                return Status::error(ErrorCode::cancelled, "Image operation was cancelled.");
+    if (source_width == options.width && source_height == options.height) {
+        if (image_source != nullptr) {
+            for (std::uint32_t y = 0; y < options.height; ++y) {
+                if (stop.stop_requested()) {
+                    return Status::error(ErrorCode::cancelled, "Image operation was cancelled.");
+                }
+                std::memcpy(output_pixels.data() + static_cast<std::size_t>(y) * output_stride,
+                            image_source->pixels.data() +
+                                static_cast<std::size_t>(y) * image_source->row_stride,
+                            row_bytes);
             }
-            std::memcpy(output_pixels.data() + static_cast<std::size_t>(y) * output_stride,
-                        source.pixels().data() + static_cast<std::size_t>(y) * source.row_stride(),
-                        row_bytes);
+            return {};
+        }
+        constexpr std::uint32_t kRowsPerRead = 64;
+        for (std::uint32_t first = 0; first < options.height; first += kRowsPerRead) {
+            const std::uint32_t row_count = std::min(kRowsPerRead, options.height - first);
+            const std::size_t offset = static_cast<std::size_t>(first) * output_stride;
+            const std::size_t capacity =
+                static_cast<std::size_t>(row_count - 1U) * output_stride + row_bytes;
+            Result<void> read =
+                raster_source->read_rows(0, 0, first, row_count, output_stride,
+                                         output_pixels.subspan(offset, capacity), stop);
+            if (!read)
+                return read;
         }
         return {};
     }
     Result<PackedWeights> horizontal = pack_weights(
-        static_cast<int>(source.width()), static_cast<int>(options.width), options.method, stop);
+        static_cast<int>(source_width), static_cast<int>(options.width), options.method, stop);
     if (!horizontal)
         return horizontal.error();
     Result<PackedWeights> vertical = pack_weights(
-        static_cast<int>(source.height()), static_cast<int>(options.height), options.method, stop);
+        static_cast<int>(source_height), static_cast<int>(options.height), options.method, stop);
     if (!vertical)
         return vertical.error();
 
@@ -694,19 +747,19 @@ Result<void> resize_image_into(const Image& source, const ResizeOptions& options
     }
     const std::size_t ring_bytes =
         static_cast<std::size_t>(options.width) * sizeof(Pixel) * ring_rows;
-    const bool rgba8 = source.format() == kRgba8;
-    const bool bgra8 = source.format() == kBgra8;
+    const bool rgba8 = source_format == kRgba8;
+    const bool bgra8 = source_format == kBgra8;
     const bool specialized_rgba8 = rgba8 || bgra8;
 
     const bool unbounded_cache =
         options.maximum_worker_cache_bytes == std::numeric_limits<std::uint64_t>::max();
     const bool source_major =
-        !unbounded_cache && source.height() > options.height &&
+        !unbounded_cache && source_height > options.height &&
         (ring_rows > kDefaultResizeMaximumCachedRows ||
          exceeds_worker_cache(ring_bytes, ring_rows, options.maximum_worker_cache_bytes));
     if (source_major) {
         Result<SourceMajorWeights> inverted =
-            invert_weights(vertical.value(), source.height(), options.height, stop);
+            invert_weights(vertical.value(), source_height, options.height, stop);
         if (!inverted)
             return inverted.error();
         vertical = PackedWeights{};
@@ -719,6 +772,7 @@ Result<void> resize_image_into(const Image& source, const ResizeOptions& options
         }
         try {
             std::vector<Pixel> horizontal_row(options.width);
+            std::vector<std::byte> source_row;
             std::vector<Pixel> accumulators(active_rows * options.width);
             constexpr std::size_t kNoSlot = std::numeric_limits<std::size_t>::max();
             std::vector<std::size_t> target_slots(options.height, kNoSlot);
@@ -727,7 +781,7 @@ Result<void> resize_image_into(const Image& source, const ResizeOptions& options
             for (std::size_t slot = active_rows; slot > 0; --slot)
                 free_slots.push_back(slot - 1U);
 
-            for (std::uint32_t source_y = 0; source_y < source.height(); ++source_y) {
+            for (std::uint32_t source_y = 0; source_y < source_height; ++source_y) {
                 if (stop.stop_requested()) {
                     return Status::error(ErrorCode::cancelled, "Image operation was cancelled.");
                 }
@@ -735,10 +789,13 @@ Result<void> resize_image_into(const Image& source, const ResizeOptions& options
                 const std::size_t last = inverted.value().offsets[source_y + 1U];
                 if (first == last)
                     continue;
-                if (!filter_horizontal_row(source_view, source_y, horizontal.value(), options,
-                                           specialized_rgba8, bgra8, horizontal_row, stop)) {
-                    return Status::error(ErrorCode::cancelled, "Image operation was cancelled.");
-                }
+                Result<void> filtered = filter_horizontal_input_row(
+                    image_source, raster_source, source_width, source_format,
+                    static_cast<std::size_t>(source_width) * bytes_per_pixel.value(), source_y,
+                    horizontal.value(), options, specialized_rgba8, bgra8, horizontal_row,
+                    source_row, stop);
+                if (!filtered)
+                    return filtered;
                 for (std::size_t coefficient = first; coefficient < last; ++coefficient) {
                     const std::uint32_t target = inverted.value().targets[coefficient];
                     if (inverted.value().first_sources[target] == static_cast<int>(source_y)) {
@@ -770,7 +827,7 @@ Result<void> resize_image_into(const Image& source, const ResizeOptions& options
                     }
                     if (inverted.value().last_sources[target] == static_cast<int>(source_y)) {
                         if (!write_resize_row(output_pixels, output_stride, target,
-                                              bytes_per_pixel.value(), source.format(), options,
+                                              bytes_per_pixel.value(), source_format, options,
                                               specialized_rgba8, bgra8,
                                               std::span<Pixel>(accumulator, options.width), stop)) {
                             return Status::error(ErrorCode::cancelled,
@@ -792,8 +849,13 @@ Result<void> resize_image_into(const Image& source, const ResizeOptions& options
         return {};
     }
 
-    const std::uint32_t thread_count = resize_thread_count(options, ring_bytes);
+    const std::uint32_t thread_count =
+        raster_source != nullptr &&
+                !has_access(raster_source->access(), RasterAccess::concurrent_reads)
+            ? 1U
+            : resize_thread_count(options, ring_bytes);
     std::stop_source failure_stop;
+    std::stop_callback external_stop(stop, [&failure_stop] { failure_stop.request_stop(); });
     std::atomic<bool> failed = false;
     Status failure;
     std::mutex failure_mutex;
@@ -802,6 +864,7 @@ Result<void> resize_image_into(const Image& source, const ResizeOptions& options
         try {
             std::vector<Pixel> ring(ring_rows * options.width);
             std::vector<int> ring_sources(ring_rows, -1);
+            std::vector<std::byte> source_row;
             std::unordered_map<int, std::size_t> source_slots;
             const bool indexed_slots = ring_rows > 32U;
             if (indexed_slots)
@@ -847,11 +910,19 @@ Result<void> resize_image_into(const Image& source, const ResizeOptions& options
                     if (indexed_slots)
                         source_slots.emplace(source_y, slot);
                     Pixel* horizontal_row = ring.data() + slot * options.width;
-                    if (!filter_horizontal_row(
-                            source_view, static_cast<std::uint32_t>(source_y), horizontal.value(),
-                            options, specialized_rgba8, bgra8,
-                            std::span<Pixel>(horizontal_row, options.width), stop))
+                    Result<void> filtered = filter_horizontal_input_row(
+                        image_source, raster_source, source_width, source_format,
+                        static_cast<std::size_t>(source_width) * bytes_per_pixel.value(),
+                        static_cast<std::uint32_t>(source_y), horizontal.value(), options,
+                        specialized_rgba8, bgra8, std::span<Pixel>(horizontal_row, options.width),
+                        source_row, failure_stop.get_token());
+                    if (!filtered) {
+                        std::lock_guard lock(failure_mutex);
+                        if (!failed.exchange(true))
+                            failure = filtered.error();
+                        failure_stop.request_stop();
                         return;
+                    }
                 }
                 std::byte* output_row =
                     output_pixels.data() + static_cast<std::size_t>(y) * output_stride;
@@ -878,7 +949,7 @@ Result<void> resize_image_into(const Image& source, const ResizeOptions& options
                     if (specialized_rgba8) {
                         write_rgba8_pixel(destination, value, bgra8, options.linear_rgb);
                     } else {
-                        write_pixel(destination, value, source.format(), options.linear_rgb);
+                        write_pixel(destination, value, source_format, options.linear_rgb);
                     }
                 }
             }
@@ -921,6 +992,14 @@ Result<void> resize_image_into(const Image& source, const ResizeOptions& options
         return Status::error(ErrorCode::cancelled, "Image operation was cancelled.");
     }
     return {};
+}
+
+Result<void> resize_image_into(const Image& source, const ResizeOptions& options,
+                               std::span<std::byte> output_pixels, std::size_t output_stride,
+                               std::stop_token stop) {
+    const ImageView source_view = source.view();
+    return resize_packed_into(&source_view, nullptr, source.width(), source.height(),
+                              source.format(), options, output_pixels, output_stride, stop);
 }
 
 Result<Image> resize_image(const Image& source, const ResizeOptions& options,
@@ -1316,6 +1395,48 @@ Result<Document> transform_document(const Document& document, const TransformOpt
 }
 
 } // namespace
+
+Result<void> resize_raster_into(const RasterSource& source, const ResizeOptions& options,
+                                MutablePlaneView destination, std::stop_token stop) {
+    try {
+        Result<void> descriptor_status = source.descriptor().validate();
+        if (!descriptor_status)
+            return descriptor_status;
+        Result<void> destination_status = destination.validate();
+        if (!destination_status)
+            return destination_status;
+
+        const DocumentDescriptor& document = source.descriptor();
+        if (document.kind != DocumentKind::raster || document.frames.size() != 1U) {
+            return Status::error(ErrorCode::unsupported_feature,
+                                 "Resize requires exactly one raster frame.");
+        }
+        const RasterFrameDescriptor& frame = document.frames.front();
+        if (frame.x != 0 || frame.y != 0 || frame.width != document.canvas_width ||
+            frame.height != document.canvas_height || frame.layout.planes.size() != 1U) {
+            return Status::error(ErrorCode::unsupported_feature,
+                                 "Resize requires one full-canvas packed plane.");
+        }
+        const PlaneDescriptor& plane = frame.layout.planes.front();
+        if (plane.semantic != PlaneSemantic::packed || plane.width != frame.width ||
+            plane.height != frame.height) {
+            return Status::error(ErrorCode::unsupported_feature,
+                                 "Resize requires one full-canvas packed plane.");
+        }
+        if (destination.width != options.width || destination.height != options.height ||
+            destination.format != plane.format) {
+            return Status::error(
+                ErrorCode::invalid_argument,
+                "Resize destination dimensions and format must match the requested output.");
+        }
+        return resize_packed_into(nullptr, &source, frame.width, frame.height, plane.format,
+                                  options, destination.pixels, destination.row_stride, stop);
+    } catch (const std::bad_alloc&) {
+        return Status::error(ErrorCode::out_of_memory, "Raster resize ran out of memory.");
+    } catch (...) {
+        return Status::error(ErrorCode::internal_error, "Raster resize failed unexpectedly.");
+    }
+}
 
 Result<Document> transform(const Document& document, const TransformOptions& options,
                            std::stop_token stop) {

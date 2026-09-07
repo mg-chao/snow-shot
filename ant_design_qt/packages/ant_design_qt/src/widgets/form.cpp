@@ -496,7 +496,7 @@ void AdForm::setDisabled(bool value) {
       if (!control) {
         continue;
       }
-      item->controlEnabledBeforeFormDisable_ = control->isEnabled();
+      item->controlEnabledBeforeFormDisable_ = !control->testAttribute(Qt::WA_ForceDisabled);
       item->formDisabledApplied_ = true;
     }
   }
@@ -2202,7 +2202,8 @@ void AdFormItem::refreshControlStyle() {
     writeEnumProperty(widget, "variant", variantPropertyValue(form_->variant()));
     if (form_->disabled()) {
       if (!formDisabledApplied_) {
-        controlEnabledBeforeFormDisable_ = widget->isEnabled();
+        // Ancestor disabling has already propagated before a nested form is refreshed.
+        controlEnabledBeforeFormDisable_ = !widget->testAttribute(Qt::WA_ForceDisabled);
         formDisabledApplied_ = true;
       }
       widget->setEnabled(false);

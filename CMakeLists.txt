@@ -303,6 +303,7 @@ if(NOT TARGET snow-benchmarks)
         snow-shot-history-performance-benchmark
         snow-shot-selection-render-benchmark
         snow-shot-screenshot-toolbar-render-benchmark
+        snow-shot-save-to-file-performance-benchmark
         snow-shot-scrolling-preview-benchmark
         snow-shot-scrolling-result-async-benchmark
     )

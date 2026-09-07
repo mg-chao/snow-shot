@@ -95,8 +95,20 @@ void builtInCatalogIsCompleteAndValid() {
         }
     }
     require(
-        sectionCount == 29 && itemCount == 117,
-        "catalog must contain the expected twenty-nine sections and one hundred seventeen items");
+        sectionCount == 29 && itemCount == 118,
+        "catalog must contain the expected twenty-nine sections and one hundred eighteen items");
+    const auto* saveDialog =
+        catalog.item({QStringLiteral("function-settings"), QStringLiteral("screenshot-settings"),
+                      QStringLiteral("screenshot.save-as-file-dialog")});
+    require(saveDialog &&
+                saveDialog->configurationKey == QStringLiteral("screenshot/save_as_file_dialog"),
+            "Save as file dialog must be in Function screenshot settings");
+    const auto& saveSelect = std::get<settings::SettingsSelectDefinition>(saveDialog->payload);
+    require(saveSelect.binding == settings::SettingsSelectBinding::ScreenshotSaveAsFileDialog &&
+                saveSelect.options.size() == 2 &&
+                saveSelect.options[0].value == QStringLiteral("system") &&
+                saveSelect.options[1].value == QStringLiteral("snow_shot"),
+            "save dialog options are incorrect");
     const auto* apiMode =
         catalog.item({QStringLiteral("system-settings"), QStringLiteral("screenshot-capture"),
                       QStringLiteral("screenshot.api-mode")});
@@ -830,8 +842,8 @@ void invalidCatalogReportsAllConformanceErrors() {
 
 void searchIndexIsGeneratedAndRanked() {
     settings::SettingsSearchIndex index(settings::builtInSettingsRegistry());
-    require(index.entries().size() == 153 && index.search(QString()).size() == 153,
-            "search must generate all one hundred fifty-three catalog nodes in catalog order");
+    require(index.entries().size() == 154 && index.search(QString()).size() == 154,
+            "search must generate all one hundred fifty-four catalog nodes in catalog order");
     const auto translation = index.search(QStringLiteral("original image translation"));
     require(!translation.isEmpty() && translation.constFirst().location.itemId ==
                                           QStringLiteral("translation.original-image"),
@@ -862,7 +874,7 @@ void searchIndexIsGeneratedAndRanked() {
             break;
         }
     }
-    require(pages == 7 && sections == 29 && items == 117,
+    require(pages == 7 && sections == 29 && items == 118,
             "search node counts must match catalog page, section, and item counts");
 
     const auto captureCursor = index.search(QStringLiteral("Capture cursor"));

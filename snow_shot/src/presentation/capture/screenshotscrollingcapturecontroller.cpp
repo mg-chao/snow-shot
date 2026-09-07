@@ -198,6 +198,11 @@ class ScreenshotScrollingCaptureProducer final : public QObject {
         }
     }
 
+    void pause(quint64 generation) {
+        if (m_generation == generation)
+            stopStream();
+    }
+
     void recordStitch(quint64 generation, ScrollClock::duration duration) {
         if (!m_active || generation != m_generation) {
             return;
@@ -912,6 +917,7 @@ struct ScreenshotScrollingCaptureController::Impl {
                 {{QStringLiteral("operation"), QString::number(generation)}});
         }
         active = false;
+        exportPaused = false;
         ++generation;
         pendingResultRequestId.reset();
         mailbox->reset(generation);
@@ -1082,7 +1088,7 @@ struct ScreenshotScrollingCaptureController::Impl {
     }
 
     void handleCapture(ScrollCaptureResult result) {
-        if (!active || result.generation != generation) {
+        if (!active || exportPaused || result.generation != generation) {
             return;
         }
         if (result.fatalError) {
@@ -1111,7 +1117,7 @@ struct ScreenshotScrollingCaptureController::Impl {
     }
 
     void scheduleStitchFrame() {
-        if (!active || worker == nullptr) {
+        if (!active || exportPaused || worker == nullptr) {
             return;
         }
         auto next = mailbox->take();
@@ -1305,7 +1311,30 @@ struct ScreenshotScrollingCaptureController::Impl {
         return invoked;
     }
 
+    void setExportPaused(bool paused) {
+        if (!active || exportPaused == paused)
+            return;
+        exportPaused = paused;
+        mailbox->reset(generation);
+        const quint64 requestGeneration = generation;
+        if (paused) {
+            postCaptureTask([requestGeneration](ScreenshotScrollingCaptureProducer& target) {
+                target.pause(requestGeneration);
+            });
+        } else {
+            const QRect selection = canvasSelection;
+            const QRect physicalSelection =
+                canvasSelection.translated(context.geometry.canvasOrigin());
+            postCaptureTask([requestGeneration, selection, physicalSelection,
+                             cadence = cadenceConfig, correction = restoreOriginalColors](
+                                ScreenshotScrollingCaptureProducer& target) {
+                target.begin(requestGeneration, selection, physicalSelection, correction, cadence);
+            });
+        }
+    }
+
     ScreenshotScrollingCaptureController& owner;
+    bool exportPaused = false;
     ScreenshotScrollingCaptureControllerContext context;
     AdaptiveScrollCadence::Config cadenceConfig;
     bool restoreOriginalColors = false;
@@ -1372,6 +1401,10 @@ QSize ScreenshotScrollingCaptureController::trimmedSize() const {
 
 bool ScreenshotScrollingCaptureController::requestTrimmedSnapshot(SnapshotResultCallback callback) {
     return m_impl->requestTrimmedSnapshot(std::move(callback));
+}
+
+void ScreenshotScrollingCaptureController::setExportPaused(bool paused) {
+    m_impl->setExportPaused(paused);
 }
 
 void ScreenshotScrollingCaptureController::detachPendingResultRequest() {

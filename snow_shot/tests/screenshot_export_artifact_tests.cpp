@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/screenshotexportartifact.h"
+#include "snowimageqtcodec.h"
 #include <QTemporaryDir>
 #include <QFile>
 
@@ -126,8 +127,8 @@ void clipboardAndSaveShareCanonicalEncoding() {
                 "saved PNG differs from clipboard/history encoding");
         require(materializations == (rowBacked ? 0 : 1),
                 "image source was materialized more than once");
-        // One source for encoding and one for the raw DIB fallback. Saving reads no pixels.
-        require(rowFactories == (rowBacked ? 2 : 0), "PNG was redundantly encoded for an output");
+        require(rowFactories == (rowBacked ? 1 : 0),
+                "PNG consumers did not reuse the cached row source");
         require(artifact.requestClipboard(&receiver,
                                           [&](ScreenshotExportClipboardResult result) {
                                               require(result.succeeded() &&
@@ -138,8 +139,8 @@ void clipboardAndSaveShareCanonicalEncoding() {
                                           }),
                 "cached clipboard request rejected");
         processUntil([&] { return callbacks == 4; });
-        require(rowFactories == (rowBacked ? 3 : 0),
-                "cached PNG request encoded or materialized an image again");
+        require(rowFactories == (rowBacked ? 1 : 0),
+                "cached clipboard request recreated the row source");
     }
 }
 
@@ -292,6 +293,215 @@ void encodingFailureFansOutOnce() {
     require(rowFactoryCount == 1, "encoding failure was recomputed for each subscriber");
 }
 
+void rowRequestsCoalesceAndReuseBackingImage() {
+    const QImage image = testImage();
+    std::atomic_int imageCalls = 0;
+    ScreenshotExportArtifact artifact(ScreenshotExportSource::fromProducer(
+        [&imageCalls, image](const ScreenshotExportCancellation&) {
+            ++imageCalls;
+            return image;
+        }));
+    QObject firstReceiver;
+    QObject secondReceiver;
+    int callbacks = 0;
+    const uchar* firstPixels = nullptr;
+    const uchar* secondPixels = nullptr;
+    require(artifact.requestRowSource(&firstReceiver,
+                                      [&](ScreenshotImageRowSource source, QString error) {
+                                          require(error.isEmpty() && source.isValid() &&
+                                                      !source.backingImage.isNull(),
+                                                  "first cached row request failed");
+                                          firstPixels = source.backingImage.constBits();
+                                          ++callbacks;
+                                      }) &&
+                artifact.requestRowSource(&secondReceiver,
+                                          [&](ScreenshotImageRowSource source, QString error) {
+                                              require(error.isEmpty() && source.isValid() &&
+                                                          !source.backingImage.isNull(),
+                                                      "second cached row request failed");
+                                              secondPixels = source.backingImage.constBits();
+                                              ++callbacks;
+                                          }),
+            "concurrent row requests were rejected");
+    processUntil([&] { return callbacks == 2; });
+    require(imageCalls == 1 && firstPixels != nullptr && firstPixels == secondPixels,
+            "row requests did not share one converted immutable backing image");
+
+    require(artifact.requestRowSource(
+                &firstReceiver,
+                [&](ScreenshotImageRowSource source, QString error) {
+                    require(error.isEmpty() && source.backingImage.constBits() == firstPixels,
+                            "ready row request did not reuse the cached source");
+                    ++callbacks;
+                }),
+            "ready row request was rejected");
+    require(callbacks == 3 && imageCalls == 1, "ready row result was recomputed");
+}
+
+void canonicalPngAdoptionHandlesPendingAndFailedEncoding() {
+    const QImage image = testImage();
+    auto prepared = snow_shot::storage::PreparedPngImage::fromBytes(
+        image.size(), snow_shot::image_codec::encodePng(image));
+    require(prepared.has_value(), "adoption PNG fixture is invalid");
+
+    std::atomic_bool entered = false;
+    std::atomic_bool release = false;
+    std::atomic_int factories = 0;
+    ScreenshotExportArtifact pending(ScreenshotExportSource::fromProducer(
+        {}, [&image, &entered, &release, &factories](std::function<bool()> cancellation) {
+            ++factories;
+            ScreenshotImageRowSource rows = rowSourceFor(image, cancellation);
+            const auto read = rows.readRows;
+            rows.readRows = [read, &entered, &release, cancellation = std::move(cancellation)](
+                                int first, int count, qsizetype stride, uchar* destination,
+                                qsizetype capacity) {
+                entered.store(true, std::memory_order_release);
+                while (!release.load(std::memory_order_acquire) &&
+                       !(cancellation && cancellation())) {
+                    QThread::msleep(1);
+                }
+                return !(cancellation && cancellation()) &&
+                       read(first, count, stride, destination, capacity);
+            };
+            return rows;
+        }));
+    require(!pending.adoptCanonicalPng(*prepared),
+            "canonical PNG was adopted before the row source was known");
+    QObject receiver;
+    int rowCallbacks = 0;
+    require(pending.requestRowSource(&receiver,
+                                     [&](ScreenshotImageRowSource source, QString error) {
+                                         require(source.isValid() && error.isEmpty(),
+                                                 "pending adoption row source failed");
+                                         ++rowCallbacks;
+                                     }),
+            "pending adoption row request rejected");
+    processUntil([&] { return rowCallbacks == 1; });
+
+    int encodingCallbacks = 0;
+    const QByteArray* adoptedBytes = prepared->sharedBytes().get();
+    require(pending.requestCanonicalPng(
+                &receiver,
+                [&](ScreenshotExportEncodingResult result) {
+                    require(result.succeeded() && result.image.sharedBytes().get() == adoptedBytes,
+                            "pending PNG subscriber did not receive the adopted buffer");
+                    ++encodingCallbacks;
+                }),
+            "pending canonical encoding request rejected");
+    processUntil([&] { return entered.load(std::memory_order_acquire); });
+    require(pending.adoptCanonicalPng(*prepared), "pending canonical PNG adoption failed");
+    release.store(true, std::memory_order_release);
+    processUntil([&] { return encodingCallbacks == 1; });
+    require(factories == 1, "pending adoption recreated the row source");
+
+    auto alternate = snow_shot::storage::PreparedPngImage::fromBytes(
+        image.size(), snow_shot::image_codec::encodePng(image.flipped(Qt::Horizontal)));
+    require(alternate.has_value() && pending.adoptCanonicalPng(*alternate),
+            "ready canonical PNG adoption was rejected");
+    require(pending.requestCanonicalPng(
+                &receiver,
+                [&](ScreenshotExportEncodingResult result) {
+                    require(result.image.sharedBytes().get() == adoptedBytes,
+                            "ready canonical PNG buffer was replaced by adoption");
+                    ++encodingCallbacks;
+                }),
+            "ready canonical request rejected");
+    require(encodingCallbacks == 2, "ready canonical result was not delivered immediately");
+
+    ScreenshotExportArtifact failed(
+        ScreenshotExportSource::fromProducer({}, [image](std::function<bool()> cancellation) {
+            ScreenshotImageRowSource rows = rowSourceFor(image, std::move(cancellation));
+            rows.readRows = [](int, int, qsizetype, uchar*, qsizetype) { return false; };
+            return rows;
+        }));
+    rowCallbacks = 0;
+    require(failed.requestRowSource(&receiver,
+                                    [&](ScreenshotImageRowSource source, QString error) {
+                                        require(source.isValid() && error.isEmpty(),
+                                                "failed fixture row source failed");
+                                        ++rowCallbacks;
+                                    }),
+            "failed fixture row request rejected");
+    processUntil([&] { return rowCallbacks == 1; });
+    int failures = 0;
+    require(failed.requestCanonicalPng(&receiver,
+                                       [&](ScreenshotExportEncodingResult result) {
+                                           require(!result.succeeded(),
+                                                   "broken source unexpectedly encoded");
+                                           ++failures;
+                                       }),
+            "failed canonical request rejected");
+    processUntil([&] { return failures == 1; });
+    require(failed.adoptCanonicalPng(*prepared), "failed canonical phase did not recover");
+    require(failed.requestCanonicalPng(
+                &receiver,
+                [&](ScreenshotExportEncodingResult result) {
+                    require(result.succeeded() && result.image.sharedBytes().get() == adoptedBytes,
+                            "recovered canonical result is incorrect");
+                    ++failures;
+                }),
+            "recovered canonical request rejected");
+    require(failures == 2, "recovered canonical result was not delivered immediately");
+    failed.cancel();
+    require(!failed.adoptCanonicalPng(*prepared),
+            "cancelled artifact accepted canonical PNG adoption");
+}
+
+void rowRequestFailureAndCancellationFanOut() {
+    std::atomic_bool failureEntered = false;
+    std::atomic_bool releaseFailure = false;
+    std::atomic_int factories = 0;
+    ScreenshotExportArtifact failed(ScreenshotExportSource::fromProducer(
+        {}, [&failureEntered, &releaseFailure, &factories](std::function<bool()>) {
+            ++factories;
+            failureEntered.store(true, std::memory_order_release);
+            while (!releaseFailure.load(std::memory_order_acquire))
+                QThread::msleep(1);
+            return ScreenshotImageRowSource{};
+        }));
+    QObject firstReceiver;
+    QObject secondReceiver;
+    int failures = 0;
+    const auto failedCallback = [&failures](ScreenshotImageRowSource source, QString error) {
+        require(!source.isValid() && !error.isEmpty(),
+                "failed row-source request produced an invalid result contract");
+        ++failures;
+    };
+    require(failed.requestRowSource(&firstReceiver, failedCallback) &&
+                failed.requestRowSource(&secondReceiver, failedCallback),
+            "failed row-source subscribers were rejected");
+    processUntil([&] { return failureEntered.load(std::memory_order_acquire); });
+    releaseFailure.store(true, std::memory_order_release);
+    processUntil([&] { return failures == 2; });
+    require(factories == 1, "failed row-source subscribers did not share one factory call");
+
+    std::atomic_bool cancellationEntered = false;
+    std::atomic_bool cancellationObserved = false;
+    ScreenshotExportArtifact cancelled(ScreenshotExportSource::fromProducer(
+        {}, [&cancellationEntered, &cancellationObserved](std::function<bool()> cancellation) {
+            cancellationEntered.store(true, std::memory_order_release);
+            while (!(cancellation && cancellation()))
+                QThread::msleep(1);
+            cancellationObserved.store(true, std::memory_order_release);
+            return ScreenshotImageRowSource{};
+        }));
+    int cancelledCallbacks = 0;
+    require(cancelled.requestRowSource(&firstReceiver,
+                                       [&cancelledCallbacks](ScreenshotImageRowSource, QString) {
+                                           ++cancelledCallbacks;
+                                       }) &&
+                cancelled.requestRowSource(
+                    &secondReceiver, [&cancelledCallbacks](ScreenshotImageRowSource,
+                                                           QString) { ++cancelledCallbacks; }),
+            "cancelled row-source subscribers were rejected");
+    processUntil([&] { return cancellationEntered.load(std::memory_order_acquire); });
+    cancelled.cancel();
+    processUntil([&] { return cancellationObserved.load(std::memory_order_acquire); });
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+    require(cancelledCallbacks == 0 && cancelled.isCancelled(),
+            "cancelled row-source request delivered pending subscribers");
+}
+
 void cancellationSuppressesPendingCallbacks() {
     std::function<void(QImage)> finishLoad;
     ScreenshotExportArtifact artifact(ScreenshotExportSource::fromImageLoader(
@@ -349,6 +559,9 @@ int main(int argc, char** argv) {
         imageRequestsShareOneAsyncLoad();
         canonicalEncodingCoalescesAndPreservesBufferIdentity();
         encodingFailureFansOutOnce();
+        rowRequestsCoalesceAndReuseBackingImage();
+        canonicalPngAdoptionHandlesPendingAndFailedEncoding();
+        rowRequestFailureAndCancellationFanOut();
         cancellationSuppressesPendingCallbacks();
         pinnedViewportSourceRendersExpectedPixels();
     } catch (const std::exception& error) {

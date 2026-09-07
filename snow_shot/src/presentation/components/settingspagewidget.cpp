@@ -1,6 +1,7 @@
 #include "snow_shot/presentation/components/settingspagewidget.h"
 
 #include "snow_shot/presentation/components/pagecontainerwidget.h"
+#include "snow_shot/presentation/components/pathinput.h"
 #include "snow_shot/presentation/components/sectionheaderwidget.h"
 #include "snow_shot/presentation/components/settingscustomwidget.h"
 #include "snow_shot/presentation/components/settingspageutils.h"
@@ -15,7 +16,6 @@
 #include "widgets/color_picker.h"
 #include "widgets/input_number.h"
 #include "widgets/input_line_edit.h"
-#include "widgets/input_search_edit.h"
 #include "widgets/modal.h"
 #include "widgets/multi_select.h"
 #include "widgets/radio.h"
@@ -78,8 +78,8 @@ class SettingsPageWidget::Impl {
         adqt::widgets::AdRadioButtonGroup* radioGroup = nullptr;
         QVector<adqt::widgets::AdRadio*> radioButtons;
         QVector<QVariant> radioValues;
-        adqt::widgets::AdSearchEdit* filePathControl = nullptr;
-        adqt::widgets::AdSearchEdit* directoryPathControl = nullptr;
+        FilePathInput* filePathControl = nullptr;
+        DirectoryPathInput* directoryPathControl = nullptr;
         adqt::widgets::AdLineEdit* textControl = nullptr;
         ShortcutKeyRow* shortcutControl = nullptr;
         adqt::widgets::AdButton* actionControl = nullptr;
@@ -466,8 +466,8 @@ class SettingsPageWidget::Impl {
                             });
                 } else if constexpr (std::is_same_v<Payload,
                                                      settings::SettingsFilePathDefinition>) {
-                    auto* control = new adqt::widgets::AdSearchEdit(list);
-                    control->setControlSize(adqt::widgets::AdSearchEdit::ControlSize::Medium);
+                    auto* control = new FilePathInput(list);
+                    control->setControlSize(adqt::widgets::AdLineEdit::ControlSize::Medium);
                     control->setAllowClear(true);
                     control->setFixedWidth(
                         settings_ui::settingsControlWidth(colorScheme.metricAlias));
@@ -479,42 +479,36 @@ class SettingsPageWidget::Impl {
                         settings::generatedObjectName(QStringLiteral("settings-item"),
                                                       definition.id));
                     addItemWidget(runtime.anchor);
-                    connect(control, &adqt::widgets::AdSearchEdit::editingFinished, &q,
+                    connect(control, &DirectoryPathInput::editingFinished, &q,
                             [this, control, binding = payload.binding]() {
                                 if (!synchronizingValues &&
-                                    !runtimeSession.applyFilePathValue(binding,
-                                                                        control->text())) {
+                                    !runtimeSession.applyFilePathValue(binding, control->text())) {
                                     syncValues();
                                 }
                             });
-                    connect(control, &adqt::widgets::AdSearchEdit::searchRequested, &q,
+                    connect(control, &DirectoryPathInput::browseRequested, &q,
                             [this, control, binding = payload.binding,
                              dialogTitle = payload.dialogTitle,
-                             fileFilter = payload.fileFilter](
-                                const QString& text,
-                                adqt::widgets::AdSearchEdit::SearchReason reason) {
-                                if (reason ==
-                                    adqt::widgets::AdSearchEdit::SearchReason::ButtonClick) {
-                                    const QString path = QFileDialog::getOpenFileName(
-                                        &q, dialogTitle.translated(), text,
-                                        fileFilter.translated());
-                                    if (!path.isEmpty()) {
-                                        control->setText(path);
-                                        if (!runtimeSession.applyFilePathValue(binding, path)) {
-                                            syncValues();
-                                        }
-                                    }
-                                } else if (reason ==
-                                           adqt::widgets::AdSearchEdit::SearchReason::ClearAction) {
-                                    if (!runtimeSession.applyFilePathValue(binding, QString())) {
+                             fileFilter = payload.fileFilter](const QString& text) {
+                                const QString path = QFileDialog::getOpenFileName(
+                                    &q, dialogTitle.translated(), text, fileFilter.translated());
+                                if (!path.isEmpty()) {
+                                    control->setText(path);
+                                    if (!runtimeSession.applyFilePathValue(binding, path)) {
                                         syncValues();
                                     }
                                 }
                             });
-                } else if constexpr (std::is_same_v<
-                                         Payload, settings::SettingsDirectoryPathDefinition>) {
-                    auto* control = new adqt::widgets::AdSearchEdit(list);
-                    control->setControlSize(adqt::widgets::AdSearchEdit::ControlSize::Medium);
+                    connect(control, &DirectoryPathInput::cleared, &q,
+                            [this, binding = payload.binding] {
+                                if (!runtimeSession.applyFilePathValue(binding, QString())) {
+                                    syncValues();
+                                }
+                            });
+                } else if constexpr (std::is_same_v<Payload,
+                                                    settings::SettingsDirectoryPathDefinition>) {
+                    auto* control = new DirectoryPathInput(list);
+                    control->setControlSize(adqt::widgets::AdLineEdit::ControlSize::Medium);
                     control->setAllowClear(true);
                     control->setFixedWidth(
                         settings_ui::settingsControlWidth(colorScheme.metricAlias));
@@ -526,36 +520,29 @@ class SettingsPageWidget::Impl {
                         settings::generatedObjectName(QStringLiteral("settings-item"),
                                                       definition.id));
                     addItemWidget(runtime.anchor);
-                    connect(control, &adqt::widgets::AdSearchEdit::editingFinished, &q,
+                    connect(control, &DirectoryPathInput::editingFinished, &q,
                             [this, control, binding = payload.binding]() {
-                                if (!synchronizingValues &&
-                                    !runtimeSession.applyDirectoryPathValue(binding,
-                                                                             control->text())) {
+                                if (!synchronizingValues && !runtimeSession.applyDirectoryPathValue(
+                                                                binding, control->text())) {
                                     syncValues();
                                 }
                             });
-                    connect(control, &adqt::widgets::AdSearchEdit::searchRequested, &q,
+                    connect(control, &DirectoryPathInput::browseRequested, &q,
                             [this, control, binding = payload.binding,
-                             dialogTitle = payload.dialogTitle](
-                                const QString& text,
-                                adqt::widgets::AdSearchEdit::SearchReason reason) {
-                                if (reason ==
-                                    adqt::widgets::AdSearchEdit::SearchReason::ButtonClick) {
-                                    const QString path = QFileDialog::getExistingDirectory(
-                                        &q, dialogTitle.translated(), text);
-                                    if (!path.isEmpty()) {
-                                        control->setText(path);
-                                        if (!runtimeSession.applyDirectoryPathValue(binding,
-                                                                                     path)) {
-                                            syncValues();
-                                        }
-                                    }
-                                } else if (reason ==
-                                           adqt::widgets::AdSearchEdit::SearchReason::ClearAction) {
-                                    if (!runtimeSession.applyDirectoryPathValue(binding,
-                                                                                 QString())) {
+                             dialogTitle = payload.dialogTitle](const QString& text) {
+                                const QString path = QFileDialog::getExistingDirectory(
+                                    &q, dialogTitle.translated(), text);
+                                if (!path.isEmpty()) {
+                                    control->setText(path);
+                                    if (!runtimeSession.applyDirectoryPathValue(binding, path)) {
                                         syncValues();
                                     }
+                                }
+                            });
+                    connect(control, &DirectoryPathInput::cleared, &q,
+                            [this, binding = payload.binding] {
+                                if (!runtimeSession.applyDirectoryPathValue(binding, QString())) {
+                                    syncValues();
                                 }
                             });
                 } else if constexpr (std::is_same_v<Payload,
@@ -1189,7 +1176,9 @@ class SettingsPageWidget::Impl {
                 const auto* filePath =
                     std::get_if<settings::SettingsFilePathDefinition>(&definition.payload);
                 Q_ASSERT(filePath != nullptr);
-                runtime.filePathControl->setSearchButtonText(filePath->buttonText.translated());
+                runtime.filePathControl->setBrowseButtonText(filePath->buttonText.translated());
+                runtime.filePathControl->lineEdit()->setAccessibleName(title);
+                runtime.filePathControl->lineEdit()->setAccessibleDescription(description);
                 runtime.filePathControl->setPlaceholderText(
                     filePath->fileFilter.translated().section(QStringLiteral(";;"), 0, 0));
             }
@@ -1197,8 +1186,10 @@ class SettingsPageWidget::Impl {
                 const auto* directoryPath =
                     std::get_if<settings::SettingsDirectoryPathDefinition>(&definition.payload);
                 Q_ASSERT(directoryPath != nullptr);
-                runtime.directoryPathControl->setSearchButtonText(
+                runtime.directoryPathControl->setBrowseButtonText(
                     directoryPath->buttonText.translated());
+                runtime.directoryPathControl->lineEdit()->setAccessibleName(title);
+                runtime.directoryPathControl->lineEdit()->setAccessibleDescription(description);
             }
             if (runtime.shortcutControl != nullptr) {
                 runtime.shortcutControl->setTitle(title);

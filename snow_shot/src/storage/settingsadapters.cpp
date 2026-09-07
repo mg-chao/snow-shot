@@ -418,6 +418,41 @@ QString ScreenshotSettings::lastManualSaveDirectory() const {
     return cache().value(QStringLiteral("screenshot/last_manual_save_directory")).toString();
 }
 
+QString ScreenshotSettings::saveAsFileDialog() const {
+    return cache().value(QStringLiteral("screenshot/save_as_file_dialog")).toString();
+}
+
+bool ScreenshotSettings::setSaveAsFileDialog(const QString& dialog) const {
+    return cache().setValue(QStringLiteral("screenshot/save_as_file_dialog"), dialog);
+}
+
+QVector<ScreenshotSavePathShortcut> ScreenshotSettings::savePathShortcuts() const {
+    QVector<ScreenshotSavePathShortcut> result;
+    for (const auto& value :
+         cache().value(QStringLiteral("screenshot/save_path_shortcuts")).toArray()) {
+        const auto object = value.toObject();
+        result.push_back({object.value(QStringLiteral("name")).toString(),
+                          object.value(QStringLiteral("path")).toString()});
+    }
+    return result;
+}
+
+bool ScreenshotSettings::setSavePathShortcuts(
+    const QVector<ScreenshotSavePathShortcut>& shortcuts) const {
+    QJsonArray array;
+    QSet<QString> names;
+    for (const auto& shortcut : shortcuts) {
+        const QString name = shortcut.name.trimmed();
+        const QString path = shortcut.path.trimmed();
+        if (name.isEmpty() || path.isEmpty() || names.contains(name.toCaseFolded())) {
+            return false;
+        }
+        names.insert(name.toCaseFolded());
+        array.append(QJsonObject{{QStringLiteral("name"), name}, {QStringLiteral("path"), path}});
+    }
+    return cache().setValue(QStringLiteral("screenshot/save_path_shortcuts"), array);
+}
+
 bool ScreenshotSettings::setLastManualSaveDirectory(const QString& directory) const {
     return cache().setValue(QStringLiteral("screenshot/last_manual_save_directory"), directory);
 }
