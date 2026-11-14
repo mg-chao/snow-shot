@@ -162,7 +162,13 @@ QByteArray imageChatBody(const QString& model, const QImage& image, const QStrin
     if (custom) {
         applyCustomReasoning(body, provider, supportsReasoning);
     } else {
-        body.insert(QStringLiteral("enable_thinking"), false);
+        if (model == QStringLiteral("ai-model") || snowShotLegacyAiModelId(model)) {
+            body.insert(QStringLiteral("thinking"),
+                        QJsonObject{{QStringLiteral("type"), QStringLiteral("enabled")}});
+            body.insert(QStringLiteral("reasoning_effort"), QStringLiteral("low"));
+        } else {
+            body.insert(QStringLiteral("enable_thinking"), false);
+        }
         body.insert(QStringLiteral("temperature"), 0);
         body.insert(QStringLiteral("max_tokens"), 8192);
     }

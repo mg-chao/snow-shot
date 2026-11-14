@@ -650,7 +650,8 @@ void imageConversionUsesVisionAndRejectsIncompleteStreams() {
     const QByteArray delta =
         "data: {\"choices\":[{\"delta\":{\"content\":\"# Hello\\n\"}}]}\r\n\r\n";
     const QVector<QByteArray> streams{
-        delta + "data: [DONE]\n\n",
+        "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"private reasoning\"}}]}\n\n" +
+            delta + "data: [DONE]\n\n",
         "data: [DONE]\n\n",
         delta,
         delta +
@@ -672,9 +673,10 @@ void imageConversionUsesVisionAndRejectsIncompleteStreams() {
         QEventLoop loop;
         const auto format = index % 2 == 0 ? SnowShotImageConversionFormat::Markdown
                                            : SnowShotImageConversionFormat::Html;
+        const auto model =
+            index % 2 == 0 ? QStringLiteral("ai-model") : QStringLiteral("qwen3.8-flash");
         const auto token = client.streamImageConversion(
-            {QStringLiteral("vision-test"), image, format}, &client,
-            [&](const QString& text) { source += text; },
+            {model, image, format}, &client, [&](const QString& text) { source += text; },
             [&](SnowShotImageConversionResult value) {
                 result = value;
                 finished = true;
@@ -696,10 +698,15 @@ void imageConversionUsesVisionAndRejectsIncompleteStreams() {
                 "reasoning is never displayed");
         const auto body =
             QJsonDocument::fromJson(request.mid(request.indexOf("\r\n\r\n") + 4)).object();
-        require(body.value(QStringLiteral("model")) == QStringLiteral("vision-test") &&
+        require(body.value(QStringLiteral("model")) == model &&
                     body.value(QStringLiteral("stream")).toBool() &&
                     body.value(QStringLiteral("max_tokens")).toInt() == 8192,
                 "conversion uses selected vision model and bounded streamed output");
+        require(body.value(QStringLiteral("thinking")).toObject().value(QStringLiteral("type")) ==
+                        QStringLiteral("enabled") &&
+                    body.value(QStringLiteral("reasoning_effort")) == QStringLiteral("low") &&
+                    !body.contains(QStringLiteral("enable_thinking")),
+                "Fast conversion requests GLM low reasoning");
         const auto messages = body.value(QStringLiteral("messages")).toArray();
         const QString prompt =
             messages.at(0).toObject().value(QStringLiteral("content")).toString();
@@ -2187,7 +2194,7 @@ void visionExtractionPreservesTypedOutputAndImageDetails() {
                                           ++tableCompletions;
                                       }) != 0,
             "vision table extraction starts");
-    require(client.extractLatexVision(image, QStringLiteral("latex-vision"), &receiver,
+    require(client.extractLatexVision(image, QStringLiteral("ai-model"), &receiver,
                                       [&](auto result) {
                                           latex = result;
                                           ++latexCompletions;
@@ -2198,12 +2205,22 @@ void visionExtractionPreservesTypedOutputAndImageDetails() {
     for (int index = 0; index < server.streams.size(); ++index) {
         const auto body = server.streams.at(index).body;
         const bool isTable = body.value(QStringLiteral("model")) == QStringLiteral("table-vision");
-        require(isTable || body.value(QStringLiteral("model")) == QStringLiteral("latex-vision"),
+        require(isTable || body.value(QStringLiteral("model")) == QStringLiteral("ai-model"),
                 "vision extraction sends the selected model ID");
         require(body.value(QStringLiteral("stream")).toBool() &&
-                    body.value(QStringLiteral("max_tokens")).toInt() == 8192 &&
-                    !body.value(QStringLiteral("enable_thinking")).toBool(),
+                    body.value(QStringLiteral("max_tokens")).toInt() == 8192,
                 "builtin vision extraction requests bounded deterministic streamed output");
+        if (isTable) {
+            require(body.value(QStringLiteral("enable_thinking")) == QJsonValue(false) &&
+                        !body.contains(QStringLiteral("reasoning_effort")),
+                    "other built-in vision requests use the existing reasoning field");
+        } else {
+            require(
+                body.value(QStringLiteral("thinking")).toObject().value(QStringLiteral("type")) ==
+                        QStringLiteral("enabled") &&
+                    body.value(QStringLiteral("reasoning_effort")) == QStringLiteral("low"),
+                "Fast formula extraction requests GLM low reasoning");
+        }
         const auto messages = body.value(QStringLiteral("messages")).toArray();
         const QString prompt =
             messages.first().toObject().value(QStringLiteral("content")).toString();
@@ -2761,7 +2778,7 @@ void tableVisionCorrectionsReusePreparedConversation() {
     for (const bool custom : {false, true}) {
         translation_tests::Server server;
         SnowShotApiClient client(server.url());
-        QString model = QStringLiteral("vision");
+        QString model = QStringLiteral("ai-model");
         if (custom) {
             snow_shot::CustomAiModelConfiguration config{
                 QStringLiteral("11111111-1111-4111-8111-111111111111"),
@@ -2807,6 +2824,16 @@ void tableVisionCorrectionsReusePreparedConversation() {
                                      "correction request");
         const auto first = server.streams[0].body.value(QStringLiteral("messages")).toArray();
         const auto second = server.streams[1].body.value(QStringLiteral("messages")).toArray();
+        if (!custom) {
+            for (const auto& stream : server.streams) {
+                require(stream.body.value(QStringLiteral("reasoning_effort")) ==
+                                QStringLiteral("low") &&
+                            stream.body.value(QStringLiteral("thinking"))
+                                    .toObject()
+                                    .value(QStringLiteral("type")) == QStringLiteral("enabled"),
+                        "Fast table extraction and correction request GLM low reasoning");
+            }
+        }
         require(encodes == 1 && first.size() == 2 && second.size() == 4 && first[0] == second[0] &&
                     first[1] == second[1] &&
                     second[2].toObject().value(QStringLiteral("content")).toString() == failed,
