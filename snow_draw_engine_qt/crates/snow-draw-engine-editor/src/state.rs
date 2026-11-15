@@ -114,6 +114,8 @@ pub(crate) enum ArrowCreationPhase {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct CreateArrowState {
+    /// A sequence-number gesture always finishes on release and keeps this tail binding.
+    pub(crate) serial_number_source: Option<ElementId>,
     pub(crate) stroke_rendering_seed: u32,
     pub(crate) pointer_id: u32,
     pub(crate) committed_points: Vec<Point<f64>>,
@@ -152,6 +154,13 @@ pub(crate) struct CreatePenFilterState {
     pub(crate) straight_endpoint: Option<Point<f64>>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SerialNumberDragMode {
+    Text,
+    NewArrow,
+    ExistingArrow,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct CreateSerialNumberState {
     pub(crate) pointer_id: u32,
@@ -159,6 +168,7 @@ pub(crate) struct CreateSerialNumberState {
     pub(crate) start_view_position: Point<f64>,
     pub(crate) text: Option<(ElementId, TextData)>,
     pub(crate) label_measured: bool,
+    pub(crate) mode: SerialNumberDragMode,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -339,6 +349,7 @@ pub(crate) enum CanvasHit {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PrimaryPointerIntent {
+    BeginSerialNumberArrow { id: ElementId },
     BeginMagnifierLens { id: ElementId },
     ToggleSelection { id: ElementId },
     BeginSelectionInteraction { target: SelectionHitTarget },

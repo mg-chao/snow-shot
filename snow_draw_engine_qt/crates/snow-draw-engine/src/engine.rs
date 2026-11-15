@@ -56,6 +56,8 @@ mod retained_tests;
 #[cfg(test)]
 mod rounded_diamond_tests;
 #[cfg(test)]
+mod serial_number_arrow_tests;
+#[cfg(test)]
 mod shape_text_tests;
 #[cfg(test)]
 mod speech_bubble_tests;

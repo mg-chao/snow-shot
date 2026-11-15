@@ -522,6 +522,10 @@
             <translation>Auto-align</translation>
         </message>
         <message>
+            <source>Bind arrow</source>
+            <translation>Bind arrow</translation>
+        </message>
+        <message>
             <source>Delete selected elements</source>
             <translation>Delete selected elements</translation>
         </message>

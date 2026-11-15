@@ -119,7 +119,9 @@ void toolMatrixMatchesRequestedVisibility() {
     });
     require(hintLines(ScreenshotActiveTool::Text) == textTransformHints,
             "text hint matrix changed");
-    require(hintLines(ScreenshotActiveTool::SequenceNumber) == textTransformHints,
+    QStringList sequenceHints = textTransformHints;
+    sequenceHints.insert(4, modifierLine(QStringLiteral("Bind arrow"), Qt::ShiftModifier));
+    require(hintLines(ScreenshotActiveTool::SequenceNumber) == sequenceHints,
             "serial-number hint matrix changed");
 
     require(
@@ -172,9 +174,10 @@ void toolMatrixMatchesRequestedVisibility() {
     require(hintLines(ScreenshotActiveTool::Text, {SnowCanvasTool::Text}) ==
                 withDefaultCursorHints({}),
             "text hints should be suppressed when quick selection is disabled");
-    require(hintLines(ScreenshotActiveTool::SequenceNumber, {SnowCanvasTool::SerialNumber}) ==
-                withDefaultCursorHints({}),
-            "serial-number hints should be suppressed when quick selection is disabled");
+    require(
+        hintLines(ScreenshotActiveTool::SequenceNumber, {SnowCanvasTool::SerialNumber}) ==
+            withDefaultCursorHints({modifierLine(QStringLiteral("Bind arrow"), Qt::ShiftModifier)}),
+        "serial-number creation hint remains when quick selection is disabled");
 
     require(
         hintLines(ScreenshotActiveTool::RectangleEraser) ==

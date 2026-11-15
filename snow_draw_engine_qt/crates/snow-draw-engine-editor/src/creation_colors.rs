@@ -45,7 +45,7 @@ impl Editor {
             (InteractionState::CreatingRectangle(_), ActiveTool::Magnifier) => {
                 CreationColors::new(state.default_magnifier_style.stroke, ColorRgba8::default())
             }
-            (InteractionState::CreatingArrow(_), ActiveTool::Arrow) => {
+            (InteractionState::CreatingArrow(_), ActiveTool::Arrow | ActiveTool::SerialNumber) => {
                 CreationColors::new(state.default_arrow_style.stroke, ColorRgba8::default())
             }
             (InteractionState::CreatingArrow(_), ActiveTool::Line) => CreationColors::new(
@@ -65,6 +65,11 @@ impl Editor {
                 state.default_pen_highlight_style.stroke,
                 state.default_pen_highlight_style.fill,
             ),
+            (InteractionState::CreatingSerialNumber(creation), _)
+                if creation.mode != SerialNumberDragMode::Text =>
+            {
+                CreationColors::new(state.default_arrow_style.stroke, ColorRgba8::default())
+            }
             (InteractionState::CreatingSerialNumber(_), _) => CreationColors {
                 stroke: state.default_text.stroke,
                 fill: state.default_text.fill,
