@@ -13,6 +13,7 @@
 #include <optional>
 
 class ScreenshotExportArtifact;
+class ScreenshotExportSource;
 class QWidget;
 namespace adqt::widgets {
 class AdModal;
@@ -31,6 +32,7 @@ struct ImageStitchingWindowServices final {
                                       Completion)>;
     Export copy;
     Export save;
+    std::function<void(ScreenshotExportSource)> openImageEditing;
     std::function<void(QWidget*, bool clear, std::function<void(bool)>)> confirm;
     std::function<std::optional<QImage>(const storage::CaptureHistoryRecord&)> readHistory;
     ScreenshotPinnedImageSnapshotRequest requestPinnedSnapshot;

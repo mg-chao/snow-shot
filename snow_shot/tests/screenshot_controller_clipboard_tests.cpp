@@ -6,6 +6,7 @@
 #include "snow_shot/app/mcp/screenshotmcpsession.h"
 #include "snow_shot/network/snowshotapiclient.h"
 #include "snow_shot/presentation/languagemanager.h"
+#include "snow_shot/presentation/mainwindow.h"
 #include "snow_shot/presentation/screenshotoverlaywindow.h"
 #include "snow_shot/presentation/screenshotcontroller.h"
 #include "snow_shot/presentation/screenshotocrrecognitionservice.h"
@@ -20,6 +21,7 @@
 #include "snow_shot/presentation/screenshotpinnedwindow.h"
 #include "snow_shot/presentation/styles/thememanager.h"
 #include "snow_shot/presentation/collagewindow.h"
+#include "snow_shot/presentation/collagewindowcoordinator.h"
 #include "snow_shot/presentation/imagesplitwindow.h"
 #include "snow_shot/presentation/imageeditingwindow.h"
 #include "snow_shot/presentation/screenshottoolpalette.h"
@@ -57,6 +59,7 @@
 #include <QJsonDocument>
 #include <QInputMethodEvent>
 #include <QPainter>
+#include <QPushButton>
 #include <QScopeGuard>
 #include <QSemaphore>
 #include <QStandardPaths>
@@ -2220,6 +2223,49 @@ int runScreenshotControllerClipboardTests(int argc, char** argv) {
                 settings.setShowBorderByDefault(true) && settings.setShowShadowByDefault(false),
             "clipboard controller settings must be isolated and deterministic");
     static_cast<void>(snow_shot::presentation::styles::ThemeManager::instance());
+    if (application.arguments().contains(QStringLiteral("--stitching-image-editing-only"))) {
+        using namespace snow_shot::presentation;
+        const auto shutdown = qScopeGuard([&] { storage.shutdown(); });
+        require(storage.configuration().setValues({{QStringLiteral("mcp/enabled"), false},
+                                                   {QStringLiteral("tray/enabled"), false}}),
+                "isolate the application stitching smoke test");
+        LanguageManager::instance().initialize();
+        styles::ThemeManager::instance().initialize(application);
+        snow_shot::app::ApplicationController controller(application);
+        controller.showMainWindow();
+        MainWindow* mainWindow = nullptr;
+        for (auto* widget : QApplication::topLevelWidgets()) {
+            if (auto* window = qobject_cast<MainWindow*>(widget))
+                mainWindow = window;
+        }
+        require(mainWindow, "the app exposes the history stitching entry point");
+        mainWindow->screenshotHistoryStitchImagesRequested({});
+        auto* stitching = controller.findChild<ImageStitchingWindowCoordinator*>();
+        require(stitching && stitching->window(), "the app presents the stitching window");
+        auto* window = stitching->window();
+        auto stitchingSettings = window->document()->settings();
+        stitchingSettings.background = Qt::transparent;
+        window->document()->setSettings(stitchingSettings);
+        const auto source = fixture();
+        const auto id = window->document()->append(source, QStringLiteral("fixture"));
+        auto* edit = window->modal()->footerWidget()->findChild<QPushButton*>(
+            QStringLiteral("collageImageEditing"));
+        require(id && edit && edit->isEnabled(), "a static result enables the editing action");
+        edit->click();
+
+        auto* editing = controller.findChild<ImageEditingWindowCoordinator*>();
+        require(editing && editing->windows().size() == 1 && editing->windows().first(),
+                "the app creates an independent editor on click");
+        auto* editor = editing->windows().first().data();
+        waitUntil([&] { return !editor->loading(); }, "the app editor loads the stitching result");
+        require(editor->modal()->isOpen() && editor->document()->image() == source,
+                "the result is loaded as the visible editor document");
+        require(window->modal()->isOpen() && window->document()->rotate(id, true) &&
+                    editor->document()->image() == source,
+                "the original stitching window stays open and independently editable");
+        std::cout << "Stitching image editing app smoke test passed\n";
+        return EXIT_SUCCESS;
+    }
 #if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
     if (application.arguments().contains(QStringLiteral("--document-save-shutdown-tests"))) {
         const auto shutdown = qScopeGuard([&] { storage.shutdown(); });

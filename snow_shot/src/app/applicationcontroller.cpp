@@ -1919,6 +1919,11 @@ class ApplicationController::Impl {
         if (!imageStitchingWindowCoordinator) {
             presentation::ImageStitchingWindowServices services;
             services.requestPinnedSnapshot = pinnedImageSnapshotRequest();
+            services.openImageEditing = [this](ScreenshotExportSource source) {
+                static_cast<void>(actionGate.dispatch([this, source = std::move(source)]() mutable {
+                    ensureImageEditingWindowCoordinator().presentSource(std::move(source));
+                }));
+            };
             imageStitchingWindowCoordinator =
                 std::make_unique<presentation::ImageStitchingWindowCoordinator>(
                     &q, std::move(services));

@@ -1758,24 +1758,15 @@ qint64 imageStitchingImageImportBytes(QSize size, QString* error) {
     return bytes * 2;
 }
 
-QImage captureImageStitchingImage(QSize size, const std::function<QImage()>& capture,
+namespace {
+QImage retainImageStitchingRaster(QSize size, qint64 bytes, const std::function<QImage()>& render,
                                   QString* error) {
-    const qint64 bytes = imageStitchingImageImportBytes(size, error) / 2;
-    if (bytes == 0)
-        return {};
-    if (!capture) {
-        report(error, preparationError());
-        return {};
-    }
     try {
-        auto working = image_stitching_detail::reserveWorking(bytes, error);
-        if (!working)
-            return {};
         auto lifetime = std::make_unique<CapturedImageLifetime>();
         lifetime->reservation = image_stitching_detail::reserve(bytes, error);
         if (!lifetime->reservation)
             return {};
-        lifetime->image = capture();
+        lifetime->image = render();
         const QImage image = lifetime->image;
         if (image.isNull() || image.size() != size || image.sizeInBytes() > bytes) {
             report(error, preparationError());
@@ -1806,5 +1797,30 @@ QImage captureImageStitchingImage(QSize size, const std::function<QImage()>& cap
         report(error, preparationError());
         return {};
     }
+}
+} // namespace
+
+QImage captureImageStitchingImage(QSize size, const std::function<QImage()>& capture,
+                                  QString* error) {
+    const qint64 bytes = imageStitchingImageImportBytes(size, error) / 2;
+    if (bytes == 0)
+        return {};
+    if (!capture) {
+        report(error, preparationError());
+        return {};
+    }
+    const auto working = image_stitching_detail::reserveWorking(bytes, error);
+    return working ? retainImageStitchingRaster(size, bytes, capture, error) : QImage{};
+}
+
+QImage renderImageStitchingResult(const QVector<ImageStitchingItem>& items,
+                                  const ImageStitchingSettings& settings,
+                                  std::function<bool()> cancelled) {
+    const auto rows = prepareImageStitchingRows(items, settings, std::move(cancelled));
+    qint64 bytes = 0;
+    if (!rows.isValid() || !outputBytes(rows.size, &bytes))
+        return {};
+    return retainImageStitchingRaster(
+        rows.size, bytes, [&] { return materializeImageStitchingRows(rows, bytes); }, nullptr);
 }
 } // namespace snow_shot::presentation
