@@ -1725,6 +1725,10 @@ QVariantList BuiltInSettingsBackend::multiSelectValue(SettingsMultiSelectBinding
         for (const QString& value : storage::ScreenshotSettings().autoSaveAfterExecutionActions()) {
             values.push_back(value);
         }
+    } else if (binding == SettingsMultiSelectBinding::FullscreenDisableScope) {
+        for (const QString& value : storage::GlobalShortcutSettings().fullscreenDisableScope()) {
+            values.push_back(value);
+        }
     }
     return values;
 }
@@ -1747,6 +1751,9 @@ bool BuiltInSettingsBackend::applyMultiSelectValue(SettingsMultiSelectBinding bi
     }
     if (binding == SettingsMultiSelectBinding::ScreenshotAutoSaveAfterExecution) {
         return storage::ScreenshotSettings().setAutoSaveAfterExecutionActions(tools);
+    }
+    if (binding == SettingsMultiSelectBinding::FullscreenDisableScope) {
+        return storage::GlobalShortcutSettings().setFullscreenDisableScope(tools);
     }
     return false;
 }
@@ -2823,6 +2830,8 @@ SettingsResetResult BuiltInSettingsBackend::resetSectionWithResults(SettingsSect
                       QStringLiteral("global_shortcuts/toggle_window_under_cursor_always_on_top"));
         resetShortcut(GlobalShortcutAction::ToggleGlobalShortcuts,
                       QStringLiteral("global_shortcuts/toggle_global_hotkeys"));
+        resetShortcut(GlobalShortcutAction::ToggleGlobalMouse,
+                      QStringLiteral("global_shortcuts/toggle_global_mouse"));
         resetShortcut(
             GlobalShortcutAction::ToggleDisableOnFocusedFullscreenWindow,
             QStringLiteral("global_shortcuts/toggle_disable_on_focused_fullscreen_window"));

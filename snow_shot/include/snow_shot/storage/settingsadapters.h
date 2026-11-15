@@ -232,6 +232,8 @@ class ShortcutSettings final {
     setToggleWindowUnderCursorAlwaysOnTop(const shortcuts::ShortcutBindingList& bindings) const;
     [[nodiscard]] shortcuts::ShortcutBindingList toggleGlobalShortcuts() const;
     bool setToggleGlobalShortcuts(const shortcuts::ShortcutBindingList& bindings) const;
+    [[nodiscard]] shortcuts::ShortcutBindingList toggleGlobalMouse() const;
+    bool setToggleGlobalMouse(const shortcuts::ShortcutBindingList& bindings) const;
     [[nodiscard]] shortcuts::ShortcutBindingList toggleDisableOnFocusedFullscreenWindow() const;
     bool
     setToggleDisableOnFocusedFullscreenWindow(const shortcuts::ShortcutBindingList& bindings) const;
@@ -243,6 +245,8 @@ class GlobalShortcutSettings final {
     bool setDisableOnFocusedFullscreenWindow(bool disabled) const;
     [[nodiscard]] QString fullscreenWindowFilter() const;
     bool setFullscreenWindowFilter(const QString& filter) const;
+    [[nodiscard]] QStringList fullscreenDisableScope() const;
+    bool setFullscreenDisableScope(const QStringList& scope) const;
 };
 
 class ScreenshotSettings final {

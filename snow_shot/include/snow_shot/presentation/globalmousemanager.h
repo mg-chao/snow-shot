@@ -42,6 +42,9 @@ class GlobalMouseManager final : public QObject {
     ~GlobalMouseManager() override;
     void initialize();
     void shutdown();
+    [[nodiscard]] bool globalMouseEnabled() const;
+    void setGlobalMouseEnabled(bool enabled);
+    void setFocusedFullscreenSuppressionActive(bool active);
     void setCaptureAvailable(bool available);
     void cancelGesture(quint64 id);
     void beginButtonDrag(settings::SettingsGlobalMouseAction action);
@@ -52,6 +55,7 @@ class GlobalMouseManager final : public QObject {
     void openPermissionSettings();
 
   signals:
+    void globalMouseEnabledChanged(bool enabled);
     void permissionRefreshRequested();
     void dragEvent(const snow_shot::presentation::GlobalMouseDragEvent& event);
     void operationFailed(const QString& message);

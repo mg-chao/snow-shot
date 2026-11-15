@@ -1806,6 +1806,10 @@
             <translation>自動停用</translation>
         </message>
         <message>
+            <source>Automatic disabling in fullscreen windows</source>
+            <translation>全螢幕視窗自動停用</translation>
+        </message>
+        <message>
             <source>Automatic text recognition</source>
             <translation>自動文字辨識</translation>
         </message>
@@ -2206,8 +2210,12 @@
             <translation>選擇執行哪些操作時，同時以所選影像格式儲存至指定目錄</translation>
         </message>
         <message>
-            <source>Choose which fullscreen windows automatically disable global shortcuts</source>
-            <translation>選擇哪些全螢幕視窗會自動停用全域快速鍵</translation>
+            <source>Choose which fullscreen windows trigger automatic disabling</source>
+            <translation>選擇哪些全螢幕視窗會觸發自動停用</translation>
+        </message>
+        <message>
+            <source>Choose which inputs to disable</source>
+            <translation>選擇要停用的輸入功能</translation>
         </message>
         <message>
             <source>Clear</source>
@@ -2630,12 +2638,20 @@
             <translation>診斷</translation>
         </message>
         <message>
+            <source>Disable global mouse</source>
+            <translation>停用全域滑鼠</translation>
+        </message>
+        <message>
             <source>Disable global shortcuts</source>
             <translation>停用全域快速鍵</translation>
         </message>
         <message>
-            <source>Disable shortcuts in fullscreen windows</source>
-            <translation>在全螢幕視窗中停用快速鍵</translation>
+            <source>Disable scope</source>
+            <translation>停用範圍</translation>
+        </message>
+        <message>
+            <source>Disable/enable global mouse</source>
+            <translation>停用/啟用全域滑鼠</translation>
         </message>
         <message>
             <source>Disable/enable global shortcuts</source>
@@ -2930,6 +2946,10 @@
             <translation>全螢幕畫布（開啟/關閉滑鼠穿透）</translation>
         </message>
         <message>
+            <source>Fullscreen input settings</source>
+            <translation>全螢幕輸入設定</translation>
+        </message>
+        <message>
             <source>Fullscreen suppression</source>
             <translation>全螢幕抑制</translation>
         </message>
@@ -2980,10 +3000,6 @@
         <message>
             <source>Global mouse gestures</source>
             <translation>全域滑鼠手勢</translation>
-        </message>
-        <message>
-            <source>Global shortcut activation behavior</source>
-            <translation>全域快速鍵啟用行為</translation>
         </message>
         <message>
             <source>Global shortcuts</source>
@@ -3068,10 +3084,6 @@
         <message>
             <source>Icon</source>
             <translation>圖示</translation>
-        </message>
-        <message>
-            <source>Ignore global shortcuts while a matching focused window occupies an entire monitor</source>
-            <translation>符合篩選條件的焦點視窗佔滿整個顯示器時忽略全域快速鍵</translation>
         </message>
         <message>
             <source>Image and document files</source>
@@ -3664,6 +3676,14 @@
         <message>
             <source>Pages</source>
             <translation>頁面</translation>
+        </message>
+        <message>
+            <source>Pause or resume configured global mouse gestures</source>
+            <translation>暫停或恢復已設定的全域滑鼠手勢</translation>
+        </message>
+        <message>
+            <source>Pause the selected inputs while a matching focused window occupies an entire monitor</source>
+            <translation>當前景視窗符合篩選條件且佔滿整個顯示器時，暫停所選的輸入功能</translation>
         </message>
         <message>
             <source>Permanently remove all saved screenshots</source>
@@ -4966,6 +4986,10 @@
             <translation>切換滑鼠游標下視窗的置頂狀態</translation>
         </message>
         <message>
+            <source>Toggle automatic disabling of the selected inputs in fullscreen windows. This shortcut stays active while automatic disabling is enabled</source>
+            <translation>切換全螢幕時自動停用所選輸入功能。啟用自動停用後，此快速鍵仍然有效</translation>
+        </message>
+        <message>
             <source>Toggle cursor visibility</source>
             <translation>切換游標顯示</translation>
         </message>
@@ -5104,10 +5128,6 @@
         <message>
             <source>Turn every global shortcut off or back on; this shortcut stays active while global shortcuts are disabled</source>
             <translation>關閉或重新開啟所有全域快速鍵；即使全域快速鍵已停用，此快速鍵仍然有效</translation>
-        </message>
-        <message>
-            <source>Turn off or back on the suppression of global shortcuts while the focused window is fullscreen; this shortcut stays active while fullscreen suppression is enabled</source>
-            <translation>關閉或重新開啟焦點視窗全螢幕時對全域快速鍵的抑制；即使全螢幕抑制已生效，此快速鍵仍然有效</translation>
         </message>
         <message>
             <source>UIA</source>

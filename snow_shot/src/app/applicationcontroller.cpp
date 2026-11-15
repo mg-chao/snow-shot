@@ -277,6 +277,17 @@ class ApplicationController::Impl {
             &globalShortcutManager,
             &presentation::GlobalShortcutManager::focusedFullscreenSuppressionChanged, &systemTray,
             &presentation::SystemTrayController::setFocusedFullscreenSuppressionActive);
+        QObject::connect(
+            &globalShortcutManager,
+            &presentation::GlobalShortcutManager::focusedFullscreenMouseSuppressionChanged,
+            &globalMouseManager,
+            &presentation::GlobalMouseManager::setFocusedFullscreenSuppressionActive);
+        QObject::connect(&globalMouseManager,
+                         &presentation::GlobalMouseManager::globalMouseEnabledChanged, &q,
+                         [this](bool enabled) {
+                             systemTray.setQuickActionChecked(
+                                 presentation::GlobalShortcutAction::ToggleGlobalMouse, !enabled);
+                         });
         QObject::connect(&app, &QCoreApplication::aboutToQuit, &systemTray,
                          &presentation::SystemTrayController::hide);
         QObject::connect(&app, &QCoreApplication::aboutToQuit, &globalMouseManager,
@@ -1846,6 +1857,9 @@ class ApplicationController::Impl {
         case presentation::GlobalShortcutAction::ToggleGlobalShortcuts:
             globalShortcutManager.setGlobalShortcutsEnabled(
                 !globalShortcutManager.globalShortcutsEnabled());
+            break;
+        case presentation::GlobalShortcutAction::ToggleGlobalMouse:
+            globalMouseManager.setGlobalMouseEnabled(!globalMouseManager.globalMouseEnabled());
             break;
         case presentation::GlobalShortcutAction::ToggleDisableOnFocusedFullscreenWindow: {
             storage::GlobalShortcutSettings shortcutSettings;

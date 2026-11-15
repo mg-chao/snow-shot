@@ -1806,6 +1806,10 @@
             <translation>Automatic disabling</translation>
         </message>
         <message>
+            <source>Automatic disabling in fullscreen windows</source>
+            <translation>Automatic disabling in fullscreen windows</translation>
+        </message>
+        <message>
             <source>Automatic text recognition</source>
             <translation>Automatic text recognition</translation>
         </message>
@@ -2206,8 +2210,12 @@
             <translation>Choose which actions also save an image in the selected image format and save directory</translation>
         </message>
         <message>
-            <source>Choose which fullscreen windows automatically disable global shortcuts</source>
-            <translation>Choose which fullscreen windows automatically disable global shortcuts</translation>
+            <source>Choose which fullscreen windows trigger automatic disabling</source>
+            <translation>Choose which fullscreen windows trigger automatic disabling</translation>
+        </message>
+        <message>
+            <source>Choose which inputs to disable</source>
+            <translation>Choose which inputs to disable</translation>
         </message>
         <message>
             <source>Clear</source>
@@ -2630,12 +2638,20 @@
             <translation>Diagnostics</translation>
         </message>
         <message>
+            <source>Disable global mouse</source>
+            <translation>Disable global mouse</translation>
+        </message>
+        <message>
             <source>Disable global shortcuts</source>
             <translation>Disable global shortcuts</translation>
         </message>
         <message>
-            <source>Disable shortcuts in fullscreen windows</source>
-            <translation>Disable shortcuts in fullscreen windows</translation>
+            <source>Disable scope</source>
+            <translation>Disable scope</translation>
+        </message>
+        <message>
+            <source>Disable/enable global mouse</source>
+            <translation>Disable/enable global mouse</translation>
         </message>
         <message>
             <source>Disable/enable global shortcuts</source>
@@ -2930,6 +2946,10 @@
             <translation>Full-screen canvas (enable/disable click-through)</translation>
         </message>
         <message>
+            <source>Fullscreen input settings</source>
+            <translation>Fullscreen input settings</translation>
+        </message>
+        <message>
             <source>Fullscreen suppression</source>
             <translation>Fullscreen suppression</translation>
         </message>
@@ -2980,10 +3000,6 @@
         <message>
             <source>Global mouse gestures</source>
             <translation>Global mouse gestures</translation>
-        </message>
-        <message>
-            <source>Global shortcut activation behavior</source>
-            <translation>Global shortcut activation behavior</translation>
         </message>
         <message>
             <source>Global shortcuts</source>
@@ -3068,10 +3084,6 @@
         <message>
             <source>Icon</source>
             <translation>Icon</translation>
-        </message>
-        <message>
-            <source>Ignore global shortcuts while a matching focused window occupies an entire monitor</source>
-            <translation>Ignore global shortcuts while a matching focused window occupies an entire monitor</translation>
         </message>
         <message>
             <source>Image and document files</source>
@@ -3664,6 +3676,14 @@
         <message>
             <source>Pages</source>
             <translation>Pages</translation>
+        </message>
+        <message>
+            <source>Pause or resume configured global mouse gestures</source>
+            <translation>Pause or resume configured global mouse gestures</translation>
+        </message>
+        <message>
+            <source>Pause the selected inputs while a matching focused window occupies an entire monitor</source>
+            <translation>Pause the selected inputs while a matching focused window occupies an entire monitor</translation>
         </message>
         <message>
             <source>Permanently remove all saved screenshots</source>
@@ -4966,6 +4986,10 @@
             <translation>Toggle always on top for the window under the cursor</translation>
         </message>
         <message>
+            <source>Toggle automatic disabling of the selected inputs in fullscreen windows. This shortcut stays active while automatic disabling is enabled</source>
+            <translation>Toggle automatic disabling of the selected inputs in fullscreen windows. This shortcut stays active while automatic disabling is enabled</translation>
+        </message>
+        <message>
             <source>Toggle cursor visibility</source>
             <translation>Toggle cursor visibility</translation>
         </message>
@@ -5104,10 +5128,6 @@
         <message>
             <source>Turn every global shortcut off or back on; this shortcut stays active while global shortcuts are disabled</source>
             <translation>Turn every global shortcut off or back on; this shortcut stays active while global shortcuts are disabled</translation>
-        </message>
-        <message>
-            <source>Turn off or back on the suppression of global shortcuts while the focused window is fullscreen; this shortcut stays active while fullscreen suppression is enabled</source>
-            <translation>Turn off or back on the suppression of global shortcuts while the focused window is fullscreen; this shortcut stays active while fullscreen suppression is enabled</translation>
         </message>
         <message>
             <source>UIA</source>

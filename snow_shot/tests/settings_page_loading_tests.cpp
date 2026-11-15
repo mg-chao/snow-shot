@@ -1249,7 +1249,10 @@ void reorganizedSettingsPreserveIndependentState(const settings::SettingsRegistr
                                      QStringLiteral("en_US")) &&
                 session.reset(settings::SettingsSectionReset::GeneralSettings),
             "restore language and appearance for subsequent checks");
+}
 
+void fullscreenDisablingSettings(const settings::SettingsRegistry& registry,
+                                 settings::SettingsRuntimeSession& session) {
     SettingsPageWidget shortcuts(registry, QStringLiteral("global-hotkeys"), session);
     shortcuts.resize(880, 760);
     shortcuts.show();
@@ -1266,6 +1269,23 @@ void reorganizedSettingsPreserveIndependentState(const settings::SettingsRegistr
                 session.selectValue(settings::SettingsSelectBinding::FullscreenWindowFilter) ==
                     QStringLiteral("game_windows"),
             "the game filter selector materializes and remains editable while suppression is off");
+    using MultiSelectBinding = settings::SettingsMultiSelectBinding;
+    auto* scope = shortcuts.findChild<adqt::widgets::AdMultiSelect*>(
+        QStringLiteral("settings-control-global-hotkeys-disable-scope"));
+    const QVariantList defaultScope{QStringLiteral("global_shortcuts")};
+    const QVariantList bothScopes{QStringLiteral("global_shortcuts"),
+                                  QStringLiteral("global_mouse")};
+    require(scope && scope->isEnabled() && scope->selectedValues() == defaultScope &&
+                scope->mapTo(&shortcuts, QPoint()).y() > filter->mapTo(&shortcuts, QPoint()).y(),
+            "the scope appears below the window filter with shortcuts selected");
+    scope->setSelectedValues(bothScopes);
+    require(session.multiSelectValue(MultiSelectBinding::FullscreenDisableScope) == bothScopes,
+            "choosing both scopes in the control saves both selections");
+    scope->setSelectedValues({});
+    require(
+        session.multiSelectValue(MultiSelectBinding::FullscreenDisableScope).isEmpty() &&
+            session.applyMultiSelectValue(MultiSelectBinding::FullscreenDisableScope, bothScopes),
+        "the user can clear the scope and then select both options again");
     const auto& configuration = snow_shot::storage::ApplicationStorage::instance().configuration();
     const auto screenshotShortcut =
         configuration.value(QStringLiteral("global_shortcuts/screenshot"));
@@ -1286,12 +1306,15 @@ void reorganizedSettingsPreserveIndependentState(const settings::SettingsRegistr
     drainEvents();
     require(filter->currentValue() == QStringLiteral("game_windows") && filter->isEnabled(),
             "reset refreshes the selected game filter while leaving it editable");
+    require(scope->selectedValues() == defaultScope,
+            "reset restores only the global shortcuts scope");
     auto& filterLanguage = snow_shot::presentation::LanguageManager::instance();
     for (const QString& locale :
          {QStringLiteral("en_US"), QStringLiteral("zh_CN"), QStringLiteral("zh_TW")}) {
         require(filterLanguage.setLanguage(locale), "switch fullscreen filter settings language");
         drainEvents();
         const auto options = filter->options();
+        const auto scopeOptions = scope->options();
         const QString title = QCoreApplication::translate("SettingsCatalog", "Window filter type");
         bool hasTitle = false;
         for (const auto* label : shortcuts.findChildren<QLabel*>())
@@ -1304,6 +1327,17 @@ void reorganizedSettingsPreserveIndependentState(const settings::SettingsRegistr
                     QCoreApplication::translate("SettingsCatalog", "Game windows") &&
                 filter->currentValue() == QStringLiteral("game_windows"),
             "language changes retranslate filter titles and options without changing its value");
+        const QString scopeTitle = QCoreApplication::translate("SettingsCatalog", "Disable scope");
+        bool hasScopeTitle = false;
+        for (const auto* label : shortcuts.findChildren<QLabel*>())
+            hasScopeTitle = hasScopeTitle || label->text() == scopeTitle;
+        require(hasScopeTitle && scopeOptions.size() == 2 &&
+                    scopeOptions.at(0).label ==
+                        QCoreApplication::translate("SettingsCatalog", "Global shortcuts") &&
+                    scopeOptions.at(1).label ==
+                        QCoreApplication::translate("SettingsCatalog", "Global mouse") &&
+                    scope->selectedValues() == defaultScope,
+                "language changes retranslate the scope without changing its selection");
     }
     require(filterLanguage.setLanguage(QStringLiteral("en_US")),
             "restore English fullscreen filter settings");
@@ -1366,6 +1400,8 @@ void selectedImagesSettings(const settings::SettingsRegistry& registry) {
         QStringLiteral("settings-item-quick-split-selected-images"));
     auto* edit =
         page.findChild<ShortcutKeyRow*>(QStringLiteral("settings-item-quick-edit-selected-images"));
+    auto* mouseToggle =
+        page.findChild<ShortcutKeyRow*>(QStringLiteral("settings-item-quick-toggle-global-mouse"));
     require(
         stitch && canvas && split && edit &&
             edit->mapTo(&page, QPoint()).y() > split->mapTo(&page, QPoint()).y() &&
@@ -1393,6 +1429,11 @@ void selectedImagesSettings(const settings::SettingsRegistry& registry) {
     expectedAction = GlobalShortcutAction::EditSelectedImages;
     require(QMetaObject::invokeMethod(edit, "clicked", Qt::DirectConnection) && commands == 3,
             "the editing row runs without an assigned key");
+    expectedAction = GlobalShortcutAction::ToggleGlobalMouse;
+    require(mouseToggle &&
+                QMetaObject::invokeMethod(mouseToggle, "clicked", Qt::DirectConnection) &&
+                commands == 4,
+            "the mouse toggle row dispatches its action without an assigned key");
     const snow_shot::shortcuts::ShortcutBindingList bindings{QStringLiteral("Ctrl+Alt+F8"),
                                                              QStringLiteral("Ctrl+Alt+F9")};
     const snow_shot::storage::ShortcutSettings stored;
@@ -1400,15 +1441,19 @@ void selectedImagesSettings(const settings::SettingsRegistry& registry) {
     const snow_shot::shortcuts::ShortcutBindingList splitBindings{QStringLiteral("Ctrl+Alt+F10"),
                                                                   QStringLiteral("Ctrl+Alt+F11")};
     const snow_shot::shortcuts::ShortcutBindingList editBindings{QStringLiteral("Ctrl+Alt+F12")};
+    const snow_shot::shortcuts::ShortcutBindingList mouseBindings{QStringLiteral("Ctrl+Alt+F7")};
     require(session.applyShortcuts(action, bindings) && stored.stitchSelectedImages() == bindings &&
                 session.applyShortcuts(GlobalShortcutAction::SplitSelectedImages, splitBindings) &&
                 stored.splitSelectedImages() == splitBindings &&
                 session.applyShortcuts(GlobalShortcutAction::EditSelectedImages, editBindings) &&
                 stored.editSelectedImages() == editBindings &&
+                session.applyShortcuts(GlobalShortcutAction::ToggleGlobalMouse, mouseBindings) &&
+                stored.toggleGlobalMouse() == mouseBindings &&
                 session.reset(settings::SettingsSectionReset::OtherShortcuts) &&
                 stored.editSelectedImages().isEmpty() && stored.stitchSelectedImages().isEmpty() &&
-                stored.splitSelectedImages().isEmpty() && stored.screenshot() == screenshot,
-            "Other reset clears stitching and splitting keys and preserves screenshot keys");
+                stored.splitSelectedImages().isEmpty() && stored.toggleGlobalMouse().isEmpty() &&
+                stored.screenshot() == screenshot,
+            "Other reset clears its own keys and preserves screenshot keys");
     auto& languages = LanguageManager::instance();
     for (const auto* locale : {"zh_CN", "zh_TW"}) {
         require(languages.setLanguage(QString::fromLatin1(locale)),
@@ -2002,6 +2047,11 @@ int main(int argc, char** argv) {
         reorganizedSettingsPreserveIndependentState(registry, session);
         pinnedSettingsGroups(registry, session);
         featureLinksAdvancedControlsAndResets(registry, session);
+        storage.shutdown();
+        return 0;
+    }
+    if (application.arguments().contains(QStringLiteral("--fullscreen-settings-only"))) {
+        fullscreenDisablingSettings(registry, session);
         storage.shutdown();
         return 0;
     }

@@ -47,7 +47,16 @@ struct GlobalMouseManager::Impl {
                 configuration.bindings.push_back(*binding);
             }
         }
-        backend->configure(configuration);
+        configureBackend();
+    }
+
+    void configureBackend() {
+        if (globalMouseEnabled && !fullscreenSuppressionActive) {
+            backend->configure(configuration);
+        } else {
+            // Direct settings-button drags still need capture availability.
+            backend->configure({{}, configuration.captureAvailable});
+        }
     }
 
     void post(GlobalMouseDragEvent event, quint64 epoch) {
@@ -153,6 +162,8 @@ struct GlobalMouseManager::Impl {
     bool pacing = false;
     bool deliveryQueued = false;
     bool started = false;
+    bool globalMouseEnabled = true;
+    bool fullscreenSuppressionActive = false;
 };
 
 GlobalMouseManager::GlobalMouseManager(QObject* parent) : GlobalMouseManager(nullptr, parent) {}
@@ -275,9 +286,28 @@ void GlobalMouseManager::shutdown() {
         emit dragEvent(cancellation);
 }
 
+bool GlobalMouseManager::globalMouseEnabled() const {
+    return m_impl->globalMouseEnabled;
+}
+
+void GlobalMouseManager::setGlobalMouseEnabled(bool enabled) {
+    if (m_impl->globalMouseEnabled == enabled)
+        return;
+    m_impl->globalMouseEnabled = enabled;
+    m_impl->configureBackend();
+    emit globalMouseEnabledChanged(enabled);
+}
+
+void GlobalMouseManager::setFocusedFullscreenSuppressionActive(bool active) {
+    if (m_impl->fullscreenSuppressionActive == active)
+        return;
+    m_impl->fullscreenSuppressionActive = active;
+    m_impl->configureBackend();
+}
+
 void GlobalMouseManager::setCaptureAvailable(bool available) {
     m_impl->configuration.captureAvailable = available;
-    m_impl->backend->configure(m_impl->configuration);
+    m_impl->configureBackend();
 }
 void GlobalMouseManager::cancelGesture(quint64 id) {
     if (m_impl->pendingCaptureId == id) {

@@ -873,6 +873,14 @@ bool ShortcutSettings::setToggleGlobalShortcuts(
     return setShortcutValue(QStringLiteral("global_shortcuts/toggle_global_hotkeys"), bindings);
 }
 
+shortcuts::ShortcutBindingList ShortcutSettings::toggleGlobalMouse() const {
+    return shortcutValue(QStringLiteral("global_shortcuts/toggle_global_mouse"));
+}
+
+bool ShortcutSettings::setToggleGlobalMouse(const shortcuts::ShortcutBindingList& bindings) const {
+    return setShortcutValue(QStringLiteral("global_shortcuts/toggle_global_mouse"), bindings);
+}
+
 shortcuts::ShortcutBindingList ShortcutSettings::toggleDisableOnFocusedFullscreenWindow() const {
     return shortcutValue(
         QStringLiteral("global_shortcuts/toggle_disable_on_focused_fullscreen_window"));
@@ -1009,6 +1017,18 @@ QString GlobalShortcutSettings::fullscreenWindowFilter() const {
 
 bool GlobalShortcutSettings::setFullscreenWindowFilter(const QString& filter) const {
     return cache().setValue(QStringLiteral("global_shortcuts/fullscreen_window_filter"), filter);
+}
+
+QStringList GlobalShortcutSettings::fullscreenDisableScope() const {
+    return cache()
+        .value(QStringLiteral("global_shortcuts/fullscreen_disable_scope"))
+        .toVariant()
+        .toStringList();
+}
+
+bool GlobalShortcutSettings::setFullscreenDisableScope(const QStringList& scope) const {
+    return cache().setValue(QStringLiteral("global_shortcuts/fullscreen_disable_scope"),
+                            QJsonArray::fromStringList(scope));
 }
 
 bool ScreenshotSettings::shutterSoundNotification() const {
