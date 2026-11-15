@@ -190,6 +190,7 @@ void toolMatrixMatchesRequestedVisibility() {
     require(hintLines(ScreenshotActiveTool::Eraser).isEmpty() &&
                 hintLines(ScreenshotActiveTool::Ocr).isEmpty() &&
                 hintLines(ScreenshotActiveTool::TextTranslation).isEmpty() &&
+                hintLines(ScreenshotActiveTool::Document).isEmpty() &&
                 hintLines(ScreenshotActiveTool::Table).isEmpty() &&
                 hintLines(ScreenshotActiveTool::Qr).isEmpty() &&
                 hintLines(ScreenshotActiveTool::Spotlight).isEmpty() &&
