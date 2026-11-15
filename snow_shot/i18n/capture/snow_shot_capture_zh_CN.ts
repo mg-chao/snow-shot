@@ -522,6 +522,10 @@
             <translation>自动对齐</translation>
         </message>
         <message>
+            <source>Bind arrow</source>
+            <translation>绑定箭头</translation>
+        </message>
+        <message>
             <source>Delete selected elements</source>
             <translation>删除选中元素</translation>
         </message>

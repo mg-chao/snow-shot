@@ -471,6 +471,11 @@ impl Editor {
                         start_view_position: event.position,
                         text: None,
                         label_measured: false,
+                        mode: if event.modifiers.shift {
+                            SerialNumberDragMode::NewArrow
+                        } else {
+                            SerialNumberDragMode::Text
+                        },
                     });
                 self.set_creation_preview(None, snap_guides);
                 Ok(InteractionOutput {
@@ -555,6 +560,23 @@ impl Editor {
             return Ok(output);
         }
         match intent {
+            PrimaryPointerIntent::BeginSerialNumberArrow { id } => {
+                self.state.interaction =
+                    InteractionState::CreatingSerialNumber(CreateSerialNumberState {
+                        pointer_id: event.pointer_id,
+                        serial_id: id,
+                        start_view_position: event.position,
+                        text: None,
+                        label_measured: false,
+                        mode: SerialNumberDragMode::ExistingArrow,
+                    });
+                self.clear_transient_visuals();
+                Ok(InteractionOutput {
+                    consumed: true,
+                    capture: self.capture_command_for_start(event.pointer_id),
+                    cursor: CursorCommand::Set(CursorStyle::Crosshair),
+                })
+            }
             PrimaryPointerIntent::BeginMagnifierLens { id } => {
                 let original = *document.magnifier(id)?;
                 if !self.state.selection.contains(id) {

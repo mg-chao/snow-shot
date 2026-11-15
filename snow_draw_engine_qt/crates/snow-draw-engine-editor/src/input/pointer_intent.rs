@@ -8,6 +8,23 @@ impl Editor {
         canvas_point: Point<f64>,
         modifiers: Modifiers,
     ) -> PrimaryPointerIntent {
+        if modifiers.shift && self.state.active_tool == ActiveTool::SerialNumber {
+            // Transform handles keep their Shift modifiers; only the badge body starts an arrow.
+            if let CanvasHit::SelectionHandle(target) =
+                self.resolve_canvas_hit(document, policy, canvas_point, true)
+                && target != SelectionHitTarget::Move
+            {
+                return PrimaryPointerIntent::BeginSelectionInteraction { target };
+            }
+            if let CanvasHit::EligibleElement(id, ElementKind::SerialNumber) =
+                self.resolve_canvas_hit(document, policy, canvas_point, false)
+                && document
+                    .element(id)
+                    .is_ok_and(|element| !element.meta.locked)
+            {
+                return PrimaryPointerIntent::BeginSerialNumberArrow { id };
+            }
+        }
         if modifiers.shift
             && let CanvasHit::SelectionHandle(target @ SelectionHitTarget::CornerRadius(_)) =
                 self.resolve_canvas_hit(document, policy, canvas_point, true)
@@ -167,6 +184,10 @@ impl Editor {
         intent: PrimaryPointerIntent,
     ) -> (CursorStyle, Option<ElementId>) {
         match intent {
+            PrimaryPointerIntent::BeginSerialNumberArrow { id } => (
+                CursorStyle::Crosshair,
+                (!self.state.selection.contains(id)).then_some(id),
+            ),
             PrimaryPointerIntent::BeginMagnifierLens { id } => (
                 CursorStyle::Move,
                 (!self.state.selection.contains(id)).then_some(id),

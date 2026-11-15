@@ -1,9 +1,9 @@
 use super::*;
-use snow_draw_engine_core::arrow::{ArrowEndpointEdge, ArrowType, StrokeStyle};
+use snow_draw_engine_core::arrow::{ArrowEndpointEdge, ArrowType, BindMode, StrokeStyle};
 use snow_draw_engine_document::{
-    ArrowSuggestedBinding, ElementMeta, FilterData, TextLayoutSize, arrow_is_degenerate,
-    resolve_serial_number_data_diameter, text_with_measured_ink, text_with_measured_layout,
-    text_with_pinned_alignment_layout, validate_text_layout_size,
+    ArrowEndpointBinding, ArrowSuggestedBinding, ElementMeta, FilterData, TextLayoutSize,
+    arrow_is_degenerate, resolve_serial_number_data_diameter, text_with_measured_ink,
+    text_with_measured_layout, text_with_pinned_alignment_layout, validate_text_layout_size,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -475,12 +475,66 @@ impl Editor {
                 arrow_id.generation,
             ),
         };
+        let serial_number_source = match &self.state.interaction {
+            InteractionState::CreatingArrow(state) => state.serial_number_source,
+            _ => None,
+        };
+        let source_bindables = serial_number_source.map(|id| {
+            bindables
+                .iter()
+                .filter(|bindable| bindable.id() == id)
+                .cloned()
+                .collect::<Vec<_>>()
+        });
+        let mut required_start_binding = None;
         let mut suggested_binding = None;
-        for (edge, pointer) in [
+        for (edge, mut pointer) in [
             (ArrowEndpointEdge::Start, points.first().copied()?),
             (ArrowEndpointEdge::End, points.last().copied()?),
         ] {
             let mut context = arrow_context;
+            let mut options = arrow_endpoint_drag_options(modifiers, finalize);
+            let endpoint_bindables = if edge == ArrowEndpointEdge::Start {
+                source_bindables.as_deref().unwrap_or(&bindables)
+            } else {
+                &bindables
+            };
+            if edge == ArrowEndpointEdge::Start
+                && let Some(source) = serial_number_source
+            {
+                source_bindables.as_ref()?.first()?;
+                context.is_binding_enabled = true;
+                context.bind_mode = BindMode::Orbit;
+                options.alt_key = false;
+                // Starting at the badge center would auto-detect an inside binding. Use
+                // the same outline projection and gap as manually bound arrows, with
+                // the center as the focus point rather than the visible endpoint.
+                let mut centered = preview_arrow.clone();
+                centered.start_binding = Some(ArrowEndpointBinding {
+                    element_id: source,
+                    fixed_point: [0.5, 0.5],
+                    mode: BindMode::Orbit,
+                });
+                if centered.arrow_type == ArrowType::Elbow {
+                    centered.arrow_type = ArrowType::Straight;
+                }
+                let projected = recompute_arrow_after_bindable_change(
+                    arrow_id,
+                    &centered,
+                    endpoint_bindables,
+                    &[source],
+                    context,
+                )
+                .arrow;
+                if preview_arrow.arrow_type != ArrowType::Elbow {
+                    required_start_binding = projected.start_binding.clone();
+                    preview_arrow = projected;
+                    continue;
+                }
+                // Elbow bindings store the routed outline anchor. Feed that exterior
+                // point through the normal endpoint drag to retain orthogonal routing.
+                pointer = projected.start();
+            }
             // Keep a snapped endpoint at the join if a bindable shape is also nearby.
             if preview_arrow.is_line()
                 && context.is_binding_enabled
@@ -493,12 +547,43 @@ impl Editor {
                 &preview_arrow,
                 edge,
                 pointer,
-                &bindables,
+                endpoint_bindables,
                 context,
-                arrow_endpoint_drag_options(modifiers, finalize),
+                options,
             );
             preview_arrow = result.arrow;
+            if edge == ArrowEndpointEdge::Start && serial_number_source.is_some() {
+                required_start_binding = Some(preview_arrow.start_binding.clone()?);
+            }
             suggested_binding = result.suggested_binding;
+        }
+
+        if let Some(source) = serial_number_source {
+            // Endpoint snapping may change both the opposite binding mode and its
+            // focus. Preserve the explicit exterior tail and reproject after the tip moves.
+            preview_arrow.start_binding = required_start_binding;
+            let mut context = arrow_context;
+            context.is_binding_enabled = true;
+            preview_arrow = recompute_arrow_after_bindable_change(
+                arrow_id,
+                &preview_arrow,
+                &bindables,
+                &[source],
+                context,
+            )
+            .arrow;
+            let serial = document.serial_number(source).ok()?;
+            if point_in_rotated_rect(
+                serial.center,
+                serial.diameter,
+                serial.diameter,
+                serial.rotation,
+                preview_arrow.start(),
+            ) {
+                // The binding solver falls back to its focus for very short arrows.
+                // Wait until the drag has enough room for an exterior tail instead.
+                return None;
+            }
         }
 
         Some(BoundArrowPreview {
@@ -949,6 +1034,9 @@ impl Editor {
         if state.pointer_id != event.pointer_id {
             return Ok(InteractionOutput::default());
         }
+        if state.serial_number_source.is_some() && event.button != Some(PointerButton::Primary) {
+            return Ok(InteractionOutput::default());
+        }
 
         let current_canvas = view_to_canvas(event.position, &self.camera(), self.surface_size());
         let (snapped_current, preview, snap_guides) = self.arrow_creation_preview(
@@ -968,6 +1056,18 @@ impl Editor {
                         point_distance(*last, snapped_current) >= self.line_confirm_threshold()
                     })
             });
+
+        if state.serial_number_source.is_some() {
+            self.cancel_interaction();
+            if !is_click_release && let Some(arrow) = committed_arrow {
+                self.queue_arrow_creation(document, arrow)?;
+            }
+            return Ok(InteractionOutput {
+                consumed: true,
+                capture: self.release_capture_command(),
+                cursor: CursorCommand::Set(self.tool_policy().default_cursor),
+            });
+        }
 
         match state.phase {
             ArrowCreationPhase::InitialPress => {
@@ -1084,6 +1184,28 @@ impl Editor {
 
         let current_canvas = view_to_canvas(event.position, &self.camera(), self.surface_size());
         let mut state = state;
+        if state.mode != SerialNumberDragMode::Text {
+            if pointer_drag_distance(state.start_view_position, event.position)
+                >= POINTER_DRAG_THRESHOLD
+            {
+                let center = document.serial_number(state.serial_id)?.center;
+                self.begin_arrow_creation(
+                    document,
+                    state.pointer_id,
+                    center,
+                    state.start_view_position,
+                );
+                if let InteractionState::CreatingArrow(arrow) = &mut self.state.interaction {
+                    arrow.serial_number_source = Some(state.serial_id);
+                }
+                return self.handle_arrow_pointer_move(document, event);
+            }
+            return Ok(InteractionOutput {
+                consumed: true,
+                capture: PointerCaptureCommand::NoChange,
+                cursor: CursorCommand::Set(CursorStyle::Crosshair),
+            });
+        }
         if let Some((_, text)) = &mut state.text {
             text.center = current_canvas;
         } else if pointer_drag_distance(state.start_view_position, event.position)
@@ -1139,11 +1261,15 @@ impl Editor {
         }
         // Include the release position even if the host coalesced all move events.
         self.handle_serial_number_pointer_move(document, event)?;
+        if matches!(&self.state.interaction, InteractionState::CreatingArrow(_)) {
+            return self.handle_arrow_pointer_up(document, event);
+        }
         let InteractionState::CreatingSerialNumber(state) = &self.state.interaction else {
             return Ok(InteractionOutput::default());
         };
         let text = state.text.clone();
         let serial_id = state.serial_id;
+        let mode = state.mode;
         let cursor = if text.is_none() {
             self.tool_policy().default_cursor
         } else {
@@ -1152,7 +1278,11 @@ impl Editor {
         self.cancel_interaction();
         // The badge is inserted on pointer down. Selecting it after the drag finishes
         // preserves the gesture that creates and positions its attached label.
-        self.select_created_element(document, serial_id);
+        if mode == SerialNumberDragMode::ExistingArrow {
+            self.toggle_selection(document, serial_id);
+        } else {
+            self.select_created_element(document, serial_id);
+        }
         if let Some((id, text)) = text {
             if let Ok(original) = document.text(id)
                 && original != &text
