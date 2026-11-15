@@ -45,7 +45,7 @@ struct ScreenshotRecognitionFileSnapshot {
     QVector<int> tableColumnWidths = {};
 #endif
 
-    std::shared_ptr<const ScreenshotRecognizedDocument> document;
+    std::shared_ptr<const ScreenshotRecognizedDocument> document = {};
 
     [[nodiscard]] bool hasContent() const {
         if (kind >= ScreenshotRecognitionFileKind::DocumentWord)
