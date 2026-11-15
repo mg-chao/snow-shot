@@ -173,6 +173,8 @@ QString CanvasStatusReadout::formattedMessage() const {
         return tr("Result preview in progress");
     case Message::RenderingPreview:
         return tr("Rendering preview");
+    case Message::Thinking:
+        return tr("Thinking…");
     }
     return {};
 }

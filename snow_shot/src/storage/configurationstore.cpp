@@ -220,6 +220,11 @@ MaterializedConfiguration materializeConfiguration(const QMap<QString, QJsonValu
         }
 
         QJsonValue raw = currentOverlay.value(entry.key);
+        if (mutateDocument && schemaVersion < 6 && raw == QStringLiteral("dedicated") &&
+            (entry.key == QStringLiteral("screenshot_table/model") ||
+             entry.key == QStringLiteral("screenshot_latex/model"))) {
+            raw = defaultValue;
+        }
 #if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
         if (entry.key == QStringLiteral("screenshot_translation/model") && mutateDocument &&
             schemaVersion < 5 && !raw.toString().startsWith(QStringLiteral("custom:")) &&

@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/languagemanager.h"
+#include "snow_shot/presentation/canvasstatusreadout.h"
 #include "snow_shot/presentation/screenshotrecognitionsessioncontroller.h"
 #include "snow_shot/presentation/screenshotrecognitionwindow.h"
 #include "snow_shot/presentation/screenshottabledocument.h"
@@ -13,6 +14,7 @@
 
 #include <QCoreApplication>
 #include <QEventLoop>
+#include <QGuiApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QItemSelectionModel>
@@ -259,16 +261,16 @@ QJsonObject cellAt(const QJsonObject& result, int row, int column) {
 
 void defaultsAndInactiveToolsDoNotFetchModels() {
     ModelSettingsGuard guard;
-    require(Settings().tableModel() == screenshotDedicatedRecognitionModelId() &&
-                Settings().latexModel() == screenshotDedicatedRecognitionModelId(),
-            "fresh Table and LaTeX preferences both default to dedicated recognition models");
+    require(Settings().tableModel() == screenshotDefaultVisionRecognitionModelId() &&
+                Settings().latexModel() == screenshotDefaultVisionRecognitionModelId(),
+            "fresh Table and LaTeX preferences both default to the fast vision model");
     RecognitionServer server;
     SnowShotApiClient api(server.url());
     ScreenshotRecognitionSessionController session(nullptr, nullptr, &api, headlessActions());
     require(session.recognitionModelSelection(Mode::Table) ==
-                    screenshotDedicatedRecognitionModelId() &&
+                    screenshotDefaultVisionRecognitionModelId() &&
                 session.recognitionModelSelection(Mode::Latex) ==
-                    screenshotDedicatedRecognitionModelId(),
+                    screenshotDefaultVisionRecognitionModelId(),
             "sessions read both independent model defaults");
     session.setTarget(target(QStringLiteral("inactive")));
     session.setProviders(nullptr, nullptr, nullptr);
@@ -294,23 +296,34 @@ void defaultsAndInactiveToolsDoNotFetchModels() {
             "catalog");
 }
 
-void defaultLatexUsesDedicatedRecognitionWhileCatalogIsLoading() {
-    ModelSettingsGuard guard;
-    RecognitionServer server;
-    server.holdCatalog = true;
-    SnowShotApiClient api(server.url());
-    ScreenshotRecognitionSessionController session(nullptr, nullptr, &api, headlessActions());
-    session.setTarget(target(QStringLiteral("default-dedicated-latex")));
-    session.activate(Mode::Latex);
-    until([&] { return !session.busy() && !session.workflowResult().isEmpty(); },
-          "default LaTeX recognition completes without waiting for the vision catalog");
-    const auto snapshot = session.recognitionResultsSnapshot();
-    require(server.dedicatedRequests == 1 && server.visionRequests.isEmpty() &&
-                session.latexDraft() == QStringLiteral("x^2") &&
-                snapshot.latexModelSelection == screenshotDedicatedRecognitionModelId() &&
-                snapshot.latexEntries.size() == 1 &&
-                snapshot.latexEntries[0].model == screenshotDedicatedRecognitionModelId(),
-            "default LaTeX uses and caches the dedicated formula recognition result");
+void defaultsWaitForCatalogAndUseFastVision() {
+    const QString fast = QStringLiteral("ai-model");
+    for (const auto mode : {Mode::Table, Mode::Latex}) {
+        RecognitionServer server;
+        server.holdCatalog = true;
+        server.catalogOrder = {QStringLiteral("expert-model"), fast};
+        if (mode == Mode::Latex)
+            server.visionSource = QStringLiteral("x^2");
+        SnowShotApiClient api(server.url());
+        ScreenshotRecognitionSessionController session(nullptr, nullptr, &api, headlessActions());
+        session.setTarget(target(QStringLiteral("default-fast-vision")));
+        session.activate(mode);
+        until([&] { return !server.heldCatalog.isNull(); }, "the model catalog is requested");
+        require(session.busy() && server.dedicatedRequests == 0 && server.visionRequests.isEmpty(),
+                "the default recognition model waits for the catalog to load");
+        server.respondCatalog(server.heldCatalog);
+        until([&] { return !session.busy() && !session.workflowResult().isEmpty(); },
+              "default vision recognition completes");
+        const auto snapshot = session.recognitionResultsSnapshot();
+        const QString selection =
+            mode == Mode::Table ? snapshot.tableModelSelection : snapshot.latexModelSelection;
+        const QString effective =
+            mode == Mode::Table ? snapshot.tableEffectiveModel : snapshot.latexEffectiveModel;
+        require(server.dedicatedRequests == 0 && server.visionRequests.size() == 1 &&
+                    server.visionRequests.first().value(QStringLiteral("model")) == fast &&
+                    selection == screenshotDefaultVisionRecognitionModelId() && effective == fast,
+                "both default recognition modes use the catalog's Fast model");
+    }
 }
 
 void visionTablesRequireActualMarkupAndRetainMergedEmptyCells() {
@@ -499,7 +512,7 @@ void tableModelSwitchesPreserveSpansEditsAndUndo() {
                 Settings().tableModel() == QStringLiteral("vision-b") &&
                 observer.recognitionModelSelection(Mode::Table) == QStringLiteral("vision-b") &&
                 observer.recognitionModelSelection(Mode::Latex) ==
-                    screenshotDedicatedRecognitionModelId(),
+                    screenshotDefaultVisionRecognitionModelId(),
             "selecting model B publishes its table and persists Table preferences independently");
     require(session.editWorkflow({{QStringLiteral("action"), QStringLiteral("set_cell")},
                                   {QStringLiteral("row"), 0},
@@ -913,7 +926,7 @@ void latexModelSwitchesPreserveEmptyDraftsAndHeadlessExports() {
     require(session.fileExportSnapshot()->source == QStringLiteral("\\gamma + 1") &&
                 session.workflowResult().value(QStringLiteral("text")) ==
                     QStringLiteral("\\gamma + 1") &&
-                Settings().tableModel() == screenshotDedicatedRecognitionModelId() &&
+                Settings().tableModel() == screenshotDefaultVisionRecognitionModelId() &&
                 Settings().latexModel() == QStringLiteral("vision-b"),
             "selected formula exports and LaTeX preferences remain independent of Table");
     require(session.editWorkflow({{QStringLiteral("action"), QStringLiteral("reset_text")}}) &&
@@ -1961,6 +1974,8 @@ void tablePreviewIsReadOnlyUntilFinalAcceptance() {
                 !editor->model()->setData(first, QStringLiteral("Wrong"), Qt::EditRole) &&
                 !editor->clipboardMimeData() && !window.copyVisibleContentToClipboard() &&
                 session.recognitionResultsSnapshot().tableEntries.isEmpty() &&
+                !window.findChild<CanvasStatusReadout*>(
+                    QStringLiteral("screenshotModelThinkingReadout")) &&
                 !window.findChild<QWidget*>(QStringLiteral("screenshotTableRecognitionProgress")),
             "streamed cells remain read-only without a status footer");
     editor->setColumnWidth(0, 173);
@@ -2013,6 +2028,84 @@ void tablePreviewIsReadOnlyUntilFinalAcceptance() {
         "manual retry recovers the table");
 }
 
+void tableThinkingReadoutFollowsReasoningPhase() {
+    ModelSettingsGuard settings;
+    RecognitionLanguageGuard language;
+    require(Settings().setTableModel(QStringLiteral("vision")), "select streaming table model");
+    require(
+        snow_shot::presentation::LanguageManager::instance().setLanguage(QStringLiteral("en_US")),
+        "select English for the thinking readout fixture");
+    translation_tests::Server server;
+    SnowShotApiClient api(server.url());
+    loadCatalog(api);
+    ScreenshotRecognitionWindow window({});
+    require(window.present({QGuiApplication::primaryScreen(), nullptr, QRect(300, 180, 400, 160),
+                            QRectF(0, 0, 80, 60)}),
+            "present the table thinking fixture");
+    auto actions = headlessActions();
+    actions.ensureContent = [&] { return &window; };
+    ScreenshotRecognitionSessionController session(nullptr, nullptr, &api, actions);
+    session.setTarget(target(QStringLiteral("thinking-table")));
+    session.activate(Mode::Table);
+    const auto readout = [&] {
+        return window.findChild<CanvasStatusReadout*>(
+            QStringLiteral("screenshotModelThinkingReadout"));
+    };
+    const auto showsThinking = [&] {
+        return readout() && readout()->isVisible() &&
+               readout()->accessibleName() == QStringLiteral("Thinking…");
+    };
+    const auto isHidden = [&] { return readout() && readout()->isHidden(); };
+    const auto sendsReasoning = [&](int index) {
+        until([&] { return server.streams.size() == index + 1; }, "table stream starts");
+        server.reasoning(index, QStringLiteral("a reasoning fragment"));
+        until(showsThinking, "each table attempt displays its thinking indicator");
+    };
+    sendsReasoning(0);
+    require(readout()->captureState().mode == CanvasStatusReadout::DisplayMode::Persistent &&
+                readout()->testAttribute(Qt::WA_TransparentForMouseEvents) &&
+                readout()->focusPolicy() == Qt::NoFocus,
+            "thinking uses the persistent, mouse-transparent canvas readout");
+    const int previousTop = readout()->y();
+    require(window.updateSelectionGeometry(QRect(300, 180, 440, 220), QRectF(0, 0, 80, 60)),
+            "resize the result through the selection geometry update");
+    until([&] { return readout()->y() > previousTop; }, "resizing moves the readout down");
+    require(readout()->x() == 8 &&
+                readout()->geometry().bottom() + 9 == readout()->parentWidget()->height(),
+            "thinking stays inset from the recognition area's lower-left corner");
+    server.delta(0, QStringLiteral("unusable table"));
+    until(isHidden, "first output hides the readout before the initial stream ends");
+    require(session.busy(), "the table remains busy after reasoning ends");
+    server.finish(0);
+
+    sendsReasoning(1);
+    server.send(1, QByteArrayLiteral("data: {\"choices\":[{\"finish_reason\":\"stop\"}]}\n\n"));
+    until(isHidden, "finish reason immediately hides the correction readout");
+    require(session.busy(), "the finish reason does not end transport");
+    server.finish(1);
+    until([&] { return !session.busy(); }, "the empty correction finishes");
+
+    session.retryRecognition();
+    sendsReasoning(2);
+    server.send(2, QByteArrayLiteral("data: [DONE]\n\n"));
+    until(isHidden, "DONE without any output hides the readout before disconnect");
+    require(session.busy(), "DONE can be received before transport closes");
+    server.streams[2].socket->disconnectFromHost();
+    until([&] { return !session.busy(); }, "the empty retry finishes");
+
+    session.retryRecognition();
+    sendsReasoning(3);
+    server.fail(3);
+    until([&] { return !session.busy(); }, "an SSE error finishes recognition");
+    require(isHidden(), "an SSE error dismisses the active readout");
+
+    session.retryRecognition();
+    sendsReasoning(4);
+    session.setTarget(target(QStringLiteral("replacement-table")));
+    require(isHidden(), "target replacement dismisses the cancelled readout synchronously");
+    until([&] { return server.disconnected(4); }, "replacement cancels the old table stream");
+}
+
 } // namespace
 
 void runRecognitionModelTests() {
@@ -2021,8 +2114,9 @@ void runRecognitionModelTests() {
     emptyAndTruncatedTablesNeverBecomeFinalResults();
     tableStreamCancellationRejectsQueuedParses();
     tablePreviewIsReadOnlyUntilFinalAcceptance();
+    tableThinkingReadoutFollowsReasoningPhase();
     defaultsAndInactiveToolsDoNotFetchModels();
-    defaultLatexUsesDedicatedRecognitionWhileCatalogIsLoading();
+    defaultsWaitForCatalogAndUseFastVision();
     visionTablesRequireActualMarkupAndRetainMergedEmptyCells();
     visionTableHeadersFollowGridCoordinates();
     tableModelSwitchesPreserveSpansEditsAndUndo();

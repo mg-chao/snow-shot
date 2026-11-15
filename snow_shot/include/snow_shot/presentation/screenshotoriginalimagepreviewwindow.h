@@ -36,6 +36,7 @@ struct ScreenshotOriginalImagePreviewState final {
     QColor statusColor = {};
     QString status = {};
     QString mouseWheelZoomMode = QStringLiteral("mouse_position");
+    bool preferLeft = false;
 };
 
 class ScreenshotOriginalImagePreviewWindow final : public QWidget {
@@ -55,7 +56,7 @@ class ScreenshotOriginalImagePreviewWindow final : public QWidget {
     void refreshStacking();
 
     [[nodiscard]] static Placement placement(const QRect& resultRect, const QRect& workArea,
-                                             int gap);
+                                             int gap, bool preferLeft = false);
     [[nodiscard]] static QRect nativeClientRect(QWidget* widget);
     [[nodiscard]] static bool usesPhysicalGeometry();
 
@@ -105,6 +106,7 @@ class ScreenshotOriginalImagePreviewWindow final : public QWidget {
     QRect m_placementWorkArea;
     QPointer<QScreen> m_placementScreen;
     int m_placementGap = 0;
+    bool m_placementPreferLeft = false;
     qreal m_scalePercent = 100.0;
     QString m_mouseWheelZoomMode = QStringLiteral("mouse_position");
     snow_shot::presentation::WheelStepAccumulator m_wheelSteps;
@@ -122,6 +124,7 @@ class ScreenshotOriginalImagePreviewWindow final : public QWidget {
     quint64 m_rasterGeneration = 0;
     adqt::widgets::AdDpiStableWindowController* m_dpiController = nullptr;
     bool m_pinned = false;
+    bool m_preferLeft = false;
     bool m_staysOnTop = true;
     bool m_refreshPending = false;
     bool m_presenting = false;

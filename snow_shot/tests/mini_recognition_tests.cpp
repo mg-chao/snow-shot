@@ -176,7 +176,6 @@ void removedProvidersAndCachesDoNotParticipateInTextSessions() {
         require(session.active() && session.mode() == Mode::Text && !session.busy(mode),
                 "removed modes must preserve an active Mini text session");
     }
-    session.openImageConversionSettings();
     session.cancelWorkflow();
     session.invalidate();
     require(recognition.requests == 1 && qr.requests == 0 && qr.cancellations == 0,

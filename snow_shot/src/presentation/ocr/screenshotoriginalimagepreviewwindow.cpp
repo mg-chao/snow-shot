@@ -343,8 +343,8 @@ QRect ScreenshotOriginalImagePreviewWindow::nativeClientRect(QWidget* widget) {
 }
 
 ScreenshotOriginalImagePreviewWindow::Placement
-ScreenshotOriginalImagePreviewWindow::placement(const QRect& result, const QRect& workArea,
-                                                int gap) {
+ScreenshotOriginalImagePreviewWindow::placement(const QRect& result, const QRect& workArea, int gap,
+                                                bool preferLeft) {
     if (!result.isValid() || result.isEmpty())
         return {};
     gap = std::max(0, gap);
@@ -362,6 +362,7 @@ ScreenshotOriginalImagePreviewWindow::placement(const QRect& result, const QRect
                                              QSizeF(work.right() - rightEdge, work.height())};
     std::size_t direction = 0;
     qreal fittingScale = 0;
+    constexpr qreal minimumFittingScale = 0.5;
     for (std::size_t index = 0; index < available.size(); ++index) {
         const qreal scale =
             std::max(qreal(0), std::min({qreal(1), available[index].width() / result.width(),
@@ -370,8 +371,10 @@ ScreenshotOriginalImagePreviewWindow::placement(const QRect& result, const QRect
             fittingScale = scale;
             direction = index;
         }
+        if (preferLeft && index == 0 && fittingScale >= minimumFittingScale)
+            break;
     }
-    const qreal scale = fittingScale >= 0.5 ? fittingScale : 1.0;
+    const qreal scale = fittingScale >= minimumFittingScale ? fittingScale : 1.0;
     const QSize size = screenshot_pinned_resize_geometry::scaledSize(result.size(), scale);
     const auto aligned = [](qreal preferred, qreal start, qreal end, int extent) {
         return qRound(extent <= end - start ? std::clamp(preferred, start, end - extent)
@@ -381,17 +384,17 @@ ScreenshotOriginalImagePreviewWindow::placement(const QRect& result, const QRect
     if (direction == 0) {
         position = QPoint(qRound(qreal(result.x()) - gap - size.width()),
                           aligned(result.y(), work.top(), work.bottom(), size.height()));
-        if (fittingScale >= 0.5)
+        if (fittingScale >= minimumFittingScale)
             position.setX(qRound(leftEdge - size.width()));
     } else if (direction == 1) {
         position = QPoint(aligned(result.x(), work.left(), work.right(), size.width()),
                           qRound(qreal(result.y()) - gap - size.height()));
-        if (fittingScale >= 0.5)
+        if (fittingScale >= minimumFittingScale)
             position.setY(qRound(topEdge - size.height()));
     } else {
         position = QPoint(qRound(qreal(result.x()) + result.width() + gap),
                           aligned(result.y(), work.top(), work.bottom(), size.height()));
-        if (fittingScale >= 0.5)
+        if (fittingScale >= minimumFittingScale)
             position.setX(qRound(rightEdge));
     }
     return {QRect(position, size), scale};
@@ -427,7 +430,8 @@ bool ScreenshotOriginalImagePreviewWindow::present(
                                                        m_background,
                                                        m_statusColor,
                                                        m_status,
-                                                       m_mouseWheelZoomMode};
+                                                       m_mouseWheelZoomMode,
+                                                       m_preferLeft};
     const RasterState previousRaster = captureRaster();
     const QRect previousTarget = m_targetGeometry;
     const qreal previousPercent = m_scalePercent;
@@ -435,6 +439,7 @@ bool ScreenshotOriginalImagePreviewWindow::present(
     const QRect previousWorkArea = m_placementWorkArea;
     const QPointer<QScreen> previousScreen = m_placementScreen;
     const int previousGap = m_placementGap;
+    const bool previousPlacementPreferLeft = m_placementPreferLeft;
     const bool previousUserPositioned = m_userPositioned;
     const bool previousAutoPending = m_autoPlacementPending;
     const auto previousHint = m_scaleLabel->captureState();
@@ -448,10 +453,12 @@ bool ScreenshotOriginalImagePreviewWindow::present(
                             : kPreviewGap;
         const bool placementChanged =
             m_placementResultRect != state.resultRect || m_placementScreen != context.screen ||
-            m_placementWorkArea != context.workArea || m_placementGap != gap;
+            m_placementWorkArea != context.workArea || m_placementGap != gap ||
+            m_placementPreferLeft != state.preferLeft;
         if (placementChanged && m_dragging)
             m_autoPlacementPending = true;
-        const Placement automatic = placement(state.resultRect, context.workArea, gap);
+        const Placement automatic =
+            placement(state.resultRect, context.workArea, gap, state.preferLeft);
         if (placementChanged && !m_dragging) {
             m_userPositioned = false;
             m_scalePercent = automatic.scale * 100;
@@ -459,6 +466,7 @@ bool ScreenshotOriginalImagePreviewWindow::present(
             m_placementScreen = context.screen;
             m_placementWorkArea = context.workArea;
             m_placementGap = gap;
+            m_placementPreferLeft = state.preferLeft;
             m_autoPlacementPending = false;
             hideScaleReadout();
             m_wheelSteps.reset();
@@ -483,6 +491,7 @@ bool ScreenshotOriginalImagePreviewWindow::present(
         m_transientOwner = state.transientOwner;
         m_aboveSibling = state.aboveSibling;
         m_pinned = state.pinned;
+        m_preferLeft = state.preferLeft;
         m_staysOnTop = state.staysOnTop;
         const QRect target =
             m_dragging ? m_targetGeometry
@@ -503,6 +512,7 @@ bool ScreenshotOriginalImagePreviewWindow::present(
                 m_resultRect = previous.resultRect;
                 m_transientOwner = previous.transientOwner;
                 m_pinned = previous.pinned;
+                m_preferLeft = previous.preferLeft;
                 m_staysOnTop = previous.staysOnTop;
                 m_aboveSibling = previous.aboveSibling;
                 m_formula = previous.formula;
@@ -518,6 +528,7 @@ bool ScreenshotOriginalImagePreviewWindow::present(
                 m_placementWorkArea = previousWorkArea;
                 m_placementScreen = previousScreen;
                 m_placementGap = previousGap;
+                m_placementPreferLeft = previousPlacementPreferLeft;
                 m_userPositioned = previousUserPositioned;
                 m_autoPlacementPending = previousAutoPending;
                 restoreRaster(previousRaster);
@@ -571,6 +582,8 @@ void ScreenshotOriginalImagePreviewWindow::clear() {
     m_placementWorkArea = {};
     m_placementScreen.clear();
     m_placementGap = 0;
+    m_placementPreferLeft = false;
+    m_preferLeft = false;
     m_scalePercent = 100;
     m_mouseWheelZoomMode = QStringLiteral("mouse_position");
     m_userPositioned = false;
@@ -1160,7 +1173,7 @@ void ScreenshotOriginalImagePreviewWindow::scheduleRefresh() {
         static_cast<void>(
             present({m_sourceImage, m_imageRectInViewport, m_resultRect, m_transientOwner.data(),
                      m_pinned, m_staysOnTop, m_aboveSibling.data(), m_formula, m_dimmed,
-                     m_background, m_statusColor, m_status, m_mouseWheelZoomMode}));
+                     m_background, m_statusColor, m_status, m_mouseWheelZoomMode, m_preferLeft}));
     });
 }
 

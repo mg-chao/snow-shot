@@ -31,16 +31,8 @@
     <context>
         <name>ScreenshotImageConversionController</name>
         <message>
-            <source>Cancel</source>
-            <translation>Cancel</translation>
-        </message>
-        <message>
             <source>Image conversion failed</source>
             <translation>Image conversion failed</translation>
-        </message>
-        <message>
-            <source>Image conversion settings</source>
-            <translation>Image conversion settings</translation>
         </message>
         <message>
             <source>Model configuration changed. Retry to use the updated settings</source>
@@ -49,14 +41,6 @@
         <message>
             <source>No vision models are available</source>
             <translation>No vision models are available</translation>
-        </message>
-        <message>
-            <source>OK</source>
-            <translation>OK</translation>
-        </message>
-        <message>
-            <source>Retry</source>
-            <translation>Retry</translation>
         </message>
         <message>
             <source>The image conversion service is unavailable</source>
@@ -73,10 +57,6 @@
         <message>
             <source>Unable to load vision models</source>
             <translation>Unable to load vision models</translation>
-        </message>
-        <message>
-            <source>Vision model</source>
-            <translation>Vision model</translation>
         </message>
     </context>
     <context>

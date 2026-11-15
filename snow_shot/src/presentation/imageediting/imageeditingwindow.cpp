@@ -1335,7 +1335,6 @@ void ImageEditingWindow::Impl::bindRecognition() {
     SESSION_ACTION(textResetRequested, resetTextEditing);
     SESSION_ACTION(textSettingsRequested, openTranslationSettings);
     SESSION_ACTION(textTranslationServicesRequested, requestTextTranslationServices);
-    SESSION_ACTION(imageConversionSettingsRequested, openImageConversionSettings);
 #undef SESSION_ACTION
 #define SESSION_VALUE(signal, method)                                                              \
     QObject::connect(palette, &ScreenshotToolPalette::signal, &q, [this](const QString& value) {   \

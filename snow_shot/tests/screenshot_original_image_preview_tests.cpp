@@ -177,6 +177,16 @@ void placementHonorsTheResultMonitorAndPriority() {
           "equal fitting scales must use left, above, right priority");
     check(QRect(400, 750, 200, 100), work, 4, QRect(196, 700, 200, 100), 1.0,
           "a full-size side fit must clamp the orthogonal position near the bottom edge");
+    const QRect leftFitsHalf(304, 84, 600, 100);
+    const QRect squareWork(0, 0, 1000, 1000);
+    const auto preferredLeft = Preview::placement(leftFitsHalf, squareWork, 4, true);
+    require(preferredLeft.geometry == QRect(0, 84, 300, 50) && preferredLeft.scale == 0.5,
+            "table placement prefers the left at fifty percent even with more space above");
+    const QRect leftFitsLess(303, 84, 600, 100);
+    const auto fallback = Preview::placement(leftFitsLess, squareWork, 4, true);
+    require(fallback.geometry == Preview::placement(leftFitsLess, squareWork, 4).geometry &&
+                fallback.geometry.bottom() < leftFitsLess.top(),
+            "table placement uses the existing fallback below fifty percent");
     require(Preview::placement({}, work, 4).geometry.isEmpty(),
             "empty results must not produce a preview");
 }

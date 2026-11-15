@@ -30,6 +30,7 @@ class QMouseEvent;
 class QMimeData;
 class QPaintEvent;
 class QResizeEvent;
+class CanvasStatusReadout;
 class QScreen;
 class QWindow;
 class QStackedLayout;
@@ -141,7 +142,7 @@ class ScreenshotRecognitionWindow final : public QWidget {
 
     void setShowOriginalImage(bool show);
     [[nodiscard]] bool showsOcrLayer() const;
-    void setOriginalImagePreviewEnabled(bool enabled);
+    void setOriginalImagePreviewEnabled(bool enabled, bool preferLeft = false);
     [[nodiscard]] bool originalImagePreviewEnabled() const;
     void setOriginalImagePreviewSource(QImage image, const QRectF& canvasRect);
     void setOriginalImagePreviewProvider(
@@ -197,6 +198,7 @@ class ScreenshotRecognitionWindow final : public QWidget {
         bool takeFocus = true, std::optional<QTransform> documentToCanvas = std::nullopt);
     void clearFormattedText();
 
+    void setModelThinking(bool active);
     void setTableSession(std::shared_ptr<ScreenshotTableEditingSession> session);
     void showTablePreview(const ScreenshotTableDocument& document);
     void clearTableSession(bool retainEditor = false);
@@ -318,6 +320,7 @@ class ScreenshotRecognitionWindow final : public QWidget {
     QImage m_originalImagePreviewSource;
     QRectF m_originalImagePreviewCanvasRect;
     bool m_originalImagePreviewEnabled = false;
+    bool m_originalImagePreviewPreferLeft = false;
     bool m_originalImagePreviewSuppressed = false;
     bool m_originalImagePreviewRefreshPending = false;
     bool m_originalImagePreviewStaysOnTop = true;
@@ -388,6 +391,8 @@ class ScreenshotRecognitionWindow final : public QWidget {
     static constexpr QWidget* m_conversionView = nullptr;
 #endif
     ScreenshotFormattedTextLayer* m_formattedTextLayer = nullptr;
+    CanvasStatusReadout* m_modelThinkingReadout = nullptr;
+    bool m_modelThinkingActive = false;
 #if SNOW_SHOT_ENABLE_TABLE_RECOGNITION
     ScreenshotTableEditor* m_tableEditor = nullptr;
     bool m_tablePreview = false;

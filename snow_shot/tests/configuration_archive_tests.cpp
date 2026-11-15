@@ -310,16 +310,17 @@ void recognitionModelPreferencesSurviveRestart(const QTemporaryDir& temporary) {
     const QString latexKey = QStringLiteral("screenshot_latex/model");
     const QString path = temporary.filePath(QStringLiteral("recognition-models.json"));
     const QString custom = QStringLiteral("custom:11111111-1111-4111-8111-111111111111");
+    const QString fast = QStringLiteral("snow-shot:vision");
+    const QString dedicated = QStringLiteral("dedicated");
     {
         storage::ConfigurationStore store(path, true, true);
-        require(store.value(tableKey).toString() == QStringLiteral("dedicated") &&
-                    store.value(latexKey).toString() == QStringLiteral("dedicated"),
-                "Table and LaTeX both default to dedicated recognition models");
-        require(store.setValue(tableKey, custom) &&
-                    store.value(latexKey).toString() == QStringLiteral("dedicated"),
+        require(store.value(tableKey).toString() == fast &&
+                    store.value(latexKey).toString() == fast,
+                "Table and LaTeX both default to the fast vision model");
+        require(store.setValue(tableKey, custom) && store.value(latexKey).toString() == fast,
                 "saving a table model must preserve the LaTeX model preference");
-        require(store.setValue(latexKey, QStringLiteral("snow-shot:vision")),
-                "LaTeX supports an independently saved vision model");
+        require(store.setValue(latexKey, dedicated),
+                "LaTeX supports an independently saved dedicated model");
         for (const QString& invalid :
              {QString(), QStringLiteral("bad\nmodel"), QStringLiteral("model with spaces"),
               QString(257, u'x'), QString(QChar(0))}) {
@@ -331,7 +332,7 @@ void recognitionModelPreferencesSurviveRestart(const QTemporaryDir& temporary) {
     }
     storage::ConfigurationStore restored(path, true, true);
     require(restored.value(tableKey).toString() == custom &&
-                restored.value(latexKey).toString() == QStringLiteral("snow-shot:vision"),
+                restored.value(latexKey).toString() == dedicated,
             "both recognition preferences survive a fresh configuration store");
     const QString archive = temporary.filePath(QStringLiteral("recognition-models.zip"));
     require(storage::ConfigurationArchive::write(
@@ -340,8 +341,61 @@ void recognitionModelPreferencesSurviveRestart(const QTemporaryDir& temporary) {
             "recognition preferences export through configuration archives");
     const auto imported = storage::ConfigurationArchive::read(archive);
     require(imported.isValid() && imported.values.value(tableKey).toString() == custom &&
-                imported.values.value(latexKey).toString() == QStringLiteral("snow-shot:vision"),
+                imported.values.value(latexKey).toString() == dedicated,
             "configuration archives retain both model identities");
+}
+
+void legacyRecognitionModelPreferencesMigrateOnce(const QTemporaryDir& temporary) {
+    const auto tableKey = QStringLiteral("screenshot_table/model");
+    const auto latexKey = QStringLiteral("screenshot_latex/model");
+    const auto fast = QStringLiteral("snow-shot:vision");
+    const auto dedicated = QStringLiteral("dedicated");
+    const auto expert = QStringLiteral("expert-model");
+    const auto custom = QStringLiteral("custom:11111111-1111-4111-8111-111111111111");
+    const auto conversionKey = QStringLiteral("screenshot_conversion/vision_model");
+    const auto conversionModel = QStringLiteral("vision-custom");
+    const QString path = temporary.filePath(QStringLiteral("legacy-recognition-models.json"));
+    QFile file(path);
+    require(file.open(QIODevice::WriteOnly), "open the version 5 settings fixture");
+    const auto legacySettings =
+        QByteArrayLiteral(R"({"storage":{"schema_version":5},)"
+                          R"("screenshot_table":{"model":"dedicated"},)"
+                          R"("screenshot_latex":{"model":"expert-model"},)"
+                          R"("screenshot_conversion":{"vision_model":"vision-custom"}})");
+    require(file.write(legacySettings) == legacySettings.size(), "write legacy model preferences");
+    file.close();
+
+    const auto requireModels = [&](const storage::ConfigurationStore& store, const QString& table,
+                                   const QString& latex) {
+        require(store.value(tableKey).toString() == table &&
+                    store.value(latexKey).toString() == latex &&
+                    store.value(conversionKey).toString() == conversionModel,
+                "migration replaces the old default and preserves explicit model choices");
+    };
+    {
+        storage::ConfigurationStore store(path, true, true);
+        requireModels(store, fast, expert);
+        require(store.flushNow().success, "persist migrated settings");
+    }
+    storage::ConfigurationStore restored(path, true, true);
+    requireModels(restored, fast, expert);
+    require(restored.value(QStringLiteral("storage/schema_version")).toInt() ==
+                    storage::ConfigurationStore::currentSchemaVersion() &&
+                restored.setValue(tableKey, dedicated) && restored.flushNow().success,
+            "the upgraded schema permits a new dedicated model selection");
+    storage::ConfigurationStore reopened(path, true, true);
+    requireModels(reopened, dedicated, expert);
+
+    const QString archive = temporary.filePath(QStringLiteral("legacy-recognition-models.zip"));
+    require(storage::ConfigurationArchive::write(
+                archive,
+                {{tableKey, custom}, {latexKey, dedicated}, {conversionKey, conversionModel}}, 5)
+                .isEmpty(),
+            "write a version 5 settings archive");
+    const auto imported = storage::ConfigurationArchive::read(archive);
+    require(imported.isValid() && reopened.applySnapshot(imported.values, imported.schemaVersion),
+            "import the version 5 settings archive");
+    requireModels(reopened, custom, fast);
 }
 
 void readRejectsInvalidArchives(const QTemporaryDir& temporary) {
@@ -805,6 +859,7 @@ int main(int argc, char** argv) {
     }
     if (application.arguments().contains(QStringLiteral("--recognition-models-only"))) {
         recognitionModelPreferencesSurviveRestart(temporary);
+        legacyRecognitionModelPreferencesMigrateOnce(temporary);
         return 0;
     }
     smartSelectionArchivesMigrateAndRoundTrip(temporary);
@@ -819,6 +874,7 @@ int main(int argc, char** argv) {
     pinnedShortcutDefaultsRespectExclusiveContexts(temporary);
     selectionAspectRatioArchivesPreservePreferences(temporary);
     recognitionModelPreferencesSurviveRestart(temporary);
+    legacyRecognitionModelPreferencesMigrateOnce(temporary);
     mcpCredentialRedactionAndRevision(temporary);
     return 0;
 }

@@ -88,10 +88,15 @@ class Server final : public QObject {
         socket->flush();
     }
     void delta(int index, const QString& text) {
+        sendChatDelta(index, QStringLiteral("content"), text);
+    }
+    void reasoning(int index, const QString& text) {
+        sendChatDelta(index, QStringLiteral("reasoning_content"), text);
+    }
+    void sendChatDelta(int index, const QString& field, const QString& text) {
         const QJsonObject json{
             {QStringLiteral("choices"),
-             QJsonArray{QJsonObject{
-                 {QStringLiteral("delta"), QJsonObject{{QStringLiteral("content"), text}}}}}}};
+             QJsonArray{QJsonObject{{QStringLiteral("delta"), QJsonObject{{field, text}}}}}}};
         send(index, QByteArrayLiteral("data: ") +
                         QJsonDocument(json).toJson(QJsonDocument::Compact) +
                         QByteArrayLiteral("\n\n"));

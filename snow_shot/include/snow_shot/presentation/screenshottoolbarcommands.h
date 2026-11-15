@@ -91,7 +91,6 @@ class ScreenshotToolbarCommandSink {
     virtual void setRecognitionModel(const QString&) {}
     virtual void setMarkdownTool() {}
     virtual void setHtmlTool() {}
-    virtual void openImageConversionSettings() {}
     virtual void mergeTableSelection() {}
     virtual void splitTableSelection() {}
     virtual void resetTable() {}

@@ -2663,7 +2663,7 @@ void pinnedOriginalImagePreviewFollowsViewAndAuxiliaryLifecycle() {
     require(canvas->internalWinId() == 0 && content->internalWinId() == 0,
             "creating the preview must preserve the pin's shared nonnative recognition canvas");
     int projectionPass = 0;
-    const auto verifyProjection = [&] {
+    const auto verifyProjection = [&](bool preferLeft = false) {
         ++projectionPass;
         refreshPreview();
         const auto source = Access::originalPreviewSource(window);
@@ -2699,7 +2699,7 @@ void pinnedOriginalImagePreviewFollowsViewAndAuxiliaryLifecycle() {
                               QSizeF(contentNative.size()) / contentDpr)
                            .toRect();
         const auto placement = ScreenshotOriginalImagePreviewWindow::placement(
-            result, PreviewAccess::workArea(*preview), PreviewAccess::gap(*preview));
+            result, PreviewAccess::workArea(*preview), PreviewAccess::gap(*preview), preferLeft);
         const QSize expectedSize = placement.geometry.size();
         if (ScreenshotOriginalImagePreviewWindow::nativeClientRect(preview).size() !=
             expectedSize) {
@@ -2843,6 +2843,13 @@ void pinnedOriginalImagePreviewFollowsViewAndAuxiliaryLifecycle() {
     verifyProjection();
     require(session->editing(), "text editing must keep its original-image preview visible");
     session->endTextEditing();
+
+#if SNOW_SHOT_ENABLE_TABLE_RECOGNITION
+    session->activate(ScreenshotRecognitionSessionController::Mode::Table);
+    verifyProjection(true);
+    session->activate(ScreenshotRecognitionSessionController::Mode::Text);
+    verifyProjection();
+#endif
 
     const auto initialSource = Access::originalPreviewSource(window);
     auto clippedSource = initialSource;

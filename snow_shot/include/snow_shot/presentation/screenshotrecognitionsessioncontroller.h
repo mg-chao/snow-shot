@@ -173,7 +173,6 @@ class ScreenshotRecognitionSessionController final : public QObject {
     [[nodiscard]] bool tableModeActive() const;
     [[nodiscard]] bool qrModeActive() const;
     [[nodiscard]] bool conversionModeActive() const;
-    void openImageConversionSettings();
 
     void mergeTableSelection();
     void splitTableSelection();
@@ -487,6 +486,7 @@ class ScreenshotRecognitionSessionController final : public QObject {
         QString rawSource;
         QString source;
         std::shared_ptr<QTextDocument> document;
+        bool reasoningActive = false;
     };
     std::shared_ptr<LatexStreamState> m_latexStream;
     QTimer* m_latexStreamTimer = nullptr;

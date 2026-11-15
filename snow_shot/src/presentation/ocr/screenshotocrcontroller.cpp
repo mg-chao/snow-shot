@@ -426,10 +426,6 @@ void ScreenshotOcrController::activateImageConversion(SnowShotImageConversionFor
     activateMode(format == SnowShotImageConversionFormat::Markdown ? Mode::Markdown : Mode::Html);
 }
 
-void ScreenshotOcrController::openImageConversionSettings() {
-    m_session->openImageConversionSettings();
-}
-
 namespace {
 QImage clipRecognitionSelection(QImage image, const ScreenshotSelectionModel& selection) {
     if (image.isNull() || selection.rectangular())

@@ -443,7 +443,6 @@ struct ScreenshotController::Impl final : public ScreenshotToolbarCommandSink,
     void setLatexTool() override;
     void setMarkdownTool() override;
     void setHtmlTool() override;
-    void openImageConversionSettings() override;
     void setRecognitionModel(const QString& selection) override;
     void mergeTableSelection() override;
     void splitTableSelection() override;
@@ -2982,14 +2981,6 @@ void ScreenshotController::Impl::setHtmlTool() {
     m_ocrController->activateImageConversion(SnowShotImageConversionFormat::Html);
     m_presentationServices->updateOverlayState();
     restoreToolUiAfterScrollingCapture(stopped);
-#endif
-}
-
-void ScreenshotController::Impl::openImageConversionSettings() {
-#if SNOW_SHOT_ENABLE_IMAGE_CONVERSION
-    if (m_ocrController != nullptr) {
-        m_ocrController->openImageConversionSettings();
-    }
 #endif
 }
 

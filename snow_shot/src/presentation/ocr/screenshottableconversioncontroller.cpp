@@ -25,6 +25,7 @@ void ScreenshotTableConversionController::cancel() {
     // Keep the worker slot until its completion is delivered. A replacement conversion
     // can collect text in the meantime, but must not start a second concurrent parser.
     m_busy = false;
+    m_reasoningActive = false;
     disconnect(m_providerDestroyed);
     const auto token = std::exchange(m_request, 0);
     m_conversation.reset();
@@ -92,10 +93,17 @@ void ScreenshotTableConversionController::sendAttempt(const QImage& image, const
         m_previewTimer.stop();
         parse();
     };
-    const auto token =
-        m_correcting
-            ? m_api->correctTableVision(m_conversation, failedSource, this, delta, completion)
-            : m_api->streamTableVision(image, model, m_conversation, this, delta, completion);
+    const auto reasoningProgress = [this, generation](bool active) {
+        if (generation != m_generation || !m_busy)
+            return;
+        m_reasoningActive = active;
+        emit reasoningChanged(active);
+    };
+    const auto token = m_correcting
+                           ? m_api->correctTableVision(m_conversation, failedSource, this, delta,
+                                                       completion, reasoningProgress)
+                           : m_api->streamTableVision(image, model, m_conversation, this, delta,
+                                                      completion, reasoningProgress);
     if (!guard || generation != m_generation || !m_busy)
         return;
     m_request = token;

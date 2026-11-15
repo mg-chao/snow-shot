@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/screenshotrecognitionwindow.h"
+#include "snow_shot/presentation/canvasstatusreadout.h"
 #include "snow_shot/presentation/crosshaircursor.h"
 #include "snow_shot/presentation/screenshotocrtextlayout.h"
 #include <QAbstractTextDocumentLayout>
@@ -625,11 +626,13 @@ bool ScreenshotRecognitionWindow::updateSelectionGeometry(const QRect& geometry,
     return true;
 }
 
-void ScreenshotRecognitionWindow::setOriginalImagePreviewEnabled(bool enabled) {
-    if (m_originalImagePreviewEnabled == enabled) {
+void ScreenshotRecognitionWindow::setOriginalImagePreviewEnabled(bool enabled, bool preferLeft) {
+    if (m_originalImagePreviewEnabled == enabled &&
+        m_originalImagePreviewPreferLeft == preferLeft) {
         return;
     }
     m_originalImagePreviewEnabled = enabled;
+    m_originalImagePreviewPreferLeft = preferLeft;
     refreshOriginalImagePreview();
 }
 
@@ -793,6 +796,7 @@ void ScreenshotRecognitionWindow::updateOriginalImagePreview() {
         return;
     }
     state->staysOnTop = m_originalImagePreviewStaysOnTop;
+    state->preferLeft = m_originalImagePreviewPreferLeft;
     if (m_originalImagePreviewAboveSiblingProvider) {
         state->aboveSibling = m_originalImagePreviewAboveSiblingProvider();
     }
@@ -840,11 +844,12 @@ ScreenshotRecognitionImageSnapshot ScreenshotRecognitionWindow::ocrImageSnapshot
 
 ScreenshotRecognitionWindow::AttachmentToken
 ScreenshotRecognitionWindow::attachSession(QObject* owner, SessionCallbacks callbacks) {
-    ++m_attachmentToken;
+    const auto token = ++m_attachmentToken;
     m_sessionOwner = owner;
     m_sessionAttached = true;
     m_sessionCallbacks = std::move(callbacks);
-    return m_attachmentToken;
+    setModelThinking(false);
+    return token;
 }
 
 bool ScreenshotRecognitionWindow::ownsAttachment(const QObject* owner,
@@ -866,6 +871,7 @@ void ScreenshotRecognitionWindow::detachSession(const QObject* owner, Attachment
     m_sessionOwner.clear();
     m_sessionAttached = false;
     m_sessionCallbacks = {};
+    setModelThinking(false);
 }
 
 bool ScreenshotRecognitionWindow::translationCopyActive() const {
@@ -1414,6 +1420,25 @@ void ScreenshotRecognitionWindow::showTablePreview(const ScreenshotTableDocument
 #else
     Q_UNUSED(document)
 #endif
+}
+
+void ScreenshotRecognitionWindow::setModelThinking(bool active) {
+    m_modelThinkingActive = active;
+    if (!active) {
+        if (m_modelThinkingReadout)
+            m_modelThinkingReadout->dismiss();
+        return;
+    }
+    if (!m_modelThinkingReadout) {
+        m_modelThinkingReadout = new CanvasStatusReadout(m_contentContainer);
+        m_modelThinkingReadout->setObjectName(QStringLiteral("screenshotModelThinkingReadout"));
+        m_modelThinkingReadout->setMessage(CanvasStatusReadout::Message::Thinking);
+        m_contentContainer->installEventFilter(this);
+    }
+    if (m_modelThinkingReadout->isHidden()) {
+        m_modelThinkingReadout->layoutIn(m_contentContainer->rect());
+        m_modelThinkingReadout->showPersistent();
+    }
 }
 
 void ScreenshotRecognitionWindow::clearTableSession(bool retainEditor) {
@@ -2849,6 +2874,12 @@ bool ScreenshotRecognitionWindow::eventFilter(QObject* watched, QEvent* event) {
     if (m_presentationMode == PresentationMode::EmbeddedChild && m_embeddedPointerEventHandler &&
         m_embeddedPointerEventHandler(watched, event))
         return true;
+    if (event != nullptr && event->type() == QEvent::Resize && watched == m_contentContainer &&
+        m_modelThinkingActive && m_modelThinkingReadout) {
+        m_modelThinkingReadout->layoutIn(m_contentContainer->rect());
+        if (m_modelThinkingReadout->isHidden())
+            m_modelThinkingReadout->showPersistent();
+    }
     if (event != nullptr &&
         (watched == this || watched == window() || watched == m_originalImagePreviewHost ||
          watched == m_originalImagePreviewHostHandle)) {

@@ -1010,8 +1010,8 @@ ScreenshotToolPalette::ScreenshotToolPalette(const Options& options, QWidget* pa
       m_actionToolsLayout(initialActionToolsLayout(options)),
       m_actionToolsLayoutExplicit(options.actionToolsLayout.has_value()) {
     m_documentRecognitionModelState.selection = screenshotDedicatedRecognitionModelId();
-    m_tableRecognitionModelState.selection = screenshotDedicatedRecognitionModelId();
-    m_latexRecognitionModelState.selection = screenshotDedicatedRecognitionModelId();
+    m_tableRecognitionModelState.selection = screenshotDefaultVisionRecognitionModelId();
+    m_latexRecognitionModelState.selection = screenshotDefaultVisionRecognitionModelId();
     const toolbar_settings::ScreenshotToolbarSettings settings;
 #if SNOW_SHOT_ENABLE_TABLE_RECOGNITION || SNOW_SHOT_ENABLE_QR_RECOGNITION
     m_tableQrEntryTool = tableQrToolFromSetting(settings.tableQrTool());
@@ -1645,8 +1645,6 @@ bool ScreenshotToolPalette::setSecondaryToolbarVisibility(bool actionToolbarVisi
         (m_showOriginalImageButton == nullptr ||
          m_showOriginalImageButton->isHidden() == !originalVisible) &&
         (m_moveActionControls == nullptr || m_moveActionControls->isHidden() == !moveVisible) &&
-        (m_conversionSettingsButton == nullptr ||
-         m_conversionSettingsButton->isHidden() == !conversionVisible) &&
         (m_textEditButton == nullptr || m_textEditButton->isHidden() == !ocrVisible) &&
         (m_textTargetLanguageSelect == nullptr ||
          m_textTargetLanguageSelect->isHidden() == !targetLanguageVisible) &&
@@ -1677,9 +1675,6 @@ bool ScreenshotToolPalette::setSecondaryToolbarVisibility(bool actionToolbarVisi
     m_styleToolbarTargetVisible = styleToolbarVisible;
     if (m_moveActionControls != nullptr) {
         m_moveActionControls->setVisible(moveVisible);
-    }
-    if (m_conversionSettingsButton != nullptr) {
-        m_conversionSettingsButton->setVisible(conversionVisible);
     }
     for (QWidget* widget : std::as_const(m_selectionActionControls)) {
         if (widget != nullptr) {
@@ -8562,7 +8557,6 @@ void ScreenshotToolPalette::clearSecondaryResourceBindings() {
     m_jumpToTranslationPageLeadingSpacer = nullptr;
     m_textResetButton = nullptr;
     m_textSettingsButton = nullptr;
-    m_conversionSettingsButton = nullptr;
     m_tableMergeButton = nullptr;
     m_tableSplitButton = nullptr;
     m_tableResetButton = nullptr;
@@ -8971,7 +8965,7 @@ bool ScreenshotToolPalette::ensureActionFamily(ActionFamily family) {
         break;
     case ActionFamily::ImageConversion:
 #if SNOW_SHOT_ENABLE_IMAGE_CONVERSION
-        createImageConversionActionFamily();
+        createRecognitionModelSelect();
 #else
         return false;
 #endif
@@ -9673,24 +9667,6 @@ void ScreenshotToolPalette::setImageConversionBusy(bool markdownBusy, bool htmlB
 #endif
 }
 
-#if SNOW_SHOT_ENABLE_IMAGE_CONVERSION
-void ScreenshotToolPalette::createImageConversionActionFamily() {
-    if (m_selectActionLayout == nullptr || m_conversionSettingsButton != nullptr) {
-        return;
-    }
-    createRecognitionModelSelect();
-    m_recognitionModelSpacer = addStyleToolbarSpacing(m_selectActionLayout, STYLE_ITEM_SPACING);
-    m_conversionSettingsButton = createScreenshotToolPaletteStyleActionButton(
-        m_selectActionPanel, QT_TRANSLATE_NOOP("ScreenshotToolPalette", "Settings"),
-        outlined_icons::Setting(), actionButtonMetrics(m_physicalScale));
-    m_conversionSettingsButton->setObjectName(
-        QStringLiteral("screenshotImageConversionSettingsButton"));
-    m_selectActionLayout->addWidget(m_conversionSettingsButton);
-    connect(m_conversionSettingsButton, &adqt::widgets::AdButton::clicked, this,
-            &ScreenshotToolPalette::imageConversionSettingsRequested);
-}
-#endif
-
 #if SNOW_SHOT_ENABLE_TABLE_RECOGNITION
 void ScreenshotToolPalette::createTableRecognitionActionFamily() {
     if (m_selectActionLayout == nullptr || m_tableMergeButton != nullptr) {
@@ -9811,7 +9787,8 @@ void ScreenshotToolPalette::setRecognitionModelState(Tool tool,
     }
     auto normalized = state;
     if (normalized.selection.isEmpty() && stored != &m_conversionModelState) {
-        normalized.selection = screenshotDedicatedRecognitionModelId();
+        normalized.selection = tool == Tool::Document ? screenshotDedicatedRecognitionModelId()
+                                                      : screenshotDefaultVisionRecognitionModelId();
     }
     if (*stored == normalized)
         return;
@@ -9838,15 +9815,6 @@ void ScreenshotToolPalette::refreshRecognitionModelSelect() {
     const auto& state = *modelState;
     QVector<AdSelect::Option> options;
     options.reserve(state.models.size() + 1);
-    if (modelState != &m_conversionModelState) {
-        options.push_back(
-            {screenshotDedicatedRecognitionModelId(),
-             m_activeTool == Tool::Document ? tr("Document Recognition Model")
-             : m_activeTool == Tool::Table  ? tr("Table-specific model")
-                                            : tr("LaTeX-specific model"),
-             false,
-             m_activeTool == Tool::Document ? tr("Dedicated Models") : tr("Dedicated model")});
-    }
     QSet<QString> modelIds{screenshotDedicatedRecognitionModelId(),
                            screenshotDefaultVisionRecognitionModelId()};
     modelIds.reserve(state.models.size() + 2);
@@ -9868,6 +9836,16 @@ void ScreenshotToolPalette::refreshRecognitionModelSelect() {
         options.push_back(
             {model.id, model.name.isEmpty() ? model.id : model.name, false, tr("Vision model")});
     }
+    const bool hasDedicatedModel = modelState != &m_conversionModelState;
+    if (hasDedicatedModel) {
+        options.push_back(
+            {screenshotDedicatedRecognitionModelId(),
+             m_activeTool == Tool::Document ? tr("Document Recognition Model")
+             : m_activeTool == Tool::Table  ? tr("Table-specific model")
+                                            : tr("LaTeX-specific model"),
+             false,
+             m_activeTool == Tool::Document ? tr("Dedicated Models") : tr("Dedicated model")});
+    }
     // Keep the semantic default in preferences while displaying its catalog name and identity.
     // Explicit catalog choices remain distinct from that default as the server order changes.
     const QString defaultModel =
@@ -9886,7 +9864,8 @@ void ScreenshotToolPalette::refreshRecognitionModelSelect() {
         selectedLabel = selection == screenshotDefaultVisionRecognitionModelId()
                             ? tr("Snow Shot visual understanding")
                             : tr("Selected model (%1)").arg(selection);
-        options.push_back({selection, selectedLabel, true, tr("Vision model")});
+        options.insert(options.size() - int(hasDedicatedModel),
+                       {selection, selectedLabel, true, tr("Vision model")});
     } else if (!unavailable) {
         selectedLabel = selected->label;
     }

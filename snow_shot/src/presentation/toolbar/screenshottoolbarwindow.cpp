@@ -280,10 +280,6 @@ void ScreenshotToolbarWindow::connectToolCommands(ScreenshotToolPalette& toolPal
         setActiveToolAndReposition(ScreenshotToolPalette::Tool::Html);
     });
 #endif
-#if SNOW_SHOT_ENABLE_IMAGE_CONVERSION
-    connect(&toolPalette, &ScreenshotToolPalette::imageConversionSettingsRequested, this,
-            [this]() { m_commands.openImageConversionSettings(); });
-#endif
 #if SNOW_SHOT_ENABLE_QR_RECOGNITION
     connect(&toolPalette, &ScreenshotToolPalette::qrRequested, this, [this]() {
         m_commands.setQrTool();
