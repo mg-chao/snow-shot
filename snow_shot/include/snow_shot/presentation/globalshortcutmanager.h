@@ -71,6 +71,7 @@ class GlobalShortcutManager final : public QObject {
                       const snow_shot::presentation::GlobalShortcutRegistrationState& state);
     void globalShortcutsEnabledChanged(bool enabled);
     void focusedFullscreenSuppressionChanged(bool active);
+    void focusedFullscreenMouseSuppressionChanged(bool active);
 
   private:
     class Impl;

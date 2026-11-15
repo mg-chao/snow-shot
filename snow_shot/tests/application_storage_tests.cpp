@@ -98,30 +98,42 @@ void fullscreenWindowFilterPersistsAndDefaultsToGames() {
     const QString key = QStringLiteral("global_shortcuts/fullscreen_window_filter");
     const QString enabledKey =
         QStringLiteral("global_shortcuts/disable_on_focused_fullscreen_window");
+    const QString scopeKey = QStringLiteral("global_shortcuts/fullscreen_disable_scope");
+    const QJsonArray defaultScope{QStringLiteral("global_shortcuts")};
+    const QJsonArray mouseScope{QStringLiteral("global_mouse")};
     QMap<QString, QJsonValue> exported;
     {
         storage::ConfigurationStore store(path, true, true, 60000);
         require(store.value(key) == QJsonValue(QStringLiteral("game_windows")) &&
-                    !store.value(enabledKey).toBool(),
+                    !store.value(enabledKey).toBool() && store.value(scopeKey) == defaultScope,
                 "new configurations default to game filtering without enabling suppression");
         require(store.setValue(key, QStringLiteral("all_windows")) &&
                     !store.setValue(key, QStringLiteral("unknown")) && !store.setValue(key, true) &&
                     store.value(key) == QJsonValue(QStringLiteral("all_windows")),
                 "only the two stable filter identifiers can be persisted");
+        require(store.setValue(scopeKey, mouseScope) && !store.setValue(scopeKey, true) &&
+                    store.value(scopeKey) == mouseScope,
+                "the fullscreen scope is stored as a list independently of the filter");
         exported = store.snapshot();
         require(store.flushNow().success, "persist the selected fullscreen filter");
     }
     storage::ConfigurationStore reloaded(path, true, true, 60000);
-    require(reloaded.value(key) == QJsonValue(QStringLiteral("all_windows")),
-            "fullscreen filter survives a storage restart");
+    require(reloaded.value(key) == QJsonValue(QStringLiteral("all_windows")) &&
+                reloaded.value(scopeKey) == mouseScope,
+            "fullscreen filter and scope survive a storage restart");
     storage::ConfigurationStore imported(temporary.filePath(QStringLiteral("import.json")), true,
                                          true, 60000);
     require(imported.applySnapshot(exported) &&
-                imported.value(key) == QJsonValue(QStringLiteral("all_windows")),
-            "configuration snapshots export and import the filter");
+                imported.value(key) == QJsonValue(QStringLiteral("all_windows")) &&
+                imported.value(scopeKey) == mouseScope,
+            "configuration snapshots export and import the filter and its scope");
     require(imported.applySnapshot({{enabledKey, true}}) && imported.value(enabledKey).toBool() &&
-                imported.value(key) == QJsonValue(QStringLiteral("game_windows")),
-            "older configurations retain suppression but adopt the game filter default");
+                imported.value(key) == QJsonValue(QStringLiteral("game_windows")) &&
+                imported.value(scopeKey) == defaultScope,
+            "older configurations retain suppression and adopt the default filter and scope");
+    require(imported.applySnapshot({{scopeKey, QJsonArray{}}}) &&
+                imported.value(scopeKey) == QJsonArray{},
+            "an explicitly empty fullscreen scope survives import");
     require(imported.applySnapshot({{key, QStringLiteral("unsupported")}}) &&
                 imported.value(key) == QJsonValue(QStringLiteral("game_windows")),
             "invalid imported filters recover to game windows");

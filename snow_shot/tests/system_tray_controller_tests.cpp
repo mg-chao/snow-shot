@@ -209,6 +209,9 @@ void verifyConfiguredTrayMenuOptions(snow_shot::presentation::SystemTrayControll
     const auto stitchId = QStringLiteral("quick.stitch-selected-images");
     const auto splitId = QStringLiteral("quick.split-selected-images");
     const auto editId = QStringLiteral("quick.edit-selected-images");
+    const auto mouseToggleId = QStringLiteral("quick.toggle-global-mouse");
+    const auto defaults = TraySettings().menuOptions();
+    require(!defaults.contains(mouseToggleId), "the mouse toggle is omitted from default settings");
 #ifdef Q_OS_WIN
     const auto topmostId = QStringLiteral("quick.toggle-window-under-cursor-always-on-top");
     require(!TraySettings().menuOptions().contains(topmostId),
@@ -239,22 +242,34 @@ void verifyConfiguredTrayMenuOptions(snow_shot::presentation::SystemTrayControll
         persisted.append(value.toString());
     }
     require(persisted == options, "loading saved tray selections must preserve every option");
-    controller.setMenuOptions(persisted);
+    controller.setMenuOptions(defaults);
+    controller.setQuickActionChecked(Action::ToggleGlobalMouse, true);
     QPointer<adqt::widgets::AdContextMenu> menu = controller.createContextMenu();
     QApplication::processEvents();
     QStringList visible;
     QAction* stitching = nullptr;
     QAction* splitting = nullptr;
     QAction* editing = nullptr;
+    QAction* mouseToggle = nullptr;
     for (auto* action : menu->actions()) {
-        if (!action->isSeparator() && action->isVisible())
-            visible.append(action->data().toString());
         if (action->data().toString() == stitchId)
             stitching = action;
         if (action->data().toString() == splitId)
             splitting = action;
         if (action->data().toString() == editId)
             editing = action;
+        if (action->data().toString() == mouseToggleId)
+            mouseToggle = action;
+    }
+    require(mouseToggle && !mouseToggle->isVisible() && mouseToggle->isCheckable() &&
+                mouseToggle->isChecked() &&
+                mouseToggle->text() == QStringLiteral("Disable global mouse"),
+            "the hidden mouse toggle keeps its manual check state when the menu is built");
+    controller.setQuickActionChecked(Action::ToggleGlobalMouse, false);
+    controller.setMenuOptions(persisted);
+    for (auto* action : menu->actions()) {
+        if (!action->isSeparator() && action->isVisible())
+            visible.append(action->data().toString());
     }
     require(visible == options, "the tray must display every persisted selection, including Exit");
     QVector<Action> imageActions;
@@ -283,6 +298,25 @@ void verifyConfiguredTrayMenuOptions(snow_shot::presentation::SystemTrayControll
                 imageActions.last() == Action::ToggleWindowUnderCursorAlwaysOnTop,
             "the optional topmost tray entry dispatches its own action exactly once");
 #endif
+    const auto mouseToggleIndex = visible.indexOf(mouseToggleId);
+    require(mouseToggleIndex > 0 &&
+                visible.at(mouseToggleIndex - 1) == QStringLiteral("quick.toggle-global-hotkeys"),
+            "the optional mouse toggle follows the shortcut toggle");
+    const auto priorRequests = imageActions.size();
+    mouseToggle->trigger();
+    require(mouseToggle->isChecked() && imageActions.size() == priorRequests + 1 &&
+                imageActions.last() == Action::ToggleGlobalMouse,
+            "clicking the checkable mouse toggle dispatches its own action");
+    controller.setQuickActionChecked(Action::ToggleGlobalMouse, false);
+    controller.setQuickActionChecked(Action::ToggleGlobalMouse, true);
+    require(mouseToggle->isChecked() && imageActions.size() == priorRequests + 1,
+            "syncing the manual pause mirrors state without dispatching commands");
+    controller.setMenuOptions(defaults);
+    controller.setMenuOptions(defaults);
+    require(!mouseToggle->isVisible() && !mouseToggle->isChecked() &&
+                imageActions.size() == priorRequests + 2 &&
+                imageActions.last() == Action::ToggleGlobalMouse,
+            "hiding the checked mouse toggle requests a resume exactly once");
     menu->dismissPopup();
     drainMenus();
     require(!menu, "the configured tray session retires after dismissal");

@@ -51,6 +51,7 @@ void shortcutFamiliesAreComplete() {
         {GlobalShortcutAction::SwitchWindowGroup, std::nullopt},
         {GlobalShortcutAction::ToggleWindowUnderCursorAlwaysOnTop, std::nullopt},
         {GlobalShortcutAction::ToggleGlobalShortcuts, std::nullopt},
+        {GlobalShortcutAction::ToggleGlobalMouse, std::nullopt},
         {GlobalShortcutAction::ToggleDisableOnFocusedFullscreenWindow, std::nullopt},
     };
     require(expected.size() == snow_shot::presentation::globalActionTraitsCatalog.size(),

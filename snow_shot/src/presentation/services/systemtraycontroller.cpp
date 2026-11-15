@@ -788,6 +788,8 @@ class SystemTrayController::Impl {
 
     void setMenuOptions(const QStringList& options) {
         const QSet<QString> requested(options.cbegin(), options.cend());
+        const QString mouseToggleId = QStringLiteral("quick.toggle-global-mouse");
+        const bool mouseToggleWasVisible = menuOptions.contains(mouseToggleId);
         QStringList normalized;
         QVector<bool> visibleGroups(groups.size(), false);
         bool toggleVisible = false;
@@ -823,18 +825,18 @@ class SystemTrayController::Impl {
             priorGroupVisible = priorGroupVisible || visibleGroups.at(groupIndex);
         }
 
-        // Session latches must not leave the user without a way back: hiding a
-        // checked ToggleGlobalShortcuts re-enables through the same quick action.
-        // Persisted checkables such as fullscreen suppression must not be
-        // flipped by menu visibility.
-        if (checkedQuickActions.value(GlobalShortcutAction::ToggleGlobalShortcuts) &&
-            !toggleVisible) {
-            checkedQuickActions.insert(GlobalShortcutAction::ToggleGlobalShortcuts, false);
-            if (auto* action =
-                    checkableQuickActions.value(GlobalShortcutAction::ToggleGlobalShortcuts).data())
+        const auto clearManualPause = [this](GlobalShortcutAction toggle) {
+            if (!checkedQuickActions.value(toggle))
+                return;
+            checkedQuickActions.insert(toggle, false);
+            if (auto* action = checkableQuickActions.value(toggle).data())
                 action->setChecked(false);
-            emit q.quickActionRequested(GlobalShortcutAction::ToggleGlobalShortcuts);
-        }
+            emit q.quickActionRequested(toggle);
+        };
+        if (mouseToggleWasVisible && !normalized.contains(mouseToggleId))
+            clearManualPause(GlobalShortcutAction::ToggleGlobalMouse);
+        if (!toggleVisible)
+            clearManualPause(GlobalShortcutAction::ToggleGlobalShortcuts);
     }
 
     void updateIcon() {

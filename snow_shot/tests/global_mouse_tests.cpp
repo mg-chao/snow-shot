@@ -338,7 +338,7 @@ class FakeShortcutBackend final : public GlobalShortcutBackend {
     QHash<int, snow_shot::shortcuts::ShortcutBinding> registrations;
 };
 
-void shortcutSuppressionNeverDisablesMouseGestures() {
+void fullscreenSuppressionRespectsInputScope() {
     QTemporaryDir temporary;
     require(temporary.isValid(), "test storage directory must be available");
     auto& storage = snow_shot::storage::ApplicationStorage::instance();
@@ -346,8 +346,8 @@ void shortcutSuppressionNeverDisablesMouseGestures() {
         storage.initialize({temporary.filePath(QStringLiteral("bin")), temporary.path()}));
     require(storage.isInitialized(), "test storage must initialize");
     auto& store = storage.configuration();
-    require(snow_shot::storage::GlobalShortcutSettings().setFullscreenWindowFilter(
-                QStringLiteral("all_windows")),
+    const snow_shot::storage::GlobalShortcutSettings settings;
+    require(settings.setFullscreenWindowFilter(QStringLiteral("all_windows")),
             "test all-window hotkey suppression");
     const QString fullscreenKey =
         QStringLiteral("global_shortcuts/disable_on_focused_fullscreen_window");
@@ -360,10 +360,18 @@ void shortcutSuppressionNeverDisablesMouseGestures() {
         "configure a mouse binding independently of platform defaults");
     {
         bool fullscreen = true;
+        bool fullscreenGame = false;
         auto shortcutBackend = std::make_unique<FakeShortcutBackend>();
         auto* shortcutInput = shortcutBackend.get();
-        GlobalShortcutManager shortcuts(std::move(shortcutBackend), nullptr,
-                                        [&fullscreen]() { return fullscreen; });
+        GlobalShortcutManager shortcuts(
+            std::move(shortcutBackend), nullptr, [&fullscreen]() { return fullscreen; },
+            [&fullscreenGame]() { return fullscreenGame; });
+        auto mouseBackend = std::make_unique<FakeBackend>();
+        auto* mouseInput = mouseBackend.get();
+        GlobalMouseManager mouse(std::move(mouseBackend));
+        QObject::connect(&shortcuts,
+                         &GlobalShortcutManager::focusedFullscreenMouseSuppressionChanged, &mouse,
+                         &GlobalMouseManager::setFocusedFullscreenSuppressionActive);
         const snow_shot::shortcuts::ShortcutBinding screenshotKey{QStringLiteral("Ctrl+F9")};
         require(shortcuts.setShortcuts(GlobalShortcutAction::Screenshot, {screenshotKey}),
                 "configure a screenshot hotkey while fullscreen is focused");
@@ -374,27 +382,24 @@ void shortcutSuppressionNeverDisablesMouseGestures() {
                          [&shortcutActivations](GlobalShortcutAction action) {
                              shortcutActivations += action == GlobalShortcutAction::Screenshot;
                          });
-        auto mouseBackend = std::make_unique<FakeBackend>();
-        auto* mouseInput = mouseBackend.get();
-        GlobalMouseManager mouse(std::move(mouseBackend));
         mouse.setCaptureAvailable(true);
         mouse.initialize();
-        const auto requireMouseActivation = [&]() {
-            GlobalMouseGesture gesture;
-            const GlobalMouseInput press{InputKind::Press,
-                                         {10, 20},
-                                         Qt::LeftButton,
+        const GlobalMouseInput press{InputKind::Press,
+                                     {10, 20},
+                                     Qt::LeftButton,
 #ifdef Q_OS_MACOS
-                                         GlobalMouseModifier::Command};
+                                     GlobalMouseModifier::Command};
 #else
-                                         GlobalMouseModifier::Super};
+                                     GlobalMouseModifier::Super};
 #endif
+        const auto requireMouseActivation = [&](bool enabled) {
+            GlobalMouseGesture gesture;
             const auto result = gesture.handle(press, mouseInput->configuration);
-            require(result.consumed && result.event &&
-                        result.event->action == Action::ScreenshotCopy,
-                    "hotkey suppression must leave configured mouse gestures active");
+            require(result.consumed == enabled && result.event.has_value() == enabled &&
+                        (!result.event || result.event->action == Action::ScreenshotCopy),
+                    "configured mouse gestures respect the effective mouse pause");
         };
-        requireMouseActivation();
+        requireMouseActivation(true);
         int lastScreenshotRegistrationId = 0;
         for (const bool enabled : {false, true}) {
             shortcuts.setGlobalShortcutsEnabled(enabled);
@@ -424,10 +429,51 @@ void shortcutSuppressionNeverDisablesMouseGestures() {
                     require(shortcutActivations - previousActivations ==
                                 static_cast<int>(expectedRegistered),
                             "global hotkeys must obey manual and fullscreen suppression");
-                    requireMouseActivation();
+                    requireMouseActivation(true);
                 }
             }
         }
+        require(store.setValue(fullscreenKey, true), "enable automatic disabling");
+        const auto shortcutsScope = QStringLiteral("global_shortcuts");
+        const auto mouseScope = QStringLiteral("global_mouse");
+        for (const auto& scope :
+             {QStringList{}, QStringList{shortcutsScope}, QStringList{mouseScope},
+              QStringList{shortcutsScope, mouseScope}}) {
+            require(settings.setFullscreenDisableScope(scope), "change the scope in fullscreen");
+            require(shortcutInput->registrations.values().contains(screenshotKey) ==
+                        !scope.contains(shortcutsScope),
+                    "global shortcut registration follows the selected fullscreen scope");
+            requireMouseActivation(!scope.contains(mouseScope));
+        }
+        mouse.beginButtonDrag(Action::ScreenshotCopy);
+        require(mouseInput->buttonDrags == 1, "fullscreen pause allows settings-button drags");
+        require(settings.setFullscreenWindowFilter(QStringLiteral("game_windows")),
+                "switch to game-only filtering while the same window is focused");
+        requireMouseActivation(true);
+        require(shortcutInput->registrations.values().contains(screenshotKey),
+                "the game filter restores shortcuts for a non-game window");
+
+        GlobalMouseGesture inProgress;
+        require(inProgress.handle(press, mouseInput->configuration).event.has_value(),
+                "begin a gesture before entering a matching fullscreen window");
+        fullscreenGame = true;
+        shortcuts.refreshFocusedFullscreenState();
+        requireMouseActivation(false);
+        const auto finished = inProgress.handle({InputKind::Release, {15, 25}, Qt::LeftButton},
+                                                mouseInput->configuration);
+        require(finished.consumed && finished.event && finished.event->kind == EventKind::Finish,
+                "the mouse pause lets an in-flight gesture finish its claimed input pair");
+        mouse.setGlobalMouseEnabled(false);
+        mouse.setGlobalMouseEnabled(true);
+        requireMouseActivation(false);
+        mouse.setGlobalMouseEnabled(false);
+        fullscreenGame = false;
+        shortcuts.refreshFocusedFullscreenState();
+        requireMouseActivation(false);
+        mouse.beginButtonDrag(Action::ScreenshotCopy);
+        require(mouseInput->buttonDrags == 2, "manual pause allows settings-button drags");
+        mouse.setGlobalMouseEnabled(true);
+        requireMouseActivation(true);
         mouse.setCaptureAvailable(false);
         GlobalMouseGesture gesture;
         require(!gesture
@@ -803,7 +849,7 @@ int main(int argc, char** argv) {
     suppressionAndCancellationPreserveInputPairs();
     selectionRetainsThePhysicalAnchorUntilReady();
     revealRefreshCatchesUpToLiveCursorOnlyWhileDragging();
-    shortcutSuppressionNeverDisablesMouseGestures();
+    fullscreenSuppressionRespectsInputScope();
     managerLoadsLiveSettingsAndCoalescesOnlyMovement();
     managerPacesSustainedMovementAndDeliversTerminalEventsImmediately();
     return 0;

@@ -215,6 +215,7 @@ enum class SettingsMultiSelectBinding {
     DrawingQuickSelectionDisabledTools,
     TrayMenuOptions,
     ScreenshotAutoSaveAfterExecution,
+    FullscreenDisableScope,
 };
 
 struct SettingsMultiSelectDefinition {
