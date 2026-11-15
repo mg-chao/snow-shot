@@ -2,6 +2,7 @@
 #include "snow_shot/presentation/collagewindow.h"
 #include "snow_shot/presentation/collagesettingsstore.h"
 #include "snow_shot/presentation/components/collageeditorwidget.h"
+#include "snow_shot/presentation/screenshotexportartifact.h"
 #include "snow_shot/presentation/screenshotexportcoordinator.h"
 #include "snow_shot/presentation/styles/thememanager.h"
 #include "snow_shot/storage/applicationstorage.h"
@@ -92,6 +93,9 @@ void choosingLocksAndCancelPreservesContent() {
     int completions = 0;
     ImageStitchingWindowServices::PdfChoice choice;
     ImageStitchingWindowServices services;
+    services.openImageEditing = [](ScreenshotExportSource) {
+        require(false, "PDF mode cannot open the image editor");
+    };
     services.choosePdfDestination = [&](QWidget*, ImageStitchingPdfExportMode mode,
                                         auto completion) {
         require(mode == ImageStitchingPdfExportMode::Combined, "combined export is the default");
@@ -112,6 +116,9 @@ void choosingLocksAndCancelPreservesContent() {
                          ++completions;
                      });
     require(!control<AdButton>(window, "collageCopy")->isVisible(), "PDF hides Copy");
+    auto* edit = control<AdButton>(window, "collageImageEditing");
+    require(edit && !edit->isVisible() && !edit->isEnabled(), "PDF hides Image editing");
+    edit->click();
     window.copy();
     require(!window.busy() && writes == 0, "programmatic Copy cannot export PDF mode");
     window.save();

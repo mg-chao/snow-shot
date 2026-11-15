@@ -1325,6 +1325,10 @@
             <translation>正在匯出 PDF 第 %1 頁，共 %2 頁：%3%</translation>
         </message>
         <message>
+            <source>Image editing</source>
+            <translation>影像編輯</translation>
+        </message>
+        <message>
             <source>Image loading could not be started. Try again</source>
             <translation>無法開始載入影像，請重試</translation>
         </message>

@@ -1325,6 +1325,10 @@
             <translation>正在导出 PDF 第 %1 页，共 %2 页：%3%</translation>
         </message>
         <message>
+            <source>Image editing</source>
+            <translation>图像编辑</translation>
+        </message>
+        <message>
             <source>Image loading could not be started. Try again</source>
             <translation>无法开始加载图像，请重试</translation>
         </message>

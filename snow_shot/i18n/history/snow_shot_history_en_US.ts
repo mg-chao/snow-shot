@@ -1325,6 +1325,10 @@
             <translation>Exporting PDF page %1 of %2: %3%</translation>
         </message>
         <message>
+            <source>Image editing</source>
+            <translation>Image editing</translation>
+        </message>
+        <message>
             <source>Image loading could not be started. Try again</source>
             <translation>Image loading could not be started. Try again</translation>
         </message>

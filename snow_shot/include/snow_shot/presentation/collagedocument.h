@@ -244,6 +244,11 @@ prepareImageStitchingRows(const QVector<ImageStitchingItem>& items,
 [[nodiscard]] QImage materializeImageStitchingRows(const ScreenshotImageRowSource& rows,
                                                    qsizetype maximumBytes = 16 * 1024 * 1024);
 
+// Render an editable raster whose pixels retain their shared memory reservation.
+[[nodiscard]] QImage renderImageStitchingResult(const QVector<ImageStitchingItem>& items,
+                                                const ImageStitchingSettings& settings,
+                                                std::function<bool()> cancelled);
+
 // Reserve native clipboard additions before asking the existing clipboard workflow to prepare
 // its PNG and native bitmap representations. Keep this owner until publication finishes.
 [[nodiscard]] std::shared_ptr<void> reserveImageStitchingClipboard(QSize outputSize,
