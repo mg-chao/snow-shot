@@ -12,7 +12,15 @@ class CanvasStatusReadout final : public QLabel {
     Q_OBJECT
 
   public:
-    enum class Message { Scale, Opacity, Locked, MotionPreview, ResultPreview, RenderingPreview };
+    enum class Message {
+        Scale,
+        Opacity,
+        Locked,
+        MotionPreview,
+        ResultPreview,
+        RenderingPreview,
+        Thinking
+    };
     enum class Corner { BottomLeft, TopLeft };
     enum class DisplayMode { Hidden, Transient, Persistent };
 

@@ -6,11 +6,6 @@
 
 #include <QTimer>
 
-class QWidget;
-namespace adqt::widgets {
-class AdModal;
-}
-
 #if SNOW_SHOT_ENABLE_IMAGE_CONVERSION
 class ScreenshotImageConversionController final : public QObject {
     Q_OBJECT
@@ -25,7 +20,6 @@ class ScreenshotImageConversionController final : public QObject {
     void invalidate();
     void retry();
     void selectVisionModel(const QString& model);
-    void openSettings(QWidget* owner);
     void seed(const QString& key, const QVector<ScreenshotImageConversionEntry>& entries);
     [[nodiscard]] QVector<ScreenshotImageConversionEntry> entries(const QString& key) const;
 
@@ -34,6 +28,9 @@ class ScreenshotImageConversionController final : public QObject {
     }
     [[nodiscard]] bool busy() const {
         return m_state == State::LoadingModels || m_state == State::Converting;
+    }
+    [[nodiscard]] bool reasoningActive() const {
+        return m_reasoningActive;
     }
     [[nodiscard]] bool active() const {
         return m_active;
@@ -54,6 +51,7 @@ class ScreenshotImageConversionController final : public QObject {
 
   signals:
     void changed();
+    void reasoningChanged(bool active);
     void resultsChanged();
 
   private:
@@ -74,7 +72,6 @@ class ScreenshotImageConversionController final : public QObject {
         ScreenshotImageConversionEntry result;
     };
     QPointer<SnowShotApiClient> m_api;
-    QPointer<adqt::widgets::AdModal> m_modal;
     QVector<CacheEntry> m_cache;
     QTimer m_previewTimer;
     QString m_key;
@@ -85,13 +82,13 @@ class ScreenshotImageConversionController final : public QObject {
     SnowShotImageConversionFormat m_format = SnowShotImageConversionFormat::Markdown;
     State m_state = State::Idle;
     bool m_active = false;
+    bool m_reasoningActive = false;
     bool m_refreshConversion = false;
     bool m_destroying = false;
     quint64 m_providerGeneration = 0;
     quint64 m_generation = 0;
     SnowShotApiClient::RequestToken m_modelsToken = 0;
     SnowShotApiClient::RequestToken m_conversionToken = 0;
-    SnowShotApiClient::RequestToken m_settingsToken = 0;
 };
 
 #endif // SNOW_SHOT_ENABLE_IMAGE_CONVERSION

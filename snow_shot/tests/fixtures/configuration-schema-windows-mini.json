@@ -199,10 +199,10 @@
       "allowedStringValues": [],
       "defaultJsonType": 2,
       "defaultStringIsNull": false,
-      "defaultValue": 5,
+      "defaultValue": 6,
       "integerRange": [
-        5,
-        5,
+        6,
+        6,
         1
       ],
       "key": "storage/schema_version",

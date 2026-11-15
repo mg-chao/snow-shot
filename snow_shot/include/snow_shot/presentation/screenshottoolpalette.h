@@ -569,7 +569,6 @@ class ScreenshotToolPalette final : public QWidget,
     void recognitionModelChanged(const QString& selection);
     void markdownRequested();
     void htmlRequested();
-    void imageConversionSettingsRequested();
     void tableMergeRequested();
     void tableSplitRequested();
     void tableResetRequested();
@@ -713,9 +712,6 @@ class ScreenshotToolPalette final : public QWidget,
     [[nodiscard]] ScreenshotRecognitionModelState* recognitionModelStateForTool(Tool tool);
     void refreshRecognitionModelSelect();
     void refreshTextTranslationServiceSelect();
-#if SNOW_SHOT_ENABLE_IMAGE_CONVERSION
-    void createImageConversionActionFamily();
-#endif
     void createScrollingRecognitionActionFamily();
     void openScrollingSettings();
     void closeScrollingSettings();
@@ -1017,7 +1013,6 @@ class ScreenshotToolPalette final : public QWidget,
     adqt::widgets::AdButton* m_latexButton = nullptr;
     adqt::widgets::AdButton* m_markdownButton = nullptr;
     adqt::widgets::AdButton* m_htmlButton = nullptr;
-    adqt::widgets::AdButton* m_conversionSettingsButton = nullptr;
     adqt::widgets::AdPopover* m_tableQrPopover = nullptr;
     QVector<adqt::widgets::AdButton*> m_tableQrOptionButtons;
     QVector<int> m_tableQrOptionValues;

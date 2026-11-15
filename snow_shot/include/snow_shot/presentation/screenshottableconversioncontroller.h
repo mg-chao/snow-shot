@@ -26,9 +26,13 @@ class ScreenshotTableConversionController final : public QObject {
     [[nodiscard]] const ScreenshotTableDocument& preview() const {
         return m_preview;
     }
+    [[nodiscard]] bool reasoningActive() const {
+        return m_reasoningActive;
+    }
 
   signals:
     void changed();
+    void reasoningChanged(bool active);
     void completed(ScreenshotTableDocument document, QString error);
 
   private:
@@ -43,6 +47,7 @@ class ScreenshotTableConversionController final : public QObject {
     std::shared_ptr<std::atomic_bool> m_parseCancellation;
     quint64 m_generation = 0;
     quint64 m_revision = 0;
+    bool m_reasoningActive = false;
     bool m_busy = false;
     bool m_correcting = false;
     bool m_finished = false;

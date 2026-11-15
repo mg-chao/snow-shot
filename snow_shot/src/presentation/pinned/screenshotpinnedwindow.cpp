@@ -5134,8 +5134,6 @@ void ScreenshotPinnedWindow::configureEditToolbar(
         activateRecognitionMode(
             static_cast<int>(ScreenshotRecognitionSessionController::Mode::Html));
     });
-    connect(toolbar, &ScreenshotToolPalette::imageConversionSettingsRequested, this,
-            [this]() { m_recognitionSession->openImageConversionSettings(); });
     connect(toolbar, &ScreenshotToolPalette::recognitionModelChanged, this,
             [this](const QString& selection) {
                 if (m_recognitionSession != nullptr)

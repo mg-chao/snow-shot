@@ -537,6 +537,12 @@ void cachedTextResultAccess(bool benchmark = false) {
 }
 void tablePreparationPreservesSessionAndSiblingPopovers() {
     using Mode = ScreenshotRecognitionSessionController::Mode;
+    const snow_shot::storage::ScreenshotRecognitionModelSettings preferences;
+    const auto previousModel = preferences.tableModel();
+    const auto restoreModel =
+        qScopeGuard([&] { static_cast<void>(preferences.setTableModel(previousModel)); });
+    require(preferences.setTableModel(screenshotDedicatedRecognitionModelId()),
+            "select the dedicated model used by the table preparation fixture");
     for (int scenario = 0; scenario < 5; ++scenario) {
         QTcpServer server;
         require(server.listen(QHostAddress::LocalHost), "session HTTP server listens");
@@ -997,6 +1003,17 @@ void originalImagePreviewFollowsTextSessionLifecycle() {
     requirePreviewDestroyed("hiding the recognition host destroys its preview");
     window->show();
     requirePreviewVisible("showing an active recognition host restores its preview");
+#if SNOW_SHOT_ENABLE_TABLE_RECOGNITION
+    session.activate(Mode::Table);
+    requirePreviewVisible("table activation displays its source before a result is available");
+    require(preview()->geometry().right() < window->geometry().left(),
+            "table activation places the source on the left when space allows");
+    require(settings.setShowOriginalImagePreview(false),
+            "disable the shared table preview setting");
+    requirePreviewDestroyed("table preview follows the shared setting when disabled");
+    require(settings.setShowOriginalImagePreview(true), "enable the shared table preview setting");
+    requirePreviewVisible("table preview follows the shared setting when enabled");
+#endif
     session.activate(Mode::Qr);
     require(!window->originalImagePreviewEnabled(), "nontext recognition disables the preview");
     requirePreviewDestroyed("nontext recognition cannot retain a text preview");
@@ -1019,6 +1036,19 @@ void originalImagePreviewFollowsTextSessionLifecycle() {
     requirePreviewVisible("recreated recognition content restores active preview state");
     session.invalidate();
     requirePreviewDestroyed("invalidation tears down the active preview");
+#if SNOW_SHOT_ENABLE_TABLE_RECOGNITION
+    installTarget(QStringLiteral("preview-table-first"), Qt::blue);
+    session.activate(Mode::Table);
+    requirePreviewVisible("the first table target displays its source");
+    installTarget(QStringLiteral("preview-table-second"), Qt::green);
+    requirePreviewDestroyed("replacing the table target releases the old preview");
+    session.activate(Mode::Table);
+    requirePreviewVisible("the replacement table target displays its source");
+    const QImage tableSource = preview()->grab().toImage();
+    require(tableSource.pixelColor(tableSource.width() / 2, tableSource.height() / 2) ==
+                QColor(Qt::green),
+            "the table preview shows pixels from the replacement target");
+#endif
     delete window.data();
     ScreenshotRecognitionSessionActions headlessActions;
     headlessActions.ensureContent = []() -> ScreenshotRecognitionWindow* { return nullptr; };

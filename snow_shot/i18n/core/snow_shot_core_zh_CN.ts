@@ -323,6 +323,10 @@ so every moment on screen can be expressed clearly and shared easily</source>
             <source>Scale: %1%</source>
             <translation>缩放：%1%</translation>
         </message>
+        <message>
+            <source>Thinking…</source>
+            <translation>思考中…</translation>
+        </message>
     </context>
     <context>
         <name>ConfirmationSkipButton</name>

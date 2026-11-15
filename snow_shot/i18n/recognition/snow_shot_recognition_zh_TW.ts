@@ -31,16 +31,8 @@
     <context>
         <name>ScreenshotImageConversionController</name>
         <message>
-            <source>Cancel</source>
-            <translation>取消</translation>
-        </message>
-        <message>
             <source>Image conversion failed</source>
             <translation>影像轉換失敗</translation>
-        </message>
-        <message>
-            <source>Image conversion settings</source>
-            <translation>影像轉換設定</translation>
         </message>
         <message>
             <source>Model configuration changed. Retry to use the updated settings</source>
@@ -49,14 +41,6 @@
         <message>
             <source>No vision models are available</source>
             <translation>沒有可用的視覺模型</translation>
-        </message>
-        <message>
-            <source>OK</source>
-            <translation>確定</translation>
-        </message>
-        <message>
-            <source>Retry</source>
-            <translation>重試</translation>
         </message>
         <message>
             <source>The image conversion service is unavailable</source>
@@ -73,10 +57,6 @@
         <message>
             <source>Unable to load vision models</source>
             <translation>無法載入視覺模型</translation>
-        </message>
-        <message>
-            <source>Vision model</source>
-            <translation>視覺模型</translation>
         </message>
     </context>
     <context>

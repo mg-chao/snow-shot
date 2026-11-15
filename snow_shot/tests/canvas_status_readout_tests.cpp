@@ -48,6 +48,8 @@ class ReadoutTranslator final : public QTranslator {
             return QStringLiteral("Translated scale: %1%");
         if (qstrcmp(source, "Locked") == 0)
             return QStringLiteral("Translated locked");
+        if (qstrcmp(source, "Thinking…") == 0)
+            return QStringLiteral("Translated thinking…");
         return {};
     }
 };
@@ -244,6 +246,14 @@ void presentationChangesPreserveLifetimeAndVisibility() {
     QApplication::sendEvent(&readout, &styleChange);
     require(readout.isHidden() && !readout.dismissalTimer()->isActive(),
             "font and style changes must also preserve explicit invisibility");
+    readout.setMessage(Message::Thinking);
+    readout.showPersistent();
+    require(QApplication::installTranslator(&translator), "reinstall the readout translator");
+    QApplication::sendEvent(&readout, &languageChange);
+    require(readout.accessibleName() == QStringLiteral("Translated thinking…") &&
+                !readout.isHidden() && !readout.dismissalTimer()->isActive(),
+            "language changes preserve the thinking indicator's persistent lifetime");
+    QApplication::removeTranslator(&translator);
 }
 } // namespace
 

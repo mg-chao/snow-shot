@@ -1448,6 +1448,7 @@ void screenshotUiSchemaRepairsStructuredValues() {
                      QJsonArray{
                          QStringLiteral("convert-to-html"), QStringLiteral("convert-to-markdown"),
                          QStringLiteral("latex-recognition"), QStringLiteral("barcode-recognition"),
+                         QStringLiteral("document-recognition"),
                          QStringLiteral("table-recognition")},
                      QJsonArray{QStringLiteral("record-screen")},
                      QJsonArray{QStringLiteral("pin-window-to-screen"),
@@ -1599,8 +1600,9 @@ void screenshotUiSchemaRepairsStructuredValues() {
                     QJsonArray{
                         QStringLiteral("upload-to-cloud"), QStringLiteral("print"),
                         QStringLiteral("quick-save"), QStringLiteral("save-as-file"),
-                        QStringLiteral("table-recognition"), QStringLiteral("convert-to-markdown"),
-                        QStringLiteral("latex-recognition"), QStringLiteral("convert-to-html")},
+                        QStringLiteral("document-recognition"), QStringLiteral("table-recognition"),
+                        QStringLiteral("convert-to-markdown"), QStringLiteral("latex-recognition"),
+                        QStringLiteral("convert-to-html")},
                     QJsonArray{QStringLiteral("record-screen")},
                     QJsonArray{QStringLiteral("pin-window-to-screen"),
                                QStringLiteral("pin-to-screen")},
@@ -1620,14 +1622,14 @@ void screenshotUiSchemaRepairsStructuredValues() {
         {QStringLiteral("positions"), QJsonArray{}},
         {QStringLiteral("hidden"),
          QJsonArray{QStringLiteral("barcode-recognition"), QStringLiteral("table-recognition"),
-                    QStringLiteral("convert-to-markdown"), QStringLiteral("convert-to-html"),
-                    QStringLiteral("latex-recognition"), QStringLiteral("record-screen"),
-                    QStringLiteral("pin-window-to-screen"), QStringLiteral("pin-to-screen"),
-                    QStringLiteral("text-recognition"), QStringLiteral("text-translation"),
-                    QStringLiteral("scrolling-screenshot"), QStringLiteral("upload-to-cloud"),
-                    QStringLiteral("print"), QStringLiteral("quick-save"),
-                    QStringLiteral("save-as-file"), QStringLiteral("separator"),
-                    QStringLiteral("cancel"), QStringLiteral("copy")}},
+                    QStringLiteral("document-recognition"), QStringLiteral("convert-to-markdown"),
+                    QStringLiteral("convert-to-html"), QStringLiteral("latex-recognition"),
+                    QStringLiteral("record-screen"), QStringLiteral("pin-window-to-screen"),
+                    QStringLiteral("pin-to-screen"), QStringLiteral("text-recognition"),
+                    QStringLiteral("text-translation"), QStringLiteral("scrolling-screenshot"),
+                    QStringLiteral("upload-to-cloud"), QStringLiteral("print"),
+                    QStringLiteral("quick-save"), QStringLiteral("save-as-file"),
+                    QStringLiteral("separator"), QStringLiteral("cancel"), QStringLiteral("copy")}},
     };
     const auto normalizedAllHidden = storage::ConfigurationSchema::normalize(
         QStringLiteral("screenshot_toolbar/action_tools_layout"), allHiddenActionLayout);
@@ -1749,7 +1751,7 @@ void screenshotUiAdaptersRoundTripTypedValues() {
     const storage::ScreenshotToolbarLayout actionLayout{
         {{QStringLiteral("upload-to-cloud"), QStringLiteral("quick-save"),
           QStringLiteral("save-as-file"), QStringLiteral("record-screen")},
-         {QStringLiteral("table-recognition")}},
+         {QStringLiteral("document-recognition"), QStringLiteral("table-recognition")}},
         {QStringLiteral("barcode-recognition"), QStringLiteral("pin-window-to-screen"),
          QStringLiteral("pin-to-screen"), QStringLiteral("convert-to-markdown"),
          QStringLiteral("convert-to-html"), QStringLiteral("latex-recognition"),
@@ -1770,7 +1772,8 @@ void screenshotUiAdaptersRoundTripTypedValues() {
             "pinned defaults must expose configurable section dividers and Confirm Edit");
     // This valid layout resembles a historical screenshot default; pinned layouts must not migrate.
     const storage::ScreenshotToolbarLayout pinnedLayout{
-        {{QStringLiteral("barcode-recognition"), QStringLiteral("table-recognition")},
+        {{QStringLiteral("barcode-recognition"), QStringLiteral("document-recognition"),
+          QStringLiteral("table-recognition")},
          {QStringLiteral("convert-to-markdown"), QStringLiteral("latex-recognition")},
          {QStringLiteral("convert-to-html")},
          {QStringLiteral("text-recognition")},
@@ -3380,11 +3383,16 @@ void futureVersionIsReadOnly() {
     QTemporaryDir temporary;
     require(temporary.isValid(), "failed to create future-version directory");
     const QString config = QDir(temporary.path()).filePath(QStringLiteral("config.json"));
-    writeBytes(config, QByteArrayLiteral("{\n"
-                                         "  \"storage\": {\"schema_version\": 6},\n"
-                                         "  \"interface\": {\"theme_mode\": \"dark\"},\n"
-                                         "  \"future\": {\"value\": 42}\n"
-                                         "}\n"));
+    const int futureVersion = storage::ConfigurationStore::currentSchemaVersion() + 1;
+    writeBytes(
+        config,
+        QJsonDocument(
+            QJsonObject{{QStringLiteral("storage"),
+                         QJsonObject{{QStringLiteral("schema_version"), futureVersion}}},
+                        {QStringLiteral("interface"),
+                         QJsonObject{{QStringLiteral("theme_mode"), QStringLiteral("dark")}}},
+                        {QStringLiteral("future"), QJsonObject{{QStringLiteral("value"), 42}}}})
+            .toJson());
     const QByteArray original = readBytes(config);
     storage::ConfigurationStore store(config, true, true, 60000);
     bool rejected = false;

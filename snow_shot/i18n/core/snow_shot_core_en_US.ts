@@ -323,6 +323,10 @@ so every moment on screen can be expressed clearly and shared easily</translatio
             <source>Scale: %1%</source>
             <translation>Scale: %1%</translation>
         </message>
+        <message>
+            <source>Thinking…</source>
+            <translation>Thinking…</translation>
+        </message>
     </context>
     <context>
         <name>ConfirmationSkipButton</name>

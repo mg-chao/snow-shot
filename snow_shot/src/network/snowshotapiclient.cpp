@@ -135,6 +135,14 @@ void applyCustomReasoning(QJsonObject& body, const QString& provider, bool enabl
     }
 }
 
+void applyExpertReasoning(QJsonObject& body, int completionLimit) {
+    body.remove(QStringLiteral("enable_thinking"));
+    body.remove(QStringLiteral("temperature"));
+    body.remove(QStringLiteral("max_tokens"));
+    body.insert(QStringLiteral("reasoning_effort"), QStringLiteral("low"));
+    body.insert(QStringLiteral("max_completion_tokens"), completionLimit);
+}
+
 QByteArray imageChatBody(const QString& model, const QImage& image, const QString& prompt,
                          const std::function<QByteArray(const QImage&)>& prepare, bool custom,
                          const QString& provider, bool supportsReasoning) {
@@ -161,6 +169,8 @@ QByteArray imageChatBody(const QString& model, const QImage& image, const QStrin
                                              {QStringLiteral("content"), content}}}}};
     if (custom) {
         applyCustomReasoning(body, provider, supportsReasoning);
+    } else if (snowShotExpertModelId(model)) {
+        applyExpertReasoning(body, 8192);
     } else {
         if (model == QStringLiteral("ai-model") || snowShotLegacyAiModelId(model)) {
             body.insert(QStringLiteral("thinking"),
@@ -571,6 +581,11 @@ struct SnowShotApiClient::Request {
     ChatModelsCompletion chatModelsCompletion;
     TranslationDelta translationDelta;
     TranslationCompletion translationCompletion;
+    ReasoningProgress reasoningProgress;
+    bool reasoningActive = false;
+    bool reasoningEnded = false;
+    std::shared_ptr<SnowShotTableVisionConversation> expertTableConversation;
+    QString reasoningContent;
     QPointer<QNetworkReply> reply;
     void retainReply(QNetworkReply* value) {
         reply = value;
@@ -1630,6 +1645,9 @@ SnowShotApiClient::streamTranslation(const SnowShotTranslationRequest& input, QO
         if (custom == nullptr)
             body.insert(QStringLiteral("enable_thinking"), false);
     }
+    if (!freeTranslation && custom == nullptr && snowShotExpertModelId(input.model)) {
+        applyExpertReasoning(body, 4096);
+    }
     if (custom != nullptr) {
         body.remove(QStringLiteral("temperature"));
         body.remove(QStringLiteral("max_tokens"));
@@ -1661,13 +1679,14 @@ SnowShotApiClient::streamTranslation(const SnowShotTranslationRequest& input, QO
 
 SnowShotApiClient::RequestToken SnowShotApiClient::streamImageConversion(
     const SnowShotImageConversionRequest& input, QObject* receiver, TranslationDelta delta,
-    std::function<void(SnowShotImageConversionResult)> completion) {
+    std::function<void(SnowShotImageConversionResult)> completion,
+    ReasoningProgress reasoningProgress) {
     return streamImageRequest(input.model, input.image,
                               input.format == SnowShotImageConversionFormat::Markdown
                                   ? QStringLiteral("markdown")
                                   : QStringLiteral("html"),
                               imageConversionPrompt(input.format), receiver, std::move(delta),
-                              std::move(completion), false);
+                              std::move(completion), false, std::move(reasoningProgress));
 }
 
 SnowShotApiClient::RequestToken SnowShotApiClient::extractTableVision(const QImage& image,
@@ -1694,35 +1713,37 @@ SnowShotApiClient::RequestToken SnowShotApiClient::extractTableVision(const QIma
         true);
 }
 
-SnowShotApiClient::RequestToken
-SnowShotApiClient::streamTableVision(const QImage& image, const QString& model,
-                                     std::shared_ptr<SnowShotTableVisionConversation> conversation,
-                                     QObject* receiver, TranslationDelta delta,
-                                     TranslationCompletion completion) {
+SnowShotApiClient::RequestToken SnowShotApiClient::streamTableVision(
+    const QImage& image, const QString& model,
+    std::shared_ptr<SnowShotTableVisionConversation> conversation, QObject* receiver,
+    TranslationDelta delta, TranslationCompletion completion, ReasoningProgress reasoningProgress) {
     if (!conversation || !conversation->m_body.isEmpty())
         return 0;
     conversation->m_model = model;
     conversation->m_fingerprint = modelFingerprint(model);
     return streamImageRequest(model, image, QStringLiteral("table"), tableVisionPrompt(), receiver,
                               std::move(delta), std::move(completion), true,
-                              std::move(conversation));
+                              std::move(reasoningProgress), std::move(conversation));
 }
 
 SnowShotApiClient::RequestToken
 SnowShotApiClient::correctTableVision(std::shared_ptr<SnowShotTableVisionConversation> conversation,
                                       const QString& source, QObject* receiver,
-                                      TranslationDelta delta, TranslationCompletion completion) {
+                                      TranslationDelta delta, TranslationCompletion completion,
+                                      ReasoningProgress reasoningProgress) {
     if (!conversation || conversation->m_body.isEmpty() ||
         conversation->m_fingerprint != modelFingerprint(conversation->m_model))
         return 0;
     const QString model = conversation->m_model;
     return streamImageRequest(model, {}, QStringLiteral("table"), {}, receiver, std::move(delta),
-                              std::move(completion), true, std::move(conversation), source);
+                              std::move(completion), true, std::move(reasoningProgress),
+                              std::move(conversation), source);
 }
 
 SnowShotApiClient::RequestToken
 SnowShotApiClient::extractLatexVision(const QImage& image, const QString& model, QObject* receiver,
-                                      LatexCompletion completion, TranslationDelta delta) {
+                                      LatexCompletion completion, TranslationDelta delta,
+                                      ReasoningProgress reasoningProgress) {
     if (!completion)
         return 0;
     const auto source = std::make_shared<QString>();
@@ -1750,13 +1771,14 @@ SnowShotApiClient::extractLatexVision(const QImage& image, const QString& model,
             }
             completion(std::move(output));
         },
-        true);
+        true, std::move(reasoningProgress));
 }
 
 SnowShotApiClient::RequestToken SnowShotApiClient::streamImageRequest(
     const QString& model, const QImage& image, const QString& format, const QString& prompt,
     QObject* receiver, TranslationDelta delta, TranslationCompletion completion,
-    bool absoluteDeadline, std::shared_ptr<SnowShotTableVisionConversation> conversation,
+    bool absoluteDeadline, ReasoningProgress reasoningProgress,
+    std::shared_ptr<SnowShotTableVisionConversation> conversation,
     std::optional<QString> correction) {
     if (model.startsWith(QStringLiteral("translation:")))
         return 0;
@@ -1784,10 +1806,13 @@ SnowShotApiClient::RequestToken SnowShotApiClient::streamImageRequest(
     state->receiver = receiver;
     state->translationDelta = std::move(delta);
     state->translationCompletion = std::move(completion);
+    state->reasoningProgress = std::move(reasoningProgress);
     state->imageResponse = true;
     state->absoluteDeadline = absoluteDeadline;
     state->model = model;
     state->format = format;
+    if (custom == nullptr && snowShotExpertModelId(model) && !correction)
+        state->expertTableConversation = conversation;
     m_requests.insert(token, state);
     auto* deadline = new QTimer(this);
     deadline->setSingleShot(true);
@@ -1810,11 +1835,12 @@ SnowShotApiClient::RequestToken SnowShotApiClient::streamImageRequest(
     const auto prepare =
         absoluteDeadline ? m_tableImagePreparation : std::function<QByteArray(const QImage&)>{};
     const QByteArray preparedBody = conversation ? conversation->m_body : QByteArray{};
+    const QString previousReasoning = conversation ? conversation->m_reasoningContent : QString{};
     QThreadPool::globalInstance()->start(snow_shot::runtime::trackRuntimeWork(
         [guard, token, effectiveModel, image, prompt, prepare, absoluteDeadline,
          isCustom = custom != nullptr, provider = custom != nullptr ? custom->provider : QString(),
          supportsReasoning = custom != nullptr && custom->supportsReasoning, conversation,
-         preparedBody, correction]() {
+         preparedBody, previousReasoning, correction]() {
             snow_shot::platform::applyApplicationQoSToCurrentThread();
             QByteArray body = preparedBody.isEmpty()
                                   ? imageChatBody(effectiveModel, image, prompt, prepare, isCustom,
@@ -1823,8 +1849,11 @@ SnowShotApiClient::RequestToken SnowShotApiClient::streamImageRequest(
             if (correction) {
                 auto object = QJsonDocument::fromJson(body).object();
                 auto messages = object.value(QStringLiteral("messages")).toArray();
-                messages.append(QJsonObject{{QStringLiteral("role"), QStringLiteral("assistant")},
-                                            {QStringLiteral("content"), *correction}});
+                QJsonObject assistant{{QStringLiteral("role"), QStringLiteral("assistant")},
+                                      {QStringLiteral("content"), *correction}};
+                if (!previousReasoning.isEmpty())
+                    assistant.insert(QStringLiteral("reasoning_content"), previousReasoning);
+                messages.append(assistant);
                 messages.append(QJsonObject{
                     {QStringLiteral("role"), QStringLiteral("user")},
                     {QStringLiteral("content"),
@@ -2116,6 +2145,20 @@ void SnowShotApiClient::drainChatStream(RequestToken token) {
     }
     QElapsedTimer batch;
     batch.start();
+    const auto publishReasoning = [this, token, &current](bool active) {
+        if (!current->reasoningProgress || current->reasoningEnded)
+            return true;
+        current->reasoningEnded = !active;
+        if (std::exchange(current->reasoningActive, active) == active || !current->receiver)
+            return true;
+        const QPointer<SnowShotApiClient> guard(this);
+        const auto progress = current->reasoningProgress;
+        progress(active);
+        if (!guard)
+            return false;
+        current = m_requests.value(token);
+        return current != nullptr;
+    };
     qsizetype consumed = 0;
     int events = 0;
     bool budgetExhausted = false;
@@ -2152,6 +2195,8 @@ void SnowShotApiClient::drainChatStream(RequestToken token) {
                 return;
             }
             current->streamDone = true;
+            if (!publishReasoning(false))
+                return;
             continue;
         }
         if (current->streamDone && !data.isEmpty()) {
@@ -2203,12 +2248,16 @@ void SnowShotApiClient::drainChatStream(RequestToken token) {
             return;
         }
         QString content;
+        bool hasReasoning = false;
+        bool finishedChoice = false;
         for (const QJsonValue& choice : choices.toArray()) {
-            const auto deltaObject = choice.toObject().value(QStringLiteral("delta"));
-            const auto deltaContent = deltaObject.toObject().value(QStringLiteral("content"));
+            const auto choiceObject = choice.toObject();
+            const auto deltaValue = choiceObject.value(QStringLiteral("delta"));
+            const auto delta = deltaValue.toObject();
+            const auto deltaContent = delta.value(QStringLiteral("content"));
             if (current->freeTranslation &&
                 (!choice.isObject() ||
-                 (!deltaObject.isUndefined() && !deltaObject.isNull() && !deltaObject.isObject()) ||
+                 (!deltaValue.isUndefined() && !deltaValue.isNull() && !deltaValue.isObject()) ||
                  (!deltaContent.isUndefined() && !deltaContent.isNull() &&
                   !deltaContent.isString()))) {
                 SnowShotTranslationResult result;
@@ -2216,10 +2265,12 @@ void SnowShotApiClient::drainChatStream(RequestToken token) {
                 finishTranslation(token, std::move(result));
                 return;
             }
-            const QString reason =
-                choice.toObject().value(QStringLiteral("finish_reason")).toString();
+            const QString reason = choiceObject.value(QStringLiteral("finish_reason")).toString();
+            finishedChoice |= !reason.isEmpty();
             if ((current->imageResponse || current->freeTranslation) && !reason.isEmpty() &&
                 reason != QStringLiteral("stop")) {
+                if (!publishReasoning(false))
+                    return;
                 SnowShotTranslationResult result;
                 result.error = current->absoluteDeadline
                                    ? tr("Image recognition is incomplete. Try a smaller area")
@@ -2228,12 +2279,19 @@ void SnowShotApiClient::drainChatStream(RequestToken token) {
                 finishTranslation(token, std::move(result));
                 return;
             }
-            content += choice.toObject()
-                           .value(QStringLiteral("delta"))
-                           .toObject()
-                           .value(QStringLiteral("content"))
-                           .toString();
+            content += deltaContent.toString();
+            if (current->expertTableConversation || current->reasoningProgress) {
+                const QString reasoning =
+                    delta.value(QStringLiteral("reasoning_content")).toString();
+                if (current->expertTableConversation)
+                    current->reasoningContent += reasoning;
+                hasReasoning |= !reasoning.isEmpty();
+            }
         }
+        if (hasReasoning && !publishReasoning(true))
+            return;
+        if ((finishedChoice || !content.isEmpty()) && !publishReasoning(false))
+            return;
         if (!content.isEmpty() && current->receiver && current->translationDelta) {
             current->hasContent = current->hasContent || !content.trimmed().isEmpty();
             const QPointer<SnowShotApiClient> guard(this);
@@ -2461,6 +2519,8 @@ void SnowShotApiClient::finishTranslation(RequestToken token, SnowShotTranslatio
     }
     if (request->freeTranslation && !result.cancelled && !result.succeeded())
         result.error = snow_shot::translation::freeTranslationErrorText();
+    if (request->expertTableConversation && result.succeeded())
+        request->expertTableConversation->m_reasoningContent = std::move(request->reasoningContent);
     request->report(result.cancelled     ? QStringLiteral("cancelled")
                     : result.succeeded() ? QStringLiteral("succeeded")
                                          : QStringLiteral("failed"),
@@ -2468,6 +2528,9 @@ void SnowShotApiClient::finishTranslation(RequestToken token, SnowShotTranslatio
     m_requests.erase(it);
     const QPointer<QObject> receiver = request->receiver;
     TranslationCompletion completion = std::move(request->translationCompletion);
+    ReasoningProgress endReasoning;
+    if (request->reasoningActive)
+        endReasoning = std::move(request->reasoningProgress);
     const QPointer<SnowShotApiClient> guard(this);
     const bool translation = request->textTranslation;
     const bool custom = request->custom;
@@ -2488,6 +2551,8 @@ void SnowShotApiClient::finishTranslation(RequestToken token, SnowShotTranslatio
     cleanupRequest(request);
     if (guard && accountCall)
         emit officialCallSettled();
+    if (guard && receiver && endReasoning)
+        endReasoning(false);
     if (guard && receiver != nullptr && completion) {
         completion(std::move(result));
     }
