@@ -139,6 +139,7 @@ enum class SettingsSwitchBinding {
     OcrHardwareAcceleration,
     ScreenshotAreaTypeHint,
     ShowGuidesByDefault,
+    AdaptiveGuideColors,
     ShowEditSelectionToolbar,
     TrayEnabled,
     TrayUseSystemIconColor,

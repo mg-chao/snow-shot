@@ -886,6 +886,7 @@ void ScreenshotController::Impl::reloadUiPreferences() {
             static_cast<qreal>(settings.shortcutHintOpacity()) / 100.0;
         preferences.screenshotAreaTypeHintEnabled = settings.screenshotAreaTypeHintEnabled();
         preferences.showGuidesByDefault = settings.showGuidesByDefault();
+        preferences.adaptiveGuideColors = settings.adaptiveGuideColors();
         preferences.cursorGuideLineColor = settings.cursorGuideLineColor();
         preferences.selectionCenterGuideLineColor = settings.selectionCenterGuideLineColor();
         preferences.monitorCenterGuideLineColor = settings.monitorCenterGuideLineColor();
@@ -912,16 +913,7 @@ void ScreenshotController::Impl::applyUiPreferences(const ScreenshotUiPreference
     }
     if (m_overlayCoordinator != nullptr) {
         m_overlayCoordinator->setColorPickerCenterGuideLineColor(
-            m_uiPreferences.colorPickerCenterGuideLineColor);
-        m_overlayCoordinator->clearGuideLines(m_displaySession);
-        if (!m_interaction.inactive() && m_guideVisibility.visible()) {
-            ScreenshotOverlayWindow* overlay = overlayUnderCursor();
-            m_overlayCoordinator->updateGuideLines(
-                m_displaySession, overlay,
-                overlay != nullptr ? overlay->canvasLocalPosition(QCursor::pos()) : QPointF(), true,
-                m_uiPreferences.cursorGuideLineColor, m_uiPreferences.monitorCenterGuideLineColor,
-                m_uiPreferences.selectionCenterGuideLineColor);
-        }
+            m_uiPreferences.colorPickerCenterGuideLineColor, m_uiPreferences.adaptiveGuideColors);
     }
     if (m_presentationServices != nullptr) {
         m_presentationServices->setUiPreferences(m_uiPreferences);
@@ -2558,6 +2550,8 @@ bool ScreenshotController::Impl::setScreenshotCursorVisible(bool visible) {
         m_autoFilterController->resetSession();
     if (auto* toolbar = m_overlayCoordinator->toolbar())
         toolbar->synchronizeCursorState();
+    if (m_uiPreferences.adaptiveGuideColors && m_guideVisibility.visible())
+        m_presentationServices->updateOverlayState();
     updateColorPickerAtCurrentCursor();
     emit owner.mcpCanvasChanged();
     return true;

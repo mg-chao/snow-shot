@@ -20,6 +20,7 @@
 #include <memory>
 
 struct ScreenshotCaptureState;
+struct CapturedDisplayModel;
 struct ScreenshotColorPickerContext;
 class ScreenshotDisplaySession;
 class ScreenshotGeometryMapper;
@@ -97,6 +98,8 @@ class ScreenshotPresentationServices final {
     void scheduleFrame();
     [[nodiscard]] qint64 nowNanoseconds() const;
     void presentOverlayState(const QRectF& selection, bool semanticChanged, bool geometryChanged);
+    void presentGuideLines(ScreenshotOverlayWindow* owner, const CapturedDisplayModel* display,
+                           const QPointF& localPosition, bool anchored) const;
     [[nodiscard]] ScreenshotToolbarPresentationState toolbarPresentationState() const;
 
     ScreenshotPresentationServicesContext m_context;

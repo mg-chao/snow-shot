@@ -1,6 +1,7 @@
 #include "snow_shot/presentation/screenshotcolorpickerwindow.h"
 #include "widgets/detail/top_level_popup_window.h"
 
+#include "snow_shot/presentation/screenshotcapturepixels.h"
 #include "snow_shot/presentation/screenshotgeometry.h"
 #include "snow_shot/platform/screenshotnative.h"
 #include "snow_shot/presentation/screenshotguidelinerendering.h"
@@ -70,13 +71,6 @@ QColor panelTextColorForTheme(const snow_shot::presentation::styles::ThemeColorS
     return kFallbackPanelTextColor;
 }
 
-struct RgbaPixel {
-    int red = 0;
-    int green = 0;
-    int blue = 0;
-    int alpha = 255;
-};
-
 int normalizedHue(qreal hue) {
     if (std::isnan(hue) || hue < 0.0) {
         return 0;
@@ -102,31 +96,11 @@ QString fitText(const QFont& font, const QString& text, int width) {
     return metrics.elidedText(text, Qt::ElideRight, width);
 }
 
-RgbaPixel rgbaPixelAt(const QImage& image, int x, int y) {
-    if (image.format() == QImage::Format_RGBA8888) {
-        const uchar* pixel = image.constScanLine(y) + x * 4;
-        return RgbaPixel{
-            static_cast<int>(pixel[0]),
-            static_cast<int>(pixel[1]),
-            static_cast<int>(pixel[2]),
-            static_cast<int>(pixel[3]),
-        };
-    }
-
-    const QColor color = image.pixelColor(x, y).toRgb();
-    return RgbaPixel{
-        color.red(),
-        color.green(),
-        color.blue(),
-        color.alpha(),
-    };
-}
-
 int premultipliedComponent(int value, int alpha) {
     return (value * alpha + 127) / 255;
 }
 
-QRgb premultipliedArgb(const RgbaPixel& pixel) {
+QRgb premultipliedArgb(const ScreenshotCapturePixel& pixel) {
     return qRgba(premultipliedComponent(pixel.red, pixel.alpha),
                  premultipliedComponent(pixel.green, pixel.alpha),
                  premultipliedComponent(pixel.blue, pixel.alpha), pixel.alpha);
@@ -286,8 +260,7 @@ void ScreenshotColorPickerWindow::resetForNewCapture() {
 void ScreenshotColorPickerWindow::setCaptureImage(const QImage& image, const QRect& physicalRect,
                                                   const QImage& cursorPatch,
                                                   const QRect& cursorPixelRect) {
-    const bool validPatch = !cursorPatch.isNull() && cursorPatch.size() == cursorPixelRect.size() &&
-                            image.rect().contains(cursorPixelRect);
+    const bool validPatch = screenshotCaptureCursorPatchFits(image, cursorPatch, cursorPixelRect);
     const QImage normalizedPatch = validPatch ? cursorPatch : QImage();
     const QRect normalizedPixelRect = validPatch ? cursorPixelRect : QRect();
     if (m_captureImage.cacheKey() == image.cacheKey() && m_physicalRect == physicalRect &&
@@ -381,13 +354,24 @@ bool ScreenshotColorPickerWindow::nativeEvent(const QByteArray& eventType, void*
     return QWidget::nativeEvent(eventType, message, result);
 }
 
-void ScreenshotColorPickerWindow::setCenterGuideLineColor(const QColor& color) {
+void ScreenshotColorPickerWindow::setCenterGuideLineColor(const QColor& color, bool adaptive) {
     const QColor next = color.isValid() ? color : QColor(0, 0, 0, 0);
-    if (m_centerGuideLineColor == next) {
+    if (m_centerGuideLineColor == next && m_adaptiveGuideColors == adaptive) {
         return;
     }
+    const bool visible = isVisible();
+    const QColor previous = visible ? effectiveCenterGuideLineColor() : QColor();
     m_centerGuideLineColor = next;
-    update();
+    m_adaptiveGuideColors = adaptive;
+    if (visible && previous != effectiveCenterGuideLineColor()) {
+        update();
+    }
+}
+
+QColor ScreenshotColorPickerWindow::effectiveCenterGuideLineColor() const {
+    return m_adaptiveGuideColors && m_hasCurrentColor
+               ? adaptiveScreenshotGuideColor(m_centerGuideLineColor, m_currentColor)
+               : m_centerGuideLineColor;
 }
 
 void ScreenshotColorPickerWindow::toggleCoordinateMode() {
@@ -490,7 +474,7 @@ void ScreenshotColorPickerWindow::paintEvent(QPaintEvent* event) {
     const QRectF centerRect(preview.left() + previewCenterOffset,
                             preview.top() + previewCenterOffset, kPreviewScale, kPreviewScale);
     paintScreenshotColorPickerCenterGuideLines(painter, preview, centerRect,
-                                               m_centerGuideLineColor);
+                                               effectiveCenterGuideLineColor());
     const QColor markerColor = readableTextColor(m_currentColor);
     painter.setPen(QPen(markerColor, kCenterPixelBorderWidth));
     painter.setBrush(Qt::NoBrush);
@@ -521,22 +505,17 @@ bool ScreenshotColorPickerWindow::updateColorSample(const QPoint& physicalPoint)
         return false;
     }
 
-    const int maxImageX = std::max(0, m_captureImage.width() - 1);
-    const int maxImageY = std::max(0, m_captureImage.height() - 1);
-    const int imageX = std::clamp(physicalPoint.x() - m_physicalRect.left(), 0, maxImageX);
-    const int imageY = std::clamp(physicalPoint.y() - m_physicalRect.top(), 0, maxImageY);
-    const QPoint nextPhysicalPoint(m_physicalRect.left() + imageX, m_physicalRect.top() + imageY);
+    const QPoint imagePoint = screenshotClampedCaptureImagePoint(
+        m_captureImage, physicalPoint - m_physicalRect.topLeft());
+    const QPoint nextPhysicalPoint = m_physicalRect.topLeft() + imagePoint;
     if (m_hasCurrentColor && m_currentPhysicalPoint == nextPhysicalPoint) {
         return false;
     }
     m_currentPhysicalPoint = nextPhysicalPoint;
     // A same-point reveal must rebuild the neighborhood after hidden sampling.
     m_previewDirty = true;
-    const RgbaPixel centerPixel =
-        !m_cursorPatch.isNull() && m_cursorPixelRect.contains(imageX, imageY)
-            ? rgbaPixelAt(m_cursorPatch, imageX - m_cursorPixelRect.x(),
-                          imageY - m_cursorPixelRect.y())
-            : rgbaPixelAt(m_captureImage, imageX, imageY);
+    const auto centerPixel =
+        screenshotCapturePixelAt(m_captureImage, m_cursorPatch, m_cursorPixelRect, imagePoint);
     m_currentColor = QColor(centerPixel.red, centerPixel.green, centerPixel.blue, 255);
     m_hasCurrentColor = true;
 #if defined(SNOW_SHOT_BENCH_INTERNALS)
@@ -560,18 +539,14 @@ bool ScreenshotColorPickerWindow::updatePreview(const QPoint& physicalPoint) {
             QImage(kPreviewPickerSize, kPreviewPickerSize, QImage::Format_ARGB32_Premultiplied);
     }
 
-    const auto sample = [this](int x, int y) {
-        if (!m_cursorPatch.isNull() && m_cursorPixelRect.contains(x, y))
-            return rgbaPixelAt(m_cursorPatch, x - m_cursorPixelRect.x(), y - m_cursorPixelRect.y());
-        return rgbaPixelAt(m_captureImage, x, y);
-    };
     const int halfPicker = kPreviewPickerSize / 2;
     for (int y = 0; y < kPreviewPickerSize; ++y) {
         auto* previewLine = reinterpret_cast<QRgb*>(m_previewImage.scanLine(y));
         for (int x = 0; x < kPreviewPickerSize; ++x) {
             const int sourceX = std::clamp(imageX + x - halfPicker, 0, maxImageX);
             const int sourceY = std::clamp(imageY + y - halfPicker, 0, maxImageY);
-            previewLine[x] = premultipliedArgb(sample(sourceX, sourceY));
+            previewLine[x] = premultipliedArgb(screenshotCapturePixelAt(
+                m_captureImage, m_cursorPatch, m_cursorPixelRect, {sourceX, sourceY}));
         }
     }
 

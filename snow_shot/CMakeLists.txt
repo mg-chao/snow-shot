@@ -8130,6 +8130,8 @@ if(SNOW_SHOT_BUILD_TESTS)
         COMMAND snow-shot-selection-presentation-tests -platform offscreen)
     add_test(NAME snow-shot-selection-color-picker-tests
         COMMAND snow-shot-selection-presentation-tests --picker-drag-only -platform offscreen)
+    add_test(NAME snow-shot-adaptive-guide-colors-tests
+        COMMAND snow-shot-selection-presentation-tests --adaptive-guides-only -platform offscreen)
     add_test(NAME snow-shot-toolbar-presenter-lifetime-tests
         COMMAND snow-shot-selection-presentation-tests --toolbar-presenter-lifetime-only -platform offscreen)
     add_executable(snow-shot-selection-wheel-tests
@@ -8170,6 +8172,7 @@ if(SNOW_SHOT_BUILD_TESTS)
     add_test(NAME snow-shot-rectangular-selection-rendering-tests
         COMMAND snow-shot-screenshot-canvas-renderer-tests --rectangular-selection-rendering-only -platform offscreen)
     set_tests_properties(snow-shot-selection-presentation-tests snow-shot-selection-color-picker-tests
+        snow-shot-adaptive-guide-colors-tests
         snow-shot-toolbar-presenter-lifetime-tests snow-shot-overlay-preparation-tests
         snow-shot-background-coverage-tests snow-shot-pointer-presentation-tests
         snow-shot-rectangular-selection-rendering-tests

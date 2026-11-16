@@ -612,11 +612,15 @@ physicalPositionForCanvasPointInDisplaySession(const ScreenshotGeometryMapper& g
         return roundPointValue(point);
     }
 
-    const DisplayCoordinateTransform transform(*display);
-    return geometry.clampPhysicalPointToDisplay(*display,
-                                                roundPointValue(transform.canvasToPhysical(point)));
+    return geometry.physicalPositionForCanvasPoint(*display, point);
 }
 } // namespace
+
+QPoint ScreenshotGeometryMapper::physicalPositionForCanvasPoint(const CapturedDisplayModel& display,
+                                                                const QPointF& point) const {
+    const DisplayCoordinateTransform transform(display);
+    return clampPhysicalPointToDisplay(display, roundPointValue(transform.canvasToPhysical(point)));
+}
 
 QPoint ScreenshotGeometryMapper::physicalPositionForCanvasPoint(
     const ScreenshotDisplaySession& displaySession, const QPointF& point) const {

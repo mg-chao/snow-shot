@@ -511,6 +511,8 @@ class ScreenshotUiSettings final {
     bool setScreenshotAreaTypeHintEnabled(bool enabled) const;
     [[nodiscard]] bool showGuidesByDefault() const;
     bool setShowGuidesByDefault(bool enabled) const;
+    [[nodiscard]] bool adaptiveGuideColors() const;
+    bool setAdaptiveGuideColors(bool enabled) const;
     [[nodiscard]] QColor cursorGuideLineColor() const;
     bool setCursorGuideLineColor(const QColor& color) const;
     [[nodiscard]] QColor selectionCenterGuideLineColor() const;

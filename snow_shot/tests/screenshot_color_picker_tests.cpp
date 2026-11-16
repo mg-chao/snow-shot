@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/screenshotcolorpickerwindow.h"
+#include "snow_shot/presentation/screenshotguidelinerendering.h"
 #include "snow_shot/storage/applicationstorage.h"
 #include "snow_shot/storage/settingsadapters.h"
 
@@ -70,6 +71,48 @@ void cursorPatchSamplingIsReversibleAndDoesNotModifyTheDesktop() {
     require(picker.currentColorText() == QStringLiteral("#FF0000") &&
                 clean.constBits() == cleanPointer && clean.pixelColor(8, 8) == QColor(Qt::red),
             "hiding the cursor must restore clean sampling without detaching the desktop");
+}
+
+void centerGuideUsesThePickerSample() {
+    ScreenshotColorPickerWindow picker;
+    QImage capture(24, 24, QImage::Format_RGBA8888);
+    capture.fill(Qt::black);
+    capture.setPixelColor(8, 8, Qt::red);
+    picker.setCaptureImage(capture, capture.rect());
+    picker.setCenterGuideLineColor(Qt::red);
+    const auto rendersCyan = [&picker]() {
+        QImage result(picker.size(), QImage::Format_ARGB32_Premultiplied);
+        result.fill(Qt::transparent);
+        picker.render(&result);
+        for (int y = 0; y < result.height(); ++y) {
+            for (int x = 0; x < result.width(); ++x) {
+                if (result.pixelColor(x, y) == QColor(Qt::cyan))
+                    return true;
+            }
+        }
+        return false;
+    };
+    picker.updatePicker(QPoint(8, 8), QPointF(8, 8), true);
+    require(picker.currentColorText() == QStringLiteral("#FF0000") && rendersCyan(),
+            "the magnifier guide must invert against its sampled center pixel");
+    picker.setCenterGuideLineColor(Qt::red, false);
+    require(!rendersCyan() && picker.currentColorText() == QStringLiteral("#FF0000"),
+            "turning adaptation off must restore the guide without changing the readout");
+    picker.setCenterGuideLineColor(Qt::red, true);
+    picker.updatePicker(QPoint(9, 8), QPointF(9, 8), true);
+    require(!rendersCyan() && picker.currentColorText() == QStringLiteral("#000000"),
+            "the guide must keep its configured color after the sample becomes dissimilar");
+}
+
+void guideColorSimilarityPreservesOpacity() {
+    const QColor configured(100, 80, 60, 127);
+    const QColor inverted(155, 175, 195, 127);
+    require(adaptiveScreenshotGuideColor(configured, QColor(164, 80, 60)) == inverted &&
+                adaptiveScreenshotGuideColor(configured, QColor(164, 81, 60)) == configured,
+            "the RGB distance must include the threshold and preserve the configured alpha");
+    require(adaptiveScreenshotGuideColor(configured, QColor()) == configured &&
+                adaptiveScreenshotGuideColor(Qt::transparent, Qt::black) == QColor(Qt::transparent),
+            "missing samples and transparent guide colors must never be inverted");
 }
 
 void positionTextTracksFontAndLanguage() {
@@ -532,6 +575,8 @@ int main(int argc, char** argv) {
     application.setFont(QFont(QFontDatabase::applicationFontFamilies(fontId).first()));
 #endif
     cursorPatchSamplingIsReversibleAndDoesNotModifyTheDesktop();
+    centerGuideUsesThePickerSample();
+    guideColorSimilarityPreservesOpacity();
     positionTextTracksFontAndLanguage();
     selectionUnitPersistsAndCoordinatesDoNotResample();
     coordinateModePersistsAndRefreshesWithoutResampling();

@@ -27,7 +27,7 @@ class ScreenshotColorPickerWindow final : public QWidget {
     updatePicker(const QPoint& physicalPoint, const QPointF& overlayLocalPosition, bool visible,
                  std::optional<ScreenshotCoordinateDisplayValues> displayValues = std::nullopt);
     void hidePicker();
-    void setCenterGuideLineColor(const QColor& color);
+    void setCenterGuideLineColor(const QColor& color, bool adaptive = true);
     void cycleColorFormat();
     void toggleCoordinateMode();
     QString currentColorText() const;
@@ -67,6 +67,7 @@ class ScreenshotColorPickerWindow final : public QWidget {
 
     [[nodiscard]] bool updatePreview(const QPoint& physicalPoint);
     [[nodiscard]] bool updatePosition(const QPointF& overlayLocalPosition);
+    [[nodiscard]] QColor effectiveCenterGuideLineColor() const;
     QString formatColor(const QColor& color) const;
     QRectF panelRect() const;
     QRectF previewRect() const;
@@ -87,6 +88,7 @@ class ScreenshotColorPickerWindow final : public QWidget {
     QColor m_centerGuideLineColor = QColor(0, 0, 0, 0);
     ColorFormat m_colorFormat = ColorFormat::Hex;
     bool m_relativeCoordinates = false;
+    bool m_adaptiveGuideColors = true;
     bool m_hasCurrentColor = false;
     bool m_previewDirty = true;
     qreal m_preparedSurfaceDevicePixelRatio = 0.0;

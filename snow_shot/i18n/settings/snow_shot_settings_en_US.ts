@@ -1578,6 +1578,10 @@
             <translation>Active window</translation>
         </message>
         <message>
+            <source>Adaptive guide colors</source>
+            <translation>Adaptive guide colors</translation>
+        </message>
+        <message>
             <source>Add a mask to highlight text recognition results</source>
             <translation>Add a mask to highlight text recognition results</translation>
         </message>
@@ -3184,6 +3188,10 @@
         <message>
             <source>Interface settings</source>
             <translation>Interface settings</translation>
+        </message>
+        <message>
+            <source>Invert guide colors that are similar to their sampled background color</source>
+            <translation>Invert guide colors that are similar to their sampled background color</translation>
         </message>
         <message>
             <source>JPEG</source>

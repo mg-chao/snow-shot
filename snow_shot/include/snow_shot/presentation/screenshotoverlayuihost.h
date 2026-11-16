@@ -51,7 +51,7 @@ class ScreenshotOverlayUiHost final : public QObject {
                            const ScreenshotCoordinateDisplayValues& displayValues,
                            const QImage& cursorPatch = {}, const QRect& cursorPixelRect = {});
     void hideColorPicker();
-    void setColorPickerCenterGuideLineColor(const QColor& color);
+    void setColorPickerCenterGuideLineColor(const QColor& color, bool adaptive = true);
     void resetColorPickerForNewCapture();
     void hideColorPickerForOverlay(ScreenshotOverlayWindow* overlay) const;
     [[nodiscard]] bool colorPickerBelongsToOverlay(const ScreenshotOverlayWindow* overlay) const;
@@ -101,6 +101,7 @@ class ScreenshotOverlayUiHost final : public QObject {
     QPointer<ScreenshotColorPickerWindow> m_colorPicker;
     QPointer<QWidget> m_shortcutHints;
     QColor m_colorPickerCenterGuideLineColor = QColor(0, 0, 0, 0);
+    bool m_adaptiveGuideColors = true;
     bool m_selectionToolbarHidden = false;
 };
 

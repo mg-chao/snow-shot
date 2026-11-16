@@ -996,6 +996,8 @@ bool BuiltInSettingsBackend::switchValue(SettingsSwitchBinding binding) const {
         return storage::ScreenshotUiSettings().screenshotAreaTypeHintEnabled();
     case SettingsSwitchBinding::ShowGuidesByDefault:
         return storage::ScreenshotUiSettings().showGuidesByDefault();
+    case SettingsSwitchBinding::AdaptiveGuideColors:
+        return storage::ScreenshotUiSettings().adaptiveGuideColors();
     case SettingsSwitchBinding::ShowEditSelectionToolbar:
         return storage::ScreenshotUiSettings().showEditSelectionToolbar();
     case SettingsSwitchBinding::FloatingToolbarEnabled:
@@ -1356,6 +1358,9 @@ bool BuiltInSettingsBackend::applySwitchValue(SettingsSwitchBinding binding, boo
     if (binding == SettingsSwitchBinding::ShowGuidesByDefault) {
         return storage::ScreenshotUiSettings().setShowGuidesByDefault(value);
     }
+    if (binding == SettingsSwitchBinding::AdaptiveGuideColors) {
+        return storage::ScreenshotUiSettings().setAdaptiveGuideColors(value);
+    }
     if (binding == SettingsSwitchBinding::ShowEditSelectionToolbar) {
         return storage::ScreenshotUiSettings().setShowEditSelectionToolbar(value);
     }
@@ -1544,6 +1549,7 @@ bool BuiltInSettingsBackend::applySwitchValue(SettingsSwitchBinding binding, boo
         return false;
     case SettingsSwitchBinding::ScreenshotAreaTypeHint:
     case SettingsSwitchBinding::ShowGuidesByDefault:
+    case SettingsSwitchBinding::AdaptiveGuideColors:
     case SettingsSwitchBinding::ShowEditSelectionToolbar:
     case SettingsSwitchBinding::FloatingToolbarEnabled:
     case SettingsSwitchBinding::TrayEnabled:
@@ -2958,6 +2964,9 @@ SettingsResetResult BuiltInSettingsBackend::resetSectionWithResults(SettingsSect
             {QStringLiteral("screenshot_ui/show_guides_by_default"),
              storage::ConfigurationSchema::defaultValue(
                  QStringLiteral("screenshot_ui/show_guides_by_default"))},
+            {QStringLiteral("screenshot_ui/adaptive_guide_colors"),
+             storage::ConfigurationSchema::defaultValue(
+                 QStringLiteral("screenshot_ui/adaptive_guide_colors"))},
             {QStringLiteral("screenshot_ui/cursor_guide_line_color"),
              storage::ConfigurationSchema::defaultValue(
                  QStringLiteral("screenshot_ui/cursor_guide_line_color"))},

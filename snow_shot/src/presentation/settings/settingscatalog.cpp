@@ -695,6 +695,17 @@ SettingsItemDefinition showGuidesByDefaultItem() {
             SettingsSwitchDefinition{SettingsSwitchBinding::ShowGuidesByDefault}};
 }
 
+SettingsItemDefinition adaptiveGuideColorsItem() {
+    return {QStringLiteral("interface.screenshot.adaptive-guide-colors"),
+            settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Adaptive guide colors")),
+            settingsText(QT_TRANSLATE_NOOP(
+                "SettingsCatalog",
+                "Invert guide colors that are similar to their sampled background color")),
+            {},
+            QStringLiteral("screenshot_ui/adaptive_guide_colors"),
+            SettingsSwitchDefinition{SettingsSwitchBinding::AdaptiveGuideColors}};
+}
+
 SettingsItemDefinition showEditSelectionToolbarItem() {
     return {QStringLiteral("interface.screenshot.show-edit-selection-toolbar"),
             settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Show edit selection toolbar")),
@@ -4275,6 +4286,7 @@ constexpr CatalogItemFactory catalogPageScreenshotsSectionInterfaceScreenshotIte
     {shortcutHintOpacityItem},
     {screenshotAreaTypeHintItem},
     {showGuidesByDefaultItem},
+    {adaptiveGuideColorsItem},
     {nullptr, &catalogItemInterfaceScreenshotCursorGuideLineColor},
     {nullptr, &catalogItemInterfaceScreenshotSelectionCenterGuideLineColor},
     {nullptr, &catalogItemInterfaceScreenshotMonitorCenterGuideLineColor},
@@ -6438,6 +6450,9 @@ QStringList SettingsCatalog::validationErrors() const {
                         break;
                     case SettingsSwitchBinding::ShowGuidesByDefault:
                         expectedKey = QStringLiteral("screenshot_ui/show_guides_by_default");
+                        break;
+                    case SettingsSwitchBinding::AdaptiveGuideColors:
+                        expectedKey = QStringLiteral("screenshot_ui/adaptive_guide_colors");
                         break;
                     case SettingsSwitchBinding::ShowEditSelectionToolbar:
                         expectedKey = QStringLiteral("screenshot_ui/show_edit_selection_toolbar");

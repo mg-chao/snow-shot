@@ -553,9 +553,19 @@ void builtInCatalogIsCompleteAndValid() {
                         return first.id ==
                                    QStringLiteral("interface.screenshot.show-guides-by-default") &&
                                second.id ==
-                                   QStringLiteral("interface.screenshot.cursor-guide-line-color");
+                                   QStringLiteral("interface.screenshot.adaptive-guide-colors");
                     }) != screenshotInterface->items.cend(),
-            "show guides by default must appear immediately above cursor guide color");
+            "adaptive guide colors must appear immediately below show guides by default");
+    const auto* adaptiveGuideColors =
+        catalog.item({QStringLiteral("screenshots"), QStringLiteral("interface-screenshot"),
+                      QStringLiteral("interface.screenshot.adaptive-guide-colors")});
+    require(
+        adaptiveGuideColors != nullptr &&
+            adaptiveGuideColors->configurationKey ==
+                QStringLiteral("screenshot_ui/adaptive_guide_colors") &&
+            std::get<settings::SettingsSwitchDefinition>(adaptiveGuideColors->payload).binding ==
+                settings::SettingsSwitchBinding::AdaptiveGuideColors,
+        "the adaptive guide colors switch must use its own setting");
     const auto* editSelectionToolbar =
         catalog.item({QStringLiteral("screenshots"), QStringLiteral("interface-screenshot"),
                       QStringLiteral("interface.screenshot.show-edit-selection-toolbar")});

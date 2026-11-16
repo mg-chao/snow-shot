@@ -17,6 +17,16 @@ class ScreenshotOverlayCoordinator;
 class ScreenshotOverlayWindow;
 struct CapturedDisplayModel;
 
+struct ScreenshotColorPickerSamplePoint {
+    const CapturedDisplayModel* display = nullptr;
+    QPoint physical;
+};
+
+[[nodiscard]] ScreenshotColorPickerSamplePoint
+screenshotColorPickerSamplePoint(const ScreenshotGeometryMapper& geometry,
+                                 const ScreenshotDisplaySession& session,
+                                 const QPointF& canvasPoint);
+
 namespace snow_shot::platform {
 class PhysicalCursor;
 }
@@ -68,7 +78,6 @@ class ScreenshotColorPickerController final {
     [[nodiscard]] const CapturedDisplayModel* displayForPhysicalPoint(const QPointF& point) const;
     [[nodiscard]] QPoint logicalPositionForPhysicalPoint(const QPointF& point,
                                                          const CapturedDisplayModel& display) const;
-    [[nodiscard]] QPoint physicalPositionForCanvasPoint(const QPointF& point) const;
     [[nodiscard]] QPointF canvasPositionForPhysicalPoint(const QPointF& point) const;
     [[nodiscard]] bool visibleForPoint(const QPointF& canvasPoint,
                                        const ScreenshotColorPickerContext& context) const;

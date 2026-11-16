@@ -1578,6 +1578,10 @@
             <translation>作用中視窗</translation>
         </message>
         <message>
+            <source>Adaptive guide colors</source>
+            <translation>自適應輔助線顏色</translation>
+        </message>
+        <message>
             <source>Add a mask to highlight text recognition results</source>
             <translation>加入遮罩以醒目顯示文字辨識結果</translation>
         </message>
@@ -3184,6 +3188,10 @@
         <message>
             <source>Interface settings</source>
             <translation>介面設定</translation>
+        </message>
+        <message>
+            <source>Invert guide colors that are similar to their sampled background color</source>
+            <translation>輔助線顏色與取樣的背景顏色相近時反轉輔助線顏色</translation>
         </message>
         <message>
             <source>JPEG</source>
