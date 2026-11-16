@@ -1221,7 +1221,7 @@ bool BuiltInSettingsBackend::fieldUsesStorageErrors(const QString& fieldId) cons
 }
 bool BuiltInSettingsBackend::fieldPending(const QString& fieldId) const {
 #ifdef Q_OS_MACOS
-    if (fieldId == u"system.auto-start-at-boot" || fieldId == u"system.login-item-settings")
+    if (fieldId == u"system.auto-start-at-boot")
         return m_loginItems->pending();
 #endif
     return platform::windows::administratorOperationPending() &&
@@ -2283,12 +2283,6 @@ bool BuiltInSettingsBackend::applyGlobalMouseCombination(
 SettingsActionState BuiltInSettingsBackend::actionState(SettingsActionBinding binding) const {
     const storage::StorageStatus status = storage::ApplicationStorage::instance().status();
     switch (binding) {
-    case SettingsActionBinding::OpenLoginItemSettings:
-#ifdef Q_OS_MACOS
-        return {!m_loginItems->pending(), false};
-#else
-        return {false, false};
-#endif
     case SettingsActionBinding::RestartAsAdministrator: {
         const auto state = platform::windows::administratorPresentation(
             platform::windows::administratorState(), storage::SystemSettings().autoStartAtBoot(),
@@ -2327,15 +2321,6 @@ SettingsActionState BuiltInSettingsBackend::actionState(SettingsActionBinding bi
 bool BuiltInSettingsBackend::triggerAction(SettingsActionBinding binding, const QString& filePath,
                                            bool includeToolbarStyles) {
     switch (binding) {
-    case SettingsActionBinding::OpenLoginItemSettings:
-#ifdef Q_OS_MACOS
-        if (!actionState(binding).enabled)
-            return false;
-        m_loginItems->openSettings();
-        return true;
-#else
-        return false;
-#endif
     case SettingsActionBinding::RestartAsAdministrator: {
         emit synchronized();
         const auto result = platform::windows::restartAsAdministrator(

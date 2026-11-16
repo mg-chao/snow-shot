@@ -661,7 +661,8 @@ void portableSystemIntegrationDefaults() {
     const QString enabledKey = QStringLiteral("system/auto_start_at_boot");
     const QString menuKey = QStringLiteral("system/context_menu_mode");
     auto& appStorage = initialize(executable, fallback);
-    require(storage::SystemSettings().autoStartAtBoot() &&
+    require(storage::SystemSettings().autoStartAtBoot() ==
+                    storage::ConfigurationSchema::defaultValue(enabledKey).toBool() &&
                 appStorage.configuration().value(menuKey) == QStringLiteral("image_files"),
             "application data storage keeps the standard integration defaults");
     require(QDir().mkpath(executable), "create a portable executable directory");
@@ -1007,7 +1008,11 @@ void settingsSchemaDefaultsAndValidationAreComplete() {
         return storage::ConfigurationSchema::defaultValue(QString::fromLatin1(key));
     };
     require(
+#ifdef Q_OS_MACOS
+        !defaultValue("system/auto_start_at_boot").toBool() &&
+#else
         defaultValue("system/auto_start_at_boot").toBool() &&
+#endif
             defaultValue("network/proxy").toString() == QStringLiteral("none") &&
             defaultValue("text_recognition/model_type").toString() == QStringLiteral("small") &&
             defaultValue("text_recognition/detector_resize_policy").toString() ==
@@ -2790,8 +2795,12 @@ void settingsAdaptersRoundTripAndRejectInvalidValues() {
     auto& applicationStorage = initialize(executable, temporary.path());
 
     const storage::SystemSettings system;
-    require(system.autoStartAtBoot() && !system.launchAsAdministrator(),
-            "elevated startup must default off");
+    require(system.autoStartAtBoot() == storage::ConfigurationSchema::defaultValue(
+                                            QStringLiteral("system/auto_start_at_boot"))
+                                            .toBool() &&
+                !system.launchAsAdministrator(),
+            "startup uses the platform default and elevated startup defaults off");
+    require(system.setAutoStartAtBoot(true), "enable startup before testing elevation");
     require(system.setLaunchAsAdministrator(true) && system.launchAsAdministrator(),
             "elevated startup preference must persist");
     require(applicationStorage.flushNow().success, "startup preferences must flush");

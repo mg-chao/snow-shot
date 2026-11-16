@@ -1210,8 +1210,7 @@ void runMcpLoginItemImportTests() {
                  enabled = value;
                  return LoginItemResult{};
              },
-             [] { return true; }, [] { return true; },
-             [&](bool value) { return configuration.setValue(enabledKey, value); }, [] {}});
+             [&](bool value) { return configuration.setValue(enabledKey, value); }});
         login_item_test::idle(login);
         settings::BuiltInSettingsBackend backend(shortcuts, nullptr, nullptr, nullptr, &login);
         settings::SettingsRuntimeSession session(registry, backend);

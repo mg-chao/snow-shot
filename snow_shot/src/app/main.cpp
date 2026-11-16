@@ -17,7 +17,6 @@
 #include "snow_shot/platform/windows/administratorlaunch.h"
 #include "snow_shot/app/distribution.h"
 #include "snow_shot/platform/windows/shellcontextmenuregistration.h"
-#include "widgets/message.h"
 #include "widgets/platform_compatibility.h"
 #include "snow_shot/presentation/components/screenshothistorypagewidget.h"
 #include "snow_shot/storage/applicationstorage.h"
@@ -51,7 +50,6 @@
 #include <QDir>
 #include <QStandardPaths>
 #include <QTimer>
-#include <QPointer>
 #include <QSysInfo>
 #include <optional>
 #include <utility>
@@ -730,7 +728,6 @@ int main(int argc, char* argv[]) {
         return applicationController.acceptsLaunchRequest(arguments);
     });
     applicationController.start(launchArguments, [&] {
-        const auto startupSettings = snow_shot::storage::SystemSettings();
 #ifdef Q_OS_WIN
         QString shellRegistrationError;
         const snow_shot::platform::windows::ShellContextMenuRegistration shellRegistration;
@@ -750,26 +747,8 @@ int main(int argc, char* argv[]) {
             snow_shot::app::reportStartupRegistrationFailure(shellRegistrationError);
         }
 #endif
-#ifdef Q_OS_MACOS
-        if (snow_shot::platform::macos::loginItemAutomaticRegistrationAllowed(launchArguments)) {
-            const auto completed = [controller = QPointer<snow_shot::app::ApplicationController>(
-                                        &applicationController)](
-                                       const snow_shot::platform::macos::LoginItemResult& result) {
-                if (result.success || !controller)
-                    return;
-                snow_shot::app::reportStartupRegistrationFailure(result.error);
-                // Startup can otherwise have only a tiny floating toolbar visible.
-                controller->showMainWindow();
-                adqt::widgets::AdMessage::Request request;
-                request.content = result.error;
-                adqt::widgets::AdMessageService::error(std::move(request));
-            };
-            const auto admitted = snow_shot::platform::macos::loginItemService().initialize(
-                startupSettings.autoStartAtBoot(), completed);
-            if (!admitted.success)
-                completed(admitted);
-        }
-#else
+#ifndef Q_OS_MACOS
+        const auto startupSettings = snow_shot::storage::SystemSettings();
         const auto startupResult = snow_shot::platform::windows::reconcileStartupMode(
             !startupSettings.autoStartAtBoot() ? snow_shot::platform::windows::StartupMode::Off
             : startupSettings.launchAsAdministrator()

@@ -112,8 +112,8 @@ int main(int argc, char** argv) {
              return platform::macos::LoginItemSnapshot{platform::macos::LoginItemStatus::Enabled,
                                                        {}};
          },
-         [](bool) { return platform::macos::LoginItemResult{true, {}}; }, [] { return true; },
-         [] { return true; }, [](bool) { return true; }, [] {}});
+         [](bool) { return platform::macos::LoginItemResult{true, {}}; },
+         [](bool) { return true; }});
     settings::BuiltInSettingsBackend backend(shortcuts, nullptr, nullptr, nullptr, &loginItems);
     const QString key = QStringLiteral("system/application_qos");
     const QString next = selected == platform::ApplicationQoS::Utility

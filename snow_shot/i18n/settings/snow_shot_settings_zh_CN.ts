@@ -1062,10 +1062,6 @@
     <context>
         <name>LoginItemService</name>
         <message>
-            <source>%1 needs a valid code signature to use launch at login. Reinstall the signed app</source>
-            <translation>%1 需要有效的代码签名才能在登录时启动。请重新安装已签名的应用</translation>
-        </message>
-        <message>
             <source>A launch-at-login change is already in progress</source>
             <translation>正在更改登录时启动设置</translation>
         </message>
@@ -1078,24 +1074,8 @@
             <translation>无法更改登录时启动设置：%1</translation>
         </message>
         <message>
-            <source>Could not save launch-at-login initialization. Registration was not changed</source>
-            <translation>无法保存登录时启动初始化状态。注册状态未更改</translation>
-        </message>
-        <message>
             <source>Could not save the launch-at-login preference. The displayed macOS status is still current</source>
             <translation>无法保存登录时启动偏好设置。显示的 macOS 状态仍为当前状态</translation>
-        </message>
-        <message>
-            <source>Move the signed %1 app to /Applications or ~/Applications to use launch at login</source>
-            <translation>请将已签名的 %1 应用移至 /Applications 或 ~/Applications，以便在登录时启动</translation>
-        </message>
-        <message>
-            <source>Move the signed Snow Shot app to /Applications or ~/Applications to use launch at login</source>
-            <translation>请将已签名的 Snow Shot 应用移至 /Applications 或 ~/Applications，以使用登录时启动功能</translation>
-        </message>
-        <message>
-            <source>Snow Shot needs a valid code signature to use launch at login. Reinstall the signed app</source>
-            <translation>Snow Shot 需要有效的代码签名才能使用登录时启动功能。请重新安装已签名的应用</translation>
         </message>
         <message>
             <source>macOS did not apply the launch-at-login change. Check Login Items in System Settings</source>
@@ -1836,6 +1816,10 @@
         <message>
             <source>Automatically select newly created elements</source>
             <translation>自动选中新创建的元素</translation>
+        </message>
+        <message>
+            <source>Automatically start Snow Shot in the background when you log in to your Mac</source>
+            <translation>登录 Mac 时自动在后台启动 Snow Shot</translation>
         </message>
         <message>
             <source>Autostart</source>
@@ -3374,10 +3358,6 @@
             <translation>保持选区宽高比</translation>
         </message>
         <message>
-            <source>Manage Snow Shot's login permission in macOS System Settings</source>
-            <translation>在 macOS 系统设置中管理 Snow Shot 的登录权限</translation>
-        </message>
-        <message>
             <source>Manage macOS permissions for Snow Shot</source>
             <translation>管理 Snow Shot 的 macOS 权限</translation>
         </message>
@@ -3586,16 +3566,12 @@
             <translation>仅在显示时</translation>
         </message>
         <message>
-            <source>Open</source>
-            <translation>打开</translation>
-        </message>
-        <message>
-            <source>Open Login Items settings</source>
-            <translation>打开登录项设置</translation>
-        </message>
-        <message>
             <source>Open a canvas on the current display or toggle click-through</source>
             <translation>在当前显示器上打开画布或切换鼠标穿透</translation>
+        </message>
+        <message>
+            <source>Open at login</source>
+            <translation>登录时打开</translation>
         </message>
         <message>
             <source>Open image editing for each selected image file, or an empty window if no images are selected</source>

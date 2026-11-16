@@ -2591,21 +2591,6 @@ SettingsItemDefinition restartAsAdministratorItem() {
             payload};
 }
 #endif
-#ifdef Q_OS_MACOS
-SettingsItemDefinition loginItemSettingsItem() {
-    SettingsActionDefinition payload;
-    payload.binding = SettingsActionBinding::OpenLoginItemSettings;
-    payload.iconFactory = [] { return outlined_icons::Setting(); };
-    payload.buttonText = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Open"));
-    return {QStringLiteral("system.login-item-settings"),
-            settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Open Login Items settings")),
-            settingsText(QT_TRANSLATE_NOOP(
-                "SettingsCatalog", "Manage Snow Shot's login permission in macOS System Settings")),
-            {},
-            {},
-            payload};
-}
-#endif
 SettingsItemDefinition autoStartItem() {
     if (app::distribution::isStoreManaged())
         return switchItem(QStringLiteral("system.auto-start-at-boot"),
@@ -2617,8 +2602,10 @@ SettingsItemDefinition autoStartItem() {
     return switchItem(
         QStringLiteral("system.auto-start-at-boot"),
 #ifdef Q_OS_MACOS
-        QT_TRANSLATE_NOOP("SettingsCatalog", "Launch at login"),
-        QT_TRANSLATE_NOOP("SettingsCatalog", "Start Snow Shot in the background when you log in"),
+        QT_TRANSLATE_NOOP("SettingsCatalog", "Open at login"),
+        QT_TRANSLATE_NOOP(
+            "SettingsCatalog",
+            "Automatically start Snow Shot in the background when you log in to your Mac"),
 #else
         QT_TRANSLATE_NOOP("SettingsCatalog", "Auto start at boot"),
         QT_TRANSLATE_NOOP("SettingsCatalog",
@@ -4144,9 +4131,6 @@ constexpr CatalogItemFactory catalogPageGeneralSectionSystemGeneralItems[] = {
 #endif
 #if defined(Q_OS_WIN)
     {nullptr, &catalogItemSystemAnnotationModeWhenOpeningForEditing},
-#endif
-#if defined(Q_OS_MACOS)
-    {loginItemSettingsItem},
 #endif
     {updateModeItem},
 };

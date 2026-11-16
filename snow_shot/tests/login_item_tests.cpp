@@ -1,12 +1,10 @@
 #include "login_item_test_support.h"
 #include "snow_shot/platform/macos/loginitemservice.h"
 #include <QCoreApplication>
-#include <QSettings>
 #include <QSemaphore>
 #include <QTimer>
 #include <atomic>
 #include <memory>
-#include <QTemporaryDir>
 #include <cstdlib>
 #include <iostream>
 
@@ -19,23 +17,16 @@ void require(bool ok, const char* message) {
     }
 }
 struct Fixture {
-    QTemporaryDir directory;
     LoginItemSnapshot native{LoginItemStatus::Unregistered, {}};
-    bool markerWritable = true;
     bool preferenceWritable = true;
     bool preference = false;
     bool failNative = false;
     bool approval = false;
     int queries = 0;
     int changes = 0;
-    int opened = 0;
     LoginItemService service{operations()};
     Fixture() {
         login_item_test::idle(service);
-    }
-    bool initialized() {
-        QSettings settings(directory.filePath(QStringLiteral("state.ini")), QSettings::IniFormat);
-        return settings.value(QStringLiteral("initialized"), false).toBool();
     }
     LoginItemOperations operations() {
         return {[this] {
@@ -55,23 +46,12 @@ struct Fixture {
                                             : LoginItemStatus::Unregistered;
                     return {};
                 },
-                [this] { return initialized(); },
-                [this] {
-                    if (!markerWritable)
-                        return false;
-                    QSettings settings(directory.filePath(QStringLiteral("state.ini")),
-                                       QSettings::IniFormat);
-                    settings.setValue(QStringLiteral("initialized"), true);
-                    settings.sync();
-                    return settings.status() == QSettings::NoError;
-                },
                 [this](bool value) {
                     require(QThread::currentThread() == QCoreApplication::instance()->thread(),
                             "preference publication must run on the GUI thread");
                     preference = value;
                     return preferenceWritable;
-                },
-                [this] { ++opened; }};
+                }};
     }
 };
 void refreshNotifications() {
@@ -114,64 +94,61 @@ void refreshNotifications() {
 }
 void registration() {
     Fixture f;
-    require(login_item_test::change(f.service, true, true).success && f.changes == 1 &&
-                f.preference,
-            "first eligible launch must enable automatically");
-    require(f.initialized(), "automatic attempt must persist the local marker");
-    require(login_item_test::change(f.service, true, true).success && f.changes == 1,
-            "initialize is idempotent");
+    require(f.changes == 0 && !f.service.snapshot().requested(),
+            "fresh service leaves login registration disabled");
+    require(login_item_test::change(f.service, true).success && f.changes == 1 && f.preference,
+            "explicit enable registers and saves the preference");
+    require(login_item_test::change(f.service, true).success && f.changes == 1,
+            "enable is idempotent");
     f.native.status = LoginItemStatus::ApprovalRequired;
     login_item_test::refresh(f.service);
-    require(f.service.snapshot().requested() && !f.service.hint().isEmpty(),
-            "revoked approval needs guidance");
-    require(login_item_test::change(f.service, true, true).success && f.changes == 1,
-            "startup respects revoked consent");
-    f.service.openSettings();
-    require(f.opened == 1, "settings action delegates to native API");
-    require(login_item_test::change(f.service, false).success && !f.preference,
+    require(f.service.snapshot().requested() && !f.service.hint().isEmpty() && f.changes == 1,
+            "revoked approval is reported without changing registration");
+    require(login_item_test::change(f.service, false).success && !f.preference && f.changes == 2,
             "disable unregisters approval-pending item");
     require(login_item_test::change(f.service, false).success && f.changes == 2,
             "disable is idempotent");
     f.approval = true;
-    require(login_item_test::change(f.service, true).success &&
+    require(login_item_test::change(f.service, true).success && f.preference &&
                 f.service.snapshot().status == LoginItemStatus::ApprovalRequired,
-            "registration awaiting consent is not an active login permission");
+            "registration awaiting consent shows a requested registration with a hint");
     f.native.status = LoginItemStatus::Unregistered;
-    require(login_item_test::change(f.service, true, true).success && f.changes == 3,
-            "external removal must not be undone");
-    require(!f.service.snapshot().requested(), "refresh reflects external removal");
+    login_item_test::refresh(f.service);
+    require(!f.service.snapshot().requested() && f.preference && f.changes == 3,
+            "external removal is respected even while the saved preference is enabled");
     f.approval = false;
     require(login_item_test::change(f.service, true).success && f.changes == 4,
-            "explicit reset can restore enabled default");
+            "an explicit toggle can re-register after external removal");
 }
-void failuresAndEligibility() {
-    Fixture disabled;
-    require(login_item_test::change(disabled.service, false, true).success &&
-                disabled.initialized() && disabled.changes == 0,
-            "existing opt-out must be preserved");
+void startupPreservesNativeState() {
+    Fixture f;
+    f.preference = true;
+    for (const auto status : {LoginItemStatus::Unregistered, LoginItemStatus::Enabled,
+                              LoginItemStatus::ApprovalRequired}) {
+        f.native.status = status;
+        LoginItemService restarted(f.operations());
+        login_item_test::idle(restarted);
+        login_item_test::refresh(restarted);
+        require(restarted.snapshot().status == status && f.changes == 0 && f.preference,
+                "startup and refresh preserve native registration regardless of saved preference");
+    }
+}
+void failures() {
     Fixture unavailable;
-    unavailable.native = {LoginItemStatus::Unavailable, QStringLiteral("install app")};
-    require(login_item_test::change(unavailable.service, true, true).success &&
-                !unavailable.initialized(),
-            "ineligible app must not consume initialization");
+    unavailable.native = {LoginItemStatus::Unavailable,
+                          QStringLiteral("native status unavailable")};
     require(!login_item_test::change(unavailable.service, true).success && unavailable.changes == 0,
-            "ineligible app cannot register");
+            "unavailable native status is reported");
     unavailable.native = {LoginItemStatus::Unregistered, {}};
-    require(login_item_test::change(unavailable.service, true, true).success &&
-                unavailable.changes == 1,
-            "moving to Applications allows initial registration");
-    Fixture marker;
-    marker.markerWritable = false;
-    require(!login_item_test::change(marker.service, true, true).success && marker.changes == 0,
-            "marker failure prevents automatic registration");
-    require(!login_item_test::change(marker.service, true).success && marker.changes == 0,
-            "marker failure prevents explicit registration");
+    require(login_item_test::change(unavailable.service, true).success && unavailable.changes == 1,
+            "explicit retry can recover from unavailable native status");
     Fixture native;
     native.failNative = true;
-    require(!login_item_test::change(native.service, true, true).success && native.initialized(),
-            "failed native attempt is remembered");
-    require(login_item_test::change(native.service, true, true).success && native.changes == 1,
-            "do not repeat failed automatic requests");
+    require(!login_item_test::change(native.service, true).success && native.changes == 1 &&
+                !native.service.snapshot().requested(),
+            "failed registration keeps the native disabled state");
+    login_item_test::refresh(native.service);
+    require(native.changes == 1, "refresh does not retry a failed registration");
     native.failNative = false;
     require(login_item_test::change(native.service, true).success,
             "explicit retry recovers native failure");
@@ -184,10 +161,6 @@ void failuresAndEligibility() {
     require(!login_item_test::change(persistence.service, true).success &&
                 persistence.service.snapshot().requested() && !persistence.service.pending(),
             "preference failure retains successful native status and clears pending");
-    Fixture approved;
-    approved.native.status = LoginItemStatus::ApprovalRequired;
-    require(login_item_test::change(approved.service, true, true).success && approved.changes == 0,
-            "pre-existing revoked approval must not trigger registration");
 }
 struct BlockingState {
     std::atomic_int queries{0};
@@ -196,7 +169,6 @@ struct BlockingState {
     std::atomic_bool blockQuery{true};
     std::atomic_bool blockChange{false};
     std::atomic_bool enabled{false};
-    std::atomic_bool initialized{false};
     QSemaphore entered;
     QSemaphore release;
     int saved = 0;
@@ -225,18 +197,12 @@ struct BlockingState {
                     enabled = value;
                     return LoginItemResult{};
                 },
-                [this] { return initialized.load(); },
-                [this] {
-                    initialized = true;
-                    return true;
-                },
                 [this](bool) {
                     require(QThread::currentThread() == QCoreApplication::instance()->thread(),
                             "completion persists preferences on the GUI thread");
                     ++saved;
                     return true;
-                },
-                [] {}};
+                }};
     }
     void waitUntilBlocked() {
         login_item_test::waitFor([&] { return entered.tryAcquire(); });
@@ -299,24 +265,12 @@ void blockedRefreshAndChanges() {
     require(!service.snapshot().requested() && state.changes == 2 && state.saved == 2,
             "unregistration completes asynchronously");
 }
-void asynchronousInitializationAndDestruction() {
+void asynchronousDestruction() {
     BlockingState state;
-    {
-        LoginItemService service(state.operations());
-        require(service.initialize(true).success, "startup initialization admitted");
-        state.waitUntilBlocked();
-        require(!state.initialized && state.changes == 0, "startup cannot overtake its query");
-        state.release.release();
-        login_item_test::idle(service);
-        require(service.completionFuture().get().success && state.initialized &&
-                    state.changes == 1 && state.saved == 1,
-                "first startup registers and persists asynchronously");
-    }
-    state.blockQuery = true;
     auto service = std::make_unique<LoginItemService>(state.operations());
     state.waitUntilBlocked();
     bool completed = false;
-    require(service->setEnabled(false, [&](LoginItemResult) { completed = true; }).success,
+    require(service->setEnabled(true, [&](LoginItemResult) { completed = true; }).success,
             "queued mutation admitted before destruction");
     const auto future = service->completionFuture();
     const int before = state.queryExits;
@@ -327,42 +281,26 @@ void asynchronousInitializationAndDestruction() {
     state.release.release();
     login_item_test::waitFor([&] { return state.queryExits > before; });
     QCoreApplication::processEvents();
-    require(!completed && state.changes == 1 && state.saved == 1,
+    require(!completed && state.changes == 0 && state.saved == 0,
             "destroyed receiver cannot apply queued registration, publish, or persist");
 }
-void launchAndPaths() {
-    const QString user = QStringLiteral("/Users/example/Applications");
-    require(loginItemLocationAllowed(QStringLiteral("/Applications/Snow Shot.app"), user),
-            "system Applications allowed");
-    require(loginItemLocationAllowed(user + QStringLiteral("/Snow Shot.app"), user),
-            "user Applications allowed");
-    for (const auto& path :
-         {QStringLiteral("/Applications-other/Snow Shot.app"),
-          QStringLiteral("/Volumes/Snow Shot/Snow Shot.app"),
-          QStringLiteral("/private/var/AppTranslocation/Snow Shot.app"),
-          QStringLiteral("/build/snow_shot.app"), QStringLiteral("/Applications/snow_shot")})
-        require(!loginItemLocationAllowed(path, user), "non-installed bundle rejected");
+void launchArguments() {
     const QStringList manual{QStringLiteral("snow_shot"), QStringLiteral("--show-main-window")};
     require(loginItemLaunchArguments(manual, false) == manual, "manual launch preserved");
     const auto login = loginItemLaunchArguments(manual, true);
     require(login.contains(QStringLiteral("--autostart")) &&
                 loginItemLaunchArguments(login, true) == login,
             "native login maps idempotently to quiet forwarding");
-    require(loginItemAutomaticRegistrationAllowed(login), "ordinary login may initialize");
-    for (const auto& flag :
-         {QStringLiteral("--e2e-instance-id=test"), QStringLiteral("--update-probe"),
-          QStringLiteral("--recording-macos-probe"), QStringLiteral("--self-test")})
-        require(!loginItemAutomaticRegistrationAllowed({QStringLiteral("snow_shot"), flag}),
-                "test/probe excluded");
 }
 } // namespace
 int main(int argc, char** argv) {
     QCoreApplication app(argc, argv);
     refreshNotifications();
     registration();
-    failuresAndEligibility();
+    startupPreservesNativeState();
+    failures();
     blockedRefreshAndChanges();
-    asynchronousInitializationAndDestruction();
-    launchAndPaths();
+    asynchronousDestruction();
+    launchArguments();
     std::cout << "Login item tests passed\n";
 }
