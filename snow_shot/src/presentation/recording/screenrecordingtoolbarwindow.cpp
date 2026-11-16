@@ -41,6 +41,7 @@
 #include <QTimer>
 #include <QWindow>
 #include <QHash>
+#include <optional>
 
 namespace {
 constexpr int kToolbarGap = 4;
@@ -262,6 +263,7 @@ class ScreenRecordingToolbarWindow::AutoHide final : public QObject {
         collapsed = false;
         pendingCollapse = false;
         transfer = {};
+        fittedDockRowPosition.reset();
         side = auto_hide::Side::None;
         screen.clear();
         reveal.stop();
@@ -441,7 +443,6 @@ class ScreenRecordingToolbarWindow::AutoHide final : public QObject {
         control->raise();
         if (!control->isVisible())
             return;
-        transfer = auto_hide::transferRegion(rowRect, tabRect, side);
         collapsed = true;
         pendingCollapse = false;
         retreat.stop();
@@ -457,9 +458,28 @@ class ScreenRecordingToolbarWindow::AutoHide final : public QObject {
         reveal.stop();
         pendingCollapse = false;
         collapsed = false;
+        const QRect tab = control->geometry();
         control->hide();
         syncPlacementContext();
+        const QPoint position = toolbar.contentPosition();
+        if (screen) {
+            const QRect bounds = screen->geometry();
+            const QPoint fittedPosition = ScreenshotGeometryMapper::clampContentPositionToRect(
+                position, toolbar.occupiedContentRect(), bounds);
+            // Keep the recording controls reachable if a secondary row exceeds the screen.
+            const QPoint target = ScreenshotGeometryMapper::clampContentPositionToRect(
+                fittedPosition, toolbar.paletteHost()->mainToolbarContentRect(), bounds);
+            if (target != position)
+                toolbar.moveContentTo(target);
+        }
         toolbar.showWithoutActivating();
+        const QRect row =
+            toolbar.paletteHost()->mainToolbarContentRect().translated(toolbar.contentPosition());
+        // Fitting the rows can move the main row away from the tab's edge.
+        // Preserve that dock while the toolbar remains at its fitted position.
+        if (side != auto_hide::Side::None && position != toolbar.contentPosition())
+            fittedDockRowPosition = row.topLeft();
+        transfer = auto_hide::transferRegion(row, tab, side);
         queueReconcile();
     }
 
@@ -482,7 +502,7 @@ class ScreenRecordingToolbarWindow::AutoHide final : public QObject {
     }
 
     bool updateDock() {
-        rowRect =
+        QRect rowRect =
             toolbar.paletteHost()->mainToolbarContentRect().translated(toolbar.contentPosition());
         QScreen* selected = nullptr;
         qint64 bestArea = 0;
@@ -506,14 +526,16 @@ class ScreenRecordingToolbarWindow::AutoHide final : public QObject {
             rowRect = toolbar.paletteHost()->mainToolbarContentRect().translated(
                 toolbar.contentPosition());
         }
+        if (selected != screen || fittedDockRowPosition != rowRect.topLeft()) {
+            fittedDockRowPosition.reset();
+            side = auto_hide::sideForRow(rowRect, selected->geometry(), side);
+        }
         screen = selected;
-        side = auto_hide::sideForRow(rowRect, screen->geometry(), side);
         tabRect = auto_hide::tabGeometry(rowRect, screen->geometry(), side,
                                          toolbar.paletteHost()->physicalScale());
         if (collapsed && control && side != auto_hide::Side::None) {
             control->setSide(side);
             control->setGeometry(tabRect);
-            transfer = auto_hide::transferRegion(rowRect, tabRect, side);
         }
         return side != auto_hide::Side::None;
     }
@@ -583,9 +605,9 @@ class ScreenRecordingToolbarWindow::AutoHide final : public QObject {
     QTimer reveal;
     QTimer retreat;
     QTimer watch;
-    QRect rowRect;
     QRect tabRect;
     QRegion transfer;
+    std::optional<QPoint> fittedDockRowPosition;
     auto_hide::Side side = auto_hide::Side::None;
     bool enabled = false;
     bool presented = false;
@@ -598,7 +620,9 @@ class ScreenRecordingToolbarWindow::AutoHide final : public QObject {
 };
 
 ScreenRecordingToolbarWindow::ScreenRecordingToolbarWindow(QWidget* parent)
-    : ScreenshotFloatingToolPaletteWindow(recordingToolbarOptions(), parent) {
+    // The toolbar's own Cocoa level keeps it above the area as the capture guide moves.
+    : ScreenshotFloatingToolPaletteWindow(recordingToolbarOptions(), parent,
+                                          /*attachToMacOwner=*/false) {
 #ifdef Q_OS_WIN
     snow_shot::platform::windows::detail::enableCaptureExclusionCompositionFallback(this);
 #endif

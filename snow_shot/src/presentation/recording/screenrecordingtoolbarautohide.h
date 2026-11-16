@@ -44,7 +44,9 @@ inline QRegion transferRegion(const QRect& row, const QRect& tab, Side side) {
     const int rowEdge = side == Side::Left ? row.left() : row.right();
     const int left = std::min(tab.left(), rowEdge);
     const int right = std::max(tab.right(), rowEdge);
-    return QRegion(QRect(QPoint(left, tab.top()), QPoint(right, tab.bottom())));
+    const int top = std::min(tab.top(), row.bottom());
+    const int bottom = std::max(tab.bottom(), row.top());
+    return QRegion(QRect(QPoint(left, top), QPoint(right, bottom)));
 }
 
 } // namespace snow_shot::presentation::recording::toolbar_auto_hide
