@@ -163,7 +163,7 @@ def github_digest(release, name):
 def cask_installation(edition, archive_architecture):
     slug, name = PRODUCTS[edition]
     edition_argument = ',\n                   "mini"' if edition == 'mini' else ''
-    return f'''  # Vendor installers preserve HOME and Keychain access; flight steps isolate HOME.
+    return f'''  # Verify the publisher signature before Homebrew places the unchanged app.
   installer script: {{
     executable:   "/bin/bash",
     args:         [staged_path.join("prepare-snow-shot-homebrew.sh"),
@@ -175,7 +175,7 @@ def cask_installation(edition, archive_architecture):
   }}
 
   # Remove any prepared copy; the app artifact removes the installed app.
-  # Keep the installing account's persistent signing identity and state.
+  # Keep user data and any legacy installer state.
   uninstall script: {{
     executable: "/bin/rm",
     args:       ["-rf", "--", "#{{staged_path}}/{name}.app"],
@@ -221,11 +221,11 @@ def cask(version, sha256, tag=None, edition='full', architecture='arm64'):
 {cask_installation(edition, archive_architecture)}
 
   caveats <<~EOS
-    {name} reuses a signing identity in your login Keychain. The first install
-    may request Keychain access. Grant Screen Recording and Accessibility when
-    macOS requests them. Local signing does not provide Apple notarization.
-    Keep ~/Library/Application Support/{name}/Installer and its Keychain
-    identity across upgrades and reinstalls. Use the same installing account.
+    {name} preserves the project signature shared by DMG and script installs.
+    No local signing key or Keychain access is needed. First installation or
+    migration from older ad-hoc/local signatures may require granting Screen
+    Recording and Accessibility again. Self-signing is not Apple notarization.
+    Use installers from the current release; older scripts re-sign applications.
   EOS
 end
 '''

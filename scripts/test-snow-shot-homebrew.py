@@ -242,6 +242,10 @@ load ARGV[0]
                     checksums = {'arm64': '0' * 64, 'x64': '1' * 64} if architecture == 'dual' else '0' * 64
                     native_arch = 'x64' if architecture == 'x86_64' else 'arm64'
                     expected = brew.cask(version, checksums, edition=edition, architecture=native_arch)
+                    # A historical hook-only migration keeps its original local
+                    # signing caveat; it cannot change archived installer bytes.
+                    old_caveat = self.legacy_cask(edition, architecture, beta).split('  caveats <<~EOS', 1)[1]
+                    expected = expected.split('  caveats <<~EOS', 1)[0] + '  caveats <<~EOS' + old_caveat
                     with patch.object(brew, 'run') as run:
                         self.assertEqual(brew.migrate_casks(self.tap), 1)
                         self.assertEqual(path.read_text(), expected)
@@ -628,7 +632,8 @@ load ARGV[0]
         self.assertIn('app "Snow Shot Mini.app"', cask)
         self.assertIn('"mini"]', cask)
         self.assertIn('/v#{version}_snow-shot/', cask)
-        self.assertIn('Support/Snow Shot Mini/Installer', cask)
+        self.assertIn('preserves the project signature', cask)
+        self.assertIn('No local signing key or Keychain access is needed', cask)
         beta = brew.cask('1.2.3-beta', '0' * 64, edition='mini')
         self.assertIn('conflicts_with cask: "snow-shot-mini"', beta)
         self.assertNotIn('conflicts_with cask: "snow-shot"', beta)

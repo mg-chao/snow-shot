@@ -119,7 +119,27 @@ def package(request):
                 raise ValueError('CPack DMG checksum mismatch')
             subprocess.run(['hdiutil', 'verify', str(image)], stdout=sys.stderr, check=True)
             subprocess.run(['codesign', '--verify', '--verbose=2', str(image)], check=True)
-            descriptions.append({'product': product, 'sha256': checksum, 'size': image.stat().st_size})
+            signing_report = image.with_suffix('.signing.json')
+            if request.get('skipBuild'):
+                # Old receipts only verified the DMG container. Revalidate the
+                # app and predecessor even when packaging reuses cached bytes.
+                command = ['python3', str(repo / 'scripts/snow-shot-macos-signing.py'),
+                           'audit-release', str(image), '--product', product,
+                           '--architecture', asset_architecture, '--version', version,
+                           '--report', str(signing_report)]
+                previous_env = ('SNOW_MACOS_PREVIOUS_MINI_DMG' if product == 'snow-shot-mini'
+                                else 'SNOW_MACOS_PREVIOUS_FULL_DMG')
+                if os.environ.get(previous_env):
+                    command += ['--previous-dmg', os.environ[previous_env]]
+                subprocess.run(command, check=True, stdout=sys.stderr)
+            signing = json.loads(signing_report.read_text())
+            if (signing.get('schema') != 1 or signing.get('packageSha256') != checksum or
+                    signing.get('product') != product or signing.get('version') != version or
+                    signing.get('architecture') != asset_architecture or
+                    signing.get('continuity') not in ('compatible', 'legacy-1.5.8-migration-requires-consent')):
+                raise ValueError('Missing or mismatched macOS application signing audit')
+            descriptions.append({'product': product, 'sha256': checksum, 'size': image.stat().st_size,
+                                 'signing': signing})
         if source_identity(repo) != identity:
             raise ValueError('macOS source changed during packaging; retry from a stable checkout')
         result = {'version': version, 'architecture': architecture, 'source': identity,

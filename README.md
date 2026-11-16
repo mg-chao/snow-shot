@@ -111,8 +111,8 @@ brew install --cask mg-chao/tap/snow-shot
 ```
 
 To update, quit Snow Shot and run `brew upgrade --cask snow-shot`.
-Installation uses a local signing identity and may request Keychain access and macOS
-privacy permissions. See [installation and migration](docs-macos-build.md#homebrew-installation).
+Project-signed releases preserve the same identity across DMG, script, and Homebrew
+installation. First installation or migration may require macOS privacy permissions. See [installation and migration](docs-macos-build.md#homebrew-installation).
 
 </details>
 

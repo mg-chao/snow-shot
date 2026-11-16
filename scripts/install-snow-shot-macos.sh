@@ -2,6 +2,9 @@
 # Standalone installer. Keep compatible with Apple's Bash 3.2 and system tools.
 set -Eeuo pipefail
 
+# Public certificate pin, shared with the publisher. Never re-sign on user machines.
+PROJECT_SIGNING_CERTIFICATE_SHA1='A531FC00F5E11AC6AD38E5923401313F45A7CEAD'
+
 edition=full
 product_name="Snow Shot"
 product_slug=snow-shot
@@ -33,7 +36,7 @@ message() {
     local en cn tw
     case "$1" in
         usage) en='Usage: install-snow-shot-macos.sh [--edition full|mini] [--lang auto|en|zh-CN|zh-TW] [--no-launch] [--dmg PATH] [--prepare-app PATH] [--help]'; cn='用法：install-snow-shot-macos.sh [--edition full|mini] [--lang auto|en|zh-CN|zh-TW] [--no-launch] [--dmg 路径] [--prepare-app 路径] [--help]'; tw='用法：install-snow-shot-macos.sh [--edition full|mini] [--lang auto|en|zh-CN|zh-TW] [--no-launch] [--dmg 路徑] [--prepare-app 路徑] [--help]' ;;
-        help) en='Downloads, verifies, locally signs, and installs Snow Shot. --dmg requires PATH.sha256. --prepare-app requires --dmg and a fresh absolute .app path; it stages a signed app without installing or launching. --no-launch skips launching. --lang overrides automatic language selection. First installation requires macOS privacy authorization.'; cn='下载、验证、本地签名并安装 Snow Shot。--dmg 需要对应的 PATH.sha256 文件。--prepare-app 需要 --dmg 和尚不存在的绝对 .app 路径；仅暂存签名后的应用，不安装或启动。--no-launch 跳过启动。--lang 指定界面语言。首次安装需要授予 macOS 隐私权限。'; tw='下載、驗證、本機簽署並安裝 Snow Shot。--dmg 需要對應的 PATH.sha256 檔案。--prepare-app 需要 --dmg 和尚不存在的絕對 .app 路徑；僅暫存簽署後的應用程式，不安裝或啟動。--no-launch 跳過啟動。--lang 指定介面語言。首次安裝需要授予 macOS 隱私權限。' ;;
+        help) en='Downloads, verifies, and installs the project-signed Snow Shot app without changing its signature. --dmg requires PATH.sha256. --prepare-app requires --dmg and a fresh absolute .app path; it stages the app without installing or launching. --no-launch skips launching. --lang overrides automatic language selection. First installation or migration requires macOS privacy authorization.'; cn='下载、验证并安装项目统一签名的 Snow Shot，不修改应用签名。--dmg 需要对应的 PATH.sha256 文件。--prepare-app 需要 --dmg 和尚不存在的绝对 .app 路径；仅暂存应用，不安装或启动。--no-launch 跳过启动。--lang 指定界面语言。首次安装或迁移需要授予 macOS 隐私权限。'; tw='下載、驗證並安裝專案統一簽署的 Snow Shot，不修改應用程式簽章。--dmg 需要對應的 PATH.sha256 檔案。--prepare-app 需要 --dmg 和尚不存在的絕對 .app 路徑；僅暫存應用程式，不安裝或啟動。--no-launch 跳過啟動。--lang 指定介面語言。首次安裝或移轉需要授予 macOS 隱私權限。' ;;
         arguments) en='Invalid or incomplete option. Run with --help.'; cn='选项无效或不完整。请使用 --help 查看帮助。'; tw='選項無效或不完整。請使用 --help 查看說明。' ;;
         platform) en='Snow Shot requires macOS 15 or later on Apple Silicon or Intel.'; cn='Snow Shot 需要运行 macOS 15 或更新版本的 Apple Silicon 或 Intel Mac。'; tw='Snow Shot 需要執行 macOS 15 或更新版本的 Apple Silicon 或 Intel Mac。' ;;
         root) en='Run this script as your desktop user, without sudo. Administrator access is requested only when needed.'; cn='请以当前桌面用户运行脚本，不要直接使用 root。仅在需要时请求管理员权限。'; tw='請以目前桌面使用者執行指令碼，不要直接使用 root。僅在需要時請求管理員權限。' ;;
@@ -42,16 +45,14 @@ message() {
         unavailable) en='No valid package is available from GitHub or Gitee. Retry later; the installed app has not changed.'; cn='GitHub 和 Gitee 均无有效安装包。请稍后重试；已安装的应用未被更改。'; tw='GitHub 和 Gitee 均無有效安裝套件。請稍後重試；已安裝的應用程式未被變更。' ;;
         verify) en='[2/5] Verifying the package and application…'; cn='[2/5] 正在验证安装包和应用…'; tw='[2/5] 正在驗證安裝套件與應用程式…' ;;
         invalid) en='Package validation failed. Download the matching macOS DMG and its .sha256 file again.'; cn='安装包验证失败。请重新下载匹配的 macOS DMG 及其 .sha256 文件。'; tw='安裝套件驗證失敗。請重新下載相符的 macOS DMG 及其 .sha256 檔案。' ;;
-        signing) en='[3/5] Signing with your persistent local identity…'; cn='[3/5] 正在使用持久本地身份签名…'; tw='[3/5] 正在使用持久本機身分簽署…' ;;
-        keychain) en='Creating a signing identity in your login Keychain. macOS may request Keychain access or code-signing trust confirmation. This identity is reused on future installations.'; cn='正在登录钥匙串中创建签名身份。macOS 可能请求钥匙串访问或代码签名信任确认。今后的安装将复用此身份。'; tw='正在登入鑰匙圈中建立簽署身分。macOS 可能請求鑰匙圈存取或程式碼簽署信任確認。之後的安裝將重複使用此身分。' ;;
-        identity) en='The saved signing identity is missing, expired, inaccessible, or incomplete. Unlock your login Keychain or restore the original certificate and private key. Do not delete installer state unless you accept granting privacy permissions again; see docs-macos-build.md.'; cn='保存的签名身份丢失、过期、无法访问或不完整。请解锁登录钥匙串，或恢复原证书及私钥。删除安装器状态后需要重新授权；请参阅 docs-macos-build.md。'; tw='儲存的簽署身分遺失、過期、無法存取或不完整。請解鎖登入鑰匙圈，或還原原憑證及私密金鑰。刪除安裝程式狀態後需要重新授權；請參閱 docs-macos-build.md。' ;;
-        continuity) en='The new app does not satisfy the saved signing requirement. Installation stopped to protect permission continuity. Keep the original signing identity and inspect the diagnostic below.'; cn='新应用不符合保存的签名要求。已停止安装以保护权限连续性。请保留原签名身份并检查下方诊断信息。'; tw='新應用程式不符合儲存的簽署要求。已停止安裝以保護權限連續性。請保留原簽署身分並檢查下方診斷資訊。' ;;
+        signing) en='[3/5] Verifying the project signing identity…'; cn='[3/5] 正在验证项目签名身份…'; tw='[3/5] 正在驗證專案簽署身分…' ;;
+        continuity) en='The app does not match the Snow Shot project signing identity. Installation stopped. Download a current release and its matching installer; do not re-sign the app.'; cn='应用不符合 Snow Shot 项目签名身份。安装已停止。请下载当前发布版本及其配套安装脚本，不要重新签名应用。'; tw='應用程式不符合 Snow Shot 專案簽署身分。安裝已停止。請下載目前發行版本及其配套安裝指令碼，請勿重新簽署應用程式。' ;;
         install) en='[4/5] Installing into /Applications…'; cn='[4/5] 正在安装到 /Applications…'; tw='[4/5] 正在安裝到 /Applications…' ;;
         sudo) en='Administrator access is needed to replace the application. Enter your Mac login password if prompted.'; cn='替换应用需要管理员权限。如有提示，请输入 Mac 登录密码。'; tw='取代應用程式需要管理員權限。如有提示，請輸入 Mac 登入密碼。' ;;
         quit) en='Closing the installed Snow Shot…'; cn='正在关闭已安装的 Snow Shot…'; tw='正在關閉已安裝的 Snow Shot…' ;;
         running) en='Snow Shot did not quit. Finish any recording, quit the app manually, and run the installer again.'; cn='Snow Shot 未退出。请结束录制并手动退出应用，然后重新运行安装器。'; tw='Snow Shot 未結束。請結束錄製並手動結束應用程式，然後重新執行安裝程式。' ;;
         done) en='[5/5] Snow Shot is installed.'; cn='[5/5] Snow Shot 安装完成。'; tw='[5/5] Snow Shot 安裝完成。' ;;
-        permissions) en='On first installation or migration from an older signature, grant Screen Recording and Accessibility in System Settings → Privacy & Security when requested. Use this installer or Homebrew for future updates to retain the local identity. Permission retention has not yet been qualified across supported macOS versions; macOS may still request consent.'; cn='首次安装或从旧签名迁移时，请按提示在“系统设置 → 隐私与安全性”中授予屏幕录制和辅助功能权限。今后请使用此安装器或 Homebrew 更新，以保留本地身份。跨 macOS 版本的权限保留尚未完成验证；系统仍可能要求授权。'; tw='首次安裝或從舊簽署遷移時，請依提示在「系統設定 → 隱私權與安全性」中授予螢幕錄製和輔助使用權限。之後請使用此安裝程式或 Homebrew 更新，以保留本機身分。跨 macOS 版本的權限保留尚未完成驗證；系統仍可能要求授權。' ;;
+        permissions) en='On first installation or migration from ad-hoc or local signing, grant Screen Recording and Accessibility in System Settings when requested. Current DMG, installer, and Homebrew releases share one project identity. Use an updated installer. Permission retention still depends on macOS consent policy.'; cn='首次安装或从临时、本地签名迁移时，请按提示在系统设置中授予屏幕录制和辅助功能权限。当前 DMG、安装脚本和 Homebrew 发布版本使用同一项目身份。请使用更新后的安装脚本。权限保留仍受 macOS 授权策略控制。'; tw='首次安裝或從臨時、本機簽署移轉時，請依提示在系統設定中授予螢幕錄製和輔助使用權限。目前 DMG、安裝指令碼和 Homebrew 發行版本使用同一專案身分。請使用更新後的安裝指令碼。權限保留仍受 macOS 授權政策控制。' ;;
         failed) en='Installation failed. Check the diagnostic below, resolve the issue, and retry.'; cn='安装失败。请检查下方诊断信息，解决问题后重试。'; tw='安裝失敗。請檢查下方診斷資訊，解決問題後重試。' ;;
         rollback) en='Restoring the previous application…'; cn='正在恢复原应用…'; tw='正在還原原應用程式…' ;;
         recovery) en='Automatic cleanup or recovery failed. Keep the following directory; it may contain your previous app. Restore previous.app to the installation path printed below before retrying:'; cn='自动清理或恢复失败。请保留以下目录，其中可能包含原应用。重试前请将 previous.app 恢复到下方显示的安装路径：'; tw='自動清理或還原失敗。請保留以下目錄，其中可能包含原應用程式。重試前請將 previous.app 還原至下方顯示的安裝路徑：' ;;
@@ -361,9 +362,9 @@ validate_and_stage() {
     version_supported "$os_version" "$minimum" || return 1
     description=$(file -b "$bundle/Contents/MacOS/$executable") || return 1
     [[ "$description" == *Mach-O* && "$description" == *"$asset_arch"* ]] || return 1
-    run codesign --verify --deep --strict "$bundle" || return 1
+    verify_project_application "$bundle" || return 1
     run ditto "$bundle" "$work/$product_executable.app" || return 1
-    run codesign --verify --deep --strict "$work/$product_executable.app" || return 1
+    verify_project_application "$work/$product_executable.app" || return 1
     unmount_package || return 1
 }
 
@@ -416,74 +417,27 @@ prepare_state() {
     chmod 700 "$state"
     mkdir "$state/lock" 2>/dev/null || { message state >&2; printf '%s\n' "$state" >&2; exit 1; }
     lock_owned=1
-    for component in identity requirement creating; do
-        [[ ! -L "$state/$component" && ( ! -e "$state/$component" || ( -f "$state/$component" && "$(stat -f %u "$state/$component")" == "$(id -u)" ) ) ]] || die identity
-    done
 }
 
-prepare_identity() {
-    local keychain="$HOME/Library/Keychains/login.keychain-db" fingerprint identities pkcs12_password
-    [[ -f "$keychain" ]] || die identity
-    if [[ -f "$state/identity" ]]; then
-        fingerprint=$(tr '[:lower:]' '[:upper:]' < "$state/identity")
-        [[ "$fingerprint" =~ ^[[:xdigit:]]{40}$ ]] || die identity
-    else
-        [[ ! -e "$state/creating" && ! -e "$state/requirement" ]] || die identity
-        : > "$state/creating"
-        say keychain
-        cat > "$work/certificate.cnf" <<CERT
-[req]
-prompt = no
-distinguished_name = subject
-x509_extensions = signing
-[subject]
-CN = Snow Shot Local Installer $(uuidgen)
-[signing]
-basicConstraints = critical,CA:false
-keyUsage = critical,digitalSignature
-extendedKeyUsage = codeSigning
-subjectKeyIdentifier = hash
-authorityKeyIdentifier = keyid
-CERT
-        run openssl req -new -newkey rsa:2048 -nodes -x509 -days 3650 \
-            -config "$work/certificate.cnf" -keyout "$work/private.pem" -out "$work/certificate.pem" || die identity
-        fingerprint=$(openssl x509 -in "$work/certificate.pem" -noout -fingerprint -sha1 | sed 's/.*=//; s/://g')
-        [[ "$fingerprint" =~ ^[[:xdigit:]]{40}$ ]] || die identity
-        pkcs12_password=$(openssl rand -hex 32) || die identity
-        SNOW_INSTALLER_P12_PASSWORD="$pkcs12_password" run openssl pkcs12 -export \
-            -inkey "$work/private.pem" -in "$work/certificate.pem" \
-            -out "$work/identity.p12" -passout env:SNOW_INSTALLER_P12_PASSWORD || die identity
-        run security import "$work/identity.p12" -k "$keychain" -P "$pkcs12_password" \
-            -T /usr/bin/codesign || die identity
-        unset pkcs12_password
-        # User trust domain only, scoped to code signing (no -d or -A).
-        run security add-trusted-cert -r trustRoot -p codeSign -k "$keychain" "$work/certificate.pem" || die identity
-        printf '%s\n' "$fingerprint" > "$state/identity.tmp"
-        mv -f "$state/identity.tmp" "$state/identity"
-        rm -f "$state/creating" "$work/private.pem" "$work/identity.p12"
-    fi
-    identities=$(security find-identity -v -p codesigning "$keychain" 2>> "$work/diagnostic.log") || die identity
-    [[ "$identities" == *"$fingerprint"* ]] || die identity
-    signing_identity="$fingerprint"
+project_requirement() {
+    [[ "$PROJECT_SIGNING_CERTIFICATE_SHA1" =~ ^[A-F0-9]{40}$ ]] || return 1
+    printf 'identifier "%s" and anchor H"%s"\n' "$product_bundle_id" "$PROJECT_SIGNING_CERTIFICATE_SHA1"
 }
 
-sign_application() {
+verify_project_application() {
+    local bundle="$1" expected dr
+    expected=$(project_requirement) || return 1
+    run codesign --verify --deep --strict "$bundle" || return 1
+    run codesign --verify --strict -R "=$expected" "$bundle" || return 1
+    dr=$(codesign -d -r- "$bundle" 2>> "$work/diagnostic.log" | sed -n 's/^# //; s/^designated => //p') || return 1
+    [[ -n "$dr" && "$dr" != *cdhash* ]]
+}
+
+prepare_project_application() {
     say signing
-    prepare_identity
-    # Do not use --deep when signing: OCR's manifest hashes the embedded helpers.
-    run codesign --force --sign "$signing_identity" --identifier "$product_bundle_id" \
-        --keychain "$HOME/Library/Keychains/login.keychain-db" \
-        "$work/$product_executable.app" || die identity
-    run codesign --verify --deep --strict "$work/$product_executable.app" || die invalid
-    if [[ -f "$state/requirement" ]]; then
-        requirement=$(cat "$state/requirement")
-        [[ -n "$requirement" ]] || die continuity
-        run codesign --verify --strict -R "=$requirement" "$work/$product_executable.app" || die continuity
-    else
-        requirement=$(codesign -d -r- "$work/$product_executable.app" 2>> "$work/diagnostic.log" | sed -n 's/^# //; s/^designated => //p')
-        [[ -n "$requirement" && "$requirement" != *cdhash* ]] || die continuity
-    fi
-    # Only the validated, locally signed staged copy is eligible for removal.
+    verify_project_application "$work/$product_executable.app" || die continuity
+    # Keep every sealed byte, including the main executable and nested helpers.
+    # Quarantine is transport metadata, outside the application's code identity.
     if xattr -p com.apple.quarantine "$work/$product_executable.app" >/dev/null 2>&1; then
         run xattr -dr com.apple.quarantine "$work/$product_executable.app"
     fi
@@ -523,19 +477,12 @@ validate_prepare_output() {
     [[ -d "$parent" && ! -L "$parent" && -w "$parent" && ! -e "$prepare_app" && ! -L "$prepare_app" ]] || die invalid
 }
 
-save_requirement() {
-    printf '%s\n' "$requirement" > "$state/requirement.tmp"
-    mv -f "$state/requirement.tmp" "$state/requirement"
-}
-
 prepare_application() {
     validate_prepare_output
     mkdir "$prepare_app"
     prepare_owned=1
     run ditto "$work/$product_executable.app" "$prepare_app"
-    run codesign --verify --deep --strict "$prepare_app"
-    run codesign --verify --strict -R "=$requirement" "$prepare_app"
-    save_requirement
+    verify_project_application "$prepare_app"
     prepare_committed=1
     say permissions
 }
@@ -559,15 +506,13 @@ install_application() {
     slot=$(as_install mktemp -d "$applications_dir/.snow-shot-install.XXXXXX")
     if [[ "$needs_sudo" == 1 ]]; then as_install chown "$(id -u):$(id -g)" "$slot"; fi
     run ditto "$work/$product_executable.app" "$slot/new.app"
-    run codesign --verify --deep --strict "$slot/new.app"
+    verify_project_application "$slot/new.app"
     quit_installed
     [[ ! -e "$previous_destination" ]] || had_previous=1
     if [[ "$had_previous" == 1 ]]; then as_install mv "$previous_destination" "$slot/previous.app"; fi
     replacement_started=1
     as_install mv "$slot/new.app" "$destination"
-    run codesign --verify --deep --strict "$destination"
-    run codesign --verify --strict -R "=$requirement" "$destination"
-    save_requirement
+    verify_project_application "$destination"
     committed=1
     say done
     say permissions
@@ -601,7 +546,6 @@ cleanup() {
     if ! unmount_package; then
         message detach >&2; printf '%s\n' "$mount_dir" >&2; status=1
         # Never recursively remove a directory that might still contain a mount.
-        [[ -z "$work" ]] || rm -f "$work/private.pem" "$work/identity.p12"
     elif [[ -n "$work" ]]; then
         rm -rf -- "$work"
     fi
@@ -654,7 +598,7 @@ main() {
     trap 'exit 129' HUP
     prepare_state
     obtain_package
-    sign_application
+    prepare_project_application
     if [[ -n "$prepare_app" ]]; then
         prepare_application
     else

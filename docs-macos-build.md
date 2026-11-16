@@ -105,29 +105,25 @@ is repaired, run `brew update` and retry the install or upgrade above. An update
 cannot resolve it while the remote cask still requires Intel; maintainers should
 follow the repair procedure below.
 
-Finish recordings and quit Snow Shot before upgrading or uninstalling. Homebrew
-owns the final application placement and removal; the cask's vendor installer
-verifies and locally signs a staged copy before the app artifact runs. Unlike
-declarative flight steps, it preserves the installing account's HOME and Keychain
-access. The archive includes the DMG, its checksum, and
-the installer from the matching release source. Its SHA-256 is pinned in the tap.
-Installation never downloads a newer installer or follows the website's mutable
-latest-package URL.
+Finish recordings and quit Snow Shot before upgrading or uninstalling. For
+project-signed releases after 1.5.8, Homebrew verifies the pinned project
+certificate and copies the application without re-signing it. Finder drag-and-drop,
+the standalone installer, and Homebrew preserve the same publisher signature.
+No user signing key, certificate installation, or Keychain access is required.
+The archive includes the matching DMG, checksum, and tagged installer; it never
+fetches a mutable installer at installation time.
 
-The first installation may request login Keychain access or code-signing trust.
-The same local identity and designated requirement used by the standalone
-installer are retained under `~/Library/Application Support/Snow Shot/Installer`.
-Use the same installing account for upgrades. Uninstall does not delete the
-identity, installer state, settings, or captures; there is no destructive `zap`
-rule. Local signing is not Developer ID notarization and does not guarantee that
-macOS will retain Screen Recording or Accessibility consent.
+First installation or migration from the former ad-hoc/local signatures may
+require granting Screen Recording and Accessibility again. The installer leaves
+legacy Keychain identities and state files untouched for rollback. Self-signing
+does not provide Apple notarization or bypass macOS consent policy. Use the
+installer bundled with the new release: old scripts still re-sign applications.
 
 ### Migrating an existing installation
 
 Quit Snow Shot and move `/Applications/Snow Shot.app` (or the legacy
 `/Applications/snow_shot.app`) to a backup folder outside Applications before
-running `brew install`. Keep the installer state directory and original Keychain
-identity. Do not use `--force` to overwrite an existing app. Confirm that the new
+running `brew install`. Keep legacy installer state and keys if rollback is needed. Do not use `--force` to overwrite an existing app. Confirm that the new
 copy launches and can capture before deleting the backup. If installation fails,
 restore the backup to its original location. Use Homebrew for subsequent upgrades.
 
@@ -138,11 +134,10 @@ mkdir -p "$HOME/Applications"
 brew install --cask --appdir="$HOME/Applications" mg-chao/tap/snow-shot
 ```
 
-If signing fails, follow the identity recovery instructions below; do not delete
-state to bypass a missing identity. Homebrew handles application rollback during
-an upgrade. Its restored staged backup is signature-verified without requiring
-the signing key again. Inspect its reported recovery result before retrying. Retain the
-previous app backup and original identity until the installation is working.
+If signature verification fails, obtain the matching current DMG and installer;
+do not re-sign the app or delete privacy records to bypass validation. Homebrew
+restores its previous verified app after a failed upgrade. Keep the backup until
+the new installation has been tested.
 
 ### Repairing an incomplete Homebrew publication
 
@@ -184,9 +179,9 @@ current cask before running the publication workflow.
 ### Installer staging interface
 
 `install-snow-shot-macos.sh --dmg PATH --prepare-app /absolute/New.app` validates
-and signs a local DMG into a fresh `.app` directory. The adjacent `PATH.sha256`
+and copies a project-signed local DMG into a fresh `.app` directory without re-signing. The adjacent `PATH.sha256`
 is mandatory. The destination's parent must already exist, and an existing output
-or symlink is rejected. This mode saves the validated signing requirement but
+or symlink is rejected. This mode verifies the pinned project signing requirement but
 does not close, replace, or launch any installed application. On failure it removes
 only its own incomplete output. The standalone installer still installs normally
 when `--prepare-app` is absent.
@@ -203,10 +198,10 @@ Native release qualification uses a disposable macOS desktop account with
 Homebrew: install, launch, upgrade between two stable releases, uninstall, and
 repeat with `--appdir`. Check that the signing identity stays the same, the OCR
 helper and manifest bytes remain unchanged, and uninstall preserves user data.
-In that disposable account, test an inaccessible signing identity and verify
-that Homebrew restores the previous app after the failed upgrade. Restore the
-identity and retry. This qualification is separate from the mocked regression
-checks and requires real release assets and interactive Keychain/privacy consent.
+In that disposable account, test a package with the wrong signer and verify that
+Homebrew restores the previous app after a failed upgrade. This qualification is
+separate from signature-only regression checks and requires real release assets
+and interactive privacy consent, including DMG → script → Homebrew → DMG upgrades.
 
 ## Install a packaged release (no build tools required)
 
@@ -222,8 +217,10 @@ curl --fail --location --proto '=https' --proto-redir '=https' \
 bash install-snow-shot-macos.sh --lang en
 ```
 
-The installer verifies the downloaded package, creates or reuses a local signing
-identity, gracefully closes Snow Shot, and installs `/Applications/Snow Shot.app`.
+The installer verifies the downloaded package and its pinned project signature,
+gracefully closes Snow Shot, and installs `/Applications/Snow Shot.app` without
+changing the signature. Publish this installer only with matching project-signed
+DMGs; it intentionally rejects the old ad-hoc packages, including 1.5.8.
 Existing `/Applications/snow_shot.app` installations migrate to the new name,
 with the old path restored if installation fails.
 It asks for administrator access only when installation requires it. Do not run
@@ -251,10 +248,10 @@ bash install-snow-shot-macos.sh --lang zh-CN
 
 脚本会自动识别芯片架构，并行检查 GitHub 和 Gitee Releases，优先使用先完成验证的渠道，
 验证后安装到 `/Applications/Snow Shot.app`（已有旧路径安装会迁移到新名称）。仅在替换应用需要管理员权限时请求密码，
-无需在命令前添加 `sudo`。首次创建签名身份时，系统可能要求确认钥匙串访问或代码签名信任。
+无需在命令前添加 `sudo`。1.5.8 之后采用项目统一签名的发布版本不再创建本地证书或访问用户钥匙串。
+DMG 拖拽、安装脚本和 Homebrew 均保留发布者签名。请使用新版安装脚本，旧脚本仍会重新签名。
 首次安装或从旧签名迁移后，仍需按系统提示授予屏幕录制和辅助功能权限。
-以后请继续使用此脚本更新，以复用本地签名身份；跨 macOS 版本的权限保留尚未完成实机验证，
-系统仍可能要求授权。脚本不会重置隐私权限，也不会关闭系统安全机制。
+跨 macOS 版本的权限保留仍需实机验证。脚本不会重置隐私权限，也不会关闭系统安全机制。
 
 本地安装使用 `--dmg "/路径/安装包.dmg"`，并将对应的 `.dmg.sha256` 放在同一目录。
 `--no-launch` 表示安装后不启动应用。失败时请根据诊断信息重试；若显示恢复目录，
@@ -271,9 +268,10 @@ bash install-snow-shot-macos.sh --lang zh-TW
 不需要 Homebrew、Python、Xcode 或 Apple 開發者會員。指令碼會自動辨識晶片架構，
 並行檢查 GitHub 與 Gitee Releases，優先使用先完成驗證的管道，驗證後安裝到
 `/Applications/Snow Shot.app`（既有舊路徑安裝會遷移至新名稱）。不必加上 `sudo`；需要管理員權限時才會要求密碼。
-首次建立簽署身分時，系統可能要求確認鑰匙圈存取或程式碼簽署信任。首次安裝或從舊簽署遷移後，
-請依系統提示授予螢幕錄製和輔助使用權限。之後請繼續使用此指令碼更新，以保留本機簽署身分；
-跨 macOS 版本的權限保留尚未完成實機驗證，系統仍可能要求授權。
+1.5.8 之後採用專案統一簽署的發行版本不再建立本機憑證或存取使用者鑰匙圈。
+DMG 拖移、安裝指令碼和 Homebrew 均保留發行者簽章。請使用新版指令碼，舊指令碼仍會重新簽署。
+首次安裝或從舊簽署移轉後，請依系統提示授予螢幕錄製和輔助使用權限。
+跨 macOS 版本的權限保留仍需實機驗證，系統仍可能要求授權。
 本機安裝使用 `--dmg "/路徑/安裝套件.dmg"`，並提供同目錄的 `.dmg.sha256`。
 `--no-launch` 可略過啟動。若還原失敗，請保留顯示的目錄，先將其中的 `previous.app`
 還原到安裝程式提示的安裝路徑再重試。
@@ -303,7 +301,7 @@ other channel. The checksum and DMG come from one channel over HTTPS.
 The DMG contains `Snow Shot.app` at its root (the installer also accepts legacy
 `snow_shot.app` packages), with bundle ID
 `com.snowshot.snow_shot`, executable `snow_shot`, a minimum macOS version, and a
-valid bundle signature (ad-hoc is supported). Publishing these assets and this
+valid bundle signature from the pinned project release certificate (ad-hoc is rejected). Publishing these assets and this
 installer remains a separate release operation. Nothing is uploaded by the script.
 
 ### DMG installation window
@@ -320,72 +318,95 @@ executable and settings identifier remain `snow_shot`.
 
 Packaging uses Finder through AppleScript to save the disk image layout. Run it
 in a logged-in macOS desktop session; macOS may request permission for the
-packaging terminal to control Finder. Deployment and ad-hoc signing happen before
+packaging terminal to control Finder. Deployment and project signing happen before
 the packaging hook renames the distributable bundle. Development build/run paths
 remain unchanged. Developer ID signing and notarization are still separate release
 steps.
 
-### Signing identity, recovery, and qualification
+### Project signing identity, recovery, and qualification
 
-The installer creates a dedicated ten-year self-signed code-signing certificate
-and private key in the user's login Keychain. Trust is scoped to the user's
-code-signing policy; private-key access is limited to `/usr/bin/codesign` and
-normal Keychain authorization. Temporary private-key files are removed after
-import or on failure. macOS requires a nonempty PKCS#12 import passphrase; the
-installer generates a one-time random value, which the `security` CLI briefly
-exposes as a process argument during import. State is stored under
-`~/Library/Application Support/Snow Shot/Installer`; retain this directory and
-the original Keychain identity across reinstalls. The installer signs only the
-outer bundle/main executable, preserving embedded helper signatures and the OCR
-manifest. It checks the saved designated requirement before replacing the app.
+The publisher owns one persistent self-signed certificate, `Snow Shot Project
+Release`. Its public certificate is tracked in
+`snow_shot/packaging/macos/release-signing.pem`; the standalone installer pins its
+SHA-1 certificate fingerprint. The SHA-1 value identifies the certificate for
+macOS code requirements; signatures and package digests use SHA-256. Full and
+Mini share the certificate and retain separate bundle identifiers.
 
-If signing fails, unlock the login Keychain and retry. If the saved identity is
-missing or expired, restore the original certificate **and private key** from
-your backup; the installer deliberately does not create a replacement. An
-interrupted first-time identity creation leaves a `creating` marker. Inspect
-Keychain Access for the `Snow Shot Local Installer ...` identity: restore its
-user code-signing trust if needed, then save its 40-character SHA-1 fingerprint
-(without colons) as the `identity` file in the state directory and remove the
-`creating` marker. Do not change an existing identity fingerprint to another
-certificate when expecting to retain permissions. A stale `lock` directory may
-be removed only after confirming no installer is running.
+Release presets use `SNOW_MACOS_CODESIGN_IDENTITY=PROJECT`. Configuration and
+packaging fail if the original private key is missing or the installer pin does
+not match the public certificate. They never generate a replacement identity or
+fall back to ad-hoc signing. Development `AUTO` identities remain separate; the
+fast preset is still ad-hoc and is not a distribution preset.
 
-If the original key cannot be recovered, explicitly move the state directory
-aside before reinstalling. This creates a new identity and requires granting
-permissions again. Users sharing a Mac should use the same installing account
-for updates to the shared `/Applications` copy. The application updater and
-Finder drag-and-drop do not reuse this installer's identity; use the script or
-Homebrew for subsequent updates. Local signing does not provide Apple notarization or silently
-grant privacy permissions. Only the validated staged copy is eligible for removal
-of its quarantine attribute; Gatekeeper and TCC remain enabled.
-
-中文恢复提示：签名失败时先解锁登录钥匙串。身份丢失时需要恢复原证书和私钥，不能仅重新生成。
-请保留上述 Installer 状态目录。首次创建中断时，可在“钥匙串访问”中确认原身份，恢复其用户级
-代码签名信任，并将原证书的 SHA-1 指纹（40 位、不含冒号）写入 `identity` 文件后移除
-`creating` 标记。仅在确认安装器未运行后清理过期的 `lock` 目录。若无法恢复原私钥，
-可以主动移走状态目录再安装，但这将创建新身份并需要重新授权。以后请使用同一用户运行脚本更新。
-
-繁體中文還原提示：簽署失敗時先解鎖登入鑰匙圈。身分遺失時需要還原原憑證和私密金鑰，不能僅重新產生。
-請保留上述 Installer 狀態目錄。首次建立中斷時，可在「鑰匙圈存取」中確認原身分，還原其使用者層級
-程式碼簽署信任，並將原憑證的 SHA-1 指紋（40 位、不含冒號）寫入 `identity` 檔案後移除
-`creating` 標記。僅在確認安裝程式未執行後清理過期的 `lock` 目錄。若無法還原原私密金鑰，
-可以主動移走狀態目錄再安裝，但這將建立新身分並需要重新授權。之後請使用同一使用者執行指令碼更新。
-
-Run only the focused installer checks for changes to this flow:
+The identity was initialized once with:
 
 ```sh
-/bin/bash -n scripts/install-snow-shot-macos.sh
-python3 scripts/test-macos-installer.py
+python3 scripts/snow-shot-macos-signing.py initialize
 ```
 
-**Permission retention is not yet qualified on supported macOS versions.** Mocked
-regression tests do not prove TCC behavior. Before advertising it as reliable,
-use a disposable macOS account: install build A, grant Accessibility and Screen
-Recording, exercise both capabilities and OCR, then install a different build B
-using the same identity. Verify those capabilities again after relaunch, along
-with same-version reinstallation. Repeat on supported macOS versions and
-architectures. Do not run this experiment against a developer's personal Keychain
-or privacy grants.
+This command refuses to overwrite an existing certificate. It imports the private
+key into the publishing account's login Keychain with access for `/usr/bin/codesign`,
+removes temporary private-key files, and changes no certificate trust settings.
+Its public recovery copy lives under
+`~/Library/Application Support/Snow Shot/ReleaseSigning`. An interrupted operation
+leaves a `creating` marker; recover the existing key and certificate before retrying.
+Do not delete the marker to generate a different identity.
+
+Back up the certificate **and private key** as a password-protected `.p12` using
+Keychain Access, and keep that backup outside the repository and release assets.
+Import that same identity into each publishing Mac's login Keychain. Never create
+a new certificate on a replacement machine, and never commit a private key,
+`.p12`, or password. To verify that a publishing machine has the expected key:
+
+```sh
+python3 scripts/snow-shot-macos-signing.py identity
+```
+
+CPack checks the application inside every completed Full/Mini DMG before it can
+publish a successful package. It verifies the pinned signer, bundle identity,
+resource seal, and actual DR against the previous published application in both
+directions. The previous matching GitHub release is downloaded with a verified
+asset SHA-256. Network failure, a changed certificate, an incompatible DR, or an
+ad-hoc successor stops packaging. Cached remote release packages are audited again.
+Results are written to `<package-name>.signing.json` and included in remote receipts.
+Do not overwrite the already-published 1.5.8 assets; bump the version for the first
+project-signed release.
+
+For offline builds, provide the immediately preceding published DMGs:
+
+```sh
+export SNOW_MACOS_PREVIOUS_FULL_DMG=/absolute/path/snow-shot-PREVIOUS-macos-arm64.dmg
+export SNOW_MACOS_PREVIOUS_MINI_DMG=/absolute/path/snow-shot-mini-PREVIOUS-macos-arm64.dmg
+scripts/package-snow-shot.sh snow-shot-macos-arm64-release
+```
+
+For Intel use the preceding x86_64 Full DMG. The only migration exception is the
+exact SHA-256-pinned 1.5.8 release for each supported product/architecture. Its audit
+explicitly records `legacy-1.5.8-migration-requires-consent`, never `compatible`.
+Later project-signed releases must satisfy their predecessor's actual DR.
+
+Installers and Homebrew only verify and copy the publisher's bundle; no private
+key is distributed. They do not read or overwrite old per-user identity/requirement
+files. A first migration from ad-hoc or per-user signatures may require removing
+an obsolete privacy entry and authorizing the new app once. Old installation
+scripts still re-sign apps and must not be used with the new release.
+
+Self-signing provides stable identity; it does not provide Apple notarization or
+remove Gatekeeper's unidentified-developer checks. TCC behavior must still be
+qualified in a disposable macOS account: grant Screen Recording and Accessibility
+to build A, replace it with a different build B via DMG, script, and Homebrew,
+then exercise both capabilities, OCR, and same-version reinstall. Repeat on
+supported macOS versions and architectures. Signature tests alone do not prove
+consent retention; never perform these experiments on personal privacy grants.
+
+Focused checks (no full application build or test suite):
+
+```sh
+python3 scripts/test-macos-release-signing.py
+python3 scripts/test-macos-installer.py
+python3 scripts/test-snow-shot-homebrew.py
+python3 scripts/test-remote-macos-release.py
+```
 
 ## Prerequisites
 
@@ -683,7 +704,8 @@ is restricted to `/usr/bin/codesign`. CMake signs the raw app executable for dir
 IDE debugging, and the run script uses the same certificate for its deployed copy.
 Because the certificate remains stable across rebuilds, macOS can retain privacy
 grants after the app's code changes. The certificate is only for local development;
-it is not trusted for distribution. Release and fast presets remain ad-hoc signed.
+it is not the project release identity. Release presets require the project
+certificate; fast presets remain ad-hoc signed.
 
 To use another code-signing certificate from the keychain, pass its name or SHA-1:
 
@@ -693,11 +715,12 @@ scripts/run-snow-shot.sh snow-shot-macos-arm64-debug \
 ```
 
 The override applies to that run and is stored in the selected preset's CMake
-cache. Later default runs restore the local development identity. Pass
-`--codesign-identity -` to explicitly use ad-hoc signing for one run. A missing or
+cache. Later default runs restore the local development identity, or `PROJECT`
+for a release preset. On non-release presets, pass `--codesign-identity -` to
+explicitly use ad-hoc signing for one run. A missing or
 unusable override fails deployment; it does not fall back to ad-hoc signing.
-Public distribution still requires Developer ID signing and Apple notarization;
-this setting does not notarize the app.
+Project self-signing does not provide Developer ID trust or Apple notarization.
+Gatekeeper may still require the user to approve opening the downloaded app.
 The run script deploys a signed development copy under `build/<preset>/run`
 before launching; this also resolves the OCR helper's dynamically loaded libraries.
 Launch through the run script/Finder and grant Screen Recording, Accessibility,
@@ -777,7 +800,7 @@ runtime, then seals the enclosing app. CPack signs and verifies the DMG before
 calculating its SHA-256 checksum. No runtime binary may be modified afterward.
 The installer writes `macos-ocr-verification.json` in the build directory, listing
 verified Mach-O binaries and runtime hashes. This is local integrity validation;
-ad-hoc signing is not Developer ID signing or notarization.
+project self-signing is not Developer ID signing or notarization.
 
 Focused deterministic checks (the asset executable needs no worker or real models):
 
