@@ -220,8 +220,11 @@ ScreenshotRecognitionResults decodeScreenshotPinnedRecognition(const QByteArray&
             }
         }
         results.translatedText->prepareForRendering();
+        QVector<int> paragraphsToRestore;
         if (const auto indices = snow_shot::presentation::ocrTranslationSourceIndices(
-                *results.translatedText, *results.text->presentation)) {
+                *results.translatedText, *results.text->presentation, &paragraphsToRestore)) {
+            for (const int index : paragraphsToRestore)
+                results.translatedText->lines[index].paragraph = true;
             setScreenshotOcrTranslationFontCaps(results.translatedText->lines,
                                                 results.text->presentation->lines, *indices, font);
         }

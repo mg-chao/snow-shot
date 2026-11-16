@@ -195,6 +195,106 @@ void translationRetainsSourceSizeAndBaseline() {
     require(layout.sourceTextMetrics().spacingEm == 0,
             "translation must retain natural spacing after source fitting changes");
 }
+
+void longSingleLineTranslationWrapsAtEveryZoom() {
+    ScreenshotOcrLine source;
+    source.text = QStringLiteral("OCR source");
+    source.quad = quad(QRectF(20, 30, 150, 32));
+    const QFont font = QGuiApplication::font();
+    QVector<ScreenshotOcrLine> translation{source};
+    setScreenshotOcrTranslationFontCaps(translation, {source}, {{0}}, font);
+    auto& line = translation.front();
+    line.text = QStringLiteral("Long translation ").repeated(6).trimmed();
+    const auto length = static_cast<int>(line.text.size());
+    ScreenshotOcrTextLayout layout;
+    for (const bool streaming : {false, true}) {
+        line.translationStreaming = streaming;
+        for (const qreal zoom : {0.5, 1.0, 2.0}) {
+            QTransform transform;
+            qreal size = 0;
+            const auto output = QTransform::fromScale(zoom, zoom);
+            require(configureScreenshotOcrTextLayout(layout, line, output, font, Qt::black, {},
+                                                     &transform, &size),
+                    "long translation must configure at every zoom");
+            const auto rows = layout.rangeFragments({0, length});
+            require(rows.size() >= 2 && rows.first().baseline < rows.last().baseline &&
+                        size > 6 * zoom,
+                    "a translation requiring tiny single-line text must wrap at a larger size");
+            if (!rows.isEmpty()) {
+                const auto last = rows.last();
+                const auto start = QPointF(last.rect.left(), last.rect.center().y());
+                require(layout.cursorPositionAt(last.localToSource.map(start)) >= last.range.start,
+                        "clicking a wrapped row must locate its text");
+            }
+        }
+    }
+}
+
+void narrowTranslationKeepsLineBreaksAtEveryZoom() {
+    ScreenshotOcrLine source;
+    source.text = QStringLiteral("Short label");
+    source.quad = quad(QRectF(20, 30, 73, 9));
+    const QFont font = QGuiApplication::font();
+    QVector<ScreenshotOcrLine> translation{source};
+    setScreenshotOcrTranslationFontCaps(translation, {source}, {{0}}, font);
+    auto& line = translation.front();
+    line.text = QStringLiteral("The same text flows after a transform");
+    const auto length = static_cast<int>(line.text.size());
+    ScreenshotOcrTextLayout layout;
+    QVector<QPair<int, int>> originalRanges;
+    qreal originalSize = 0;
+    for (const qreal zoom : {1.0, 0.5, 1.25, 2.0}) {
+        QTransform transform;
+        qreal size = 0;
+        require(configureScreenshotOcrTextLayout(layout, line, QTransform::fromScale(zoom, zoom),
+                                                 font, Qt::black, {}, &transform, &size),
+                "a narrow translation must configure at every zoom");
+        QVector<QPair<int, int>> ranges;
+        for (const auto& fragment : layout.rangeFragments({0, length}))
+            ranges.push_back({fragment.range.start, fragment.range.end});
+        if (zoom == 1.0) {
+            originalRanges = ranges;
+            originalSize = size;
+        }
+        require(!originalRanges.isEmpty() && ranges == originalRanges &&
+                    std::abs(size / zoom - originalSize) < 0.001,
+                "zoom must preserve the break positions and source-space font size");
+    }
+}
+
+void translationKeepsHardBreaksAndCompactsOverflowingRows() {
+    ScreenshotOcrLine line;
+    line.text = QStringLiteral("First row\r\nSecond row\nThird row");
+    const auto length = static_cast<int>(line.text.size());
+    const QFont font = QGuiApplication::font();
+    ScreenshotOcrTextLayout layout;
+    QTransform transform;
+    const auto checkRows = [&] {
+        const auto rows = layout.rangeFragments({0, length});
+        require(rows.size() == 3 && rows[0].range.start == 0 && rows[1].range.start == 11 &&
+                    rows[2].range.start == 22 && rows[0].baseline < rows[1].baseline &&
+                    rows[1].baseline < rows[2].baseline && rows[2].range.end == length,
+                "explicit CRLF and LF must create rows and preserve selection offsets");
+    };
+    line.quad = quad(QRectF(20, 20, 300, 70));
+    line.fontSizeCapRatio = 16.0 / 70;
+    require(configureScreenshotOcrTextLayout(layout, line, {}, font, Qt::black, {}, &transform),
+            "a single source box with explicit translation breaks must configure");
+    checkRows();
+
+    line.paragraph = true;
+    line.quad = quad(QRectF(20, 20, 300, 120));
+    line.sourceLineQuads = {quad(QRectF(20, 20, 300, 24)), quad(QRectF(20, 116, 300, 24))};
+    line.fontSizeCapRatio = 16.0 / 120;
+    qreal size = 0;
+    require(
+        configureScreenshotOcrTextLayout(layout, line, {}, font, Qt::black, {}, &transform, &size),
+        "a merged translation with widely spaced source rows must configure");
+    checkRows();
+    require(std::abs(size - 16) < 0.01,
+            "additional translated rows should tighten spacing before shrinking the font");
+}
+
 int coloredPixels(const QImage& image, const QColor& color, const QRect& area) {
     int count = 0;
     const QRect bounds = area.intersected(image.rect());
@@ -303,6 +403,9 @@ int main(int argc, char** argv) {
     sourceRowsKeepTheirBoxesAndSelection();
     verticalSourceTextDoesNotStretchItsSpacing();
     translationRetainsSourceSizeAndBaseline();
+    longSingleLineTranslationWrapsAtEveryZoom();
+    narrowTranslationKeepsLineBreaksAtEveryZoom();
+    translationKeepsHardBreaksAndCompactsOverflowingRows();
     sourceColorsPaintWithoutChangingSelectionOrShaping();
     sourceRowsKeepTheirColorsAfterSorting();
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

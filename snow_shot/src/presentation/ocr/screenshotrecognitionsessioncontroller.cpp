@@ -706,12 +706,16 @@ void ScreenshotRecognitionSessionController::seedRecognitionResults(
         entry.presentation = results.text->presentation;
         entry.editingSession = std::move(editingSession);
 #if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
-        const auto sourceIndices = results.translatedText
-                                       ? snow_shot::presentation::ocrTranslationSourceIndices(
-                                             *results.translatedText, *entry.presentation)
-                                       : std::nullopt;
+        QVector<int> paragraphsToRestore;
+        const auto sourceIndices =
+            results.translatedText
+                ? snow_shot::presentation::ocrTranslationSourceIndices(
+                      *results.translatedText, *entry.presentation, &paragraphsToRestore)
+                : std::nullopt;
         if (sourceIndices) {
             entry.overlayTranslation.presentation = copyTextPresentation(results.translatedText);
+            for (const int index : paragraphsToRestore)
+                entry.overlayTranslation.presentation->lines[index].paragraph = true;
             setScreenshotOcrTranslationFontCaps(entry.overlayTranslation.presentation->lines,
                                                 entry.presentation->lines, *sourceIndices,
                                                 QApplication::font());

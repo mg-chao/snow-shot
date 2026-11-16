@@ -21,6 +21,7 @@ class ScreenshotOcrTextLayout final {
         qreal height;
         qreal firstLineIndent;
         qreal lineAdvance;
+        qreal minimumSingleLineScale;
         std::optional<ScreenshotOcrSourceTextMetrics> source;
         bool operator==(const TranslationLayout&) const = default;
     };
