@@ -74,23 +74,169 @@ class PresentationTimerObserver final : public QObject {
     QEventLoop* waitingLoop = nullptr;
 };
 
-QImage decorationImage(Fixture& fixture) {
-    QImage image(fixture.overlay.canvas()->size(), QImage::Format_ARGB32_Premultiplied);
+QImage overlayDecorationImage(ScreenshotOverlayWindow& overlay) {
+    QImage image(overlay.canvas()->size(), QImage::Format_ARGB32_Premultiplied);
     image.fill(Qt::transparent);
     QPainter painter(&image);
-    fixture.overlay.screenshotRendererForTesting()->renderAfterCanvas(
-        painter,
-        {image.rect(), image.rect(), fixture.overlay.canvas()->canvasToViewTransform(), 1.0});
+    overlay.screenshotRendererForTesting()->renderAfterCanvas(
+        painter, {image.rect(), image.rect(), overlay.canvas()->canvasToViewTransform(), 1.0});
     painter.end();
     return image;
 }
 
-void enableRedPointerGuides(Fixture& fixture) {
+QImage decorationImage(Fixture& fixture) {
+    return overlayDecorationImage(fixture.overlay);
+}
+
+bool containsGuideColor(const QImage& image, const QColor& color) {
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            if (image.pixelColor(x, y) == color)
+                return true;
+        }
+    }
+    return false;
+}
+
+void enableRedPointerGuides(Fixture& fixture, bool adaptive = false) {
+    fixture.preferences.adaptiveGuideColors = adaptive;
     fixture.preferences.cursorGuideLineColor = Qt::red;
     fixture.preferences.monitorCenterGuideLineColor = Qt::transparent;
     fixture.preferences.selectionCenterGuideLineColor = Qt::transparent;
     fixture.services->setUiPreferences(fixture.preferences);
     fixture.enableGuides();
+}
+
+void adaptiveGuideColorsUseTheirOwnCapturePixels() {
+    Fixture fixture(QSize(400, 300), false);
+    fixture.displays.startup->resumeLiveInput();
+    auto& display = fixture.displays.displayAt(0);
+    display.image.fill(QColor(48, 48, 48));
+    const QRectF selection(100, 80, 101, 101);
+    const QPointF pointer(275, 215);
+    const QPoint pointerPixel =
+        fixture.geometry.physicalPositionForLogicalPoint(fixture.displays, pointer) -
+        display.physicalRect.topLeft();
+    display.image.setPixelColor(150, 130, Qt::blue);
+    display.image.setPixelColor(display.image.width() / 2, display.image.height() / 2, Qt::green);
+    display.cursorPixelRect = QRect(pointerPixel, QSize(1, 1));
+    display.cursorPatch = QImage(1, 1, QImage::Format_RGBA8888);
+    display.cursorPatch.fill(Qt::red);
+    fixture.displays.cursorVisible = true;
+    fixture.coordinator.applyDisplayModels(fixture.displays);
+    fixture.preferences.cursorGuideLineColor = Qt::red;
+    fixture.preferences.selectionCenterGuideLineColor = Qt::blue;
+    fixture.preferences.monitorCenterGuideLineColor = Qt::green;
+    fixture.services->setUiPreferences(fixture.preferences);
+    fixture.requestSelection(selection);
+    fixture.requestPointer(pointer);
+    fixture.enableGuides();
+    auto guides = decorationImage(fixture);
+    require(containsGuideColor(guides, Qt::cyan) && containsGuideColor(guides, Qt::yellow) &&
+                containsGuideColor(guides, Qt::magenta),
+            "the cursor patch, selection center, and monitor center must resolve independently");
+
+    fixture.displays.cursorVisible = false;
+    fixture.services->updateOverlayState();
+    fixture.flushFrame();
+    guides = decorationImage(fixture);
+    require(containsGuideColor(guides, Qt::red) && !containsGuideColor(guides, Qt::cyan),
+            "hiding the captured cursor must refresh the guide at a stationary pointer");
+
+    fixture.preferences.adaptiveGuideColors = false;
+    fixture.services->setUiPreferences(fixture.preferences);
+    fixture.flushFrame();
+    guides = decorationImage(fixture);
+    require(containsGuideColor(guides, Qt::red) && containsGuideColor(guides, Qt::blue) &&
+                containsGuideColor(guides, Qt::green) && !containsGuideColor(guides, Qt::yellow) &&
+                !containsGuideColor(guides, Qt::magenta),
+            "disabling adaptation must restore all configured colors in the active capture");
+}
+
+void cursorGuideUsesTheMagnifierResizeAnchor() {
+    Fixture fixture(QSize(400, 300), false);
+    fixture.displays.startup->resumeLiveInput();
+    fixture.coordinator.setSelectionToolbarHidden(true);
+    auto& display = fixture.displays.displayAt(0);
+    display.image.fill(QColor(48, 48, 48));
+    const QRectF resized(60, 50, 130, 90);
+    display.image.setPixelColor(resized.bottomRight().toPoint(), Qt::red);
+    fixture.coordinator.applyDisplayModels(fixture.displays);
+    fixture.enableColorPicker(ScreenshotColorPickerDisplayMode::AlwaysShow);
+    enableRedPointerGuides(fixture, true);
+    require(fixture.interaction.enterSelectionDrag(ScreenshotSelectionDragMode::BottomRight),
+            "the guide sample test requires an active resize");
+    fixture.selection.setDraggedSelectionRect(resized, ScreenshotSelectionDragMode::BottomRight);
+    const QPointF pointer(260, 210);
+    fixture.requestPointer(pointer);
+    fixture.services->requestSelectionDragPresentation();
+    fixture.services->requestSelectionDragColorPickerPresentation(
+        fixture.geometry.canvasPositionForOverlayLocalPoint(fixture.displays, &fixture.overlay,
+                                                            pointer));
+    fixture.flushFrame();
+    require(fixture.coordinator.colorPicker()->currentColorText() == QStringLiteral("#FF0000") &&
+                containsGuideColor(decorationImage(fixture), Qt::cyan),
+            "during resize the cursor guide and picker must sample the constrained corner");
+}
+
+void adaptiveGuidesUseTheActiveMonitorAtMixedDpi() {
+    Fixture fixture(QSize(400, 300), false);
+    fixture.displays.startup->resumeLiveInput();
+    auto& firstDisplay = fixture.displays.displayAt(0);
+    firstDisplay.image.fill(QColor(48, 48, 48));
+    firstDisplay.image.setPixelColor(firstDisplay.image.width() / 2,
+                                     firstDisplay.image.height() / 2, Qt::green);
+
+    ScreenshotOverlayWindow secondOverlay(fixture.events,
+                                          new SnowCanvasWidget(fixture.canvasRuntime));
+    CapturedDisplayModel secondDisplay;
+    secondDisplay.stableId = QStringLiteral("second-monitor");
+    secondDisplay.logicalRect = QRect(460, 0, 240, 200);
+    const int secondPhysicalX = firstDisplay.physicalRect.right() + 121;
+    secondDisplay.physicalRect = QRect(secondPhysicalX, 0, 480, 400);
+    secondDisplay.logicalToPhysicalScale = 2.0;
+    secondDisplay.geometryResolved = true;
+    secondDisplay.active = true;
+    secondDisplay.image = QImage(480, 400, QImage::Format_RGBA8888);
+    secondDisplay.image.fill(QColor(48, 48, 48));
+    secondDisplay.image.setPixelColor(130, 160, Qt::red);
+    // This would invert the monitor guide if its center were sampled in logical pixels.
+    secondDisplay.image.setPixelColor(120, 100, Qt::green);
+    fixture.displays.appendDisplay(std::move(secondDisplay), &secondOverlay);
+    fixture.geometry.rebuild(fixture.displays);
+    fixture.coordinator.applyDisplayModels(fixture.displays);
+
+    fixture.preferences.cursorGuideLineColor = Qt::red;
+    fixture.preferences.selectionCenterGuideLineColor = Qt::transparent;
+    fixture.preferences.monitorCenterGuideLineColor = Qt::green;
+    fixture.services->setUiPreferences(fixture.preferences);
+    fixture.requestPointer(QPointF(75, 70));
+    fixture.enableGuides();
+    require(containsGuideColor(decorationImage(fixture), Qt::magenta),
+            "the first monitor guide must use the first monitor's center");
+
+    fixture.services->updatePointerPresentation(&secondOverlay, QPointF(65, 80));
+    fixture.flushFrame();
+    const auto guides = overlayDecorationImage(secondOverlay);
+    require(containsGuideColor(guides, Qt::cyan) && containsGuideColor(guides, Qt::green) &&
+                !containsGuideColor(guides, Qt::magenta) &&
+                !containsGuideColor(decorationImage(fixture), Qt::magenta),
+            "the active monitor must use its own physical pixels and clear the previous guide");
+
+    auto& first = fixture.displays.displayAt(0);
+    auto& second = fixture.displays.displayAt(1);
+    first.image.setPixelColor(first.image.width() - 1, 80, Qt::blue);
+    second.image.setPixelColor(0, 80, Qt::blue);
+    const QRectF spanningGap(first.canvasRect.right() - 30, 50, 182, 60);
+    fixture.preferences.selectionCenterGuideLineColor = Qt::blue;
+    fixture.services->setUiPreferences(fixture.preferences);
+    fixture.requestSelection(spanningGap);
+    fixture.flushFrame();
+    const auto gapGuides = decorationImage(fixture);
+    require(containsGuideColor(gapGuides, Qt::blue) && !containsGuideColor(gapGuides, Qt::yellow),
+            "a selection centered in a monitor gap must keep the configured color");
+    fixture.coordinator.clearGuideLines(fixture.displays);
+    fixture.displays.removeDisplayAt(1);
 }
 
 void regionSnapGuidesReachPresentationFrames() {
@@ -2087,6 +2233,12 @@ int main(int argc, char* argv[]) {
     selection_presentation_test::IsolatedStorage storage;
     if (application.arguments().contains(QStringLiteral("--picker-drag-only"))) {
         selectionDragsKeepTheColorPickerOpaque();
+        return 0;
+    }
+    if (application.arguments().contains(QStringLiteral("--adaptive-guides-only"))) {
+        adaptiveGuideColorsUseTheirOwnCapturePixels();
+        cursorGuideUsesTheMagnifierResizeAnchor();
+        adaptiveGuidesUseTheActiveMonitorAtMixedDpi();
         return 0;
     }
     if (application.arguments().contains(QStringLiteral("--toolbar-presenter-lifetime-only"))) {

@@ -27,6 +27,7 @@ struct ScreenshotUiPreferences {
     qreal shortcutHintOpacity = 1.0;
     bool screenshotAreaTypeHintEnabled = true;
     bool showGuidesByDefault = false;
+    bool adaptiveGuideColors = true;
     QColor cursorGuideLineColor = QColor(0, 0, 0);
     QColor selectionCenterGuideLineColor = QColor(0x40, 0x96, 0xff);
     QColor monitorCenterGuideLineColor = QColor(255, 0, 0);

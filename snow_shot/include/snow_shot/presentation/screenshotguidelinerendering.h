@@ -15,6 +15,27 @@
 #include <cmath>
 #include <limits>
 
+[[nodiscard]] inline QColor adaptiveScreenshotGuideColor(const QColor& configured,
+                                                         const QColor& sample) {
+    if (!configured.isValid() || configured.alpha() == 0 || !sample.isValid()) {
+        return configured;
+    }
+
+    constexpr int kSimilarityRadiusSquared = 64 * 64;
+    const int red = configured.red();
+    const int green = configured.green();
+    const int blue = configured.blue();
+    const int redDifference = red - sample.red();
+    const int greenDifference = green - sample.green();
+    const int blueDifference = blue - sample.blue();
+    if (redDifference * redDifference + greenDifference * greenDifference +
+            blueDifference * blueDifference >
+        kSimilarityRadiusSquared) {
+        return configured;
+    }
+    return QColor(255 - red, 255 - green, 255 - blue, configured.alpha());
+}
+
 [[nodiscard]] inline qreal screenshotGuideLinePixelCenter(qreal coordinate) {
     return std::floor(coordinate) + 0.5;
 }

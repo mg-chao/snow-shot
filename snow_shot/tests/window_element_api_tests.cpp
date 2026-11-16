@@ -588,11 +588,22 @@ void toolbarLayoutSectionResetsRemainIndependent() {
             "Drawing reset must restore only the drawing toolbar layout");
 }
 
-void screenshotGuideSettingsPersistAndReset() {
+void screenshotGuideSettingsPersistAndReset(const QString& configurationPath) {
     snow_shot::presentation::GlobalShortcutManager shortcuts;
     settings::BuiltInSettingsBackend backend(shortcuts);
     const storage::ScreenshotUiSettings ui;
     const storage::ScreenshotShortcutSettings shortcutSettings;
+    constexpr auto adaptiveColors = settings::SettingsSwitchBinding::AdaptiveGuideColors;
+    require(backend.switchValue(adaptiveColors) && ui.adaptiveGuideColors() &&
+                backend.applySwitchValue(adaptiveColors, false) &&
+                !backend.switchValue(adaptiveColors) && !ui.adaptiveGuideColors(),
+            "adaptive guide colors must default to enabled and save the user's choice");
+    require(storage::ApplicationStorage::instance().configuration().flushNow().success,
+            "guide preferences must be flushable");
+    const storage::ConfigurationStore reloaded(configurationPath, true, true, 60000);
+    require(reloaded.value(QStringLiteral("screenshot_ui/adaptive_guide_colors")) ==
+                QJsonValue(false),
+            "disabled adaptive guide colors must survive a configuration reload");
     require(ui.setShowGuidesByDefault(true) && ui.setCursorGuideLineColor(QColor(12, 34, 56, 78)) &&
                 ui.setSelectionCenterGuideLineColor(QColor(22, 33, 44, 55)) &&
                 ui.setMonitorCenterGuideLineColor(QColor(90, 80, 70, 60)) &&
@@ -607,7 +618,8 @@ void screenshotGuideSettingsPersistAndReset() {
             "saved guide preferences and shortcut must remain intact before reset");
 
     require(backend.resetSection(settings::SettingsSectionReset::ScreenshotInterfaceSettings) &&
-                !ui.showGuidesByDefault() && ui.cursorGuideLineColor() == QColor(0, 0, 0) &&
+                backend.switchValue(adaptiveColors) && !ui.showGuidesByDefault() &&
+                ui.cursorGuideLineColor() == QColor(0, 0, 0) &&
                 ui.selectionCenterGuideLineColor() == QColor(0x40, 0x96, 0xff) &&
                 ui.monitorCenterGuideLineColor() == QColor(255, 0, 0) &&
                 shortcutSettings.toggleGuides().first().portableText == QStringLiteral("Ctrl+G"),
@@ -1186,7 +1198,8 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (application.arguments().contains(QStringLiteral("--guide-settings-only"))) {
-        screenshotGuideSettingsPersistAndReset();
+        screenshotGuideSettingsPersistAndReset(
+            temporary.filePath(QStringLiteral("data/config.json")));
         applicationStorage.shutdown();
         return 0;
     }
@@ -1227,7 +1240,8 @@ int main(int argc, char** argv) {
             temporary.filePath(QStringLiteral("data/config.json")));
         ownUiCapturePreferencesPersistAndReset();
         toolbarLayoutSectionResetsRemainIndependent();
-        screenshotGuideSettingsPersistAndReset();
+        screenshotGuideSettingsPersistAndReset(
+            temporary.filePath(QStringLiteral("data/config.json")));
     }
 #ifndef Q_OS_MACOS
     changedApiRefreshesServiceAndRejectsOldResults();

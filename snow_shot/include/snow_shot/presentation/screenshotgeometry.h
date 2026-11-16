@@ -156,6 +156,8 @@ class ScreenshotGeometryMapper final {
     [[nodiscard]] QPoint
     physicalPositionForCanvasPoint(const ScreenshotDisplaySession& displaySession,
                                    const QPointF& point) const;
+    [[nodiscard]] QPoint physicalPositionForCanvasPoint(const CapturedDisplayModel& display,
+                                                        const QPointF& point) const;
     [[nodiscard]] QPointF
     canvasPositionForPhysicalPoint(const ScreenshotDisplaySession& displaySession,
                                    const QPointF& point) const;

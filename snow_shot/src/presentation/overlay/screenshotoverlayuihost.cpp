@@ -549,7 +549,8 @@ void ScreenshotOverlayUiHost::createColorPicker() {
         auto* colorPicker = new ScreenshotColorPickerWindow();
         m_ownedWidgets.add(colorPicker);
         m_colorPicker = colorPicker;
-        colorPicker->setCenterGuideLineColor(m_colorPickerCenterGuideLineColor);
+        colorPicker->setCenterGuideLineColor(m_colorPickerCenterGuideLineColor,
+                                             m_adaptiveGuideColors);
         colorPicker->hide();
     }
 }
@@ -614,10 +615,13 @@ void ScreenshotOverlayUiHost::hideColorPicker() {
     }
 }
 
-void ScreenshotOverlayUiHost::setColorPickerCenterGuideLineColor(const QColor& color) {
+void ScreenshotOverlayUiHost::setColorPickerCenterGuideLineColor(const QColor& color,
+                                                                 bool adaptive) {
     m_colorPickerCenterGuideLineColor = color.isValid() ? color : QColor(0, 0, 0, 0);
+    m_adaptiveGuideColors = adaptive;
     if (m_colorPicker != nullptr) {
-        m_colorPicker->setCenterGuideLineColor(m_colorPickerCenterGuideLineColor);
+        m_colorPicker->setCenterGuideLineColor(m_colorPickerCenterGuideLineColor,
+                                               m_adaptiveGuideColors);
     }
 }
 

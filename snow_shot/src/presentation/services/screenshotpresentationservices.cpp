@@ -1,14 +1,17 @@
 #include "snow_shot/presentation/screenshotpresentationservices.h"
 
 #include "../capture/screenshotcaptureperfinstrumentation.h"
+#include "snow_shot/presentation/screenshotcapturepixels.h"
 #include "snow_shot/presentation/screenshotcapturestate.h"
 #include "snow_shot/presentation/screenshotcanvasrenderer.h"
 #include "snow_shot/presentation/screenshotcolorpickercontroller.h"
 #include "snow_shot/presentation/screenshotdisplaysession.h"
 #include "snow_shot/presentation/screenshotgeometry.h"
+#include "snow_shot/presentation/screenshotguidelinerendering.h"
 #include "snow_shot/presentation/screenshotinteractionstate.h"
 #include "snow_shot/presentation/screenshotintelligentselectionmodel.h"
 #include "snow_shot/presentation/screenshotselectionmodel.h"
+#include "snow_shot/presentation/screenshotselectionlimits.h"
 #include "snow_shot/presentation/screenshotpresentationframeclock.h"
 #include "snow_shot/presentation/screenshotpresentationframescheduler.h"
 #include "snow_shot/presentation/styles/themecolorscheme.h"
@@ -123,6 +126,20 @@ struct PresentationSnapshot {
 };
 
 enum class ColorPickerSource { None, Hover, SelectionDrag };
+
+QColor guideCaptureColor(const CapturedDisplayModel& display, const QPoint& imagePoint,
+                         bool cursorVisible) {
+    if (!display.image.rect().contains(imagePoint)) {
+        return {};
+    }
+    const bool usePatch =
+        cursorVisible && screenshotCaptureCursorPatchFits(display.image, display.cursorPatch,
+                                                          display.cursorPixelRect);
+    const auto pixel = usePatch ? screenshotCapturePixelAt(display.image, display.cursorPatch,
+                                                           display.cursorPixelRect, imagePoint)
+                                : screenshotCapturePixelAt(display.image, imagePoint);
+    return QColor(pixel.red, pixel.green, pixel.blue);
+}
 } // namespace
 
 struct ScreenshotPresentationServices::State {
@@ -147,6 +164,7 @@ struct ScreenshotPresentationServices::State {
     ColorPickerSource colorPickerSource = ColorPickerSource::None;
     ScreenshotSelectionDragMode colorPickerDragMode = ScreenshotSelectionDragMode::None;
     QRectF selectionGlobal;
+    QRectF displayedSelectionBounds;
     QPoint cursorPosition;
     QPointF pointerLocal;
     QRect pointerCaptureGeometry;
@@ -315,6 +333,7 @@ void ScreenshotPresentationServices::resetPresentation() {
     m_state->selectionOwner.clear();
     m_state->hintOwner.clear();
     m_state->selectionGlobal = {};
+    m_state->displayedSelectionBounds = {};
     m_state->cursorPosition = {};
     m_state->pointerLocal = {};
     m_state->pointerCaptureGeometry = {};
@@ -504,16 +523,23 @@ void ScreenshotPresentationServices::requestSelectionDragColorPickerPresentation
     const auto dragMode = m_context.interaction.dragMode();
     const bool firstSample = m_state->colorPickerDragMode != dragMode;
     m_state->colorPickerOwner.clear();
+    const bool guideSampleChanged = m_guideLinesVisible && m_uiPreferences.adaptiveGuideColors &&
+                                    m_uiPreferences.cursorGuideLineColor.alpha() > 0 &&
+                                    (firstSample || m_state->colorPickerPosition != canvasPosition);
     m_state->colorPickerPosition = canvasPosition;
     m_state->colorPickerSessionId = m_context.captureState.sessionId;
     m_state->colorPickerLayoutGeneration =
         m_context.displaySession.startup ? m_context.displaySession.startup->layoutGeneration : 0;
     m_state->colorPickerDragMode = dragMode;
     m_state->colorPickerSource = ColorPickerSource::SelectionDrag;
-    if (firstSample)
+    if (firstSample) {
         flushColorPickerPresentation();
-    else
-        scheduleFrame();
+        if (!guideSampleChanged)
+            return;
+    }
+    if (guideSampleChanged)
+        m_state->pointerDirty = true;
+    scheduleFrame();
 }
 
 void ScreenshotPresentationServices::discardColorPickerPresentation() {
@@ -583,7 +609,8 @@ void ScreenshotPresentationServices::flushPendingFrame() {
             m_context.overlayCoordinator.setSelectionMaskColor(m_context.displaySession,
                                                                m_uiPreferences.selectionMaskColor);
             m_context.overlayCoordinator.setColorPickerCenterGuideLineColor(
-                m_uiPreferences.colorPickerCenterGuideLineColor);
+                m_uiPreferences.colorPickerCenterGuideLineColor,
+                m_uiPreferences.adaptiveGuideColors);
         }
         if (!m_selectionMovementActive)
             m_context.toolbarPresenter.updateSelectionToolbarState(
@@ -646,10 +673,13 @@ void ScreenshotPresentationServices::presentOverlayState(const QRectF& selection
     }
     ScreenshotOverlayWindow* cursorOwner =
         anchored ? m_context.displaySession.startupOverlay() : m_state->pointerOwner.data();
-    if (!cursorOwner ||
-        !m_context.geometry.displayForOverlay(m_context.displaySession, cursorOwner))
-        cursorOwner = m_context.displaySession.overlayForDisplay(
-            m_context.geometry.displayForLogicalPoint(m_context.displaySession, cursorPosition));
+    const auto* cursorDisplay =
+        m_context.geometry.displayForOverlay(m_context.displaySession, cursorOwner);
+    if (!cursorDisplay) {
+        cursorDisplay =
+            m_context.geometry.displayForLogicalPoint(m_context.displaySession, cursorPosition);
+        cursorOwner = m_context.displaySession.overlayForDisplay(cursorDisplay);
+    }
     if (semanticChanged || geometryChanged) {
         ScreenshotSelectionVisualState visualState = m_state->visual;
         visualState.bounds = selection;
@@ -665,6 +695,7 @@ void ScreenshotPresentationServices::presentOverlayState(const QRectF& selection
             visualState.bounds = m_state->visual.bounds;
         }
         visualState.present = visualState.bounds.isValid() && !visualState.bounds.isEmpty();
+        m_state->displayedSelectionBounds = visualState.present ? visualState.bounds : QRectF();
         SNOW_SHOT_CAPTURE_PERF_SCOPE("overlay.canvas_state");
         m_context.overlayCoordinator.updateOverlayState(
             m_context.displaySession, visualState, m_context.interaction.intelligentSelecting(),
@@ -707,11 +738,7 @@ void ScreenshotPresentationServices::presentOverlayState(const QRectF& selection
             cursorOwner && cursorOwner == m_state->pointerOwner ? m_state->pointerLocal
             : cursorOwner ? QPointF(cursorOwner->canvasLocalPosition(cursorPosition))
                           : QPointF();
-        m_context.overlayCoordinator.updateGuideLines(
-            m_context.displaySession, cursorOwner, localPosition,
-            !m_context.interaction.inactive() && m_guideLinesVisible,
-            m_uiPreferences.cursorGuideLineColor, m_uiPreferences.monitorCenterGuideLineColor,
-            m_uiPreferences.selectionCenterGuideLineColor);
+        presentGuideLines(cursorOwner, cursorDisplay, localPosition, anchored);
     }
 
     const auto& hintContext = m_state->hints;
@@ -738,6 +765,82 @@ void ScreenshotPresentationServices::updateOverlayCursors() const {
         m_context.interaction.intelligentSelecting() || m_context.interaction.marqueeSelecting();
     m_context.overlayCoordinator.updateOverlayCursors(m_context.displaySession, selecting,
                                                       m_context.interaction.dragging());
+}
+
+void ScreenshotPresentationServices::presentGuideLines(ScreenshotOverlayWindow* owner,
+                                                       const CapturedDisplayModel* display,
+                                                       const QPointF& localPosition,
+                                                       bool anchored) const {
+    const bool visible = !m_context.interaction.inactive() && m_guideLinesVisible;
+    QColor cursorColor = m_uiPreferences.cursorGuideLineColor;
+    QColor selectionColor = m_uiPreferences.selectionCenterGuideLineColor;
+    QColor monitorColor = m_uiPreferences.monitorCenterGuideLineColor;
+    if (visible && m_uiPreferences.adaptiveGuideColors) {
+        const auto& session = m_context.displaySession;
+        const auto& geometry = m_context.geometry;
+        if (cursorColor.alpha() > 0 && owner && display) {
+            ScreenshotColorPickerSamplePoint sample;
+            if (anchored && session.startupDisplay() == display) {
+                sample = {display, session.startup->physicalPosition};
+            } else {
+                QPointF canvasPoint =
+                    geometry.canvasPositionForOverlayLocalPoint(session, owner, localPosition);
+                if (m_context.interaction.dragging()) {
+                    const auto mode = m_context.interaction.dragMode();
+                    if (m_state->colorPickerDragMode == mode &&
+                        mode != ScreenshotSelectionDragMode::None) {
+                        canvasPoint = m_state->colorPickerPosition;
+                    }
+                    canvasPoint = screenshotSelectionDragAnchor(
+                                      m_context.selection.normalizedSelection(), mode, canvasPoint,
+                                      snow_shot::presentation::kScreenshotSelectionMinimumSize)
+                                      .value_or(canvasPoint);
+                }
+                sample = screenshotColorPickerSamplePoint(geometry, session, canvasPoint);
+                if (sample.display == nullptr) {
+#ifdef Q_OS_MACOS
+                    sample.display = display;
+#else
+                    sample.display = geometry.displayForPhysicalPoint(session, sample.physical);
+#endif
+                }
+            }
+            if (sample.display) {
+                // The picker also clamps captures whose image and physical extents differ.
+                const QRect& rect = sample.display->physicalRect;
+                const QImage& image = sample.display->image;
+                if (!rect.isEmpty() && !image.isNull()) {
+                    const QPoint clamped =
+                        screenshotClampedCaptureImagePoint(image, sample.physical - rect.topLeft());
+                    cursorColor = adaptiveScreenshotGuideColor(
+                        cursorColor,
+                        guideCaptureColor(*sample.display, clamped, session.cursorVisible));
+                }
+            }
+        }
+        if (selectionColor.alpha() > 0 && !m_state->displayedSelectionBounds.isEmpty()) {
+            const QPointF center = m_state->displayedSelectionBounds.center();
+            if (const auto* source = geometry.displayForCanvasPoint(session, center)) {
+                const QRectF bounds =
+                    ScreenshotGeometryMapper::displayImageSourceCanvasRect(*source);
+                const QPointF offset = center - bounds.topLeft();
+                const QPoint imagePoint(
+                    qFloor(offset.x() * source->image.width() / bounds.width()),
+                    qFloor(offset.y() * source->image.height() / bounds.height()));
+                selectionColor = adaptiveScreenshotGuideColor(
+                    selectionColor, guideCaptureColor(*source, imagePoint, session.cursorVisible));
+            }
+        }
+        if (monitorColor.alpha() > 0 && owner && display && !display->physicalRect.isEmpty()) {
+            const QRect& physicalRect = display->physicalRect;
+            const QPoint center(physicalRect.width() / 2, physicalRect.height() / 2);
+            monitorColor = adaptiveScreenshotGuideColor(
+                monitorColor, guideCaptureColor(*display, center, session.cursorVisible));
+        }
+    }
+    m_context.overlayCoordinator.updateGuideLines(m_context.displaySession, owner, localPosition,
+                                                  visible, cursorColor, monitorColor,
+                                                  selectionColor);
 }
 
 ScreenshotColorPickerContext ScreenshotPresentationServices::colorPickerContext() const {

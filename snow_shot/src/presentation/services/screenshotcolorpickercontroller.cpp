@@ -18,6 +18,15 @@ namespace {
 constexpr int kSelectionVisibilityTolerance = 4;
 } // namespace
 
+ScreenshotColorPickerSamplePoint
+screenshotColorPickerSamplePoint(const ScreenshotGeometryMapper& geometry,
+                                 const ScreenshotDisplaySession& session,
+                                 const QPointF& canvasPoint) {
+    const auto* display = geometry.displayForCanvasPoint(session, canvasPoint);
+    return {display, display ? geometry.physicalPositionForCanvasPoint(*display, canvasPoint)
+                             : geometry.physicalPositionForCanvasPoint(session, canvasPoint)};
+}
+
 ScreenshotColorPickerController::ScreenshotColorPickerController(
     ScreenshotOverlayCoordinator& overlayCoordinator, const ScreenshotGeometryMapper& geometry,
     const ScreenshotDisplaySession& displaySession,
@@ -71,9 +80,8 @@ void ScreenshotColorPickerController::updateForOverlay(
 void ScreenshotColorPickerController::updateAtCanvasPoint(
     const QPointF& point, const ScreenshotColorPickerContext& context,
     std::optional<QPoint> cursorLogicalPosition) {
-    updateAtPhysicalPoint(physicalPositionForCanvasPoint(point), context,
-                          m_geometry.displayForCanvasPoint(m_displaySession, point),
-                          cursorLogicalPosition);
+    const auto sample = screenshotColorPickerSamplePoint(m_geometry, m_displaySession, point);
+    updateAtPhysicalPoint(sample.physical, context, sample.display, cursorLogicalPosition);
 }
 
 void ScreenshotColorPickerController::updateAtPhysicalPoint(
@@ -253,10 +261,6 @@ ScreenshotColorPickerController::displayForPhysicalPoint(const QPointF& point) c
 QPoint ScreenshotColorPickerController::logicalPositionForPhysicalPoint(
     const QPointF& point, const CapturedDisplayModel& display) const {
     return m_geometry.logicalPositionForPhysicalPoint(display, point).toPoint();
-}
-
-QPoint ScreenshotColorPickerController::physicalPositionForCanvasPoint(const QPointF& point) const {
-    return m_geometry.physicalPositionForCanvasPoint(m_displaySession, point);
 }
 
 QPointF

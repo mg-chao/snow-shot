@@ -1308,6 +1308,16 @@
       "defaultStringIsNull": false,
       "defaultValue": [],
       "integerRange": null,
+      "key": "global_shortcuts/toggle_global_mouse",
+      "maximumListItems": 2,
+      "valueKind": "ShortcutList"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
       "key": "global_shortcuts/toggle_disable_on_focused_fullscreen_window",
       "maximumListItems": 2,
       "valueKind": "ShortcutList"
@@ -1334,6 +1344,21 @@
       "key": "global_shortcuts/fullscreen_window_filter",
       "maximumListItems": -1,
       "valueKind": "String"
+    },
+    {
+      "allowedStringValues": [
+        "global_shortcuts",
+        "global_mouse"
+      ],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [
+        "global_shortcuts"
+      ],
+      "integerRange": null,
+      "key": "global_shortcuts/fullscreen_disable_scope",
+      "maximumListItems": -1,
+      "valueKind": "StringList"
     },
     {
       "allowedStringValues": [],
@@ -4243,6 +4268,16 @@
     },
     {
       "allowedStringValues": [],
+      "defaultJsonType": 1,
+      "defaultStringIsNull": false,
+      "defaultValue": true,
+      "integerRange": null,
+      "key": "screenshot_ui/adaptive_guide_colors",
+      "maximumListItems": -1,
+      "valueKind": "Boolean"
+    },
+    {
+      "allowedStringValues": [],
       "defaultJsonType": 3,
       "defaultStringIsNull": false,
       "defaultValue": "#000000FF",
@@ -4771,6 +4806,7 @@
         "quick.translate-selected-text",
         "quick.toggle-window-under-cursor-always-on-top",
         "quick.toggle-global-hotkeys",
+        "quick.toggle-global-mouse",
         "quick.toggle-disable-on-focused-fullscreen-window",
         "tray.window-grouping",
         "tray.show-main-window",

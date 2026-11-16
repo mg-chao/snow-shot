@@ -1525,6 +1525,7 @@ constexpr SchemaEntryDescriptor kEntryDescriptors[] = {
      ConfigurationValueKind::Boolean},
     {u"screenshot_ui/show_guides_by_default", booleanDefault(false),
      ConfigurationValueKind::Boolean},
+    {u"screenshot_ui/adaptive_guide_colors", booleanDefault(true), ConfigurationValueKind::Boolean},
     {u"screenshot_ui/cursor_guide_line_color", stringDefault(u"#000000FF"),
      ConfigurationValueKind::String},
     {u"screenshot_ui/selection_center_guide_line_color", stringDefault(u"#4096FFFF"),

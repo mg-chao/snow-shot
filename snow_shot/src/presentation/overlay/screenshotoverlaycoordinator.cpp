@@ -516,8 +516,9 @@ void ScreenshotOverlayCoordinator::hideColorPicker() {
     m_uiHost.hideColorPicker();
 }
 
-void ScreenshotOverlayCoordinator::setColorPickerCenterGuideLineColor(const QColor& color) {
-    m_uiHost.setColorPickerCenterGuideLineColor(color);
+void ScreenshotOverlayCoordinator::setColorPickerCenterGuideLineColor(const QColor& color,
+                                                                      bool adaptive) {
+    m_uiHost.setColorPickerCenterGuideLineColor(color, adaptive);
 }
 
 void ScreenshotOverlayCoordinator::updateShortcutHints(ScreenshotOverlayWindow* overlay,

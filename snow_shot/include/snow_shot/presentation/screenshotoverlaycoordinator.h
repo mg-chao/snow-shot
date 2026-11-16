@@ -150,7 +150,7 @@ class ScreenshotOverlayCoordinator final : public ScreenshotOverlayExclusionPort
                            const ScreenshotCoordinateDisplayValues& displayValues,
                            const QImage& cursorPatch = {}, const QRect& cursorPixelRect = {});
     void hideColorPicker();
-    void setColorPickerCenterGuideLineColor(const QColor& color);
+    void setColorPickerCenterGuideLineColor(const QColor& color, bool adaptive = true);
     void updateShortcutHints(ScreenshotOverlayWindow* overlay,
                              const ScreenshotShortcutHintContext& context, qreal opacity,
                              const QRectF& selectionGlobal, const QPoint& cursorPosition);
