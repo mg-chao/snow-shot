@@ -104,6 +104,21 @@
       "valueKind": "Boolean"
     },
     {
+      "allowedStringValues": [
+        "pin_to_screen",
+        "image_stitching",
+        "image_splitting",
+        "image_editing"
+      ],
+      "defaultJsonType": 3,
+      "defaultStringIsNull": false,
+      "defaultValue": "pin_to_screen",
+      "integerRange": null,
+      "key": "floating_toolbar/drop_behavior",
+      "maximumListItems": -1,
+      "valueKind": "String"
+    },
+    {
       "allowedStringValues": [],
       "defaultJsonType": 2,
       "defaultStringIsNull": false,

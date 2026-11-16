@@ -1092,12 +1092,17 @@ QStringList ScreenshotClipboardContentReader::localFilePaths(const QMimeData* mi
     return paths;
 }
 
+bool ScreenshotClipboardContentReader::hasSupportedInlineImage(const QMimeData* mimeData) {
+    return mimeData &&
+           (mimeData->hasImage() ||
+            std::any_of(std::begin(kEncodedImageFormats), std::end(kEncodedImageFormats),
+                        [mimeData](const EncodedImageFormat& format) {
+                            return mimeData->hasFormat(QLatin1String(format.mimeType));
+                        }));
+}
+
 QStringList ScreenshotClipboardContentReader::filePathsForImport(const QMimeData* mimeData) {
-    if (mimeData && (mimeData->hasImage() ||
-                     std::any_of(std::begin(kEncodedImageFormats), std::end(kEncodedImageFormats),
-                                 [mimeData](const EncodedImageFormat& format) {
-                                     return mimeData->hasFormat(QLatin1String(format.mimeType));
-                                 })))
+    if (hasSupportedInlineImage(mimeData))
         return {};
     return localFilePaths(mimeData);
 }
@@ -1305,6 +1310,17 @@ ScreenshotClipboardContentReader::snapshotImage(QClipboard* clipboard, qreal dev
     if (captured && allocate && !allocate(snapshotBytes(*captured)))
         return std::nullopt;
     return captured;
+}
+
+std::optional<ScreenshotClipboardContentSnapshot>
+ScreenshotClipboardContentReader::snapshotImageMimeData(const QMimeData* mimeData,
+                                                        qreal devicePixelRatio,
+                                                        AllocationCheck allocate) {
+    auto snapshot = snow_shot::presentation::detail::snapshotClipboardMimeData(
+        mimeData, devicePixelRatio, {}, true, allocate, {}, true);
+    if (snapshot && allocate && !allocate(snapshotBytes(*snapshot)))
+        return std::nullopt;
+    return snapshot;
 }
 
 std::optional<ScreenshotClipboardContentSnapshot>

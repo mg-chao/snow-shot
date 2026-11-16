@@ -1921,6 +1921,46 @@ void featureLinksAdvancedControlsAndResets(const settings::SettingsRegistry& reg
             "advanced capture reset preserves cursor visibility");
 #endif
 }
+void floatingToolbarDropSetting(const settings::SettingsRegistry& registry,
+                                settings::SettingsRuntimeSession& session) {
+    const auto id = QStringLiteral("floating-toolbar.drop-behavior");
+    const auto key = QStringLiteral("floating_toolbar/drop_behavior");
+    const auto pin = QStringLiteral("pin_to_screen");
+    const auto edit = QStringLiteral("image_editing");
+    SettingsPageWidget page(registry, QStringLiteral("desktop-tools"), session);
+    page.resize(880, 760);
+    page.show();
+    page.reveal({QStringLiteral("desktop-tools"), QStringLiteral("floating-toolbar"), id});
+    drainEvents();
+    auto* select = page.findChild<adqt::widgets::AdSelect*>(
+        settings::generatedObjectName(QStringLiteral("settings-control"), id));
+    require(select && select->currentValue() == pin &&
+                select->accessibleName() == QStringLiteral("Toolbar drop behavior"),
+            "floating toolbar shows the drop behavior selector with pinning selected");
+    const QStringList labels{QStringLiteral("Pin to screen"), QStringLiteral("Image stitching"),
+                             QStringLiteral("Image splitting"), QStringLiteral("Image editing")};
+    const auto* model = select->model();
+    require(model->rowCount() == labels.size(), "the dropdown offers four options");
+    for (int row = 0; row < model->rowCount(); ++row) {
+        require(model->index(row, 0).data().toString() == labels[row],
+                "the dropdown shows the requested labels in order");
+    }
+    select->setCurrentValue(edit);
+    drainEvents();
+    auto& storage = snow_shot::storage::ApplicationStorage::instance();
+    require(storage.configuration().value(key) == edit && storage.flushNow().success,
+            "changing the dropdown commits the setting");
+    const snow_shot::storage::ConfigurationStore reloaded(
+        QDir(storage.configurationDirectory()).filePath(QStringLiteral("config.json")), true,
+        false);
+    require(reloaded.value(key) == edit, "the stored drop behavior survives a reload");
+    require(session.reset(settings::SettingsSectionReset::FloatingToolbar),
+            "floating toolbar section reset succeeds");
+    drainEvents();
+    require(select->currentValue() == pin && storage.configuration().value(key) == pin,
+            "reset restores Pin to screen in storage and the dropdown");
+}
+
 void catalogResetsPreserveOtherSections(settings::SettingsRuntimeSession& session) {
     using Reset = settings::SettingsSectionReset;
     using Schema = snow_shot::storage::ConfigurationSchema;
@@ -2007,6 +2047,7 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (application.arguments().contains(QStringLiteral("--catalog-resets-only"))) {
+        floatingToolbarDropSetting(registry, session);
         catalogResetsPreserveOtherSections(session);
         storage.shutdown();
         return 0;

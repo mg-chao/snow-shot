@@ -13107,7 +13107,7 @@ if(SNOW_SHOT_BUILD_TESTS OR SNOW_APPS_BUILD_BENCHMARKS)
         target_include_directories(${_snow_floating_target} PRIVATE include src/image)
         target_link_libraries(${_snow_floating_target} PRIVATE
             snow_shot_settings snow_shot_image_codec snow_shot_clipboard_placement
-            snow_draw_engine_qt_canvas ant_design_qt Qt6::Widgets)
+            snow_shot_collage_core snow_draw_engine_qt_canvas ant_design_qt Qt6::Widgets)
         snow_shot_import_offscreen_platform(${_snow_floating_target})
         snow_shot_link_macos_window_platform(${_snow_floating_target})
         if(WIN32)

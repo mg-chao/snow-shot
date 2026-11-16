@@ -221,6 +221,28 @@ storage::CaptureHistoryRecord record(QString id, QSize size = {3, 2}) {
     return result;
 }
 
+void toolbarDropsAppendFilesAndInlineImage() {
+    QTemporaryDir directory;
+    const auto first = directory.filePath(QStringLiteral("first.png"));
+    const auto second = directory.filePath(QStringLiteral("second.png"));
+    require(image({8, 6}, Qt::red).save(first) && image({6, 8}, Qt::green).save(second),
+            "write the toolbar drop fixture images");
+    ImageStitchingWindowCoordinator coordinator;
+    coordinator.presentFiles({first, second});
+    auto* window = coordinator.window();
+    require(window && window->modal()->isOpen(), "a file drop opens the stitching workspace");
+    ScreenshotClipboardContentSnapshot snapshot;
+    snapshot.detachedImage = image({4, 5}, Qt::blue);
+    coordinator.presentDroppedImage(std::move(snapshot), reserveImageStitchingImport(0));
+    waitUntil([&] { return !window->loading(); }, "file and inline image imports finish");
+    const auto& items = window->document()->items();
+    require(coordinator.window() == window && items.size() == 3 &&
+                items[0].image.pixelColor(0, 0) == QColor(Qt::red) &&
+                items[1].image.pixelColor(0, 0) == QColor(Qt::green) &&
+                items[2].image.pixelColor(0, 0) == QColor(Qt::blue),
+            "the existing stitching workspace appends each drop in order");
+}
+
 void selectedFilesOpenAndAppendInOrder() {
     resetSettings();
     QTemporaryDir directory;
@@ -2674,6 +2696,7 @@ int main(int argc, char* argv[]) {
         return 0;
     }
     if (arguments.contains(QStringLiteral("--selected-files-only"))) {
+        timed("Toolbar drop imports", toolbarDropsAppendFilesAndInlineImage);
         timed("Selected-file ordered imports", selectedFilesOpenAndAppendInOrder);
         timed("Empty selections and query failures", emptySelectionsAndFailuresKeepWindowOpen);
         timed("Selected-file cancellation", selectedFileQueriesCancelWithWindowLifecycle);

@@ -675,6 +675,8 @@ QVariant BuiltInSettingsBackend::selectValue(SettingsSelectBinding binding) cons
         return storage::PinToScreenSettings().middleMouseButtonAction();
     case SettingsSelectBinding::PinDuplicateContentAction:
         return storage::PinToScreenSettings().duplicateContentAction();
+    case SettingsSelectBinding::FloatingToolbarDropBehavior:
+        return storage::FloatingToolbarSettings().dropBehavior();
     case SettingsSelectBinding::PinTextSelectionOnRecognitionResults:
         return storage::PinToScreenSettings().textSelectionOnRecognitionResults();
     case SettingsSelectBinding::PinMouseWheelZoomMode:
@@ -924,6 +926,8 @@ bool BuiltInSettingsBackend::applySelectValue(SettingsSelectBinding binding,
         return storage::PinToScreenSettings().setDoubleClickAction(value.toString());
     case SettingsSelectBinding::PinMiddleClickAction:
         return storage::PinToScreenSettings().setMiddleMouseButtonAction(value.toString());
+    case SettingsSelectBinding::FloatingToolbarDropBehavior:
+        return storage::FloatingToolbarSettings().setDropBehavior(value.toString());
     case SettingsSelectBinding::PinDuplicateContentAction:
         return storage::PinToScreenSettings().setDuplicateContentAction(value.toString());
     case SettingsSelectBinding::PinTextSelectionOnRecognitionResults:
@@ -3131,6 +3135,9 @@ SettingsResetResult BuiltInSettingsBackend::resetSectionWithResults(SettingsSect
     case SettingsSectionReset::FloatingToolbar:
         return storage::ApplicationStorage::instance().configuration().setValues({
             {QStringLiteral("floating_toolbar/enabled"), false},
+            {QStringLiteral("floating_toolbar/drop_behavior"),
+             storage::ConfigurationSchema::defaultValue(
+                 QStringLiteral("floating_toolbar/drop_behavior"))},
             {QStringLiteral("floating_toolbar/hide_in_fullscreen"), true},
             {QStringLiteral("floating_toolbar/hide_during_capture"), true},
             {QStringLiteral("floating_toolbar/layout"),

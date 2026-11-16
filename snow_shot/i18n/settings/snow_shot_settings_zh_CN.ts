@@ -2182,6 +2182,10 @@
             <translation>选择文本识别完成后自动执行的操作</translation>
         </message>
         <message>
+            <source>Choose what happens when content is dropped on the floating toolbar</source>
+            <translation>选择将内容拖放到悬浮工具栏时执行的操作</translation>
+        </message>
+        <message>
             <source>Choose what happens when the clipboard content or selected file is already pinned</source>
             <translation>选择剪贴板内容或所选文件已固定到屏幕时的操作</translation>
         </message>
@@ -3090,6 +3094,10 @@
             <translation>图像和文档文件</translation>
         </message>
         <message>
+            <source>Image editing</source>
+            <translation>图像编辑</translation>
+        </message>
+        <message>
             <source>Image export</source>
             <translation>图像导出</translation>
         </message>
@@ -3124,6 +3132,14 @@
         <message>
             <source>Image size</source>
             <translation>图像大小</translation>
+        </message>
+        <message>
+            <source>Image splitting</source>
+            <translation>图像分割</translation>
+        </message>
+        <message>
+            <source>Image stitching</source>
+            <translation>图像拼接</translation>
         </message>
         <message>
             <source>Import</source>
@@ -5016,6 +5032,10 @@
         <message>
             <source>Tool positions</source>
             <translation>工具位置</translation>
+        </message>
+        <message>
+            <source>Toolbar drop behavior</source>
+            <translation>工具栏拖放行为</translation>
         </message>
         <message>
             <source>Toolbar opacity</source>

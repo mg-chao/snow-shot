@@ -1,5 +1,6 @@
 #include "snow_shot/presentation/floatingtoolbarcontroller.h"
 
+#include "snow_shot/presentation/collagedocument.h"
 #include "snow_shot/presentation/floatingtoolbarplacement.h"
 #include "snow_shot/presentation/components/pointerhoverevents.h"
 #include "snow_shot/presentation/screenshottoolbarmainpanel.h"
@@ -137,9 +138,37 @@ class SnowflakeButton final : public QAbstractButton {
     bool m_dropReady = false;
 };
 
+std::optional<FloatingToolbarImageAction> imageDropAction() {
+    const auto value = storage::FloatingToolbarSettings().dropBehavior();
+    if (value == QStringLiteral("image_stitching"))
+        return FloatingToolbarImageAction::Stitch;
+    if (value == QStringLiteral("image_splitting"))
+        return FloatingToolbarImageAction::Split;
+    if (value == QStringLiteral("image_editing"))
+        return FloatingToolbarImageAction::Edit;
+    return std::nullopt;
+}
+
+QStringList imageDropFilePaths(const QMimeData* mime) {
+    auto paths = ScreenshotClipboardContentReader::localFilePaths(mime);
+    const auto extensions = ScreenshotClipboardContentReader::supportedImageFileExtensions();
+    paths.removeIf([&extensions](const QString& path) {
+        return !extensions.contains(QFileInfo(path).suffix(), Qt::CaseInsensitive);
+    });
+    return paths;
+}
+
+bool acceptsImageDrop(const QMimeData* mime) {
+    return ScreenshotClipboardContentReader::hasSupportedInlineImage(mime) ||
+           !imageDropFilePaths(mime).isEmpty();
+}
+
 class DropSurface final : public QWidget {
   public:
     std::function<void(ScreenshotClipboardContentSnapshot, QStringList)> dropped;
+    std::function<void(FloatingToolbarImageAction, ScreenshotClipboardContentSnapshot, QStringList,
+                       std::shared_ptr<ImageStitchingImportReservation>)>
+        imageDropped;
     std::function<void()> hoverChanged;
     std::function<void()> dropReadyChanged;
     explicit DropSurface()
@@ -197,33 +226,67 @@ class DropSurface final : public QWidget {
     }
     void dropEvent(QDropEvent* event) override {
         setDropReady(false);
-        if (!event->possibleActions().testFlag(Qt::CopyAction) ||
-            !acceptsScreenshotDrop(event->mimeData()) || !dropped)
+        event->ignore();
+        if (!event->possibleActions().testFlag(Qt::CopyAction))
+            return;
+        if (const auto action = imageDropAction()) {
+            dropImage(event, *action);
+            return;
+        }
+        if (!dropped || !acceptsScreenshotDrop(event->mimeData()))
             return;
         const auto paths = screenshotDropFilePaths(event->mimeData());
         if (!paths.isEmpty()) {
-            event->setDropAction(Qt::CopyAction);
-            event->accept();
+            acceptCopy(event);
             dropped({}, paths);
             return;
         }
         auto snapshot = ScreenshotClipboardContentReader::snapshotMimeData(
             event->mimeData(), devicePixelRatioF(), palette().color(QPalette::Base));
         if (snapshot && snapshot->isValid()) {
-            event->setDropAction(Qt::CopyAction);
-            event->accept();
+            acceptCopy(event);
             dropped(std::move(*snapshot), {});
         }
     }
 
   private:
+    static void acceptCopy(QDropEvent* event) {
+        event->setDropAction(Qt::CopyAction);
+        event->accept();
+    }
+
+    void dropImage(QDropEvent* event, FloatingToolbarImageAction action) {
+        if (!imageDropped)
+            return;
+        const auto* mime = event->mimeData();
+        auto paths = imageDropFilePaths(mime);
+        if (!paths.isEmpty()) {
+            acceptCopy(event);
+            imageDropped(action, {}, std::move(paths), {});
+            return;
+        }
+        if (!ScreenshotClipboardContentReader::hasSupportedInlineImage(mime))
+            return;
+        auto reservation = reserveImageStitchingImport(0);
+        if (!reservation)
+            return;
+        auto snapshot = ScreenshotClipboardContentReader::snapshotImageMimeData(
+            mime, devicePixelRatioF(),
+            [&reservation](qint64 bytes) { return reservation->resize(bytes); });
+        if (!snapshot)
+            return;
+        acceptCopy(event);
+        imageDropped(action, std::move(*snapshot), {}, std::move(reservation));
+    }
+
     void updateDropReady(QDropEvent* event) {
-        const bool ready = event->possibleActions().testFlag(Qt::CopyAction) && dropped &&
-                           acceptsScreenshotDrop(event->mimeData());
+        const auto* mime = event->mimeData();
+        const bool ready = event->possibleActions().testFlag(Qt::CopyAction) &&
+                           (imageDropAction() ? imageDropped && acceptsImageDrop(mime)
+                                              : dropped && acceptsScreenshotDrop(mime));
         setDropReady(ready);
         if (ready) {
-            event->setDropAction(Qt::CopyAction);
-            event->accept();
+            acceptCopy(event);
         } else {
             event->ignore();
         }
@@ -407,6 +470,10 @@ class FloatingToolbarController::Impl {
         result->installEventFilter(&q);
         result->dropped = [this](auto snapshot, auto paths) {
             emit q.contentDropped(std::move(snapshot), std::move(paths));
+        };
+        result->imageDropped = [this](auto action, auto snapshot, auto paths, auto reservation) {
+            emit q.imageContentDropped(action, std::move(snapshot), std::move(paths),
+                                       std::move(reservation));
         };
         return result;
     }

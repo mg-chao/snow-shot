@@ -13,6 +13,7 @@ class ScreenshotPrintService;
 class ScreenshotRecognitionSessionController;
 namespace snow_shot::presentation {
 class ImageEditingCanvas;
+class ImageStitchingImportReservation;
 class PinnedWindowGroupManager;
 struct ImageEditingServices {
     std::function<ScreenshotPinnedRecognitionProviders()> providers;
@@ -56,6 +57,10 @@ class ImageEditingWindow final : public QObject {
 
   private:
     friend class ImageEditingWindowCoordinator;
+    void loadImportedImage(QStringList paths,
+                           std::optional<ScreenshotClipboardContentSnapshot> snapshot,
+                           std::shared_ptr<ImageStitchingImportReservation> reservation,
+                           bool reservationRejected);
     bool preparePendingEdits(bool requireCanvasCommit = false);
     struct Impl;
     std::unique_ptr<Impl> m_impl;
@@ -67,6 +72,8 @@ class ImageEditingWindowCoordinator final : public QObject {
                                            QObject* parent = nullptr);
     ~ImageEditingWindowCoordinator() override;
     void presentFiles(const QStringList& paths);
+    void presentDroppedImage(ScreenshotClipboardContentSnapshot snapshot,
+                             std::shared_ptr<ImageStitchingImportReservation> reservation);
     void presentSelectedFiles(std::shared_ptr<platform::SelectedFileBackend> backend,
                               platform::SelectedFileTarget target);
     void presentHistory(const storage::CaptureHistoryRecord& record);

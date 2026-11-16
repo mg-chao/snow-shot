@@ -1522,7 +1522,26 @@ void ImageEditingWindow::paste() {
     if (!d.canPaste())
         return;
     auto* clipboard = QApplication::clipboard();
-    const auto paths = ScreenshotClipboardContentReader::localImageFilePaths(clipboard->mimeData());
+    auto paths = ScreenshotClipboardContentReader::localImageFilePaths(clipboard->mimeData());
+    auto reservation = reserveImageStitchingImport(0);
+    bool rejected = !reservation;
+    std::optional<ScreenshotClipboardContentSnapshot> snapshot;
+    if (paths.isEmpty()) {
+        snapshot = ScreenshotClipboardContentReader::snapshotImage(
+            clipboard, d.surface->devicePixelRatioF(), [&reservation, &rejected](qint64 bytes) {
+                rejected = rejected || !reservation->resize(bytes);
+                return !rejected;
+            });
+        if (!snapshot && !rejected)
+            return;
+    }
+    loadImportedImage(std::move(paths), std::move(snapshot), std::move(reservation), rejected);
+}
+
+void ImageEditingWindow::loadImportedImage(
+    QStringList paths, std::optional<ScreenshotClipboardContentSnapshot> snapshot,
+    std::shared_ptr<ImageStitchingImportReservation> reservation, bool reservationRejected) {
+    auto& d = *m_impl;
     struct PastedImage {
         ImageEditingSource source;
         QStringList additionalFiles;
@@ -1530,18 +1549,8 @@ void ImageEditingWindow::paste() {
         bool rejected = false;
     };
     auto pasted = std::make_shared<PastedImage>();
-    pasted->reservation = reserveImageStitchingImport(0);
-    pasted->rejected = !pasted->reservation;
-    std::optional<ScreenshotClipboardContentSnapshot> snapshot;
-    if (paths.isEmpty()) {
-        snapshot = ScreenshotClipboardContentReader::snapshotImage(
-            clipboard, d.surface->devicePixelRatioF(), [pasted](qint64 bytes) {
-                pasted->rejected = pasted->rejected || !pasted->reservation->resize(bytes);
-                return !pasted->rejected;
-            });
-        if (!snapshot && !pasted->rejected)
-            return;
-    }
+    pasted->reservation = std::move(reservation);
+    pasted->rejected = reservationRejected || !pasted->reservation;
     const auto generation = ++d.loadGeneration;
     d.cancelLoading();
     d.errorSource = nullptr;
@@ -2154,6 +2163,14 @@ void ImageEditingWindowCoordinator::presentFiles(const QStringList& paths) {
     if (auto* window = createWindow()) {
         window->presentEmpty();
         window->openFiles(paths);
+    }
+}
+void ImageEditingWindowCoordinator::presentDroppedImage(
+    ScreenshotClipboardContentSnapshot snapshot,
+    std::shared_ptr<ImageStitchingImportReservation> reservation) {
+    if (auto* window = createWindow()) {
+        window->presentEmpty();
+        window->loadImportedImage({}, std::move(snapshot), std::move(reservation), false);
     }
 }
 void ImageEditingWindowCoordinator::presentSelectedFiles(

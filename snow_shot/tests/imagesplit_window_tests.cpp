@@ -260,6 +260,36 @@ class SplitSelectedFilesBackend final : public snow_shot::platform::SelectedFile
     }
 };
 
+void toolbarDropsOpenIndependentWindows() {
+    QTemporaryDir directory;
+    const auto first = directory.filePath(QStringLiteral("first.png"));
+    const auto second = directory.filePath(QStringLiteral("second.png"));
+    require(image({42, 31}).save(first) && image({36, 24}, Qt::green).save(second),
+            "write two dropped images");
+    ImageSplitWindowCoordinator coordinator;
+    coordinator.presentFiles({first, second});
+    ScreenshotClipboardContentSnapshot snapshot;
+    snapshot.detachedImage = image({30, 20}, Qt::blue);
+    coordinator.presentDroppedImage(std::move(snapshot), reserveImageStitchingImport(0));
+    const auto windows = coordinator.windows();
+    require(windows.size() == 3, "splitting opens one window per file or inline image");
+    for (auto* window : windows)
+        loaded(*window);
+    require(windows[0]->document()->image().size() == QSize(42, 31) &&
+                windows[1]->document()->image().size() == QSize(36, 24) &&
+                windows[2]->document()->image().size() == QSize(30, 20),
+            "split windows retain the dropped images in order");
+
+    ScreenshotClipboardContentSnapshot corrupt;
+    corrupt.encodedImages.append({QByteArrayLiteral("corrupt PNG"), QStringLiteral("image/png")});
+    coordinator.presentDroppedImage(std::move(corrupt), reserveImageStitchingImport(0));
+    require(coordinator.windows().size() == 4, "supported image data is sent to the split loader");
+    auto* failed = coordinator.windows().last();
+    waitUntil([&] { return !failed->loading(); }, "corrupt image import finishes");
+    require(failed->document()->image().isNull() && !failed->lastError().isEmpty(),
+            "corrupt image data follows the existing load error path");
+}
+
 void selectedFilesOpenIndependentWindows() {
     QTemporaryDir directory;
     require(directory.isValid(), "selected-image fixture directory exists");
@@ -1523,6 +1553,7 @@ int main(int argc, char** argv) {
     const auto arguments = application.arguments();
     const auto preview = arguments.indexOf(QStringLiteral("--preview"));
     if (arguments.contains(QStringLiteral("--selected-files-only"))) {
+        toolbarDropsOpenIndependentWindows();
         selectedFilesOpenIndependentWindows();
         emptyAndFailedSelectionsRemainUsable();
         selectedFileQueriesCancelWithWindowLifecycle();
@@ -1563,6 +1594,7 @@ int main(int argc, char** argv) {
         windowPinStartsEnabledAndPreservesEdits();
         replacementAndCancellation();
         independentHistoryAndSourceWindows();
+        toolbarDropsOpenIndependentWindows();
         selectedFilesOpenIndependentWindows();
         emptyAndFailedSelectionsRemainUsable();
         selectedFileQueriesCancelWithWindowLifecycle();

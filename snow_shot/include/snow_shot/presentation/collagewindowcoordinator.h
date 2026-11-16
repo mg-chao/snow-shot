@@ -19,6 +19,9 @@ class ImageStitchingWindowCoordinator final : public QObject {
     void present(const QVector<storage::CaptureHistoryRecord>& records = {});
     void presentPinnedRecords(const QStringList& recordIds);
     void presentPinnedWindows(const QVector<ScreenshotPinnedImageSnapshot>& snapshots);
+    void presentFiles(const QStringList& paths);
+    void presentDroppedImage(ScreenshotClipboardContentSnapshot snapshot,
+                             std::shared_ptr<ImageStitchingImportReservation> reservation);
     [[nodiscard]] bool presentSplitImagesAsPdf(ImageSplitSnapshot snapshot);
     void presentSelectedFiles(std::shared_ptr<platform::SelectedFileBackend> backend,
                               platform::SelectedFileTarget target);

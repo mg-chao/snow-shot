@@ -10,6 +10,9 @@ class QScreen;
 class QWidget;
 
 namespace snow_shot::presentation {
+class ImageStitchingImportReservation;
+enum class FloatingToolbarImageAction { Stitch, Split, Edit };
+
 class FloatingToolbarController final : public QObject {
     Q_OBJECT
   public:
@@ -28,6 +31,9 @@ class FloatingToolbarController final : public QObject {
     void actionRequested(const QString& action);
     void customizeRequested();
     void contentDropped(ScreenshotClipboardContentSnapshot snapshot, QStringList paths);
+    void imageContentDropped(FloatingToolbarImageAction action,
+                             ScreenshotClipboardContentSnapshot snapshot, QStringList paths,
+                             std::shared_ptr<ImageStitchingImportReservation> reservation);
 
   protected:
     bool eventFilter(QObject* watched, QEvent* event) override;

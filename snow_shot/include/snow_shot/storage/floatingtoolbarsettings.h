@@ -42,6 +42,8 @@ class FloatingToolbarSettings final {
   public:
     [[nodiscard]] bool enabled() const;
     bool setEnabled(bool value) const;
+    [[nodiscard]] QString dropBehavior() const;
+    bool setDropBehavior(const QString& value) const;
     [[nodiscard]] bool toolbarMode() const;
     bool setToolbarMode(bool value) const;
     [[nodiscard]] bool hideInFullscreen() const;

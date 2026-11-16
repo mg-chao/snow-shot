@@ -2182,6 +2182,10 @@
             <translation>Choose what happens automatically when text recognition completes</translation>
         </message>
         <message>
+            <source>Choose what happens when content is dropped on the floating toolbar</source>
+            <translation>Choose what happens when content is dropped on the floating toolbar</translation>
+        </message>
+        <message>
             <source>Choose what happens when the clipboard content or selected file is already pinned</source>
             <translation>Choose what happens when the clipboard content or selected file is already pinned</translation>
         </message>
@@ -3090,6 +3094,10 @@
             <translation>Image and document files</translation>
         </message>
         <message>
+            <source>Image editing</source>
+            <translation>Image editing</translation>
+        </message>
+        <message>
             <source>Image export</source>
             <translation>Image export</translation>
         </message>
@@ -3124,6 +3132,14 @@
         <message>
             <source>Image size</source>
             <translation>Image size</translation>
+        </message>
+        <message>
+            <source>Image splitting</source>
+            <translation>Image splitting</translation>
+        </message>
+        <message>
+            <source>Image stitching</source>
+            <translation>Image stitching</translation>
         </message>
         <message>
             <source>Import</source>
@@ -5016,6 +5032,10 @@
         <message>
             <source>Tool positions</source>
             <translation>Tool positions</translation>
+        </message>
+        <message>
+            <source>Toolbar drop behavior</source>
+            <translation>Toolbar drop behavior</translation>
         </message>
         <message>
             <source>Toolbar opacity</source>
