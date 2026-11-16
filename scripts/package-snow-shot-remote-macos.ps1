@@ -62,7 +62,12 @@ foreach ($product in $products) {
     if ($LASTEXITCODE -ne 0) { throw 'Downloading the macOS package failed.' }
     if ((Get-FileHash -LiteralPath $image -Algorithm SHA256).Hash.ToLowerInvariant() -cne $item[0].sha256 -or
         (Get-Item -LiteralPath $image).Length -ne $item[0].size) { throw 'Downloaded macOS package checksum mismatch.' }
+    if ($item[0].sparkle.packageSha256 -cne $item[0].sha256 -or
+        $item[0].sparkle.product -cne $product -or $item[0].sparkle.version -cne $Version) {
+        throw 'Downloaded package has no matching Sparkle signing receipt.'
+    }
+    $item[0].sparkle | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath ($image -replace '\.dmg$', '.sparkle.json') -Encoding utf8NoBOM
     [IO.File]::WriteAllText("$image.sha256", "$($item[0].sha256)  ${product}_macos-$assetArchitecture.dmg`n", [Text.UTF8Encoding]::new($false))
 }
-$result | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $OutputDirectory "$metadataBase.json") -Encoding utf8NoBOM
+$result | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $OutputDirectory "$metadataBase.json") -Encoding utf8NoBOM
 Write-Output "Packaged and verified macOS ${Version} (${Architecture}): $image"

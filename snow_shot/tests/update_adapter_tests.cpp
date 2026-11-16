@@ -428,6 +428,7 @@ int main(int argc, char** argv) {
 
     {
         UpdateService service(options(QStringLiteral("default")));
+        service.setMode(QStringLiteral("download"));
         bool updateReady = false;
         bool handoff = false;
         QList<QPair<QString, QString>> operations;
@@ -694,6 +695,7 @@ int main(int argc, char** argv) {
 
     {
         UpdateService service(options(QStringLiteral("manual-respawn")));
+        service.setMode(QStringLiteral("download"));
         bool ready = false;
         QObject::connect(&service, &UpdateService::updateReady, &app, [&] { ready = true; });
         service.start();
@@ -770,6 +772,7 @@ int main(int argc, char** argv) {
         const QString download =
             QDir(cache).filePath(QStringLiteral("download-policyChange-count"));
         UpdateService service(std::move(policyOptions));
+        service.setMode(QStringLiteral("download"));
         QStringList announced;
         int readyCount = 0;
         QObject::connect(&service, &UpdateService::automaticUpdateAvailable, &app,
@@ -951,14 +954,13 @@ int main(int argc, char** argv) {
         QObject::connect(&service, &UpdateService::automaticUpdateAvailable, &app,
                          [&](const QString&) { ++availableCount; });
         QObject::connect(&service, &UpdateService::updateReady, &app, [&] { ++readyCount; });
-        service.setMode(QStringLiteral("next_launch"));
         service.start();
         require(waitUntil([&] { return !service.busy(); }), "quiet startup probe completes");
         service.check(false);
         require(waitUntil([&] {
                     return service.status().state == UpdateState::Ready && !service.busy();
                 }),
-                "next-launch policy downloads updates automatically");
+                "the default next-launch policy downloads updates automatically");
         require(availableCount == 0 && readyCount == 0,
                 "next-launch updates suppress both available and ready notifications");
         require(counterValue(QDir(cache).filePath(QStringLiteral("apply-startup-count"))) == 0 &&

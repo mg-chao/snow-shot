@@ -102,14 +102,6 @@ so every moment on screen can be expressed clearly and shared easily</source>
             <translation>交流与答疑 · 群号 %1</translation>
         </message>
         <message>
-            <source>Download from GitHub</source>
-            <translation>从 GitHub 下载</translation>
-        </message>
-        <message>
-            <source>Download from Gitee</source>
-            <translation>从 Gitee 下载</translation>
-        </message>
-        <message>
             <source>Download update</source>
             <translation>下载更新</translation>
         </message>
@@ -234,6 +226,14 @@ so every moment on screen can be expressed clearly and shared easily</source>
             <translation>不可用</translation>
         </message>
         <message>
+            <source>Update %1 is ready. It will install after you quit and be available on your next launch</source>
+            <translation>更新 %1 已就绪。退出应用程序后将进行安装，下次启动时即可使用</translation>
+        </message>
+        <message>
+            <source>Update %1 will install when you quit</source>
+            <translation>更新 %1 将在退出应用时安装</translation>
+        </message>
+        <message>
             <source>Update available: %1</source>
             <translation>发现新版本：%1</translation>
         </message>
@@ -260,6 +260,10 @@ so every moment on screen can be expressed clearly and shared easily</source>
         <message>
             <source>View the source and improve it together</source>
             <translation>查看源码，一起改进</translation>
+        </message>
+        <message>
+            <source>View update details</source>
+            <translation>查看更新详情</translation>
         </message>
         <message>
             <source>You are up to date</source>

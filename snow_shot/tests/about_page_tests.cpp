@@ -11,6 +11,7 @@
 #include "snow_shot/storage/applicationstorage.h"
 #include "snow_shot/storage/configurationschema.h"
 #include "snow_shot/update/updateservice.h"
+#include "../src/update/macosupdatedriver_p.h"
 #include "snow_shot/app/distribution.h"
 
 #include "widgets/button.h"
@@ -53,6 +54,37 @@ namespace settings = snow_shot::presentation::settings;
 namespace styles = snow_shot::presentation::styles;
 
 namespace {
+#ifdef Q_OS_MACOS
+class AboutUpdateDriver final : public snow_shot::update::detail::MacOSUpdateDriver {
+  public:
+    void start(const QString&) override {
+        changed({snow_shot::update::UpdateState::Idle, {}, {}, 0, 0}, true, true, true);
+    }
+    void setMode(const QString&) override {}
+    void check(bool) override {
+        finished(QStringLiteral("check"), QStringLiteral("failed"));
+    }
+    void download() override {}
+    void cancel() override {}
+    void install() override {}
+    void retranslate() override {}
+};
+#endif
+snow_shot::update::UpdateService::Options aboutUpdateOptions() {
+    snow_shot::update::UpdateService::Options options;
+#ifdef Q_OS_MACOS
+    options.macOSDriverFactory = [] { return std::make_unique<AboutUpdateDriver>(); };
+#endif
+    return options;
+}
+void startAboutUpdates(snow_shot::update::UpdateService& service) {
+#ifdef Q_OS_MACOS
+    service.start();
+#else
+    Q_UNUSED(service);
+#endif
+}
+
 void require(bool condition, const char* message) {
     if (!condition) {
         std::cerr << message << '\n';
@@ -407,7 +439,8 @@ void largerTypeKeepsEveryActionReachable() {
     config.fontSize = 20;
     manager.setThemeStyleConfig(config);
     QCoreApplication::setApplicationVersion(QStringLiteral("12.34.56-beta.7+build.89"));
-    snow_shot::update::UpdateService updates({});
+    snow_shot::update::UpdateService updates(aboutUpdateOptions());
+    startAboutUpdates(updates);
     const_cast<snow_shot::update::UpdateStatus&>(updates.status()) = {
         snow_shot::update::UpdateState::Available,
         QStringLiteral("12.34.56-beta.8+build.90"),
@@ -450,9 +483,10 @@ void updatePolicyAndUnavailableCopy() {
     settings::BuiltInSettingsBackend backend(shortcuts);
     const auto binding = settings::SettingsSelectBinding::UpdateMode;
 #ifdef Q_OS_MACOS
-    require(backend.selectValue(binding).toString() == QStringLiteral("check"),
-            "macOS defaults to automatic checks");
-    for (const QString& value : {QStringLiteral("manual"), QStringLiteral("check")}) {
+    require(backend.selectValue(binding).toString() == QStringLiteral("next_launch"),
+            "macOS defaults to next-launch updates");
+    for (const QString& value :
+         {QStringLiteral("manual"), QStringLiteral("check"), QStringLiteral("next_launch")}) {
         require(backend.applySelectValue(binding, value) &&
                     backend.selectValue(binding).toString() == value,
                 "macOS check policies round-trip");
@@ -460,7 +494,8 @@ void updatePolicyAndUnavailableCopy() {
     require(backend.applySelectValue(binding, QStringLiteral("download")) &&
                 backend.selectValue(binding).toString() == QStringLiteral("check"),
             "legacy policy maps to check");
-    snow_shot::update::UpdateService updates({});
+    snow_shot::update::UpdateService updates(aboutUpdateOptions());
+    startAboutUpdates(updates);
     QList<QUrl> opened;
     AboutPageWidget page(
         nullptr,
@@ -481,7 +516,7 @@ void updatePolicyAndUnavailableCopy() {
         QUrl(QStringLiteral("https://github.com/mg-chao/snow-shot/releases/tag/v2.0.0_snow-shot"))};
     updates.statusChanged();
     auto* action = child<adqt::widgets::AdButton>(page, "aboutUpdateAction");
-    require(action->text() == QStringLiteral("Download from GitHub"),
+    require(action->text() == QStringLiteral("View update details"),
             "About explains external download");
     action->click();
     require(opened == QList<QUrl>{status.downloadUrl}, "About opens the exact GitHub release");
@@ -489,13 +524,13 @@ void updatePolicyAndUnavailableCopy() {
         QUrl(QStringLiteral("https://gitee.com/mg-chao/snow-apps/releases/tag/v2.0.0_snow-shot"));
     emit updates.statusChanged();
     flushEvents();
-    require(action->text() == QStringLiteral("Download from Gitee"),
+    require(action->text() == QStringLiteral("View update details"),
             "About identifies Gitee release");
     action->click();
     require(opened.last() == status.downloadUrl, "About opens the exact Gitee release");
 #else
-    require(backend.selectValue(binding).toString() == QStringLiteral("download"),
-            "automatic download is the default update policy");
+    require(backend.selectValue(binding).toString() == QStringLiteral("next_launch"),
+            "next-launch updates are the default update policy");
     for (const QString& value :
          {QStringLiteral("manual"), QStringLiteral("check"), QStringLiteral("download")}) {
         require(backend.applySelectValue(binding, value) &&
@@ -505,7 +540,8 @@ void updatePolicyAndUnavailableCopy() {
     require(!backend.applySelectValue(binding, QStringLiteral("invalid")) &&
                 backend.selectValue(binding).toString() == QStringLiteral("download"),
             "invalid update policy preserves the previous value");
-    snow_shot::update::UpdateService updates({});
+    snow_shot::update::UpdateService updates(aboutUpdateOptions());
+    startAboutUpdates(updates);
     AboutPageWidget page(nullptr, {}, &updates);
     require(!child<adqt::widgets::AdButton>(page, "aboutUpdateAction")->isEnabled(),
             "development copies cannot overwrite themselves");
@@ -513,12 +549,15 @@ void updatePolicyAndUnavailableCopy() {
                 QStringLiteral("Automatic updates are unavailable for this copy"),
             "unavailable update status explains the disabled action");
 #endif
+    require(backend.applySelectValue(binding, QStringLiteral("next_launch")),
+            "restore the update default for subsequent settings tests");
 }
 
 void updateStatesFitTheVersionPanel() {
     using namespace snow_shot::update;
     using adqt::widgets::AdButton;
-    UpdateService updates({});
+    UpdateService updates(aboutUpdateOptions());
+    startAboutUpdates(updates);
     // Inject presentation snapshots without networking, downloads, or restart side effects.
     auto& status = const_cast<UpdateStatus&>(updates.status());
     QCoreApplication::setApplicationVersion(QStringLiteral(SNOW_SHOT_TEST_VERSION));
@@ -573,6 +612,12 @@ void updateStatesFitTheVersionPanel() {
                     const bool actionable =
                         state == UpdateState::Idle || state == UpdateState::Available ||
                         state == UpdateState::Ready || state == UpdateState::Failed;
+                    if (action->isVisible() != actionable || action->isEnabled() != actionable) {
+                        std::cerr << "Unexpected update action in state " << static_cast<int>(state)
+                                  << ": visible=" << action->isVisible()
+                                  << " enabled=" << action->isEnabled()
+                                  << " canCheck=" << updates.canCheck() << '\n';
+                    }
                     require(action->isVisible() == actionable && action->isEnabled() == actionable,
                             "only actionable update states display a primary control");
                     require(check->isVisible() == (state == UpdateState::Available),
@@ -686,11 +731,12 @@ void checkLinkStartsManualUpdateCheck() {
     using namespace snow_shot::update;
     QTemporaryDir directory;
     require(directory.isValid(), "create isolated update directory");
-    UpdateService::Options options;
+    auto options = aboutUpdateOptions();
     options.applicationDirectory = directory.path();
     options.root = directory.path();
     options.storeManaged = false;
     UpdateService updates(std::move(options));
+    startAboutUpdates(updates);
     updates.setMode(QStringLiteral("manual"));
     const_cast<UpdateStatus&>(updates.status()).state = UpdateState::Available;
     AboutPageWidget page(nullptr, {}, &updates);
@@ -702,7 +748,7 @@ void checkLinkStartsManualUpdateCheck() {
                          operation = finishedOperation;
                          loop.quit();
                      });
-    // The empty directory on Windows and unset installed version on macOS fail without networking.
+    // The Windows fixture and injected macOS driver finish without networking.
     child<adqt::widgets::AdButton>(page, "aboutUpdateCheck")->click();
     if (operation.isEmpty()) {
         QTimer::singleShot(5000, &loop, &QEventLoop::quit);
@@ -713,7 +759,8 @@ void checkLinkStartsManualUpdateCheck() {
 
 void updateModuleKeepsItsHeightAcrossStates() {
     using namespace snow_shot::update;
-    UpdateService updates({});
+    UpdateService updates(aboutUpdateOptions());
+    startAboutUpdates(updates);
     auto& status = const_cast<UpdateStatus&>(updates.status());
     QCoreApplication::setApplicationVersion(QStringLiteral(SNOW_SHOT_TEST_VERSION));
     AboutPageWidget page(nullptr, [](const QUrl&) { return true; }, &updates);
@@ -748,7 +795,8 @@ void dividersFollowTheComponentLibraryAndUpdatesBreathe() {
     using adqt::widgets::AdButton;
     using adqt::widgets::AdDivider;
     QCoreApplication::setApplicationVersion(QStringLiteral(SNOW_SHOT_TEST_VERSION));
-    snow_shot::update::UpdateService updates({});
+    snow_shot::update::UpdateService updates(aboutUpdateOptions());
+    startAboutUpdates(updates);
     const_cast<snow_shot::update::UpdateStatus&>(updates.status()).state =
         snow_shot::update::UpdateState::Idle;
     AboutPageWidget page(nullptr, [](const QUrl&) { return true; }, &updates);
@@ -1161,6 +1209,16 @@ int main(int argc, char** argv) {
     require(storage.initialize({directory.path(), directory.path(), 8000}).success,
             "initialize isolated storage");
     styles::ThemeManager::instance().initialize(application);
+    if (application.arguments().contains(QStringLiteral("--updates-only"))) {
+        updatePolicyAndUnavailableCopy();
+        updateStatesFitTheVersionPanel();
+        checkLinkStartsManualUpdateCheck();
+        updateModuleKeepsItsHeightAcrossStates();
+        dividersFollowTheComponentLibraryAndUpdatesBreathe();
+        largerTypeKeepsEveryActionReachable();
+        storage.shutdown();
+        return 0;
+    }
     if (application.arguments().contains(QStringLiteral("--tray-icon-color-only"))) {
         traySystemIconColorSettings();
         storage.shutdown();

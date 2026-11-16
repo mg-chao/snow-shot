@@ -752,7 +752,7 @@ struct UpdateService::Impl {
     QByteArray stdoutBuffer;
     QByteArray stderrBuffer;
     QByteArray errorSource;
-    QString mode = QStringLiteral("download");
+    QString mode = QStringLiteral("next_launch");
     QJsonObject progressAppearance;
     QString notifiedVersion;
     QString announcedVersion;
@@ -854,6 +854,16 @@ bool UpdateService::managedByStore() const {
 bool UpdateService::busy() const {
     return m_impl->process.state() != QProcess::NotRunning ||
            m_impl->lifecycle != Lifecycle::Stopped || m_impl->pendingOperation != Operation::None;
+}
+
+bool UpdateService::canCheck() const {
+    return capabilities().check && !busy() && !handoffPending();
+}
+bool UpdateService::canCancel() const {
+    return status().state == UpdateState::Downloading;
+}
+bool UpdateService::installsOnQuit() const {
+    return false;
 }
 
 bool UpdateService::handoffPending() const {

@@ -105,3 +105,5 @@ if [[ "$skip_dependencies" == 0 ]]; then
         "--overlay-triplets=$snow_repo_root/cmake/vcpkg-overlay-triplets" \
         --clean-after-build
 fi
+
+python3 "$snow_repo_root/scripts/snow-shot-sparkle.py" bootstrap

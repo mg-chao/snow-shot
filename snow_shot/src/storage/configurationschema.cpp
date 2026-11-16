@@ -461,7 +461,7 @@ constexpr SchemaString kSchemaStrings2[] = {u"Ctrl+U"};
 constexpr ConfigurationIntegerRange kSchemaRange0{10, 100, 1};
 constexpr SchemaString kSchemaStrings3[] = {u"icon", u"toolbar"};
 constexpr SchemaAllowedValues kSchemaAllowed0 = {kSchemaStrings3, std::size(kSchemaStrings3)};
-constexpr int kConfigurationSchemaVersion = 6;
+constexpr int kConfigurationSchemaVersion = 7;
 constexpr ConfigurationIntegerRange kSchemaRange1{kConfigurationSchemaVersion,
                                                   kConfigurationSchemaVersion, 1};
 constexpr SchemaString kSchemaStrings4[] = {u"system", u"light", u"dark"};
@@ -480,7 +480,7 @@ constexpr SchemaString kSchemaStrings8[] = {u"smart_control", u"disabled"};
 constexpr SchemaAllowedValues kSchemaAllowed6 = {kSchemaStrings8, std::size(kSchemaStrings8)};
 constexpr SchemaString kSchemaStrings9[] = {u"images_only", u"image_files", u"disabled"};
 constexpr SchemaAllowedValues kSchemaAllowed7 = {kSchemaStrings9, std::size(kSchemaStrings9)};
-constexpr SchemaString kSchemaStrings10[] = {u"manual", u"check"};
+constexpr SchemaString kSchemaStrings10[] = {u"manual", u"check", u"next_launch"};
 constexpr SchemaAllowedValues kSchemaAllowed8 = {kSchemaStrings10, std::size(kSchemaStrings10)};
 constexpr SchemaString kSchemaStrings11[] = {u"manual", u"check", u"download", u"next_launch"};
 [[maybe_unused]] constexpr SchemaAllowedValues kSchemaAllowed9 = {kSchemaStrings11,
@@ -922,10 +922,10 @@ constexpr SchemaEntryDescriptor kEntryDescriptors[] = {
     {u"system/launch_as_administrator", booleanDefault(false), ConfigurationValueKind::Boolean},
     {u"mcp/enabled", booleanDefault(false), ConfigurationValueKind::Boolean},
 #ifdef Q_OS_MACOS
-    {u"updates/mode", stringDefault(u"check"), ConfigurationValueKind::String, nullptr,
+    {u"updates/mode", stringDefault(u"next_launch"), ConfigurationValueKind::String, nullptr,
      &kSchemaAllowed8},
 #else
-    {u"updates/mode", stringDefault(u"download"), ConfigurationValueKind::String, nullptr,
+    {u"updates/mode", stringDefault(u"next_launch"), ConfigurationValueKind::String, nullptr,
      &kSchemaAllowed9},
 #endif
     {u"network/proxy", stringDefault(u"none"), ConfigurationValueKind::String, nullptr,
@@ -2795,8 +2795,7 @@ ConfigurationNormalization ConfigurationSchema::normalize(const QString& key,
         return {value, true, false};
     }
 #ifdef Q_OS_MACOS
-    if (key == u"updates/mode" &&
-        (value.toString() == u"download" || value.toString() == u"next_launch")) {
+    if (key == u"updates/mode" && value.toString() == u"download") {
         return {QStringLiteral("check"), true, true};
     }
 #endif

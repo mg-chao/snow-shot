@@ -546,8 +546,12 @@
     <context>
         <name>UpdateService</name>
         <message>
-            <source>Could not check for updates. Please try again</source>
-            <translation>無法檢查更新，請重試</translation>
+            <source>Automatic updates are not configured for this copy</source>
+            <translation>此版本尚未設定自動更新</translation>
+        </message>
+        <message>
+            <source>Could not update the application. Please try again</source>
+            <translation>無法更新應用程式。請再試一次</translation>
         </message>
     </context>
 </TS>

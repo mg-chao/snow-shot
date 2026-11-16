@@ -91,6 +91,9 @@ void writeBytes(const QString& path, const QByteArray& bytes) {
     require(file.write(bytes) == bytes.size(), "failed to write test file");
 }
 
+QByteArray readBytes(const QString& path);
+QJsonObject readObject(const QString& path);
+
 void fullscreenWindowFilterPersistsAndDefaultsToGames() {
     QTemporaryDir temporary;
     require(temporary.isValid(), "fullscreen filter requires isolated storage");
@@ -215,13 +218,8 @@ void updateSettingsPersistAndValidate() {
     require(temporary.isValid(), "update settings require isolated storage");
     const QString path = temporary.filePath(QStringLiteral("config.json"));
     const QString key = QStringLiteral("updates/mode");
-#ifdef Q_OS_MACOS
-    const QString defaultMode = QStringLiteral("check");
-    const QString nextLaunchMode = QStringLiteral("check");
-#else
-    const QString defaultMode = QStringLiteral("download");
+    const QString defaultMode = QStringLiteral("next_launch");
     const QString nextLaunchMode = QStringLiteral("next_launch");
-#endif
     {
         storage::ConfigurationStore store(path, true, true, 60000);
         require(store.value(key) == defaultMode, "existing update default must be preserved");
@@ -241,6 +239,115 @@ void updateSettingsPersistAndValidate() {
                     reloaded.value(key) == defaultMode,
                 "update policy reset must restore its original default");
     }
+    // Choices saved after migration must not be replaced on subsequent launches.
+    for (const auto& mode : {QStringLiteral("manual"), QStringLiteral("check"),
+                             QStringLiteral("download"), QStringLiteral("next_launch")}) {
+        storage::ConfigurationStore store(path, true, true, 60000);
+        require(store.setValue(key, mode) && store.flushNow().success,
+                "saved update preference must persist");
+        storage::ConfigurationStore reloaded(path, true, true, 60000);
+#ifdef Q_OS_MACOS
+        const QString expected = mode == u"download" ? QStringLiteral("check") : mode;
+#else
+        const QString expected = mode;
+#endif
+        require(reloaded.value(key) == expected,
+                "new defaults must preserve saved update preferences");
+    }
+}
+
+void legacyUpdateSettingsMigrateOnce() {
+    QTemporaryDir temporary;
+    require(temporary.isValid(), "update migration requires isolated storage");
+    const QString key = QStringLiteral("updates/mode");
+    const QString versionKey = QStringLiteral("storage/schema_version");
+    const int currentVersion = storage::ConfigurationSchema::currentVersion();
+    require(currentVersion >= 7, "the Sparkle migration requires schema version 7");
+    const QList<QJsonValue> oldModes = {
+        QStringLiteral("manual"),         QStringLiteral("check"),   QStringLiteral("download"),
+        QStringLiteral("next_launch"),    QStringLiteral("invalid"), true,
+        QJsonValue(QJsonValue::Undefined)};
+    for (int version = 1; version < 7; ++version) {
+        for (qsizetype index = 0; index < oldModes.size(); ++index) {
+            const auto& oldMode = oldModes.at(index);
+            QJsonObject updates;
+            if (!oldMode.isUndefined())
+                updates.insert(QStringLiteral("mode"), oldMode);
+            const QString path =
+                temporary.filePath(QStringLiteral("legacy-%1-%2.json").arg(version).arg(index));
+            writeBytes(
+                path,
+                QJsonDocument(
+                    QJsonObject{
+                        {QStringLiteral("storage"),
+                         QJsonObject{{QStringLiteral("schema_version"), version}}},
+                        {QStringLiteral("updates"), updates},
+                        {QStringLiteral("interface"),
+                         QJsonObject{{QStringLiteral("theme_mode"), QStringLiteral("dark")}}},
+                        {QStringLiteral("extension"), QJsonObject{{QStringLiteral("keep"), true}}}})
+                    .toJson());
+#ifdef Q_OS_MACOS
+            const QJsonValue expected = QStringLiteral("next_launch");
+#else
+            const auto normalized = storage::ConfigurationSchema::normalize(key, oldMode);
+            const QJsonValue expected = normalized.valid
+                                            ? normalized.value
+                                            : storage::ConfigurationSchema::defaultValue(key);
+#endif
+            {
+                storage::ConfigurationStore store(path, true, true, 60000);
+                require(store.value(key) == expected && store.value(versionKey) == currentVersion &&
+                            store.value(QStringLiteral("interface/theme_mode")) ==
+                                QStringLiteral("dark") &&
+                            store.isDirty() && store.flushNow().success,
+                        "legacy macOS policies migrate to automatic updates; Windows keeps valid "
+                        "choices");
+            }
+            const auto document = readObject(path);
+            require(document.value(QStringLiteral("updates"))
+                                .toObject()
+                                .value(QStringLiteral("mode")) == expected &&
+                        document.value(QStringLiteral("storage"))
+                                .toObject()
+                                .value(QStringLiteral("schema_version")) == currentVersion &&
+                        document.value(QStringLiteral("extension"))
+                                .toObject()
+                                .value(QStringLiteral("keep")) == true,
+                    "migration persists its policy and version while retaining unrelated fields");
+            const QString chosenMode =
+                index % 2 == 0 ? QStringLiteral("manual") : QStringLiteral("check");
+            {
+                storage::ConfigurationStore reloaded(path, true, true, 60000);
+                require(reloaded.value(key) == expected && !reloaded.isDirty() &&
+                            reloaded.setValue(key, chosenMode) && reloaded.flushNow().success,
+                        "migrated users can change their update preference");
+            }
+            storage::ConfigurationStore reloaded(path, true, true, 60000);
+            require(reloaded.value(key) == chosenMode && !reloaded.isDirty(),
+                    "the one-time migration must not override later user choices");
+            require(reloaded.applySnapshot({{key, oldMode}}, version) &&
+                        reloaded.value(key) == expected,
+                    "older configuration imports use the same update migration");
+            require(reloaded.applySnapshot({{key, chosenMode}}, currentVersion) &&
+                        reloaded.value(key) == chosenMode,
+                    "current configuration imports preserve explicit update preferences");
+        }
+    }
+
+    const QString futurePath = temporary.filePath(QStringLiteral("future.json"));
+    const QByteArray future =
+        QJsonDocument(
+            QJsonObject{{QStringLiteral("storage"),
+                         QJsonObject{{QStringLiteral("schema_version"), currentVersion + 1}}},
+                        {QStringLiteral("updates"),
+                         QJsonObject{{QStringLiteral("mode"), QStringLiteral("manual")}}}})
+            .toJson();
+    writeBytes(futurePath, future);
+    storage::ConfigurationStore futureStore(futurePath, true, true, 60000);
+    require(futureStore.compatibility() == storage::ConfigurationCompatibility::FutureVersion &&
+                futureStore.value(key) == QStringLiteral("manual") && !futureStore.isDirty() &&
+                futureStore.flushNow().success && readBytes(futurePath) == future,
+            "future configuration versions remain read-only and are never migrated");
 }
 
 void scrollingIntervalSettingsPersistAndValidate() {
@@ -4606,6 +4713,7 @@ int main(int argc, char** argv) {
     }
     if (application.arguments().contains(QStringLiteral("--update-settings-only"))) {
         updateSettingsPersistAndValidate();
+        legacyUpdateSettingsMigrateOnce();
         return 0;
     }
     if (application.arguments().contains(QStringLiteral("--recording-audio-only"))) {
@@ -4723,6 +4831,7 @@ int main(int argc, char** argv) {
     ocrHighlightingSettingsPersistAndValidate();
     pinnedManagementConfigurationAndTrayMigration();
     updateSettingsPersistAndValidate();
+    legacyUpdateSettingsMigrateOnce();
     markerResolutionAndStatus();
     defaultsAndTypedRoundTrip();
     selectionTransitionAnimationMigratesAndPersists();

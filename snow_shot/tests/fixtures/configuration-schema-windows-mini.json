@@ -199,10 +199,10 @@
       "allowedStringValues": [],
       "defaultJsonType": 2,
       "defaultStringIsNull": false,
-      "defaultValue": 6,
+      "defaultValue": 7,
       "integerRange": [
-        6,
-        6,
+        7,
+        7,
         1
       ],
       "key": "storage/schema_version",
@@ -519,7 +519,7 @@
       ],
       "defaultJsonType": 3,
       "defaultStringIsNull": false,
-      "defaultValue": "download",
+      "defaultValue": "next_launch",
       "integerRange": null,
       "key": "updates/mode",
       "maximumListItems": -1,

@@ -138,8 +138,12 @@ def package(request):
                     signing.get('architecture') != asset_architecture or
                     signing.get('continuity') not in ('compatible', 'legacy-1.5.8-migration-requires-consent')):
                 raise ValueError('Missing or mismatched macOS application signing audit')
+            sparkle = json.loads(image.with_suffix('.sparkle.json').read_text())
+            if (sparkle.get('packageSha256') != checksum or sparkle.get('product') != product or
+                    sparkle.get('version') != version or sparkle.get('architecture') != asset_architecture):
+                raise ValueError('Missing or mismatched Sparkle signing receipt')
             descriptions.append({'product': product, 'sha256': checksum, 'size': image.stat().st_size,
-                                 'signing': signing})
+                                 'signing': signing, 'sparkle': sparkle})
         if source_identity(repo) != identity:
             raise ValueError('macOS source changed during packaging; retry from a stable checkout')
         result = {'version': version, 'architecture': architecture, 'source': identity,

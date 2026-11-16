@@ -1,3 +1,4 @@
+snow_embed_sparkle(snow_shot_mini snow_shot_mini.app SnowShotMini)
 set_target_properties(snow_shot_mini PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/packaging/macos/Info-mini.plist.in"
     MACOSX_BUNDLE_ICON_FILE snow-shot.icns

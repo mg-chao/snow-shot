@@ -395,3 +395,8 @@ The packaging license collector includes each package's original license and not
 | windows-link-0.2.1 | MIT OR Apache-2.0 |
 | windows-sys-0.61.2 | MIT OR Apache-2.0 |
 | zmij-1.0.23 | MIT |
+
+macOS application updates use Sparkle 2.10.1 (MIT), including its native installer
+and bundled components. `licenses/sparkle/` preserves the upstream aggregate
+license and provenance. Both Full and Mini include that notice in their bundles;
+Windows continues to use its existing updater and does not include Sparkle.

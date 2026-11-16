@@ -14,6 +14,7 @@
 #include "translation_test_support.h"
 #include "snow_shot/translation/translationservice.h"
 #include "snow_shot/update/updateservice.h"
+#include "../src/update/macosupdatedriver_p.h"
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QFileInfo>
@@ -34,6 +35,22 @@ namespace {
 using namespace snow_shot;
 using namespace snow_shot::app::mcp;
 namespace settings = presentation::settings;
+#ifdef Q_OS_MACOS
+class UnavailableUpdateDriver final : public update::detail::MacOSUpdateDriver {
+  public:
+    void start(const QString&) override {
+        changed({update::UpdateState::Idle, {}, {}, 0, 0}, true, false, false);
+    }
+    void setMode(const QString&) override {}
+    void check(bool) override {
+        finished(QStringLiteral("check"), QStringLiteral("failed"));
+    }
+    void download() override {}
+    void cancel() override {}
+    void install() override {}
+    void retranslate() override {}
+};
+#endif
 void require(bool value, const char* message) {
     if (!value) {
         std::cerr << message << '\n';
@@ -272,8 +289,14 @@ void runMcpApplicationTests() {
     updateOptions.githubApiUrl = QUrl(QStringLiteral("http://127.0.0.1/releases"));
     updateOptions.giteeApiUrl = QUrl(QStringLiteral("http://127.0.0.1/releases"));
     updateOptions.storeManaged = false;
-    // macOS rejects non-HTTPS before network access; Windows lacks its packaged helper here.
+    // macOS uses a deterministic failing driver; Windows lacks its packaged helper here.
+#ifdef Q_OS_MACOS
+    updateOptions.macOSDriverFactory = [] { return std::make_unique<UnavailableUpdateDriver>(); };
+#endif
     update::UpdateService updates(std::move(updateOptions));
+#ifdef Q_OS_MACOS
+    updates.start();
+#endif
     translation_tests::Server provider;
     SnowShotApiClient api(provider.url());
     auto& translation = translation::TranslationService::forClient(
@@ -879,11 +902,7 @@ void runMcpApplicationTests() {
     require(call(QStringLiteral("updates_action"),
                  {{QStringLiteral("action"), QStringLiteral("download")}})
                     .errorCode ==
-#ifdef Q_OS_MACOS
-                QStringLiteral("unsupported"),
-#else
                 QStringLiteral("invalid_state"),
-#endif
             "download requires an available update");
     ScreenshotMcpRequest updateRequest;
     updateRequest.connectionId = 71;

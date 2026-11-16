@@ -220,6 +220,13 @@ MaterializedConfiguration materializeConfiguration(const QMap<QString, QJsonValu
         }
 
         QJsonValue raw = currentOverlay.value(entry.key);
+#ifdef Q_OS_MACOS
+        if (mutateDocument && schemaVersion < 7 && entry.key == QStringLiteral("updates/mode")) {
+            // Enable Sparkle for all existing macOS installations once. Version 7 records
+            // the migration so later user choices survive reloads and current snapshots.
+            raw = QStringLiteral("next_launch");
+        }
+#endif
         if (mutateDocument && schemaVersion < 6 && raw == QStringLiteral("dedicated") &&
             (entry.key == QStringLiteral("screenshot_table/model") ||
              entry.key == QStringLiteral("screenshot_latex/model"))) {

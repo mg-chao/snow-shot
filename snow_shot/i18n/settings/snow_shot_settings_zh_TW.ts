@@ -2022,10 +2022,6 @@
             <translation>自動檢查</translation>
         </message>
         <message>
-            <source>Check for new versions on GitHub and Gitee</source>
-            <translation>在 GitHub 和 Gitee 上檢查新版本</translation>
-        </message>
-        <message>
             <source>Child elements</source>
             <translation>子元素</translation>
         </message>

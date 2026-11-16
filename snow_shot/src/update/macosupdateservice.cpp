@@ -1,537 +1,204 @@
-#include "snow_shot/network/proxyconfiguration.h"
-#include "snow_shot/app/edition.h"
-#include "snow_shot/update/updateservice.h"
+#include "macosupdatedriver_p.h"
 
-#include <QCoreApplication>
 #include <QEvent>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QUrlQuery>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
 #include <QPointer>
-#include <QRegularExpression>
-#include <QSet>
-#include <QTimer>
-#include <QVector>
-#include <optional>
-#include <algorithm>
 
 namespace snow_shot::update {
-namespace {
-constexpr qint64 MAXIMUM_RESPONSE_BYTES = 8 * 1024 * 1024;
-
-struct Version {
-    QStringList core;
-    QStringList prerelease;
-};
-
-std::optional<Version> parseVersion(const QString& text) {
-    static const QRegularExpression pattern(
-        QStringLiteral("\\A(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)"
-                       "(?:-([0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?"
-                       "(?:\\+([0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?\\z"));
-    const auto match = pattern.match(text);
-    if (!match.hasMatch())
-        return std::nullopt;
-    Version version{{match.captured(1), match.captured(2), match.captured(3)}, {}};
-    if (!match.captured(4).isEmpty()) {
-        version.prerelease = match.captured(4).split(u'.');
-        for (const auto& identifier : version.prerelease) {
-            if (identifier.size() > 1 && identifier.front() == u'0' &&
-                std::all_of(identifier.begin(), identifier.end(),
-                            [](QChar c) { return c >= u'0' && c <= u'9'; }))
-                return std::nullopt;
-        }
-    }
-    return version;
-}
-
-bool numeric(const QString& text) {
-    return std::all_of(text.begin(), text.end(), [](QChar c) { return c >= u'0' && c <= u'9'; });
-}
-
-int compareIdentifier(const QString& left, const QString& right, bool number) {
-    if (number && left.size() != right.size())
-        return left.size() < right.size() ? -1 : 1;
-    return QString::compare(left, right, Qt::CaseSensitive);
-}
-
-int compareVersions(const Version& left, const Version& right) {
-    for (qsizetype i = 0; i < 3; ++i) {
-        const int order = compareIdentifier(left.core[i], right.core[i], true);
-        if (order != 0)
-            return order;
-    }
-    if (left.prerelease.isEmpty() != right.prerelease.isEmpty())
-        return left.prerelease.isEmpty() ? 1 : -1;
-    for (qsizetype i = 0; i < std::min(left.prerelease.size(), right.prerelease.size()); ++i) {
-        const bool leftNumeric = numeric(left.prerelease[i]);
-        const bool rightNumeric = numeric(right.prerelease[i]);
-        if (leftNumeric != rightNumeric)
-            return leftNumeric ? -1 : 1;
-        const int order = compareIdentifier(left.prerelease[i], right.prerelease[i], leftNumeric);
-        if (order != 0)
-            return order;
-    }
-    return left.prerelease.size() == right.prerelease.size()
-               ? 0
-               : (left.prerelease.size() < right.prerelease.size() ? -1 : 1);
-}
-
-} // namespace
-
 struct UpdateService::Impl {
-    enum class Source { GitHub, Gitee };
-    enum class Stage { Releases, Attachments };
-
-    struct Candidate {
-        QString version;
-        qint64 releaseId = 0;
-    };
-
-    struct Channel {
-        explicit Channel(QObject* parent) : deadline(parent) {
-            deadline.setSingleShot(true);
-        }
-        QTimer deadline;
-        QPointer<QNetworkReply> reply;
-        QByteArray bytes;
-        QVector<Candidate> candidates;
-        qsizetype candidateIndex = 0;
-        int page = 1;
-        Stage stage = Stage::Releases;
-        bool active = false;
-    };
-
-    Impl(UpdateService& owner, Options value)
-        : q(owner), options(std::move(value)), network(&owner), schedule(&owner), github(&owner),
-          gitee(&owner) {
-        status.state = UpdateState::Idle;
-        if (options.installedVersion.isEmpty())
-            options.installedVersion = QStringLiteral(SNOW_SHOT_VERSION);
-        schedule.setSingleShot(true);
-        QObject::connect(&schedule, &QTimer::timeout, &q, [this] { check(false); });
-        QObject::connect(&github.deadline, &QTimer::timeout, &q,
-                         [this] { sourceFailure(Source::GitHub); });
-        QObject::connect(&gitee.deadline, &QTimer::timeout, &q,
-                         [this] { sourceFailure(Source::Gitee); });
-        network.setProxy(QNetworkProxy::NoProxy);
-    }
-
-    Channel& channel(Source source) {
-        return source == Source::GitHub ? github : gitee;
-    }
-    bool busy() const {
-        return github.active || gitee.active;
-    }
-    void arm(std::chrono::milliseconds delay) {
-        if (started && mode == u"check")
-            schedule.start(delay);
-    }
-    void stopRequest(Channel& source) {
-        source.deadline.stop();
-        source.active = false;
-        if (source.reply) {
-            auto* reply = source.reply.data();
-            source.reply.clear();
-            reply->disconnect(&q);
-            reply->abort();
-            reply->deleteLater();
-        }
-    }
-    void reset(Channel& source) {
-        stopRequest(source);
-        source.bytes = {};
-        source.candidates = QVector<Candidate>();
-        source.candidateIndex = 0;
-        source.page = 1;
-        source.stage = Stage::Releases;
-    }
-    void resetAll() {
-        reset(github);
-        reset(gitee);
-    }
-    void finishFailure(const char* error) {
-        resetAll();
-        status = previous;
-        errorSource = previousErrorSource;
-        if (manual) {
-            errorSource = error;
-            status.state = UpdateState::Failed;
-            status.error = QCoreApplication::translate("UpdateService", error);
-        }
-        arm(options.automaticCheckInterval);
-        emit q.statusChanged();
-        emit q.operationFinished(QStringLiteral("check"), QStringLiteral("failed"));
-    }
-    void sourceFailure(Source source) {
-        reset(channel(source));
-        if (!busy())
-            finishFailure(QT_TRANSLATE_NOOP("UpdateService",
-                                            "Could not check for updates. Please try again"));
-    }
-    bool validUrl(const QUrl& url) const {
-        const bool local =
-            options.allowLocalHttp && url.scheme() == u"http" &&
-            (url.host() == u"127.0.0.1" || url.host() == u"localhost" || url.host() == u"::1");
-        return url.isValid() && !url.host().isEmpty() && (url.scheme() == u"https" || local) &&
-               url.userInfo().isEmpty();
-    }
-    void complete(Source source, QString text) {
-        const auto version = parseVersion(text);
-        if (!version) {
-            sourceFailure(source);
-            return;
-        }
-        const bool available =
-            compareVersions(*version, *parseVersion(options.installedVersion)) > 0;
-        const QString tag = QStringLiteral("v%1_snow-shot").arg(text);
-        const QString root =
-            source == Source::GitHub
-                ? QStringLiteral("https://github.com/mg-chao/snow-shot/releases/tag/")
-                : QStringLiteral("https://gitee.com/mg-chao/snow-apps/releases/tag/");
-        resetAll();
-        status = {available ? UpdateState::Available : UpdateState::Idle,
-                  text,
-                  {},
-                  0,
-                  0,
-                  QUrl(root + tag)};
-        const bool notify = available && !manual && mode == u"check" && !notified.contains(text);
-        if (notify)
-            notified.insert(text);
-        arm(options.automaticCheckInterval);
-        emit q.statusChanged();
-        emit q.operationFinished(QStringLiteral("check"), QStringLiteral("success"));
-        if (notify)
-            emit q.automaticUpdateAvailable(text);
-    }
-    bool validAssets(Source source, const QJsonArray& assets, const QString& text) const {
-#if defined(Q_PROCESSOR_ARM_64)
-        const QString arch = QStringLiteral("arm64");
-#else
-        const QString arch = QStringLiteral("x86_64");
+    explicit Impl(UpdateService& service, Options options) : q(service) {
+        if (options.macOSDriverFactory)
+            driver = options.macOSDriverFactory();
+#ifdef Q_OS_MACOS
+        else
+            driver = detail::makeSparkleUpdateDriver();
 #endif
-        const QString tag = QStringLiteral("v%1_snow-shot").arg(text);
-        const QString name =
-            (app::edition::productId() + QStringLiteral("-%1-macos-%2.dmg")).arg(text, arch);
-        for (const QString& assetName : {name, name + QStringLiteral(".sha256")}) {
-            int matches = 0;
-            for (const auto& value : assets) {
-                const auto asset = value.toObject();
-                if (asset.value(QStringLiteral("name")).toString() != assetName)
-                    continue;
-                ++matches;
-                const QUrl url(asset.value(QStringLiteral("browser_download_url")).toString());
-                if (source == Source::GitHub) {
-                    const QUrl expected(
-                        QStringLiteral(
-                            "https://github.com/mg-chao/snow-shot/releases/download/%1/%2")
-                            .arg(tag, assetName));
-                    if (url != expected)
-                        return false;
-                } else {
-                    const QUrl expected(
-                        QStringLiteral(
-                            "https://gitee.com/mg-chao/snow-apps/releases/download/%1/%2")
-                            .arg(tag, assetName));
-                    if (url != expected)
-                        return false;
-                }
+        if (!driver)
+            return;
+        driver->changed = [this](const UpdateStatus& value, bool check, bool cancel, bool onQuit) {
+            const bool newlyReady =
+                value.state == UpdateState::Ready &&
+                (status.state != UpdateState::Ready || status.version != value.version);
+            status = value;
+            canCheck = check;
+            canCancel = cancel;
+            installsOnQuit = onQuit;
+            if (pending && !committed && value.state == UpdateState::Failed) {
+                pending = false;
+                emit q.handoffPendingChanged(false);
             }
-            if (matches != 1)
-                return false;
-        }
-        return true;
-    }
-    void releasesResponse(Source source) {
-        auto& state = channel(source);
-        QJsonParseError error;
-        const auto document = QJsonDocument::fromJson(state.bytes, &error);
-        state.bytes = {};
-        if (error.error != QJsonParseError::NoError || !document.isArray() ||
-            document.array().size() > 100) {
-            sourceFailure(source);
-            return;
-        }
-        for (const auto& value : document.array()) {
-            const auto release = value.toObject();
-            if (release.value(QStringLiteral("draft")).toBool() ||
-                (source == Source::GitHub && !release.value(QStringLiteral("draft")).isBool()))
-                continue;
-            const QString tag = release.value(QStringLiteral("tag_name")).toString();
-            if (!tag.startsWith(u'v') || !tag.endsWith(u"_snow-shot"))
-                continue;
-            const QString text = tag.mid(1, tag.size() - 11);
-            const auto version = parseVersion(text);
-            if (!version)
-                continue;
-            if (source == Source::GitHub &&
-                !validAssets(source, release.value(QStringLiteral("assets")).toArray(), text))
-                continue;
-            const qint64 releaseId = release.value(QStringLiteral("id")).toVariant().toLongLong();
-            if (source == Source::Gitee && releaseId <= 0)
-                continue;
-            state.candidates.append({text, releaseId});
-        }
-        if (document.array().size() == 100) {
-            if (state.page == 10) {
-                sourceFailure(source);
-                return;
+            emit q.statusChanged();
+            if (newlyReady)
+                emit q.updateReady();
+        };
+        driver->finished = [this](const QString& operation, const QString& outcome) {
+            emit q.operationFinished(operation, outcome);
+        };
+        driver->available = [this](const QString& version) {
+            emit q.automaticUpdateAvailable(version);
+        };
+        driver->committed = [this] {
+            if (pending && !committed) {
+                committed = true;
+                emit q.handoffCommitted();
             }
-            ++state.page;
-            request(source);
-            return;
-        }
-        if (state.candidates.isEmpty()) {
-            sourceFailure(source);
-            return;
-        }
-        std::sort(state.candidates.begin(), state.candidates.end(),
-                  [](const auto& left, const auto& right) {
-                      return compareVersions(*parseVersion(left.version),
-                                             *parseVersion(right.version)) > 0;
-                  });
-        state.candidateIndex = 0;
-        if (source == Source::GitHub) {
-            complete(source, state.candidates.front().version);
-        } else {
-            state.stage = Stage::Attachments;
-            request(source);
+        };
+    }
+    ~Impl() {
+        if (driver) {
+            driver->changed = {};
+            driver->finished = {};
+            driver->available = {};
+            driver->committed = {};
         }
     }
-    void attachmentsResponse() {
-        QJsonParseError error;
-        const auto document = QJsonDocument::fromJson(gitee.bytes, &error);
-        gitee.bytes = {};
-        if (error.error != QJsonParseError::NoError || !document.isArray() ||
-            document.array().size() >= 100) {
-            sourceFailure(Source::Gitee);
-            return;
+    static bool approve(QPointer<QObject> context, std::function<bool()> callback) {
+        if (!context || !callback)
+            return false;
+        try {
+            return callback() && context;
+        } catch (...) {
+            return false;
         }
-        if (!validAssets(Source::Gitee, document.array(),
-                         gitee.candidates[gitee.candidateIndex].version)) {
-            ++gitee.candidateIndex;
-            if (gitee.candidateIndex >= gitee.candidates.size()) {
-                sourceFailure(Source::Gitee);
-                return;
-            }
-            request(Source::Gitee);
-            return;
-        }
-        complete(Source::Gitee, gitee.candidates[gitee.candidateIndex].version);
     }
-    void read(Source source) {
-        auto& state = channel(source);
-        if (!state.reply)
-            return;
-        const qint64 available = state.reply->bytesAvailable();
-        if (available <= 0)
-            return;
-        state.bytes +=
-            state.reply->read(std::min(available, MAXIMUM_RESPONSE_BYTES + 1 - state.bytes.size()));
-        if (state.bytes.size() > MAXIMUM_RESPONSE_BYTES)
-            sourceFailure(source);
-    }
-    void request(Source source) {
-        auto& state = channel(source);
-        // Pagination and attachment fallback still need the compact candidates.
-        stopRequest(state);
-        QUrl url = source == Source::GitHub ? options.githubApiUrl : options.giteeApiUrl;
-        if (state.stage == Stage::Attachments) {
-            QString path = url.path();
-            if (path.endsWith(u'/'))
-                path.chop(1);
-            url.setPath(path + u'/' +
-                        QString::number(state.candidates[state.candidateIndex].releaseId) +
-                        QStringLiteral("/attach_files"));
-        }
-        QUrlQuery query;
-        query.addQueryItem(QStringLiteral("per_page"), QStringLiteral("100"));
-        if (state.stage == Stage::Releases)
-            query.addQueryItem(QStringLiteral("page"), QString::number(state.page));
-        url.setQuery(query);
-        if (!validUrl(url)) {
-            sourceFailure(source);
-            return;
-        }
-        state.bytes.clear();
-        QNetworkRequest request(url);
-        request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
-                             QNetworkRequest::SameOriginRedirectPolicy);
-        request.setAttribute(QNetworkRequest::CacheLoadControlAttribute,
-                             QNetworkRequest::AlwaysNetwork);
-        request.setRawHeader("Accept", source == Source::GitHub ? "application/vnd.github+json"
-                                                                : "application/json");
-        request.setRawHeader("User-Agent", "SnowShot/" + options.installedVersion.toUtf8());
-        request.setRawHeader("Cache-Control", "no-cache");
-        state.active = true;
-        state.reply = network.get(request);
-        state.reply->setReadBufferSize(MAXIMUM_RESPONSE_BYTES + 1);
-        const QPointer<QNetworkReply> current = state.reply;
-        QObject::connect(state.reply, &QNetworkReply::metaDataChanged, &q, [this, source, current] {
-            auto& state = channel(source);
-            if (state.reply == current && state.reply &&
-                state.reply->header(QNetworkRequest::ContentLengthHeader).toLongLong() >
-                    MAXIMUM_RESPONSE_BYTES)
-                sourceFailure(source);
-        });
-        QObject::connect(state.reply, &QNetworkReply::readyRead, &q, [this, source, current] {
-            if (channel(source).reply == current)
-                read(source);
-        });
-        QObject::connect(state.reply, &QNetworkReply::finished, &q, [this, source, current] {
-            auto& state = channel(source);
-            if (state.reply != current)
-                return;
-            read(source);
-            if (!state.reply || state.reply != current)
-                return;
-            if (state.reply->error() != QNetworkReply::NoError ||
-                state.reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() != 200) {
-                sourceFailure(source);
-                return;
-            }
-            if (state.stage == Stage::Releases)
-                releasesResponse(source);
-            else
-                attachmentsResponse();
-        });
-        state.deadline.start(options.requestTimeout);
-    }
-    void check(bool user) {
-        if (!user && mode == u"manual")
-            return;
-        if (busy()) {
-            manual = manual || user;
-            return;
-        }
-        schedule.stop();
-        manual = user;
-        previous = status;
-        previousErrorSource = errorSource;
-        errorSource.clear();
-        if (!parseVersion(options.installedVersion) || !validUrl(options.githubApiUrl) ||
-            !validUrl(options.giteeApiUrl)) {
-            finishFailure(QT_TRANSLATE_NOOP("UpdateService",
-                                            "Could not check for updates. Please try again"));
-            return;
-        }
-        resetAll();
-        status = {UpdateState::Checking, {}, {}, 0, 0};
-        emit q.statusChanged();
-        request(Source::GitHub);
-        request(Source::Gitee);
-    }
-
     UpdateService& q;
-    Options options;
-    QNetworkAccessManager network;
-    QTimer schedule;
-    Channel github;
-    Channel gitee;
-    QByteArray errorSource;
-    QByteArray previousErrorSource;
+    std::unique_ptr<detail::MacOSUpdateDriver> driver;
     UpdateStatus status;
-    UpdateStatus previous;
-    QSet<QString> notified;
-    QString mode = QStringLiteral("check");
+    QString mode = QStringLiteral("next_launch");
+    QPointer<QObject> approvalContext;
+    QPointer<QObject> validationContext;
+    std::function<bool()> approval;
+    std::function<bool()> validation;
     bool started = false;
-    bool manual = false;
+    bool canCheck = false;
+    bool canCancel = false;
+    bool installsOnQuit = false;
+    bool pending = false;
+    bool committed = false;
 };
 
 UpdateService::UpdateService(Options options, QObject* parent)
     : QObject(parent), m_impl(std::make_unique<Impl>(*this, std::move(options))) {
     setObjectName(QStringLiteral("snowShotUpdateService"));
 }
-UpdateService::~UpdateService() {
-    m_impl->resetAll();
-}
+UpdateService::~UpdateService() = default;
 const UpdateStatus& UpdateService::status() const {
     return m_impl->status;
 }
 UpdateCapabilities UpdateService::capabilities() const {
-    return {true, false, false};
+    const bool available = m_impl->driver && m_impl->status.state != UpdateState::Unavailable;
+    return {available, available && status().downloadUrl.isEmpty(), available};
 }
-void UpdateService::setHandoffApproval(QObject*, std::function<bool()>) {}
-void UpdateService::setHandoffValidation(QObject*, std::function<bool()>) {}
 bool UpdateService::managedByStore() const {
     return false;
 }
 bool UpdateService::busy() const {
-    return m_impl->busy();
+    switch (status().state) {
+    case UpdateState::Checking:
+    case UpdateState::Downloading:
+    case UpdateState::Verifying:
+    case UpdateState::Applying:
+        return true;
+    default:
+        return false;
+    }
+}
+bool UpdateService::canCheck() const {
+    return capabilities().check && m_impl->canCheck && !busy() && !m_impl->pending;
+}
+bool UpdateService::canCancel() const {
+    return m_impl->canCancel && status().state == UpdateState::Downloading && !m_impl->pending;
+}
+bool UpdateService::installsOnQuit() const {
+    return m_impl->installsOnQuit;
+}
+bool UpdateService::handoffPending() const {
+    return m_impl->pending;
 }
 void UpdateService::start() {
-    if (m_impl->started)
+    if (m_impl->started || !m_impl->driver)
         return;
     m_impl->started = true;
-    m_impl->arm(m_impl->options.startupCheckDelay);
+    m_impl->driver->start(m_impl->mode);
 }
 void UpdateService::setMode(const QString& value) {
     const QString mode = value == u"download" ? QStringLiteral("check") : value;
-    if ((mode != u"manual" && mode != u"check") || mode == m_impl->mode)
+    if (mode != u"manual" && mode != u"check" && mode != u"next_launch")
         return;
     m_impl->mode = mode;
-    if (mode == u"manual") {
-        m_impl->schedule.stop();
-        if (m_impl->busy() && !m_impl->manual)
-            cancel();
-    } else {
-        m_impl->arm(m_impl->options.startupCheckDelay);
-    }
-}
-void UpdateService::setSystemProxy(bool enabled) {
-    setProxyConfiguration(enabled ? QStringLiteral("system") : QStringLiteral("none"), {});
-}
-void UpdateService::setProxyConfiguration(const QString& mode, const QString& address) {
-    network::configureProxy(m_impl->network, mode, address);
+    if (m_impl->started && m_impl->driver)
+        m_impl->driver->setMode(mode);
 }
 void UpdateService::check(bool manual) {
-    m_impl->check(manual);
+    start();
+    if (canCheck() && (manual || m_impl->mode != u"manual"))
+        m_impl->driver->check(manual);
+}
+void UpdateService::download() {
+    if (m_impl->driver && status().state == UpdateState::Available)
+        m_impl->driver->download();
 }
 void UpdateService::cancel() {
-    if (!m_impl->busy())
-        return;
-    m_impl->resetAll();
-    m_impl->status = m_impl->previous;
-    m_impl->errorSource = m_impl->previousErrorSource;
-    m_impl->arm(m_impl->options.automaticCheckInterval);
-    emit statusChanged();
-    emit operationFinished(QStringLiteral("check"), QStringLiteral("cancelled"));
-}
-// Discovery hands off to a release host; this service never owns macOS installation.
-void UpdateService::download() {
-    emit operationFinished(QStringLiteral("download"), QStringLiteral("unsupported"));
+    if (canCancel())
+        m_impl->driver->cancel();
 }
 void UpdateService::requestRestart() {
-    emit operationFinished(QStringLiteral("restart"), QStringLiteral("unsupported"));
+    if (status().state == UpdateState::Ready && !m_impl->pending)
+        emit restartRequested();
 }
 void UpdateService::beginApply() {
-    emit operationFinished(QStringLiteral("apply"), QStringLiteral("unsupported"));
+    if (!m_impl->driver || status().state != UpdateState::Ready || m_impl->pending)
+        return;
+    const QPointer<UpdateService> lifetime(this);
+    if (!Impl::approve(m_impl->approvalContext, m_impl->approval) || !lifetime)
+        return;
+    m_impl->pending = true;
+    emit handoffPendingChanged(true);
+    if (!lifetime)
+        return;
+    const bool approved = Impl::approve(m_impl->validationContext, m_impl->validation);
+    if (!lifetime)
+        return;
+    if (!approved) {
+        m_impl->pending = false;
+        emit handoffPendingChanged(false);
+        return;
+    }
+    // Only an explicit restart enters this path. Arm Sparkle's relaunch before the
+    // controller commits its quit; ordinary quit is observed by Sparkle's installer.
+    m_impl->driver->install();
 }
 void UpdateService::applyAtStartup() {
     emit operationFinished(QStringLiteral("apply"), QStringLiteral("unsupported"));
 }
-bool UpdateService::setRelaunchArguments(const QStringList&) {
-    return true;
+void UpdateService::setHandoffApproval(QObject* context, std::function<bool()> callback) {
+    m_impl->approvalContext = context;
+    m_impl->approval = std::move(callback);
 }
-bool UpdateService::acceptsRelaunchArguments(const QStringList&) const {
-    return true;
+void UpdateService::setHandoffValidation(QObject* context, std::function<bool()> callback) {
+    m_impl->validationContext = context;
+    m_impl->validation = std::move(callback);
+}
+bool UpdateService::setRelaunchArguments(const QStringList& arguments) {
+    return acceptsRelaunchArguments(arguments);
+}
+bool UpdateService::acceptsRelaunchArguments(const QStringList& arguments) const {
+    // Sparkle relaunches the bundle without command-line intent. Never claim to
+    // have accepted an argument list that cannot be replayed by its installer.
+    return arguments.isEmpty() && !m_impl->committed;
 }
 void UpdateService::clearRelaunchArguments() {}
-bool UpdateService::handoffPending() const {
-    return false;
+void UpdateService::reportBlocked(const QString& reason) {
+    m_impl->status.error = reason;
+    emit statusChanged();
 }
+// Sparkle owns native networking and its installer UI. Qt proxy/theme settings apply
+// to other application services, and must not alter Sparkle's persisted preferences.
+void UpdateService::setSystemProxy(bool) {}
+void UpdateService::setProxyConfiguration(const QString&, const QString&) {}
 void UpdateService::setProgressAppearance(const QJsonObject&) {}
-void UpdateService::reportBlocked(const QString&) {}
 bool UpdateService::event(QEvent* event) {
-    if (event->type() == QEvent::LanguageChange && !m_impl->errorSource.isEmpty()) {
-        m_impl->status.error =
-            QCoreApplication::translate("UpdateService", m_impl->errorSource.constData());
-        emit statusChanged();
-    }
+    if (event->type() == QEvent::LanguageChange && m_impl->driver)
+        m_impl->driver->retranslate();
     return QObject::event(event);
 }
 } // namespace snow_shot::update

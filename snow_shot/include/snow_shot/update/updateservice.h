@@ -13,6 +13,9 @@
 class QEvent;
 
 namespace snow_shot::update {
+namespace detail {
+class MacOSUpdateDriver;
+}
 enum class UpdateState {
     Unavailable,
     Idle,
@@ -34,15 +37,14 @@ struct UpdateStatus {
     QUrl downloadUrl = {};
 };
 
-// Supported operations for this platform/distribution, independent of current state or readiness.
+// Supported operations for this platform/distribution and the current update type.
 struct UpdateCapabilities {
     bool check = false;
     bool download = false;
     bool install = false;
 };
 
-// Windows delegates installation to the updater helper. macOS checks releases over HTTPS
-// and leaves package downloads and installation to the selected release host.
+// Windows delegates installation to the updater helper; macOS uses Sparkle's installer.
 class UpdateService final : public QObject {
     Q_OBJECT
   public:
@@ -53,14 +55,13 @@ class UpdateService final : public QObject {
         bool allowLocalHttp = false;
         std::chrono::milliseconds startupCheckDelay = std::chrono::seconds(30);
         std::chrono::milliseconds automaticCheckInterval = std::chrono::hours(24);
-        // macOS check transport; overrides also support deterministic local-server tests.
-        QString installedVersion;
-        // Production discovery endpoint; loopback overrides require allowLocalHttp.
+        // Windows helper discovery endpoints, also overridden by its process fixtures.
         QUrl githubApiUrl =
             QUrl(QStringLiteral("https://api.github.com/repos/mg-chao/snow-shot/releases"));
         QUrl giteeApiUrl =
             QUrl(QStringLiteral("https://gitee.com/api/v5/repos/mg-chao/snow-apps/releases"));
-        std::chrono::milliseconds requestTimeout = std::chrono::seconds(30);
+        // Native-driver injection keeps policy tests independent of installed applications.
+        std::function<std::unique_ptr<detail::MacOSUpdateDriver>()> macOSDriverFactory;
         // Unset follows the installed distribution. Tests may select the Store policy explicitly.
         std::optional<bool> storeManaged;
     };
@@ -71,6 +72,9 @@ class UpdateService final : public QObject {
     UpdateCapabilities capabilities() const;
     bool managedByStore() const;
     bool busy() const;
+    bool canCheck() const;
+    bool canCancel() const;
+    bool installsOnQuit() const;
     bool handoffPending() const;
     void start();
     void setMode(const QString& mode);

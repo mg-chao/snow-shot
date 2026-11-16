@@ -66,11 +66,15 @@ elseif(@SNOW_SHOT_QT_STATIC@)
                 continue()
             endif()
             string(REGEX REPLACE "[ \t]+\\(compatibility version.*$" "" _snow_dependency "${_snow_load_line}")
-            if(NOT _snow_dependency MATCHES "^(/usr/lib/|/System/Library/)")
+            if(NOT _snow_dependency MATCHES "^(/usr/lib/|/System/Library/|@rpath/Sparkle\\.framework/)")
                 message(FATAL_ERROR
                     "Static package contains a non-system dependency: ${_snow_bundle_file}: ${_snow_dependency}")
             endif()
         endforeach()
+        if(_snow_bundle_file MATCHES "/Frameworks/Sparkle\\.framework/")
+            # Preserve the vendor binaries; sign nested bundles in dependency order below.
+            continue()
+        endif()
         if(@SNOW_SHOT_RELEASE_STATIC@ AND _snow_install_config STREQUAL "release")
             # The packaging entry point archives UUID-matched dSYMs first. Strip
             # only deployment copies, retaining external symbols and the build
@@ -82,6 +86,11 @@ elseif(@SNOW_SHOT_QT_STATIC@)
         execute_process(COMMAND /usr/bin/codesign --force --sign "${_snow_codesign_identity}"
             "${_snow_bundle_file}" COMMAND_ERROR_IS_FATAL ANY)
     endforeach()
+endif()
+if(EXISTS "${_app}/Contents/Frameworks/Sparkle.framework")
+    execute_process(COMMAND "@Python3_EXECUTABLE@" "@SNOW_SPARKLE_TOOL@" sign-framework
+        --framework "${_app}/Contents/Frameworks/Sparkle.framework"
+        --identity "${_snow_codesign_identity}" COMMAND_ERROR_IS_FATAL ANY)
 endif()
 if(@SNOW_MACOS_OCR_ASSETS_ENABLED@)
     # Deployment has finalized and signed the nested Mach-O files. Pin those
@@ -104,7 +113,7 @@ if(@SNOW_MACOS_OCR_ASSETS_ENABLED@)
         ${_snow_ocr_runtime_arguments}
         COMMAND_ERROR_IS_FATAL ANY)
 else()
-    if(@SNOW_SHOT_QT_STATIC@)
+    if(@SNOW_SHOT_QT_STATIC@ OR EXISTS "${_app}/Contents/Frameworks/Sparkle.framework")
         execute_process(COMMAND /usr/bin/codesign --force --sign "${_snow_codesign_identity}" "${_app}"
             COMMAND_ERROR_IS_FATAL ANY)
     endif()

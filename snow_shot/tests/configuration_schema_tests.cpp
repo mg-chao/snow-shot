@@ -185,7 +185,7 @@ void nativeDefaultsRemainIntact(const QString& movies, const QString& pictures) 
         "edition-specific default booleans must remain intact");
 #ifdef Q_OS_MACOS
     require(ConfigurationSchema::defaultValue(QStringLiteral("updates/mode")) ==
-                    QStringLiteral("check") &&
+                    QStringLiteral("next_launch") &&
                 ConfigurationSchema::defaultValue(QStringLiteral(
                     "screenshot_ui/selection_display_unit")) == QStringLiteral("logical_pixels"),
             "native macOS update and coordinate defaults must remain intact");

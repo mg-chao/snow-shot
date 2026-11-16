@@ -3264,6 +3264,8 @@ if(SNOW_SHOT_BUILD_TESTS)
         target_sources(snow-shot-about-page-tests PRIVATE
             src/platform/macos/applicationactivation.mm)
         target_link_libraries(snow-shot-about-page-tests PRIVATE "-framework AppKit")
+        # Settings link unused export factories; discard those sections in this UI fixture.
+        target_link_options(snow-shot-about-page-tests PRIVATE "-Wl,-dead_strip")
     endif()
     target_link_libraries(snow-shot-about-page-tests PRIVATE
         snow_shot_settings
@@ -3284,6 +3286,11 @@ if(SNOW_SHOT_BUILD_TESTS)
         ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
     )
+    add_test(NAME snow-shot-about-update-tests
+        COMMAND snow-shot-about-page-tests --updates-only -platform offscreen)
+    set_tests_properties(snow-shot-about-update-tests PROPERTIES LABELS unit TIMEOUT 60
+        ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
     add_test(NAME snow-shot-tray-click-settings-tests
         COMMAND snow-shot-about-page-tests --tray-click-settings-only -platform offscreen)
     set_tests_properties(snow-shot-tray-click-settings-tests PROPERTIES LABELS "unit" TIMEOUT 60
