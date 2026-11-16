@@ -30,7 +30,7 @@ QImage paint(ScreenshotOcrTextLayout& layout, const QTransform& transform) {
     return image;
 }
 
-void sourceTextUsesFullHeightAndNaturalSpacing() {
+void sourceTextFillsWideQuadsAtFullHeight() {
     ScreenshotOcrLine line;
     line.text = QStringLiteral("Readable text: Agyp");
     line.quad = quad(QRectF(20, 30, 800, 30));
@@ -46,16 +46,19 @@ void sourceTextUsesFullHeightAndNaturalSpacing() {
     const QRectF fitted = transform.mapRect(layout.boundingRect());
     require(std::abs(fitted.height() - 30) < 0.001 && std::abs(fitted.left() - 20) < 0.001,
             "source text must use the full estimated ink height and align to the left edge");
-    require(fitted.width() < 600 && layout.sourceTextMetrics().spacingEm == 0,
-            "source text must retain natural spacing instead of filling unused width");
-    const QImage original = paint(layout, transform);
+    require(std::abs(fitted.right() - 820) < 1,
+            "source text must reach the end of a wide detection quad");
+    const qreal spacingEm = layout.sourceTextMetrics().spacingEm;
     line.quad = quad(QRectF(20, 30, 900, 30));
     qreal widerSize = 0;
     require(configureScreenshotOcrTextLayout(layout, line, {}, font, Qt::black, {}, &transform,
                                              &widerSize),
             "wider source text must configure");
-    require(std::abs(size - widerSize) < 0.001 && paint(layout, transform) == original,
-            "extra horizontal space must not change glyphs, tracking, size or left alignment");
+    const QRectF wider = transform.mapRect(layout.boundingRect());
+    require(std::abs(size - widerSize) < 0.001 && std::abs(wider.left() - fitted.left()) < 0.001 &&
+                std::abs(wider.right() - 920) < 1 &&
+                layout.sourceTextMetrics().spacingEm > spacingEm,
+            "increasing the target width must add spacing while preserving the size and anchor");
     line.quad = quad(QRectF(20, 30, 60, 30));
     qreal narrowerSize = 0;
     require(configureScreenshotOcrTextLayout(layout, line, {}, font, Qt::black, {}, &transform,
@@ -68,25 +71,81 @@ void sourceTextUsesFullHeightAndNaturalSpacing() {
     const QPointF y = transform.map(QPointF(0, 1)) - start;
     require(std::abs(std::hypot(x.x(), x.y()) - std::hypot(y.x(), y.y())) < 0.001,
             "width-constrained glyphs must retain their aspect ratio");
+
+    line.quad = quad(QRectF(20, 30, 1.0e12, 30));
+    require(configureScreenshotOcrTextLayout(layout, line, {}, font, Qt::black, {}, &transform) &&
+                layout.sourceTextMetrics().spacingEm == 0,
+            "a width beyond Qt's text coordinate range must retain natural spacing");
 }
 
-void sourceRowsKeepNaturalSpacingAndSelection() {
+void sourceTextFillsModeratelyWiderQuads() {
+    const QFont font = QGuiApplication::font();
+    const auto check = [&](const QString& text, qreal extraWidthEm) {
+        ScreenshotOcrLine line;
+        line.text = text;
+        ScreenshotOcrTextLayout layout;
+        QTransform transform;
+        line.quad = quad(QRectF(20, 30, 800, 30));
+        qreal fullSize = 0;
+        require(configureScreenshotOcrTextLayout(layout, line, {}, font, Qt::black, {}, &transform,
+                                                 &fullSize),
+                "source text must configure at full height");
+        line.quad = quad(QRectF(20, 30, 30, 30));
+        qreal constrainedSize = 0;
+        require(configureScreenshotOcrTextLayout(layout, line, {}, font, Qt::black, {}, &transform,
+                                                 &constrainedSize) &&
+                    constrainedSize > 0 && constrainedSize < fullSize,
+                "a narrow quad must uniformly scale the text with its natural spacing");
+        if (constrainedSize <= 0)
+            return;
+        const qreal naturalWidth = 30 * fullSize / constrainedSize;
+        const qreal targetWidth = naturalWidth + extraWidthEm * fullSize;
+        line.quad = quad(QRectF(20, 30, targetWidth, 30));
+        qreal fittedSize = 0;
+        require(configureScreenshotOcrTextLayout(layout, line, {}, font, Qt::black, {}, &transform,
+                                                 &fittedSize),
+                "source text must configure in a moderately wider quad");
+        const QRectF fitted = transform.mapRect(layout.boundingRect());
+        require(std::abs(fitted.left() - 20) < 0.001 && std::abs(fittedSize - fullSize) < 0.001,
+                "added spacing must preserve the left anchor and font size");
+        require(fitted.width() <= targetWidth + 0.001 &&
+                    fitted.width() >= targetWidth - 0.03 * fullSize,
+                "added spacing must approach the requested width without overflowing");
+    };
+    check(QStringLiteral("Agyp Agyp"), 0.125);
+    check(QStringLiteral("\u6bcf\u884c14\u7ef4\u51e0\u4f55\u4fe1\u606f"), 0.75);
+}
+
+void sourceRowsKeepTheirBoxesAndSelection() {
     ScreenshotOcrLine line;
     line.text = QStringLiteral("Agyp Agyp Agyp Agyp Agyp Agyp Agyp Agyp");
     line.paragraph = true;
-    line.quad = quad(QRectF(20, 20, 800, 80));
-    line.sourceLineQuads = {quad(QRectF(20, 20, 800, 30)), quad(QRectF(20, 70, 800, 30))};
+    line.quad = quad(QRectF(20, 20, 824, 80));
+    line.sourceLineQuads = {quad(QRectF(20, 20, 800, 30)), quad(QRectF(44, 70, 800, 30))};
     ScreenshotOcrTextLayout layout;
     QTransform transform;
     const QFont font = QGuiApplication::font();
     require(configureScreenshotOcrTextLayout(layout, line, {}, font, Qt::black, {}, &transform) &&
                 layout.usesSourceRows(),
-            "short source rows must retain their slots without synthetic justification");
-    require(layout.sourceTextMetrics().spacingEm == 0,
-            "paragraph source rows must retain natural letter spacing");
+            "short source rows must retain their original slots with added spacing");
     const auto fragments = layout.rangeFragments({0, static_cast<int>(line.text.size())});
     require(fragments.size() == 2, "selected source text must retain both visual rows");
     const auto baseline = paint(layout, transform);
+    for (const auto& quad : line.sourceLineQuads) {
+        const QRect bounds = quad.boundingRect().toRect();
+        const auto hasInk = [&](int left, int right) {
+            for (int x = left; x < right; ++x) {
+                for (int y = bounds.top(); y <= bounds.bottom(); ++y) {
+                    if (qAlpha(baseline.pixel(x, y)) > 32)
+                        return true;
+                }
+            }
+            return false;
+        };
+        require(hasInk(bounds.left(), bounds.left() + 3) &&
+                    hasInk(bounds.right() - 2, bounds.right() + 1),
+                "each paragraph row must paint near both ends of its original slot");
+    }
     layout.setSelection({0, static_cast<int>(line.text.size())});
     layout.setSelection({});
     require(paint(layout, transform) == baseline, "selection must not alter source glyph layout");
@@ -239,8 +298,9 @@ void sourceRowsKeepTheirColorsAfterSorting() {
 
 int main(int argc, char** argv) {
     QGuiApplication application(argc, argv);
-    sourceTextUsesFullHeightAndNaturalSpacing();
-    sourceRowsKeepNaturalSpacingAndSelection();
+    sourceTextFillsWideQuadsAtFullHeight();
+    sourceTextFillsModeratelyWiderQuads();
+    sourceRowsKeepTheirBoxesAndSelection();
     verticalSourceTextDoesNotStretchItsSpacing();
     translationRetainsSourceSizeAndBaseline();
     sourceColorsPaintWithoutChangingSelectionOrShaping();
