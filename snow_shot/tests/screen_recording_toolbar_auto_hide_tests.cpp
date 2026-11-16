@@ -215,6 +215,10 @@ void geometryCases() {
                     .contains(QPoint(monitor.right() - 12, 110)) &&
                 auto_hide::transferRegion(insetLeft, narrowLeftTab, Side::None).isEmpty(),
             "hover transfer corridors must bridge the tab and toolbar without a dead strip");
+    const QRect raisedRow = insetRight.translated(0, -60);
+    require(auto_hide::transferRegion(raisedRow, narrowRightTab, Side::Right)
+                .contains(QPoint(raisedRow.right(), raisedRow.bottom())),
+            "the hover corridor must reach a toolbar that shifted vertically during reveal");
 }
 
 struct ToolbarFixture {
@@ -223,7 +227,8 @@ struct ToolbarFixture {
     QRect bounds;
     QRect recordingRegion;
 
-    explicit ToolbarFixture(Session status = Session::recording()) {
+    explicit ToolbarFixture(Session status = Session::recording(),
+                            bool showExportSettings = false) {
         require(screen != nullptr, "toolbar auto-hide requires a screen");
         bounds = screen->geometry();
         const QRect logicalRegion(bounds.left() + 100, bounds.top() + 80, 320, 240);
@@ -234,6 +239,10 @@ struct ToolbarFixture {
             logicalRegion, bounds, ScreenshotGeometryMapper::physicalRectForScreen(*screen));
 #endif
         toolbar.palette()->setRecordingSession(status);
+        if (!showExportSettings) {
+            toolbar.palette()->setActiveTool(ScreenshotToolPalette::Tool::Select);
+            toolbar.palette()->clearActiveTool();
+        }
         toolbar.placeForRecordingRegion(recordingRegion);
         toolbar.showWithoutActivating();
         pump();
@@ -251,6 +260,11 @@ struct ToolbarFixture {
     QRect row() const {
         return toolbar.paletteHost()->mainToolbarContentRect().translated(
             toolbar.contentPosition());
+    }
+
+    QPoint positionWithinBounds(const QPoint& position) const {
+        return ScreenshotGeometryMapper::clampContentPositionToRect(
+            position, toolbar.occupiedContentRect(), bounds);
     }
 
     QWidget* control() {
@@ -273,12 +287,16 @@ struct ToolbarFixture {
         cursor(bounds.bottomRight() + QPoint(100, 100));
     }
 
-    void place(Side side, int overflow = 0) {
+    void place(Side side, int overflow = 0, int verticalOverflow = 0) {
         const QRect relative = toolbar.paletteHost()->mainToolbarContentRect();
         const int x = side == Side::Left    ? bounds.left() - overflow
                       : side == Side::Right ? bounds.right() + 1 - relative.width() + overflow
                                             : bounds.center().x() - relative.width() / 2;
-        const QPoint position(x, bounds.top() + bounds.height() / 3);
+        const int y = verticalOverflow < 0 ? bounds.top() + verticalOverflow
+                      : verticalOverflow > 0
+                          ? bounds.bottom() + 1 - relative.height() + verticalOverflow
+                          : bounds.top() + bounds.height() / 3;
+        const QPoint position(x, y);
         toolbar.paletteHost()->dragStarted(row().center());
         toolbar.moveContentTo(position - relative.topLeft());
         toolbar.paletteHost()->dragFinished(position);
@@ -340,8 +358,8 @@ void onlyActiveRecordingAutoHides() {
         fixture.toolbar.palette()->setRecordingSession(status);
         pump();
         requireExpanded();
-        require(fixture.toolbar.contentPosition() == content,
-                "leaving active recording must restore the expanded toolbar position");
+        require(fixture.toolbar.contentPosition() == fixture.positionWithinBounds(content),
+                "leaving active recording must place the expanded toolbar within the monitor");
         fixture.outside();
     }
 
@@ -424,16 +442,20 @@ void appearanceMatchesToolbar() {
 void partiallyOffscreenRows() {
     require(storage::RecordingSettings().setAutoHideToolbar(true), "enable overflow fixtures");
     for (const Side side : {Side::Left, Side::Right}) {
-        for (const int overflow : {auto_hide::edgeThreshold + 1, 100}) {
+        for (const QPoint overflow :
+             {QPoint(auto_hide::edgeThreshold + 1, 0), QPoint(100, -8), QPoint(100, 8)}) {
             ToolbarFixture fixture;
-            fixture.place(side, overflow);
+            fixture.place(side, overflow.x(), overflow.y());
             const QRect overhungRow = fixture.row();
             const QPoint overhungPosition = fixture.toolbar.contentPosition();
-            require(
-                (side == Side::Left && overhungRow.left() == fixture.bounds.left() - overflow) ||
-                    (side == Side::Right &&
-                     overhungRow.right() == fixture.bounds.right() + overflow),
-                "native drag completion must retain the partially offscreen toolbar row");
+            require((side == Side::Left &&
+                     overhungRow.left() == fixture.bounds.left() - overflow.x()) ||
+                        (side == Side::Right &&
+                         overhungRow.right() == fixture.bounds.right() + overflow.x()),
+                    "native drag completion must retain the partially offscreen toolbar row");
+            require((overflow.y() >= 0 || overhungRow.top() < fixture.bounds.top()) &&
+                        (overflow.y() <= 0 || overhungRow.bottom() > fixture.bounds.bottom()),
+                    "corner fixtures must start outside the monitor vertically");
             fixture.outside();
             require(fixture.toolbar.isVisible() && fixture.retreat()->isActive(),
                     "an overflowing toolbar must schedule retreat after the pointer leaves");
@@ -444,21 +466,51 @@ void partiallyOffscreenRows() {
                          (side == Side::Right && tab.right() == fixture.bounds.right())),
                     "an overflowing toolbar must collapse to its corresponding visible edge");
             fixture.hoverReveal();
-            require(fixture.toolbar.contentPosition() == overhungPosition &&
-                        fixture.row() == overhungRow && !fixture.retreat()->isActive(),
-                    "hover reveal must preserve the overhanging placement and protect tab travel");
+            const QRect occupied = fixture.toolbar.occupiedContentRect();
+            const QPoint revealedPosition = fixture.toolbar.contentPosition();
+            require(
+                fixture.bounds.contains(occupied.translated(revealedPosition)) &&
+                    revealedPosition == fixture.positionWithinBounds(overhungPosition) &&
+                    !fixture.retreat()->isActive(),
+                "hover reveal must fit the toolbar on the tab's monitor and protect tab travel");
             fixture.collapse();
             fixture.hoverReveal();
-            require(fixture.toolbar.contentPosition() == overhungPosition &&
-                        fixture.row() == overhungRow,
-                    "repeated overflow reveal must not progressively shift the toolbar anchor");
+            require(fixture.toolbar.contentPosition() == revealedPosition,
+                    "repeated reveal must keep the corrected toolbar position stable");
         }
     }
+}
+
+void revealWithExportSettings() {
+    require(storage::RecordingSettings().setAutoHideToolbar(true),
+            "enable export settings fixture");
+    ToolbarFixture fixture(Session::recording(), /*showExportSettings=*/true);
+    fixture.place(Side::Left, auto_hide::edgeThreshold + 1);
+    fixture.collapse();
+    fixture.hoverReveal();
+
+    const QRect occupied =
+        fixture.toolbar.occupiedContentRect().translated(fixture.toolbar.contentPosition());
+    require(occupied.width() > fixture.row().width() && occupied.height() > fixture.row().height(),
+            "the export settings fixture must contain a wider secondary row");
+    const bool fits = fixture.bounds.size().expandedTo(occupied.size()) == fixture.bounds.size();
+    require(fixture.bounds.contains(fixture.row()) && (!fits || fixture.bounds.contains(occupied)),
+            "reveal must fit both rows when possible and keep recording controls reachable");
+
+    fixture.collapse();
+    require(fixture.control()->geometry().left() == fixture.bounds.left(),
+            "retreat after fitting export settings must return to the original left edge");
+    fixture.hoverReveal();
+    fixture.place(Side::None);
+    fixture.outside();
+    require(fixture.toolbar.isVisible() && !fixture.retreat()->isActive(),
+            "dragging the fitted toolbar away from the edge must clear its dock");
 }
 
 void defaultOffAndLifecycle() {
     require(storage::RecordingSettings().setAutoHideToolbar(false), "disable auto-hide fixture");
     ToolbarFixture fixture;
+    fixture.place(Side::Left, 30);
     require(fixture.toolbar.isVisible() && fixture.toolbar.recordingUiPresented() &&
                 !fixture.control()->isVisible() && !fixture.retreat()->isActive(),
             "default-off must preserve the visible recording toolbar beside a monitor edge");
@@ -501,8 +553,8 @@ void defaultOffAndLifecycle() {
             "removing edge-control translations must restore the current application language");
     require(storage::RecordingSettings().setAutoHideToolbar(false), "disable a collapsed toolbar");
     require(fixture.toolbar.isVisible() && !fixture.control()->isVisible() &&
-                fixture.toolbar.contentPosition() == content,
-            "disabling auto-hide while collapsed must restore the saved expanded position");
+                fixture.toolbar.contentPosition() == fixture.positionWithinBounds(content),
+            "disabling auto-hide while collapsed must restore the toolbar within the monitor");
     require(storage::RecordingSettings().setAutoHideToolbar(true), "enable the lifecycle fixture");
     fixture.collapse();
     fixture.toolbar.beginRegionInteraction();
@@ -630,7 +682,8 @@ void hoverAndInteractionProtection() {
 }
 
 void surfaceGuardAndLifetime() {
-    require(storage::RecordingSettings().setAutoHideToolbar(true), "enable show-guard fixture");
+    require(storage::RecordingSettings().setAutoHideToolbar(false),
+            "defer auto-hide until the capture guard is installed");
     ToolbarFixture fixture;
     bool allowed = false;
     int requests = 0;
@@ -640,6 +693,7 @@ void surfaceGuardAndLifetime() {
         ++requests;
         return allowed;
     });
+    require(storage::RecordingSettings().setAutoHideToolbar(true), "enable show-guard fixture");
     fixture.outside();
     expire(fixture.retreat());
     require(requests > 0 && fixture.toolbar.isVisible() && !fixture.control()->isVisible(),
@@ -829,6 +883,7 @@ void runScreenRecordingToolbarAutoHideTests() {
     onlyActiveRecordingAutoHides();
     appearanceMatchesToolbar();
     partiallyOffscreenRows();
+    revealWithExportSettings();
     defaultOffAndLifecycle();
     hoverAndInteractionProtection();
     surfaceGuardAndLifetime();

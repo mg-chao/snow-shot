@@ -33,7 +33,8 @@ class ScreenshotFloatingToolPaletteWindow : public QWidget {
 
   public:
     explicit ScreenshotFloatingToolPaletteWindow(const ScreenshotToolPalette::Options& options,
-                                                 QWidget* parent = nullptr);
+                                                 QWidget* parent = nullptr,
+                                                 bool attachToMacOwner = true);
     ~ScreenshotFloatingToolPaletteWindow() override;
 
     ScreenshotToolPalette* palette() const;

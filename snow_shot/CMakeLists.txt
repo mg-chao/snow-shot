@@ -9042,6 +9042,12 @@ if(SNOW_SHOT_BUILD_TESTS)
     add_test(NAME snow-shot-recording-follow-mouse-tests
         COMMAND snow-shot-screen-recording-controller-tests --follow-mouse-only -platform offscreen)
     set_tests_properties(snow-shot-recording-follow-mouse-tests PROPERTIES LABELS "unit" TIMEOUT 60)
+    if(APPLE)
+        add_test(NAME snow-shot-macos-recording-follow-toolbar-tests
+            COMMAND snow-shot-screen-recording-controller-tests --follow-toolbar-only -platform cocoa)
+        set_tests_properties(snow-shot-macos-recording-follow-toolbar-tests PROPERTIES
+            LABELS "interactive;macos" RUN_SERIAL TRUE TIMEOUT 60 SNOW_TEST_CROSS_PLATFORM TRUE)
+    endif()
     add_test(NAME snow-shot-recording-follow-display-handoff-tests
         COMMAND snow-shot-screen-recording-controller-tests --follow-display-handoff-only
             -platform offscreen:configfile=recording_toolbar_screens.json)

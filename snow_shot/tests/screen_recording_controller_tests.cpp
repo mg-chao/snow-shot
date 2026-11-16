@@ -8595,10 +8595,17 @@ void recordingSmoothFollowGuide() {
     auto* tools = palette();
     controller.startRecording();
     waitForRecording(controller);
+    auto* toolbar = tools->window();
+    const QRect toolbarGeometry = toolbar->geometry();
+    const QPoint areaOrigin = area->pos();
     lastCreatedSession->viewport = {1, 50.5, 80.25, 180.5, 110.75};
     controller.pollCaptureViewportForTests();
+    QCoreApplication::processEvents();
     const QRectF initial(190, 140, 320, 240);
-    require(area->captureViewport() == initial, "the initial guide centers on the cursor");
+    require(area->captureViewport() == initial && area->pos() != areaOrigin,
+            "the initial guide moves the area window to center it on the cursor");
+    require(toolbar->isVisible() && toolbar->geometry() == toolbarGeometry,
+            "the toolbar stays in place when the follow guide first moves");
 
     cursor += QPoint(24, 20);
     area->followPointerMoved(cursor);
@@ -8619,6 +8626,9 @@ void recordingSmoothFollowGuide() {
     }
     require(area->captureViewport() == target,
             "the timer settles the guide without more pointer events or capture revisions");
+    require(toolbar->isVisible() && toolbar->geometry() == toolbarGeometry &&
+                toolbar->windowHandle()->transientParent() == area->windowHandle(),
+            "the toolbar keeps its position and Qt owner while the guide follows the cursor");
 
     cursor = QPoint(100, 100);
     area->followPointerMoved(cursor);
@@ -8924,6 +8934,10 @@ template <typename Application> int runRecordingControllerTests(Application& app
         recordingFollowAreaExclusionTests();
         recordingSmoothFollowGuide();
         recordingFollowGuideResyncsAfterMovementSettles();
+        return 0;
+    }
+    if (app.arguments().contains(QStringLiteral("--follow-toolbar-only"))) {
+        recordingSmoothFollowGuide();
         return 0;
     }
     if (app.arguments().contains(QStringLiteral("--follow-display-handoff-only"))) {
