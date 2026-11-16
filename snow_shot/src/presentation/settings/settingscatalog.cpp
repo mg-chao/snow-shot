@@ -4838,8 +4838,27 @@ constexpr CatalogItemFactory catalogPageDesktopToolsSectionTrayItems[] = {
     {trayMenuOptionsItem},
 };
 
+SettingsItemDefinition floatingToolbarDropBehaviorItem() {
+    return fixedSelectItem(
+        QStringLiteral("floating-toolbar.drop-behavior"),
+        QT_TRANSLATE_NOOP("SettingsCatalog", "Toolbar drop behavior"),
+        QT_TRANSLATE_NOOP("SettingsCatalog",
+                          "Choose what happens when content is dropped on the floating toolbar"),
+        QStringLiteral("floating_toolbar/drop_behavior"),
+        SettingsSelectBinding::FloatingToolbarDropBehavior,
+        {{QStringLiteral("pin_to_screen"),
+          settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Pin to screen"))},
+         {QStringLiteral("image_stitching"),
+          settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Image stitching"))},
+         {QStringLiteral("image_splitting"),
+          settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Image splitting"))},
+         {QStringLiteral("image_editing"),
+          settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Image editing"))}});
+}
+
 constexpr CatalogItemFactory catalogPageDesktopToolsSectionFloatingToolbarItems[] = {
     {floatingToolbarEnabledItem},
+    {floatingToolbarDropBehaviorItem},
     {floatingToolbarOpacityItem},
     {floatingToolbarEditorItem},
 };
@@ -6286,6 +6305,9 @@ QStringList SettingsCatalog::validationErrors() const {
                         break;
                     case SettingsSelectBinding::PinDuplicateContentAction:
                         expectedKey = QStringLiteral("pin_to_screen/duplicate_content_action");
+                        break;
+                    case SettingsSelectBinding::FloatingToolbarDropBehavior:
+                        expectedKey = QStringLiteral("floating_toolbar/drop_behavior");
                         break;
                     case SettingsSelectBinding::PinTextSelectionOnRecognitionResults:
                         expectedKey =

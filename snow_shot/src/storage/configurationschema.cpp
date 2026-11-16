@@ -461,6 +461,10 @@ constexpr SchemaString kSchemaStrings2[] = {u"Ctrl+U"};
 constexpr ConfigurationIntegerRange kSchemaRange0{10, 100, 1};
 constexpr SchemaString kSchemaStrings3[] = {u"icon", u"toolbar"};
 constexpr SchemaAllowedValues kSchemaAllowed0 = {kSchemaStrings3, std::size(kSchemaStrings3)};
+constexpr SchemaString kFloatingToolbarDropBehaviors[] = {u"pin_to_screen", u"image_stitching",
+                                                          u"image_splitting", u"image_editing"};
+constexpr SchemaAllowedValues kFloatingToolbarDropBehaviorValues = {
+    kFloatingToolbarDropBehaviors, std::size(kFloatingToolbarDropBehaviors)};
 constexpr int kConfigurationSchemaVersion = 7;
 constexpr ConfigurationIntegerRange kSchemaRange1{kConfigurationSchemaVersion,
                                                   kConfigurationSchemaVersion, 1};
@@ -862,6 +866,8 @@ constexpr SchemaEntryDescriptor kEntryDescriptors[] = {
     {u"pin_to_screen_shortcuts/upload_to_cloud", stringsDefault(kSchemaStrings2),
      ConfigurationValueKind::StringList, nullptr, nullptr, 2},
     {u"floating_toolbar/enabled", booleanDefault(false), ConfigurationValueKind::Boolean},
+    {u"floating_toolbar/drop_behavior", stringDefault(u"pin_to_screen"),
+     ConfigurationValueKind::String, nullptr, &kFloatingToolbarDropBehaviorValues},
     {u"floating_toolbar/opacity", integerDefault(50), ConfigurationValueKind::Integer,
      &kSchemaRange0},
     {u"floating_toolbar/hide_in_fullscreen", booleanDefault(true), ConfigurationValueKind::Boolean},

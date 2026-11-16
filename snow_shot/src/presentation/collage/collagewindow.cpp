@@ -1423,11 +1423,18 @@ void ImageStitchingWindow::paste() {
     }
     if (!snapshot)
         return;
+    addImageSnapshot(std::move(*snapshot), std::move(reservation),
+                     imageStitchingText("Clipboard image"));
+}
+
+void ImageStitchingWindow::addImageSnapshot(
+    ScreenshotClipboardContentSnapshot snapshot,
+    std::shared_ptr<ImageStitchingImportReservation> reservation, QString label) {
     ImportItem item;
-    item.label = imageStitchingText("Clipboard image");
+    item.label = std::move(label);
     item.clipboard = std::move(snapshot);
     item.reservation = std::move(reservation);
-    d.beginImport({std::move(item)});
+    m_impl->beginImport({std::move(item)});
 }
 
 void ImageStitchingWindow::addSelectedFiles(std::shared_ptr<platform::SelectedFileBackend> backend,

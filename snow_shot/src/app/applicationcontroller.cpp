@@ -167,6 +167,37 @@ class ApplicationController::Impl {
                             controller->pinDroppedContent(std::move(snapshot), std::move(paths));
                     }));
             });
+        QObject::connect(
+            &floatingToolbar, &presentation::FloatingToolbarController::imageContentDropped, &q,
+            [this](presentation::FloatingToolbarImageAction action,
+                   ScreenshotClipboardContentSnapshot snapshot, QStringList paths,
+                   std::shared_ptr<presentation::ImageStitchingImportReservation> reservation) {
+                if (storage::ApplicationStorage::instance().directoryChanging())
+                    return;
+                static_cast<void>(actionGate.dispatch(
+                    [this, action, snapshot = std::move(snapshot), paths = std::move(paths),
+                     reservation = std::move(reservation)]() mutable {
+                        const auto present = [&](auto& coordinator) {
+                            if (!paths.isEmpty())
+                                coordinator.presentFiles(paths);
+                            else
+                                coordinator.presentDroppedImage(std::move(snapshot),
+                                                                std::move(reservation));
+                        };
+                        using Action = presentation::FloatingToolbarImageAction;
+                        switch (action) {
+                        case Action::Stitch:
+                            present(ensureImageStitchingWindowCoordinator());
+                            break;
+                        case Action::Split:
+                            present(ensureImageSplitWindowCoordinator());
+                            break;
+                        case Action::Edit:
+                            present(ensureImageEditingWindowCoordinator());
+                            break;
+                        }
+                    }));
+            });
         QObject::connect(&app, &QCoreApplication::aboutToQuit, &floatingToolbar,
                          &presentation::FloatingToolbarController::shutdown);
         QObject::connect(

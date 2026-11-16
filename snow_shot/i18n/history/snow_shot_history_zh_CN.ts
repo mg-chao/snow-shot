@@ -1317,6 +1317,10 @@
             <translation>放弃此图像拼接？</translation>
         </message>
         <message>
+            <source>Dropped image</source>
+            <translation>拖放的图像</translation>
+        </message>
+        <message>
             <source>Export could not be started. Try again</source>
             <translation>无法开始导出，请重试</translation>
         </message>

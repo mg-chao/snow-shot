@@ -143,6 +143,7 @@ class ScreenshotClipboardContentReader final {
     [[nodiscard]] static QStringList supportedImageFileExtensions();
     [[nodiscard]] static QStringList supportedFileExtensions();
     [[nodiscard]] static QStringList localFilePaths(const QMimeData* mimeData);
+    [[nodiscard]] static bool hasSupportedInlineImage(const QMimeData* mimeData);
     // Match decode() precedence without fetching image bytes: inline images take priority
     // over accompanying file URLs. File-only publications keep their batch import path.
     [[nodiscard]] static QStringList filePathsForImport(const QMimeData* mimeData);
@@ -167,6 +168,9 @@ class ScreenshotClipboardContentReader final {
     // Image-only import: never rasterize clipboard text or follow file/HTML fallbacks.
     [[nodiscard]] static std::optional<ScreenshotClipboardContentSnapshot>
     snapshotImage(QClipboard* clipboard, qreal devicePixelRatio, AllocationCheck allocate = {});
+    [[nodiscard]] static std::optional<ScreenshotClipboardContentSnapshot>
+    snapshotImageMimeData(const QMimeData* mimeData, qreal devicePixelRatio,
+                          AllocationCheck allocate = {});
     [[nodiscard]] static std::optional<ScreenshotClipboardContentSnapshot>
     snapshotMimeData(const QMimeData* mimeData, qreal devicePixelRatio, const QColor& baseColor,
                      AllocationCheck allocate = {});

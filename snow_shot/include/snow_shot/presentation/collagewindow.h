@@ -18,6 +18,8 @@ class QWidget;
 namespace adqt::widgets {
 class AdModal;
 }
+struct ScreenshotClipboardContentSnapshot;
+
 namespace snow_shot::presentation::components {
 class ImageStitchingEditorWidget;
 }
@@ -78,6 +80,10 @@ class ImageStitchingWindow final : public QObject {
     void pdfExportFinished(const ImageStitchingPdfExportResult& result);
 
   private:
+    friend class ImageStitchingWindowCoordinator;
+    void addImageSnapshot(ScreenshotClipboardContentSnapshot snapshot,
+                          std::shared_ptr<ImageStitchingImportReservation> reservation,
+                          QString label);
     struct Impl;
     std::unique_ptr<Impl> m_impl;
 };

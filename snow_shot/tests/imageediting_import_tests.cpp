@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "snow_shot/presentation/imageeditingwindow.h"
+#include "snow_shot/presentation/collagedocument.h"
 #include "snow_shot/presentation/imageeditingcanvas.h"
 #include "snow_shot/presentation/languagemanager.h"
 #include "snow_shot/presentation/screenshottoolpalette.h"
@@ -611,6 +612,18 @@ void clipboardBusyAndShutdown() {
     require(window.contentCheckpoint() == checkpoint && !window.modal()->isOpen(),
             "shutdown ignores Paste and late clipboard completion");
 }
+void toolbarDropOpensInlineImage() {
+    ImageEditingWindowCoordinator coordinator({});
+    const auto pixels = clipboardImage();
+    ScreenshotClipboardContentSnapshot snapshot;
+    snapshot.detachedImage = pixels;
+    coordinator.presentDroppedImage(std::move(snapshot), reserveImageStitchingImport(0));
+    const auto windows = coordinator.windows();
+    require(windows.size() == 1, "an inline toolbar drop opens an editor");
+    loaded(*windows.first());
+    require(windows.first()->document()->image().size() == pixels.size(),
+            "the image editor imports the dropped inline pixels");
+}
 } // namespace
 
 void runImageEditingImportTests() {
@@ -634,6 +647,7 @@ void runImageEditingImportTests() {
     previewBackgroundFollowsImageAvailability();
     emptyAndChooser(first, second);
     selectionAndDrop(first, second, broken, folder);
+    toolbarDropOpensInlineImage();
     failedSelectionsAndClose(first);
     importedWindowsParticipateInUpdateHandoff(first, second);
     supersededFilesAndChooserLifetime(first, second);

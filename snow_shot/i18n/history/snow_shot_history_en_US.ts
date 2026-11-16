@@ -1317,6 +1317,10 @@
             <translation>Discard this stitching session?</translation>
         </message>
         <message>
+            <source>Dropped image</source>
+            <translation>Dropped image</translation>
+        </message>
+        <message>
             <source>Export could not be started. Try again</source>
             <translation>Export could not be started. Try again</translation>
         </message>

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "snow_shot/presentation/collagewindowcoordinator.h"
 #include "snow_shot/presentation/imagesplitdocument.h"
+#include "snow_shot/presentation/screenshotclipboardcontent.h"
+
+#include <QCoreApplication>
 
 #include <utility>
 
@@ -44,6 +47,24 @@ void ImageStitchingWindowCoordinator::presentPinnedWindows(
     const QVector<ScreenshotPinnedImageSnapshot>& snapshots) {
     if (auto* window = ensureWindow())
         window->presentPinnedWindows(snapshots);
+}
+
+void ImageStitchingWindowCoordinator::presentFiles(const QStringList& paths) {
+    if (auto* window = ensureWindow()) {
+        window->present();
+        window->addFiles(paths);
+    }
+}
+
+void ImageStitchingWindowCoordinator::presentDroppedImage(
+    ScreenshotClipboardContentSnapshot snapshot,
+    std::shared_ptr<ImageStitchingImportReservation> reservation) {
+    if (auto* window = ensureWindow()) {
+        window->present();
+        window->addImageSnapshot(
+            std::move(snapshot), std::move(reservation),
+            QCoreApplication::translate("ImageStitchingWindow", "Dropped image"));
+    }
 }
 
 void ImageStitchingWindowCoordinator::shutdown() {

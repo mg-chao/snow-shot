@@ -4078,8 +4078,11 @@ void featureNavigationAndSearchAreConsistent() {
     require(tray && floating && tray->reset == settings::SettingsSectionReset::Tray &&
                 floating->reset == settings::SettingsSectionReset::FloatingToolbar &&
                 registry.fieldsForReset(tray->reset).size() == 8 &&
-                registry.fieldsForReset(floating->reset).size() == 3,
+                registry.fieldsForReset(floating->reset).size() == 4,
             "merged desktop categories include every control in their reset scopes");
+    require(floating->items[0].id == QStringLiteral("floating-toolbar.enabled") &&
+                floating->items[1].id == QStringLiteral("floating-toolbar.drop-behavior"),
+            "toolbar drop behavior is immediately below Show toolbar");
     auto pages = catalog.pages();
     auto page = std::find_if(pages.begin(), pages.end(), [](const auto& definition) {
         return definition.id == QStringLiteral("screenshots");

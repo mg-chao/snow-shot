@@ -1122,22 +1122,32 @@ void ImageSplitWindow::paste() {
         replaceFile(paths.first());
         return;
     }
-    auto loaded = std::make_shared<LoadedImage>();
-    loaded->reservation = reserveImageStitchingImport(0);
-    bool rejected = !loaded->reservation;
+    auto reservation = reserveImageStitchingImport(0);
+    bool rejected = !reservation;
     auto snapshot = ScreenshotClipboardContentReader::snapshotImage(
-        clipboard, editor()->devicePixelRatioF(), [loaded, &rejected](qint64 bytes) {
-            rejected = rejected || !loaded->reservation || !loaded->reservation->resize(bytes);
+        clipboard, editor()->devicePixelRatioF(), [&reservation, &rejected](qint64 bytes) {
+            rejected = rejected || !reservation->resize(bytes);
             return !rejected;
         });
     if (!snapshot && !rejected)
         return;
+    if (rejected)
+        snapshot.reset();
+    loadImageSnapshot(std::move(snapshot), std::move(reservation));
+}
+
+void ImageSplitWindow::loadImageSnapshot(
+    std::optional<ScreenshotClipboardContentSnapshot> snapshot,
+    std::shared_ptr<ImageStitchingImportReservation> reservation) {
+    auto& d = *m_impl;
+    auto loaded = std::make_shared<LoadedImage>();
+    loaded->reservation = std::move(reservation);
     d.beginLoading();
     const auto token = d.generation;
     const auto fail = [this, loaded, token](ScreenshotExportTaskResult result) {
         m_impl->finishLoading(loaded, {}, {}, true, token, std::move(result));
     };
-    if (rejected) {
+    if (!snapshot || !loaded->reservation) {
         fail(loadingFailure(loaded, ScreenshotExportFailureStage::Source,
                             "The image is too large or there is not enough memory to load it"));
         return;
@@ -1240,6 +1250,26 @@ void ImageSplitWindowCoordinator::presentSource(ImageSplitSource source) {
     if (auto* window = createWindow())
         window->presentSource(std::move(source));
 }
+
+void ImageSplitWindowCoordinator::presentFiles(const QStringList& paths) {
+    for (const auto& path : paths) {
+        auto* window = createWindow();
+        if (!window)
+            break;
+        window->m_impl->present();
+        window->replaceFile(path);
+    }
+}
+
+void ImageSplitWindowCoordinator::presentDroppedImage(
+    ScreenshotClipboardContentSnapshot snapshot,
+    std::shared_ptr<ImageStitchingImportReservation> reservation) {
+    if (auto* window = createWindow()) {
+        window->m_impl->present();
+        window->loadImageSnapshot(std::move(snapshot), std::move(reservation));
+    }
+}
+
 void ImageSplitWindowCoordinator::presentSelectedFiles(
     std::shared_ptr<platform::SelectedFileBackend> backend, platform::SelectedFileTarget target) {
     auto* window = createWindow();

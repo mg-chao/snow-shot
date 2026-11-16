@@ -93,6 +93,7 @@ enum class SettingsSelectBinding {
     PinMouseWheelZoomMode,
     PinTextSelectionOnRecognitionResults,
     PinDuplicateContentAction,
+    FloatingToolbarDropBehavior,
     PinDoubleClickAction,
     PinMiddleClickAction,
     ScreenRecordingClarity,

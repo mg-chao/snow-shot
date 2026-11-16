@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/floatingtoolbarcontroller.h"
+#include "snow_shot/presentation/collagedocument.h"
 #include "snow_shot/presentation/floatingtoolbarplacement.h"
 #include "snow_shot/presentation/screenshottoolbarmainpanel.h"
 #include "snow_shot/presentation/globalshortcutmanager.h"
@@ -567,6 +568,106 @@ void verifyContentDrops(const QString& visualDirectory = {}) {
     stored.setEnabled(false);
     stored.setToolbarMode(false);
     stored.setHideInFullscreen(true);
+}
+
+void verifyImageDrops() {
+    const storage::FloatingToolbarSettings stored;
+    FloatingToolbarController controller(nullptr, [](QScreen*) { return false; });
+    stored.setEnabled(true);
+    using Action = FloatingToolbarImageAction;
+    int pinCount = 0;
+    int imageCount = 0;
+    Action action = Action::Stitch;
+    ScreenshotClipboardContentSnapshot snapshot;
+    QStringList paths;
+    QObject::connect(&controller, &FloatingToolbarController::contentDropped, &controller,
+                     [&] { ++pinCount; });
+    QObject::connect(&controller, &FloatingToolbarController::imageContentDropped, &controller,
+                     [&](Action selected, ScreenshotClipboardContentSnapshot captured,
+                         QStringList files,
+                         const std::shared_ptr<ImageStitchingImportReservation>& reservation) {
+                         ++imageCount;
+                         action = selected;
+                         snapshot = std::move(captured);
+                         paths = std::move(files);
+                         require(snapshot.isValid() == bool(reservation),
+                                 "inline image dispatch transfers the import reservation");
+                     });
+
+    QMimeData text;
+    text.setText(QStringLiteral("Dropped text"));
+    text.setHtml(QStringLiteral("<b>Dropped text</b>"));
+    QMimeData unsupported;
+    unsupported.setData(QStringLiteral("image/svg+xml"), QByteArrayLiteral("<svg/>"));
+    unsupported.setUrls({QUrl::fromLocalFile(QStringLiteral("/note.txt")),
+                         QUrl(QStringLiteral("https://example.invalid/image.png"))});
+    const auto first = QUrl::fromLocalFile(QStringLiteral("/first.PNG"));
+    const auto second = QUrl::fromLocalFile(QStringLiteral("/second.webp"));
+    QImage pixels(4, 4, QImage::Format_ARGB32_Premultiplied);
+    pixels.fill(Qt::red);
+    QMimeData mixed;
+    mixed.setUrls({first, unsupported.urls().first(), second, unsupported.urls().last()});
+    mixed.setImageData(pixels);
+    QMimeData image;
+    image.setImageData(pixels);
+    image.setHtml(text.html());
+    QMimeData encoded;
+    encoded.setData(QStringLiteral("image/png"), QByteArrayLiteral("corrupt PNG data"));
+    encoded.setText(text.text());
+    const std::pair<const char*, Action> choices[] = {
+        {"image_stitching", Action::Stitch},
+        {"image_splitting", Action::Split},
+        {"image_editing", Action::Edit},
+    };
+
+    QApplication::clipboard()->setText(QStringLiteral("preserved clipboard"));
+    for (const bool toolbarMode : {false, true}) {
+        stored.setToolbarMode(toolbarMode);
+        pump();
+        auto* target = window(toolbarMode ? "floatingToolbarWindow" : "floatingToolbarIconWindow");
+        require(target && target->isVisible(), "image drop surface is visible");
+        const auto enter = [&](const QMimeData& mime, Qt::DropActions actions = Qt::CopyAction) {
+            QDragEnterEvent event(QPointF(10, 10), actions, &mime, Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(target, &event);
+            return event.isAccepted();
+        };
+        const auto drop = [&](const QMimeData& mime) {
+            require(enter(mime), "drop is admitted before release");
+            QDropEvent event(QPointF(10, 10), Qt::CopyAction | Qt::MoveAction, &mime,
+                             Qt::LeftButton, Qt::ShiftModifier);
+            QApplication::sendEvent(target, &event);
+            require(event.isAccepted() && event.dropAction() == Qt::CopyAction,
+                    "drop uses copy even if the source proposes move");
+        };
+        require(stored.setDropBehavior(QStringLiteral("pin_to_screen")), "select pin drop mode");
+        const int pinsBefore = pinCount;
+        drop(text);
+        for (const auto& [value, expected] : choices) {
+            require(stored.setDropBehavior(QString::fromLatin1(value)), "select image drop mode");
+            const int imagesBefore = imageCount;
+            require(!enter(text) && !enter(unsupported) && !enter(image, Qt::MoveAction) &&
+                        imageCount == imagesBefore,
+                    "image modes reject formatted text, unsupported inputs and move-only drops");
+            drop(mixed);
+            require(imageCount == imagesBefore + 1 && action == expected && !snapshot.isValid() &&
+                        paths == QStringList{first.toLocalFile(), second.toLocalFile()},
+                    "the selected image action receives only supported local paths in order");
+            drop(image);
+            require(imageCount == imagesBefore + 2 && action == expected && paths.isEmpty() &&
+                        snapshot.detachedImage == pixels && snapshot.html.isEmpty(),
+                    "the selected image action receives inline pixels without HTML");
+        }
+        drop(encoded);
+        require(snapshot.encodedImages.size() == 1 && snapshot.text.isEmpty() &&
+                    !ScreenshotClipboardContentReader::decode(snapshot),
+                "corrupt image bytes cannot fall back to text rendering");
+        require(pinCount == pinsBefore + 1, "image modes never dispatch to the pin action");
+    }
+    require(QApplication::clipboard()->text() == QStringLiteral("preserved clipboard"),
+            "image drops preserve the clipboard");
+    stored.setEnabled(false);
+    stored.setToolbarMode(false);
+    stored.setDropBehavior(QStringLiteral("pin_to_screen"));
 }
 
 void verifyDropIdentity() {
@@ -1765,6 +1866,7 @@ int main(int argc, char** argv) {
         verifyDropIdentity();
         const qsizetype visual = app.arguments().indexOf(QStringLiteral("--visual-output"));
         verifyContentDrops(visual >= 0 ? app.arguments().value(visual + 1) : QString());
+        verifyImageDrops();
     } else if (app.arguments().contains(QStringLiteral("--icon-activation-only"))) {
         verifyIconActivation();
     } else if (app.arguments().contains(QStringLiteral("--feedback-ownership-only"))) {
@@ -1777,6 +1879,7 @@ int main(int argc, char** argv) {
         verifyPlacement();
         verifyDropIdentity();
         verifyContentDrops();
+        verifyImageDrops();
         verifyIconActivation();
         verifyToolbarEdgePlacement();
         verifyHoverPlacement();

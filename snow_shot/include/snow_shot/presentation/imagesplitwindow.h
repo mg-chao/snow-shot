@@ -4,6 +4,7 @@
 
 #include "snow_shot/presentation/imagesplitdocument.h"
 #include "snow_shot/platform/selectedfiles.h"
+#include "snow_shot/presentation/screenshotclipboardcontent.h"
 #include "snow_shot/presentation/screenshotexportartifact.h"
 #include "snow_shot/presentation/screenshotpinnedimagesnapshot.h"
 #include "snow_shot/storage/capturehistorytypes.h"
@@ -23,6 +24,7 @@ namespace snow_shot::presentation::components {
 class ImageSplitEditorWidget;
 }
 namespace snow_shot::presentation {
+class ImageStitchingImportReservation;
 
 struct ImageSplitSource final {
     ScreenshotExportSource source;
@@ -89,6 +91,8 @@ class ImageSplitWindow final : public QObject {
     friend class ImageSplitWindowCoordinator;
     void loadPinnedRecord(const QString& recordId, quint64 token);
     void loadSource(ImageSplitSource source, quint64 token);
+    void loadImageSnapshot(std::optional<ScreenshotClipboardContentSnapshot> snapshot,
+                           std::shared_ptr<ImageStitchingImportReservation> reservation);
     struct Impl;
     std::unique_ptr<Impl> m_impl;
 };
@@ -102,6 +106,9 @@ class ImageSplitWindowCoordinator final : public QObject {
     void presentHistory(const storage::CaptureHistoryRecord& record);
     void presentPinnedRecord(const QString& recordId);
     void presentSource(ImageSplitSource source);
+    void presentFiles(const QStringList& paths);
+    void presentDroppedImage(ScreenshotClipboardContentSnapshot snapshot,
+                             std::shared_ptr<ImageStitchingImportReservation> reservation);
     void presentSelectedFiles(std::shared_ptr<platform::SelectedFileBackend> backend,
                               platform::SelectedFileTarget target);
     void shutdown();

@@ -2447,6 +2447,14 @@ bool FloatingToolbarSettings::setEnabled(bool value) const {
     return cache().setValue(QStringLiteral("floating_toolbar/enabled"), value);
 }
 
+QString FloatingToolbarSettings::dropBehavior() const {
+    return cache().value(QStringLiteral("floating_toolbar/drop_behavior")).toString();
+}
+
+bool FloatingToolbarSettings::setDropBehavior(const QString& value) const {
+    return cache().setValue(QStringLiteral("floating_toolbar/drop_behavior"), value);
+}
+
 bool FloatingToolbarSettings::hideInFullscreen() const {
     return cache().value(QStringLiteral("floating_toolbar/hide_in_fullscreen")).toBool();
 }
