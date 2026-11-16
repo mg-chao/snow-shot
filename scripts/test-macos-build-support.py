@@ -1931,6 +1931,14 @@ class MacOSSigningDeployment(unittest.TestCase):
         self.assertEqual(sum(call[0] == 'strip' for call in calls), 1)
         self.assertFalse(any(call[0] == 'codesign' or 'finalize' in call for call in calls))
 
+    def test_static_deployment_audits_both_slices_of_universal_binaries(self):
+        _, result = self.deploy('-', static=True, universal_dependency='/usr/lib/libSystem.B.dylib')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        _, result = self.deploy('-', static=True, universal_dependency='@rpath/libUnbundled.dylib')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Static package contains a non-system dependency', result.stderr)
+        self.assertIn('@rpath/libUnbundled.dylib', result.stderr)
+
     def test_repeated_release_deployment_reseals_each_worker(self):
         calls, result = self.deploy('-', static=True, config='Release', repeat=2)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -1970,7 +1978,8 @@ class MacOSSigningDeployment(unittest.TestCase):
                                          for call in calls), 1)
 
     def deploy(self, identity, fail=False, static=False, config='Debug', release_static=None,
-               mini=False, strip_fail=False, repeat=1, arch='arm64', ocr=True, verify_fail=False):
+               mini=False, strip_fail=False, repeat=1, arch='arm64', ocr=True, verify_fail=False,
+               universal_dependency=None):
         with tempfile.TemporaryDirectory(prefix='snow signing tests ') as temp:
             root = Path(temp)
             log = root / 'calls.jsonl'
@@ -1983,7 +1992,13 @@ if name == 'macdeployqt' and os.environ.get('SNOW_TEST_FAIL_SIGN'): sys.exit(1)
 if name == 'file':
     print('ASCII text' if sys.argv[-1].endswith('.txt') else 'Mach-O 64-bit executable arm64')
 if name == 'otool':
-    print(sys.argv[-1] + ':\\n\\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0)')
+    binary = sys.argv[-1]
+    dependency = os.environ.get('SNOW_TEST_UNIVERSAL_DEPENDENCY')
+    if dependency:
+        print(binary + ' (architecture arm64):\\n\\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0)')
+        print(binary + ' (architecture x86_64):\\n\\t' + dependency + ' (compatibility version 1.0.0)')
+    else:
+        print(binary + ':\\n\\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0)')
 if name == 'strip' and os.environ.get('SNOW_TEST_FAIL_STRIP'): sys.exit(37)
 if name == 'codesign' and '--verify' in sys.argv and os.environ.get('SNOW_TEST_FAIL_VERIFY'):
     sys.exit(38)
@@ -2037,6 +2052,8 @@ if name == 'ocr' and 'verify' in sys.argv and '--app' in sys.argv:
                 env['SNOW_TEST_FAIL_STRIP'] = '1'
             if verify_fail:
                 env['SNOW_TEST_FAIL_VERIFY'] = '1'
+            if universal_dependency is not None:
+                env['SNOW_TEST_UNIVERSAL_DEPENDENCY'] = universal_dependency
             for _ in range(repeat):
                 result = subprocess.run([cmake, '-DCMAKE_INSTALL_PREFIX=' + str(root),
                                          '-DCMAKE_INSTALL_CONFIG_NAME=' + config, '-P', str(path)],

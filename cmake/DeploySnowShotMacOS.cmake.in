@@ -59,8 +59,13 @@ elseif(@SNOW_SHOT_QT_STATIC@)
         execute_process(COMMAND /usr/bin/otool -L "${_snow_bundle_file}"
             OUTPUT_VARIABLE _snow_loads COMMAND_ERROR_IS_FATAL ANY)
         string(REPLACE "\n" ";" _snow_load_lines "${_snow_loads}")
-        list(REMOVE_AT _snow_load_lines 0)
         foreach(_snow_load_line IN LISTS _snow_load_lines)
+            # Universal Mach-O files have a separate header for each architecture.
+            string(REGEX REPLACE " \\(architecture [^()]+\\):$" ":" _snow_load_header
+                "${_snow_load_line}")
+            if(_snow_load_header STREQUAL "${_snow_bundle_file}:")
+                continue()
+            endif()
             string(STRIP "${_snow_load_line}" _snow_load_line)
             if(_snow_load_line STREQUAL "")
                 continue()
