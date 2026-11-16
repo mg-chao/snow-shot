@@ -2124,7 +2124,15 @@ void ScreenshotRecognitionWindow::registerWindowShortcuts() {
     copy.allowedAdditionalModifiers = Qt::ShiftModifier | Qt::AltModifier | Qt::KeypadModifier;
     copy.priority = ShortcutManager::StandardPriority::WindowCommand;
     copy.canActivate = copyCommandsAllowed;
-    copy.activate = [this](const auto&) {
+    copy.activate = [this]([[maybe_unused]] const ShortcutManager::ActivationContext& context) {
+#ifdef Q_OS_WIN
+        if (context.event != nullptr &&
+            context.event->keyCombination() ==
+                QKeyCombination(Qt::ControlModifier | Qt::KeypadModifier, Qt::Key_Insert)) {
+            // Consume keypad Ctrl+Insert so another shortcut cannot handle it.
+            return true;
+        }
+#endif
         const QPointer<ScreenshotRecognitionWindow> lifetime(this);
         const auto owner = m_sessionOwner;
         const auto token = m_attachmentToken;

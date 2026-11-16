@@ -1754,6 +1754,10 @@ void recognitionWindowUsesOrdinaryQtWindowBehavior(bool nativeSurfaceOnly = fals
     lowerPriorityCopy.keyCombinations = {
         QKeyCombination(Qt::ControlModifier, Qt::Key_C),
     };
+#ifdef Q_OS_WIN
+    lowerPriorityCopy.keyCombinations.append(QKeyCombination(Qt::ControlModifier, Qt::Key_Insert));
+    lowerPriorityCopy.allowedAdditionalModifiers = Qt::KeypadModifier;
+#endif
     lowerPriorityCopy.priority =
         snow_shot::presentation::WindowShortcutManager::StandardPriority::ScreenshotShortcut;
     lowerPriorityCopy.activate = [&lowerPriorityCopyCalls](const auto&) {
@@ -1869,11 +1873,29 @@ void recognitionWindowUsesOrdinaryQtWindowBehavior(bool nativeSurfaceOnly = fals
     QApplication::sendEvent(&window, &selectAll);
     require(presentation->selectedText() == recognizedLine.text,
             "Select All should be handled locally by the recognition window");
+#ifdef Q_OS_WIN
+    QGuiApplication::clipboard()->setText(QStringLiteral("Clipboard before OCR copy"));
+    PhysicalKeyEvent keypadCopy(QEvent::KeyPress, Qt::Key_Insert,
+                                Qt::ControlModifier | Qt::KeypadModifier);
+    QApplication::sendEvent(&window, &keypadCopy);
+    require(keypadCopy.isAccepted() && recognitionCopyCalls == 0 && lowerPriorityCopyCalls == 0 &&
+                QGuiApplication::clipboard()->text() ==
+                    QStringLiteral("Clipboard before OCR copy") &&
+                presentation->selectedText() == recognizedLine.text,
+            "keypad Ctrl+Insert should leave the OCR selection and clipboard intact");
+
+    PhysicalKeyEvent insertCopy(QEvent::KeyPress, Qt::Key_Insert, Qt::ControlModifier);
+    QApplication::sendEvent(&window, &insertCopy);
+    require(insertCopy.isAccepted() && recognitionCopyCalls == 1 && lowerPriorityCopyCalls == 0 &&
+                QGuiApplication::clipboard()->text() == recognizedLine.text,
+            "Ctrl+Insert from the main keyboard should copy and end the screenshot");
+#endif
+    const int copyCallsBeforeCtrlC = recognitionCopyCalls;
     PhysicalKeyEvent copy(QEvent::KeyPress, Qt::Key_C, Qt::ControlModifier);
     QApplication::sendEvent(&window, &copy);
     require(lowerPriorityCopyCalls == 0 && copy.isAccepted() &&
                 QGuiApplication::clipboard()->text() == recognizedLine.text &&
-                recognitionCopyCalls == 1,
+                recognitionCopyCalls == copyCallsBeforeCtrlC + 1,
             "recognition copy must win over the lower-priority screenshot copy binding and end "
             "the screenshot");
 
@@ -1922,12 +1944,22 @@ void recognitionWindowUsesOrdinaryQtWindowBehavior(bool nativeSurfaceOnly = fals
     QTextCursor noTextSelection = textEditor->textCursor();
     noTextSelection.clearSelection();
     textEditor->setTextCursor(noTextSelection);
+    const int copyCallsBeforeDraft = recognitionCopyCalls;
+#ifdef Q_OS_WIN
+    PhysicalKeyEvent keypadDraftCopy(QEvent::KeyPress, Qt::Key_Insert,
+                                     Qt::ControlModifier | Qt::KeypadModifier);
+    QApplication::sendEvent(textEditor, &keypadDraftCopy);
+    require(keypadDraftCopy.isAccepted() && recognitionCopyCalls == copyCallsBeforeDraft &&
+                lowerPriorityCopyCalls == 0 &&
+                QGuiApplication::clipboard()->text() == recognizedLine.text,
+            "keypad Ctrl+Insert should leave the OCR draft open and the clipboard intact");
+#endif
     PhysicalKeyEvent copyWholeDraft(QEvent::KeyPress, Qt::Key_C, Qt::ControlModifier);
     QApplication::sendEvent(textEditor, &copyWholeDraft);
     require(copyWholeDraft.isAccepted() &&
                 QGuiApplication::clipboard()->text() ==
                     QStringLiteral("Editable recognized text") &&
-                recognitionCopyCalls == 2,
+                recognitionCopyCalls == copyCallsBeforeDraft + 1,
             "text-recognition edit mode should copy the complete draft when no text is selected "
             "and end the screenshot");
 
@@ -2132,10 +2164,22 @@ void recognitionWindowUsesOrdinaryQtWindowBehavior(bool nativeSurfaceOnly = fals
 
     editor->setCurrentIndex(editor->model()->index(1, 1));
     editor->selectionModel()->clearSelection();
+    const int copyCallsBeforeTable = recognitionCopyCalls;
+#ifdef Q_OS_WIN
+    editor->setFocus(Qt::OtherFocusReason);
+    QApplication::clipboard()->setText(QStringLiteral("Clipboard before table copy"));
+    PhysicalKeyEvent keypadTableCopy(QEvent::KeyPress, Qt::Key_Insert,
+                                     Qt::ControlModifier | Qt::KeypadModifier);
+    QApplication::sendEvent(editor, &keypadTableCopy);
+    require(keypadTableCopy.isAccepted() && recognitionCopyCalls == copyCallsBeforeTable &&
+                lowerPriorityCopyCalls == 0 &&
+                QApplication::clipboard()->text() == QStringLiteral("Clipboard before table copy"),
+            "keypad Ctrl+Insert should leave the recognized table open and the clipboard intact");
+#endif
     editor->copySelection();
     QApplication::processEvents();
     require(QApplication::clipboard()->text() == QStringLiteral("A\tB\nC\tD") &&
-                recognitionCopyCalls == 3,
+                recognitionCopyCalls == copyCallsBeforeTable + 1,
             "table recognition should copy the complete table when no cells are selected and end "
             "the screenshot");
     editor->setCurrentIndex(editor->model()->index(1, 1));
