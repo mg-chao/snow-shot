@@ -1197,10 +1197,6 @@ void McpApplicationService::Impl::handle(const ScreenshotMcpRequest& request,
             completion(std::move(response));
             return;
         }
-        if (binding == settings::SettingsActionBinding::OpenLoginItemSettings) {
-            change([&] { return ports.settings->triggerAction(binding); });
-            return;
-        }
         const auto id = ports.jobs->start(request.connectionId, method);
         if (!lifetime)
             return;

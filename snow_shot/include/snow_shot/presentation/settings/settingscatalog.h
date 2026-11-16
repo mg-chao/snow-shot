@@ -372,7 +372,6 @@ struct SettingsLocalShortcutDefinition {
 };
 
 enum class SettingsActionBinding {
-    OpenLoginItemSettings,
     RestartAsAdministrator,
     ClearCaptureHistory,
     ClearPinnedHistory,

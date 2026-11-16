@@ -26,14 +26,11 @@ struct LoginItemResult {
 struct LoginItemOperations {
     std::function<LoginItemSnapshot()> query;
     std::function<LoginItemResult(bool)> setEnabled;
-    std::function<bool()> initialized;
-    std::function<bool()> markInitialized;
     std::function<bool(bool)> savePreference;
-    std::function<void()> openSettings;
 };
 
-// Native queries, registration and initialization markers run serially off the GUI thread.
-// Preference persistence and opening System Settings remain on the owning thread.
+// Native queries and registration run serially off the GUI thread.
+// Preference persistence remains on the owning thread.
 class LoginItemService final : public QObject {
     Q_OBJECT
   public:
@@ -59,12 +56,10 @@ class LoginItemService final : public QObject {
     using Completion = std::function<void(LoginItemResult)>;
     // The return value reports admission only. For admitted requests, completion reports the
     // final native/persistence result on the owning thread; completionFuture() covers imports.
-    LoginItemResult initialize(bool enabledByDefault, Completion completion = {});
     LoginItemResult setEnabled(bool enabled, Completion completion = {});
     std::shared_future<LoginItemResult> completionFuture() const {
         return m_completion;
     }
-    void openSettings();
 
   signals:
     void changed();
@@ -73,12 +68,10 @@ class LoginItemService final : public QObject {
     LoginItemOperations m_operations;
     LoginItemSnapshot m_snapshot;
     struct Request {
-        bool automatic = false;
         bool enabled = false;
         Completion completion;
         std::shared_ptr<std::promise<LoginItemResult>> promise;
     };
-    LoginItemResult enqueue(bool automatic, bool enabled, Completion completion);
     void start();
     QTimer m_refreshTimer;
     std::optional<Request> m_request;
@@ -91,10 +84,7 @@ class LoginItemService final : public QObject {
     bool m_pending = false;
 };
 
-// Canonical paths only: callers resolve symlinks before checking containment.
-bool loginItemLocationAllowed(const QString& bundle, const QString& userApplications);
 QStringList loginItemLaunchArguments(QStringList arguments, bool nativeLoginLaunch);
-bool loginItemAutomaticRegistrationAllowed(const QStringList& arguments);
 #ifdef Q_OS_MACOS
 LoginItemOperations nativeLoginItemOperations();
 LoginItemService& loginItemService();

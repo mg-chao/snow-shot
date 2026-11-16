@@ -804,7 +804,6 @@ void builtInCatalogIsCompleteAndValid() {
         QStringLiteral("screenshot.restore-original-screen-colors"),
     };
     const QSet<QString> macOnlyItems{
-        QStringLiteral("system.login-item-settings"),
         QStringLiteral("screen-recording"),
         QStringLiteral("accessibility"),
         QStringLiteral("input-monitoring"),
@@ -4362,15 +4361,19 @@ int main(int argc, char** argv) {
     const auto* loginSettings =
         adminCatalog.item({QStringLiteral("general"), QStringLiteral("system-general"),
                            QStringLiteral("system.login-item-settings")});
-    require(login && QString::fromUtf8(login->title.source) == u"Launch at login" &&
-                QString::fromUtf8(login->description.source) ==
-                    u"Start Snow Shot in the background when you log in" &&
-                login->configurationKey == u"system/auto_start_at_boot",
-            "macOS login setting preserves its binding with native wording");
-    require(loginSettings &&
-                std::get<settings::SettingsActionDefinition>(loginSettings->payload).binding ==
-                    settings::SettingsActionBinding::OpenLoginItemSettings,
-            "macOS exposes the native login settings action");
+    require(
+        login && QString::fromUtf8(login->title.source) == u"Open at login" &&
+            QString::fromUtf8(login->description.source) ==
+                u"Automatically start Snow Shot in the background when you log in to your Mac" &&
+            login->configurationKey == u"system/auto_start_at_boot",
+        "macOS login setting preserves its binding with native wording");
+    require(!loginSettings, "macOS exposes only the login toggle without a setup action");
+    const settings::SettingsSearchIndex loginSearch(settings::builtInSettingsRegistry());
+    for (const auto& query : {QStringLiteral("Open at login"), QStringLiteral("Launch at login")}) {
+        const auto hits = loginSearch.search(query);
+        require(!hits.isEmpty() && hits.first().location.itemId == login->id,
+                "both the new label and the existing login alias find the single toggle");
+    }
     require(adminCatalog.item({QStringLiteral("general"), QStringLiteral("system-general"),
                                QStringLiteral("system.launch-as-administrator")}) == nullptr &&
                 adminCatalog.item({QStringLiteral("general"), QStringLiteral("system-general"),

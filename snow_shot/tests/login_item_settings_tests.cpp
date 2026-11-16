@@ -42,7 +42,6 @@ int main(int argc, char** argv) {
     LoginItemSnapshot native{LoginItemStatus::Unregistered, {}};
     bool fail = false;
     bool save = true;
-    int opened = 0;
     int changes = 0;
     LoginItemService service({[&] {
                                   if (auto gate = queryGate.exchange(nullptr)) {
@@ -59,14 +58,20 @@ int main(int argc, char** argv) {
                                                           : LoginItemStatus::Unregistered;
                                   return {};
                               },
-                              [] { return true; }, [] { return true; }, [&](bool) { return save; },
-                              [&] { ++opened; }});
+                              [&](bool) { return save; }});
     login_item_test::idle(service);
     const auto settled = [&](bool admitted) {
         const auto completion = service.completionFuture();
         login_item_test::idle(service);
         return admitted && (!completion.valid() || completion.get().success);
     };
+    const auto enabledKey = QStringLiteral("system/auto_start_at_boot");
+    auto& configuration = storage.configuration();
+    const auto updateDefault =
+        configuration.defaultValue(QStringLiteral("updates/mode")).toString();
+    require(!configuration.value(enabledKey).toBool(),
+            "fresh macOS launch-at-login default is off");
+    require(configuration.setValue(enabledKey, true), "prepare stale enabled preference");
     snow_shot::presentation::GlobalShortcutManager shortcuts;
     settings::BuiltInSettingsBackend backend(shortcuts, nullptr, nullptr, nullptr, &service);
     const auto binding = settings::SettingsSwitchBinding::AutoStartAtBoot;
@@ -78,21 +83,19 @@ int main(int argc, char** argv) {
         if (service.pending()) {
             ++pendingSignals;
             require(backend.fieldPending(QStringLiteral("system.auto-start-at-boot")) &&
-                        !backend.switchEnabled(binding) &&
-                        !backend.actionState(settings::SettingsActionBinding::OpenLoginItemSettings)
-                             .enabled,
+                        !backend.switchEnabled(binding),
                     "pending operation disables conflicting controls");
         }
     });
-    require(backend.switchEnabled(binding) && !backend.switchValue(binding),
-            "native unregistered state");
+    backend.refreshPlatformSettings();
+    login_item_test::idle(service);
+    require(backend.switchEnabled(binding) && !backend.switchValue(binding) && changes == 0 &&
+                configuration.value(enabledKey).toBool(),
+            "settings refresh respects native removal despite an old enabled preference");
     require(settled(backend.applySwitchValue(binding, true)) && backend.switchValue(binding) &&
                 pendingSignals > 0,
             "toggle registers through service and emits busy state");
     require(!backend.switchHint(binding).isEmpty(), "approval hint is visible");
-    require(backend.triggerAction(settings::SettingsActionBinding::OpenLoginItemSettings) &&
-                opened == 1,
-            "settings action reaches injected native operation");
     require(language.setLanguage(QStringLiteral("en_US")), "English language");
     login_item_test::idle(service);
     const QString englishHint = backend.switchHint(binding);
@@ -109,8 +112,6 @@ int main(int argc, char** argv) {
     require(!settled(backend.applySwitchValue(binding, false)) && backend.switchValue(binding) &&
                 error == u"native failure",
             "native failure surfaces without falsely changing toggle");
-    auto& configuration = storage.configuration();
-    const auto enabledKey = QStringLiteral("system/auto_start_at_boot");
     require(configuration.setValue(enabledKey, true), "startup import baseline");
     auto imported = configuration.snapshot();
     imported.insert(enabledKey, false);
@@ -125,10 +126,10 @@ int main(int argc, char** argv) {
             "persistence failure retains observed native status");
     save = true;
     require(settled(backend.resetSection(settings::SettingsSectionReset::SystemGeneral)) &&
-                backend.switchValue(binding) &&
+                !backend.switchValue(binding) &&
                 backend.selectValue(settings::SettingsSelectBinding::UpdateMode).toString() ==
-                    u"check",
-            "reset restores native startup and macOS automatic check defaults");
+                    updateDefault,
+            "reset disables native startup and restores update defaults");
     const int beforeRefresh = changes;
     native.status = LoginItemStatus::Unregistered;
     backend.refreshPlatformSettings();
@@ -141,16 +142,18 @@ int main(int argc, char** argv) {
     const QString updatesId = QStringLiteral("updates.mode");
     require(configuration.setValue(QStringLiteral("updates/mode"), QStringLiteral("manual")),
             "prepare nondefault update preference");
+    native.status = LoginItemStatus::Enabled;
+    login_item_test::refresh(service);
     session.refreshAll();
     fail = true;
     error.clear();
     require(!settled(session.reset(settings::SettingsSectionReset::SystemGeneral)) &&
-                !backend.switchValue(binding) && error == u"native failure",
+                backend.switchValue(binding) && error == u"native failure",
             "failed startup reset remains an aggregate failure and reports the native error");
     require(session.state(startupId).phase == settings::SettingsWritePhase::Failed &&
                 session.state(startupId).error == u"native failure" &&
                 session.state(updatesId).phase == settings::SettingsWritePhase::Clean &&
-                session.state(updatesId).acceptedValue.toString() == u"check" &&
+                session.state(updatesId).acceptedValue.toString() == updateDefault &&
                 session.state(updatesId).error.isEmpty(),
             "failed registration must not prevent or reject the independent update reset");
     app.processEvents();
@@ -159,6 +162,7 @@ int main(int argc, char** argv) {
             "synchronization preserves only the real startup failure");
     fail = false;
     require(settled(session.reset(settings::SettingsSectionReset::SystemGeneral)) &&
+                !backend.switchValue(binding) &&
                 session.state(startupId).phase == settings::SettingsWritePhase::Clean &&
                 session.state(startupId).error.isEmpty(),
             "reset can recover after registration becomes available");
@@ -244,17 +248,19 @@ int main(int argc, char** argv) {
     login_item_test::idle(service);
 
     // Failed async resets and retries retain their own draft/error, including repeated errors.
+    native.status = LoginItemStatus::Enabled;
+    login_item_test::refresh(service);
     settings::SettingsRuntimeSession asynchronousSession(registry, backend);
     fail = true;
     require(asynchronousSession.reset(settings::SettingsSectionReset::SystemGeneral) &&
                 asynchronousSession.state(startupId).phase ==
                     settings::SettingsWritePhase::Pending &&
-                asynchronousSession.state(startupId).draftValue.toBool(),
+                !asynchronousSession.state(startupId).draftValue.toBool(),
             "reset exposes the requested target while native registration is pending");
     login_item_test::idle(service);
     require(asynchronousSession.state(startupId).phase == settings::SettingsWritePhase::Failed &&
-                asynchronousSession.state(startupId).draftValue.toBool() &&
-                !asynchronousSession.state(startupId).acceptedValue.toBool() &&
+                !asynchronousSession.state(startupId).draftValue.toBool() &&
+                asynchronousSession.state(startupId).acceptedValue.toBool() &&
                 asynchronousSession.state(updatesId).phase == settings::SettingsWritePhase::Clean,
             "failed reset preserves a retryable target and independent successes");
     fail = false;

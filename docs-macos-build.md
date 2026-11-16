@@ -954,58 +954,49 @@ not migrated.
 
 ## Launch at login
 
-A signed Snow Shot app installed under `/Applications` or `~/Applications`
-registers itself with macOS on its first eligible normal launch, unless its saved
-startup preference is disabled. Development bundles, disk images, translocated
-copies, and unsigned or invalidly signed apps cannot register. Moving an eligible
-signed copy into Applications allows its initial registration attempt.
+**Settings > System > General > Open at login** controls whether Snow Shot starts
+in the background when you log in to your Mac. The setting is off by default.
+Turning it on registers the app with macOS; turning it off unregisters it without
+quitting the running app. Resetting the General section turns it off.
 
-macOS 26 may report `SMAppServiceStatusNotFound` instead of `notRegistered` for a
-main app that has no login item record yet. Snow Shot treats both statuses as
-eligible for registration; the `register` call remains the authoritative signature
-and eligibility check. Affected users have no initialization marker, so the first
-launch of a fixed build follows the normal first-launch path and registers when the
-saved preference is enabled (the default).
+Starting Snow Shot never changes login-item registration. Existing registrations
+are preserved when upgrading, and an old enabled preference does not restore an
+item removed in System Settings. The app reads native status when its settings
+page opens or it becomes active, so the toggle reflects changes made elsewhere.
+Existing `macos-login-item.ini` initialization markers are ignored.
 
-Use **Settings > System > General > Launch at login** to enable or disable it.
-If approval is required, choose **Open Login Items Settings** and allow Snow Shot
-in **System Settings > General > Login Items** (the panel name can vary by macOS
-version). Registration awaiting approval is shown as requested, with an explicit
-approval hint; it does not mean macOS will launch the app yet. Turning the setting
-off also removes a pending registration and does not quit the running app.
+Registration uses `SMAppService.mainAppService` directly, without Snow Shot imposing
+an Applications-folder requirement. macOS determines whether registration succeeds;
+native errors, including signing failures, are displayed by the setting. Both
+`SMAppServiceStatusNotRegistered` and `SMAppServiceStatusNotFound` allow an explicit
+registration attempt. A preference write failure does not undo a successful native
+change: the toggle continues to show the actual macOS registration state.
 
-Snow Shot observes changes made in System Settings when its settings page opens
-or the app becomes active by reading the native login-item status. Routine refreshes
-do not validate the bundle signature; macOS enforces signing during registration,
-and Snow Shot reports signature failures from that operation. It does not re-register
-on later launches after you remove the item or revoke approval. Resetting the General section explicitly
-requests the enabled default again. Login startup stays in the background, but
+If macOS reports that approval is pending, the toggle shows the requested
+registration with an inline hint directing you to **System Settings > General >
+Login Items** (the panel name can vary by macOS version). Turning the toggle off
+also removes pending registration. Login startup stays in the background, but
 missing required permissions still open the existing permission guide.
-
-The one-time initialization marker lives in the current user's Qt generic
-configuration directory as `SnowShot/macos-login-item.ini`, separate from exported
-Snow Shot preferences. A failed automatic registration is not retried on every
-launch; use the toggle to retry after addressing the displayed error. A preference
-write failure does not undo a successful native change: the setting continues to
-show the actual macOS status. Stable bundle identity and signing are important
-when replacing or updating an installed app.
 
 ### Manual launch-at-login acceptance check
 
-Use a signed app in Applications and record its original login-item state before
-checking. Automated tests use injected operations and do not register login items.
+Record the app's original login-item state before checking. Automated tests use
+injected operations and do not register real login items.
 
-1. On a fresh per-user initialization state, launch the installed app; confirm one
-   Snow Shot entry appears in Login Items. Check the approval hint if macOS requires
-   approval, approve it, then return to Snow Shot and verify the refreshed state.
-2. Disable and re-enable through Snow Shot. Disable or remove it in System Settings,
-   return to Snow Shot, then quit and reopen it; confirm it stays disabled or pending
-   approval instead of re-registering automatically.
-3. With launch at login enabled, log out and back in. Confirm one running instance,
+1. With fresh preferences and no existing registration, launch Snow Shot and open
+   settings. Confirm **Open at login** is off and no Login Items entry was added.
+2. Turn it on and verify one Snow Shot entry appears in Login Items. If macOS
+   reports pending approval, verify the inline hint and approve it in System
+   Settings. Return to Snow Shot and verify the refreshed state.
+3. Turn it off and verify the entry is removed while Snow Shot keeps running.
+   Turn it on again, then reset General settings and confirm it is unregistered.
+4. Enable it, then remove or disable it in System Settings. Reopen Snow Shot and
+   confirm registration is not restored. Also verify that an existing enabled
+   registration survives an app upgrade or restart.
+5. With launch at login enabled, log out and back in. Confirm one running instance,
    the menu bar icon, and no main window when permissions are granted. With a required
    permission missing, confirm the permission guide still opens. Manually reopen from
    Finder or the Dock and confirm the main window opens.
-4. Replace the app with another build signed with the same identity, then verify its
-   state and login behavior again. Test a copy outside Applications and confirm the
-   disabled setting explains where to install it. Restore the original login-item
-   state when finished.
+6. Test a signed copy outside Applications and confirm the toggle attempts native
+   registration instead of requiring a move. Report any actual macOS error and
+   restore the original login-item state when finished.

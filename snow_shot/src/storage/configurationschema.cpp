@@ -914,7 +914,11 @@ constexpr SchemaEntryDescriptor kEntryDescriptors[] = {
      nullptr, &kSchemaAllowed5},
     {u"system/memory_optimization_policy", stringDefault(u"smart_control"),
      ConfigurationValueKind::String, nullptr, &kSchemaAllowed6},
+#ifdef Q_OS_MACOS
+    {u"system/auto_start_at_boot", booleanDefault(false), ConfigurationValueKind::Boolean},
+#else
     {u"system/auto_start_at_boot", booleanDefault(true), ConfigurationValueKind::Boolean},
+#endif
     {u"system/context_menu_mode", stringDefault(u"image_files"), ConfigurationValueKind::String,
      nullptr, &kSchemaAllowed7},
     {u"system/annotation_mode_when_opening_for_editing", booleanDefault(true),

@@ -30,9 +30,8 @@ inline void refresh(snow_shot::platform::macos::LoginItemService& service) {
     idle(service);
 }
 inline snow_shot::platform::macos::LoginItemResult
-change(snow_shot::platform::macos::LoginItemService& service, bool enabled,
-       bool automatic = false) {
-    const auto admitted = automatic ? service.initialize(enabled) : service.setEnabled(enabled);
+change(snow_shot::platform::macos::LoginItemService& service, bool enabled) {
+    const auto admitted = service.setEnabled(enabled);
     if (!admitted.success)
         return admitted;
     const auto completion = service.completionFuture();
