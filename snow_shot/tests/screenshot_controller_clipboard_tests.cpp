@@ -20,6 +20,7 @@
 #include "snow_shot/presentation/screenshotselectionexportuiservices.h"
 #include "snow_shot/presentation/screenshotpinnedwindow.h"
 #include "snow_shot/presentation/styles/thememanager.h"
+#include "snow_shot/presentation/systemtraycontroller.h"
 #include "snow_shot/presentation/collagewindow.h"
 #include "snow_shot/presentation/collagewindowcoordinator.h"
 #include "snow_shot/presentation/imagesplitwindow.h"
@@ -32,6 +33,7 @@
 #include "snow_shot/presentation/screenshotinteractionstate.h"
 #include "snow_shot/presentation/screenshotintelligentselectionmodel.h"
 #include "widgets/modal.h"
+#include "widgets/message.h"
 #include "snow_shot/presentation/screenshotsavepreviewcanvas.h"
 #include "snow_shot/presentation/screenshotscrollingsnapshot.h"
 #include "snow_stitch_images.h"
@@ -2223,6 +2225,51 @@ int runScreenshotControllerClipboardTests(int argc, char** argv) {
                 settings.setShowBorderByDefault(true) && settings.setShowShadowByDefault(false),
             "clipboard controller settings must be isolated and deterministic");
     static_cast<void>(snow_shot::presentation::styles::ThemeManager::instance());
+    if (application.arguments().contains(QStringLiteral("--system-notification-window-tests"))) {
+        using namespace snow_shot::presentation;
+        using Status = snow_shot::platform::SystemNotificationResult::Status;
+        const auto shutdown = qScopeGuard([&] { storage.shutdown(); });
+        LanguageManager::instance().initialize();
+        styles::ThemeManager::instance().initialize(application);
+        snow_shot::app::ApplicationController controller(application);
+        auto* tray = controller.findChild<SystemTrayController*>();
+        require(tray, "the application owns a tray notification controller");
+
+        const auto findMainWindow = []() -> MainWindow* {
+            for (auto* widget : QApplication::topLevelWidgets()) {
+                if (auto* window = qobject_cast<MainWindow*>(widget))
+                    return window;
+            }
+            return nullptr;
+        };
+        const auto reportDelivery = [&] {
+            const snow_shot::platform::SystemNotificationRequest request{
+                QStringLiteral("Recording export completed"), QStringLiteral("fixture.mp4")};
+            for (auto status : {Status::Unavailable, Status::Denied, Status::Failed})
+                emit tray->notificationDeliveryFinished(request, {status, {}});
+            QCoreApplication::processEvents();
+        };
+
+        reportDelivery();
+        require(!findMainWindow(), "rejected notifications must not create the main window");
+        controller.showMainWindow();
+        auto* window = findMainWindow();
+        require(window && window->isVisible(), "the main window opens on request");
+        window->hide();
+        reportDelivery();
+        require(!window->isVisible(), "rejected notifications must not show the hidden window");
+
+        controller.showMainWindow();
+        int activations = 0;
+        QObject::connect(window, &MainWindow::aboutToShowAndActivate, &controller,
+                         [&] { ++activations; });
+        const auto messages = window->findChildren<adqt::widgets::AdMessageHandle*>().size();
+        reportDelivery();
+        require(activations == 0, "rejected notifications must not activate the visible window");
+        require(window->findChildren<adqt::widgets::AdMessageHandle*>().size() == messages,
+                "rejected notifications must not show messages in the visible window");
+        return EXIT_SUCCESS;
+    }
     if (application.arguments().contains(QStringLiteral("--stitching-image-editing-only"))) {
         using namespace snow_shot::presentation;
         const auto shutdown = qScopeGuard([&] { storage.shutdown(); });

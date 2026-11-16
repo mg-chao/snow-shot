@@ -13,8 +13,7 @@ void SystemNotificationController::show(platform::SystemNotificationRequest requ
     const auto completed = [guard, request](platform::SystemNotificationResult result) {
         if (!guard)
             return;
-        // Backends may finish on any thread. Queue even synchronous failures so callers
-        // can finish their operation before feedback activates an application window.
+        // Deliver results on the controller thread, including synchronous completions.
         QMetaObject::invokeMethod(
             guard,
             [guard, request, result = std::move(result)] {

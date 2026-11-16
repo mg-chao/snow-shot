@@ -52,7 +52,6 @@
 #include "snow_shot/presentation/screenshotpinnedwindow.h"
 #include "snow_shot/presentation/screenrecordingfolder.h"
 #include "snow_shot/presentation/systemtraycontroller.h"
-#include "snow_shot/presentation/systemnotificationfeedback.h"
 #include "snow_shot/presentation/floatingtoolbarcontroller.h"
 #include "snow_shot/app/mcp/mcpruntimelifecycle.h"
 #include "snow_shot/app/mcp/mcpruntimegraph.h"
@@ -147,18 +146,7 @@ class ApplicationController::Impl {
     Impl(ApplicationController& owner, QApplication& application)
         : q(owner), app(application), restartCoordinator(application),
           groupManager(initializedPinnedWindowRepository()),
-          systemTray(presentation::settings::builtInTrayCommandManifest(), &groupManager) {
-        QObject::connect(&systemTray,
-                         &presentation::SystemTrayController::notificationDeliveryFinished, &q,
-                         [this](const platform::SystemNotificationRequest& request,
-                                const platform::SystemNotificationResult& result) {
-                             presentation::presentSystemNotificationResult(
-                                 request, result, [this]() -> QWidget* {
-                                     MainWindow& window = ensureMainWindow();
-                                     window.showAndActivate();
-                                     return &window;
-                                 });
-                         });
+          systemTray(presentation::settings::builtInTrayCommandManifest(), &groupManager, &q) {
         QObject::connect(&floatingToolbar,
                          &presentation::FloatingToolbarController::actionRequested, &q,
                          [this](const QString& action) { dispatchFloatingAction(action); });
