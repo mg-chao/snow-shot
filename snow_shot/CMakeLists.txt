@@ -1112,23 +1112,19 @@ if(SNOW_SHOT_BUILD_TESTS)
 endif()
 add_library(snow_shot_system_notification_controller STATIC
     include/snow_shot/presentation/systemnotificationcontroller.h
-    src/presentation/services/systemnotificationcontroller.cpp
-    src/presentation/services/systemnotificationfeedback.cpp)
+    src/presentation/services/systemnotificationcontroller.cpp)
 target_include_directories(snow_shot_system_notification_controller PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/include")
-target_link_libraries(snow_shot_system_notification_controller PUBLIC Qt6::Core
-    PRIVATE ant_design_qt Qt6::Widgets)
+target_link_libraries(snow_shot_system_notification_controller PUBLIC Qt6::Core)
 if(SNOW_SHOT_BUILD_TESTS)
     add_executable(snow-shot-system-notification-controller-tests
         tests/system_notification_controller_tests.cpp)
     target_link_libraries(snow-shot-system-notification-controller-tests PRIVATE
-        snow_shot_system_notification_controller ant_design_qt Qt6::Widgets)
-    snow_shot_import_offscreen_platform(snow-shot-system-notification-controller-tests)
-    snow_shot_offscreen_qpa_environment(_SNOW_NOTIFICATION_QPA_ENVIRONMENT)
+        snow_shot_system_notification_controller)
     add_test(NAME snow-shot-system-notification-controller-tests
-        COMMAND snow-shot-system-notification-controller-tests -platform offscreen)
+        COMMAND snow-shot-system-notification-controller-tests)
     set_tests_properties(snow-shot-system-notification-controller-tests PROPERTIES
-        LABELS "unit" TIMEOUT 30 ENVIRONMENT "${_SNOW_NOTIFICATION_QPA_ENVIRONMENT}"
+        LABELS "unit" TIMEOUT 30
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 endif()
 if(APPLE)
@@ -12062,6 +12058,11 @@ if(SNOW_SHOT_BUILD_TESTS)
     snow_shot_offscreen_qpa_environment(_snow_controller_clipboard_qpa_environment)
     add_test(NAME snow-shot-screenshot-controller-clipboard-tests
         COMMAND snow_shot --clipboard-pin-tests -platform offscreen)
+    add_test(NAME snow-shot-system-notification-window-tests
+        COMMAND snow_shot --clipboard-pin-tests --system-notification-window-tests -platform offscreen)
+    set_tests_properties(snow-shot-system-notification-window-tests PROPERTIES
+        LABELS unit SNOW_TEST_CROSS_PLATFORM TRUE TIMEOUT 30 RUN_SERIAL TRUE
+        ENVIRONMENT "${_snow_controller_clipboard_qpa_environment}")
     add_test(NAME snow-shot-document-save-shutdown-tests
         COMMAND snow_shot --clipboard-pin-tests --document-save-shutdown-tests -platform offscreen)
     set_tests_properties(snow-shot-document-save-shutdown-tests PROPERTIES

@@ -129,22 +129,18 @@ reveals that export in Finder even after another export or an update notificatio
 Native delivery and notification actions are independent of tray visibility: disabling
 the tray hides only its icon and menu on macOS.
 
-Every request reports its own accepted, unavailable, denied or failed result. Rejected
-requests activate the main window and show the original message with its original
-severity. This shared fallback also covers capture failures, update notices, background
-file-pinning errors and unavailable features. Native errors remain in diagnostic logs;
-they do not replace the user-facing message. Accepted requests do not activate a fallback
-window, including when macOS suppresses their presentation. Denied exports are not
-replayed after permission is enabled.
+Every request reports its own accepted, unavailable, denied or failed result. Native
+delivery errors are recorded in the diagnostic log. After enabling notifications,
+each new export submits its own request.
 
 Run only the focused regression checks:
 
 ```sh
 cmake --build build/snow-shot-macos-arm64-debug --parallel 8 --target \
-  snow-shot-macos-system-notification-tests snow-shot-system-tray-controller-tests \
+  snow_shot snow-shot-macos-system-notification-tests snow-shot-system-tray-controller-tests \
   snow-shot-system-notification-controller-tests snow-shot-screen-recording-controller-tests
 ctest --test-dir build/snow-shot-macos-arm64-debug --output-on-failure \
-  -R '^snow-shot-(macos-system-notification|system-notification-controller|recording-export-tray|recording-export-notification)-tests$'
+  -R '^snow-shot-(macos-system-notification|system-notification-controller|system-notification-window|recording-export-tray|recording-export-notification)-tests$'
 ```
 
 The native API fixtures run without requesting real permission or posting alerts.
@@ -152,11 +148,11 @@ They cover alert/sound authorization ordering, concurrent exports, default sound
 foreground banner/list/sound presentation with ordinary interruption priority,
 per-notification actions, per-request denial, permission changes, scheduling errors,
 out-of-order completion and shutdown callbacks. The portable notification controller
-tests exercise visible fallback content/severity, accepted delivery without window
-activation, worker-thread completion and controller shutdown. The tray fixture verifies
-native delivery and old/new actions with a hidden tray. The recording controller tests
-cover successful direct, post-processed and trimmed exports,
-auto-exit, failures and the disabled notification setting.
+tests exercise result handling, worker-thread completion and controller shutdown. The
+application fixture checks window visibility, activation and in-window messages after
+rejected requests. The tray fixture verifies native delivery and old/new actions with a
+hidden tray. The recording controller tests cover successful direct, post-processed and
+trimmed exports, auto-exit, failures and the disabled notification setting.
 
 For native acceptance, use the signed installed app with notifications enabled:
 
@@ -167,12 +163,10 @@ For native acceptance, use the signed installed app with notifications enabled:
 2. Export two different files, then click the older entry in Notification Center.
    Confirm Finder selects the older file. Repeat with a trimmed export and with recording
    auto-exit enabled.
-3. Deny notifications in System Settings and export again. Verify the file still
-   completes, the main window shows the export-completion message and the denial appears
-   in the diagnostic log. With the main window hidden, also try an unavailable feature
-   or pin an invalid selected file and verify its original warning is visible.
-   Re-enable notifications
-   and verify a new export produces a notification without replaying denied exports.
+3. Deny notifications in System Settings and export again with the main window hidden.
+   Verify the file completes, the window stays hidden and the denial appears in the
+   diagnostic log. Re-enable notifications, export again and verify that only the
+   new export triggers delivery.
 4. While another app shares the display, verify **Notifications Off** suppresses
    the pop-up, then explicitly allow notifications during sharing and verify the
    next export can present a banner. Also disable Snow Shot notification sounds
