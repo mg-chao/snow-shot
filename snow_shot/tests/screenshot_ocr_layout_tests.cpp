@@ -109,6 +109,12 @@ int main(int argc, char** argv) {
            "embedded list");
     const QString ordinary = QStringLiteral("Ordinary multiline\nOCR block");
     expect({box(ordinary, 0, 0, 200, 40)}, {ordinary}, "ordinary multiline block");
+    const QString embeddedBreak = QStringLiteral("First row\u2028second row");
+    const auto embeddedBlock = mergeOcrLayout(
+        {box(QStringLiteral("Prefix"), 0, 0, 48, 40), box(embeddedBreak, 52, 0, 160, 40)});
+    require(embeddedBlock.size() == 1 && embeddedBlock[0].paragraph &&
+                embeddedBlock[0].text == QStringLiteral("Prefix ") + embeddedBreak,
+            "same-row merging retains an embedded Unicode line break in a later OCR box");
     const QString numbers = QStringLiteral("1. First\n3. Third");
     expect({box(numbers, 0, 0, 200, 40)}, {numbers}, "nonsequential list");
     expect({box(QStringLiteral("A large heading"), 0, 0, 240, 36),
@@ -191,6 +197,9 @@ int main(int argc, char** argv) {
     const auto split = mergeOcrLayout(splitSource, {}, &indices);
     require(split.size() == 3 && indices == QVector<QVector<int>>{{0}, {0}, {0}},
             "every split list item inherits its original block's font baseline provenance");
+    require(split[0].paragraph && split[0].quad.boundingRect() == QRectF(0, 0, 200, 40) &&
+                !split[1].paragraph && !split[2].paragraph,
+            "a flattened list continuation retains its multiline area for translation");
     ScreenshotOcrPresentation source;
     source.selection = QRect(0, 0, 200, 80);
     source.lines = splitSource;
@@ -198,8 +207,27 @@ int main(int argc, char** argv) {
     translation.lines = split;
     for (auto& line : translation.lines)
         line.text = QStringLiteral("translated");
-    require(snow_shot::presentation::ocrTranslationSourceIndices(translation, source) == indices,
+    QVector<int> paragraphsToRestore;
+    require(snow_shot::presentation::ocrTranslationSourceIndices(translation, source,
+                                                                 &paragraphsToRestore) == indices &&
+                paragraphsToRestore.isEmpty(),
             "restoration reconstructs captured Smart Merge provenance without translated text");
+    translation.lines[0].paragraph = false;
+    require(snow_shot::presentation::ocrTranslationSourceIndices(translation, source,
+                                                                 &paragraphsToRestore) == indices &&
+                paragraphsToRestore == QVector<int>{0},
+            "legacy pins restore paragraph layout only for matching list continuation geometry");
+    translation.lines[0].quad.translate(1, 0);
+    require(!snow_shot::presentation::ocrTranslationSourceIndices(translation, source,
+                                                                  &paragraphsToRestore) &&
+                paragraphsToRestore.isEmpty(),
+            "legacy migration still requires the original captured quad");
+    translation.lines[0].quad = split[0].quad;
+    translation.lines[1].paragraph = true;
+    require(!snow_shot::presentation::ocrTranslationSourceIndices(translation, source,
+                                                                  &paragraphsToRestore) &&
+                paragraphsToRestore.isEmpty(),
+            "unrelated paragraph flag changes do not qualify a capture for migration");
     translation.lines = source.lines;
     translation.lines[0].text = QStringLiteral("short");
     require(snow_shot::presentation::ocrTranslationSourceIndices(translation, source) ==

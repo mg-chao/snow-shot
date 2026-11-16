@@ -357,6 +357,39 @@ void cappedSnapshotsMatchDirectPaintingAtEveryResolution() {
                 "export must not silently lose the font cap from its snapshot");
     }
 }
+
+void overflowingSingleLineTranslationWrapsInExport() {
+    auto snapshot = fixture();
+    const QRect footprint(20, 20, 112, 48);
+    const QRectF bounds = QRectF(footprint).translated(snapshot.canvasRect.topLeft());
+    auto& line = snapshot.lines[0];
+    line.quad = {bounds.topLeft(), bounds.topRight(), bounds.bottomRight(), bounds.bottomLeft()};
+    const auto source = snapshot.lines;
+    setScreenshotOcrTranslationFontCaps(snapshot.lines, source, {{0}}, snapshot.font);
+    snapshot.lines[0].text = QStringLiteral("MMMMMM ").repeated(6).trimmed();
+
+    const QImage rendered = renderScreenshotRecognitionImage(snapshot);
+    require(rendered.size() == snapshot.image.size(),
+            "overflowing translation exports at full size");
+    int inkBands = 0;
+    bool previousRowHasInk = false;
+    for (int y = 0; y < rendered.height(); ++y) {
+        bool rowHasInk = false;
+        for (int x = 0; x < rendered.width(); ++x) {
+            const QRgb pixel = rendered.pixel(x, y);
+            if (pixel != snapshot.image.pixel(x, y)) {
+                require(footprint.contains(x, y),
+                        "wrapped translation stays inside the source box");
+                rowHasInk = rowHasInk || qRed(pixel) < 100;
+            }
+        }
+        if (rowHasInk && !previousRowHasInk)
+            ++inkBands;
+        previousRowHasInk = rowHasInk;
+    }
+    require(inkBands >= 2, "overflowing translation must paint on multiple rows in the export");
+}
+
 void rendersNativeCoordinatesAndPreservesSource() {
     auto snapshot = fixture();
     snapshot.image.setDevicePixelRatio(2.0);
@@ -644,6 +677,9 @@ int main(int argc, char** argv) {
 #endif
 
     try {
+        overflowingSingleLineTranslationWrapsInExport();
+        if (application.arguments().contains(QStringLiteral("--overflow-wrap-only")))
+            return 0;
         translationsNeverExceedTheirSourceFontSize();
         mergedFontCapsUseTheMedianOriginalBaseline();
         sourceRowFontCapsPreserveSlotsAndInvalidateLayouts();
