@@ -42,10 +42,18 @@ class RemotePackageTests(unittest.TestCase):
         self.image.write_bytes(b'native DMG fixture')
         self.image.with_suffix('.dmg.sha256').write_text(
             (checksum or remote.digest(self.image)) + '  ' + self.image.name + '\n')
+        self.write_signing_report(self.image)
         for name in ['snow_shot', 'snow-ocr-process', 'snow_shot_mini']:
             path = self.build / 'symbols' / (name + '.dSYM') / 'Contents/Resources/DWARF' / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(('DWARF fixture: ' + name).encode())
+
+    def write_signing_report(self, image, product='snow-shot'):
+        image.with_suffix('.signing.json').write_text(json.dumps({
+            'schema': 1, 'packageSha256': remote.digest(image), 'product': product,
+            'version': self.request['version'],
+            'architecture': 'x86_64' if self.request.get('architecture') == 'x64' else 'arm64',
+            'certificateSha1': 'A' * 40, 'continuity': 'compatible'}))
 
     def run_command(self, command, **kwargs):
         if command[0] == 'bash':
@@ -62,6 +70,29 @@ class RemotePackageTests(unittest.TestCase):
         receipt = json.loads((self.build / 'remote-release-source.json').read_text())
         self.assertEqual(receipt['sha256'], result['sha256'])
         self.assertEqual(len(receipt['symbols']), 2)
+
+    def test_missing_app_signing_report_blocks_a_valid_container(self):
+        def package_without_report(command, **kwargs):
+            if command[0] == 'bash':
+                self.write_package()
+                self.image.with_suffix('.signing.json').unlink()
+            return SimpleNamespace(returncode=0)
+        self.run.side_effect = package_without_report
+        with self.assertRaises(FileNotFoundError):
+            remote.package(self.request)
+        self.assertFalse((self.build / 'remote-release-source.json').exists())
+
+    def test_cached_package_stops_when_application_reaudit_fails(self):
+        remote.package(self.request)
+        self.request.update(skipBuild=True, id='b' * 32)
+        def fail_audit(command, **kwargs):
+            if command[0] == 'python3':
+                raise subprocess.CalledProcessError(1, ['application-signing-audit'])
+            return SimpleNamespace(returncode=0)
+        self.run.side_effect = fail_audit
+        with self.assertRaises(subprocess.CalledProcessError):
+            remote.package(self.request)
+        self.assertFalse((self.repo / 'artifacts' / ('remote-release-' + 'b' * 32)).exists())
 
     def test_wrong_version_fails_before_build(self):
         self.request['version'] = '1.2.4'
@@ -124,7 +155,7 @@ class RemotePackageTests(unittest.TestCase):
         self.run.reset_mock()
         self.assertEqual(remote.package(self.request)['architecture'], 'arm64')
         self.assertEqual([call.args[0][0] for call in self.run.call_args_list],
-                         ['hdiutil', 'codesign'])
+                         ['hdiutil', 'codesign', 'python3'])
 
     def test_intel_cached_package_requires_an_explicit_matching_architecture(self):
         self.select_intel()
@@ -181,6 +212,7 @@ class RemotePackageTests(unittest.TestCase):
                 self.write_package()
                 mini.write_bytes(b'mini fixture')
                 mini.with_suffix('.dmg.sha256').write_text(remote.digest(mini) + '  ' + mini.name)
+                self.write_signing_report(mini, 'snow-shot-mini')
             return SimpleNamespace(returncode=0)
         self.run.side_effect = paired
         result = remote.package(self.request)
@@ -202,6 +234,7 @@ class RemotePackageTests(unittest.TestCase):
                 image = self.build / 'snow-shot-mini-1.2.3-beta-macos-arm64.dmg'
                 image.write_bytes(b'mini fixture')
                 image.with_suffix('.dmg.sha256').write_text(remote.digest(image) + '  ' + image.name)
+                self.write_signing_report(image, 'snow-shot-mini')
             return SimpleNamespace(returncode=0)
         self.run.side_effect = paired
         remote.package(self.request)
@@ -242,7 +275,7 @@ class RemotePackageTests(unittest.TestCase):
         self.request.update(skipBuild=True, id='b' * 32)
         self.run.reset_mock()
         remote.package(self.request)
-        self.assertEqual([call.args[0][0] for call in self.run.call_args_list], ['hdiutil', 'codesign'])
+        self.assertEqual([call.args[0][0] for call in self.run.call_args_list], ['hdiutil', 'codesign', 'python3'])
         self.request['id'] = 'c' * 32
         self.image.write_bytes(b'changed')
         with self.assertRaisesRegex(ValueError, 'source receipt'):

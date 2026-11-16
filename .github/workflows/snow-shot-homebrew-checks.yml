@@ -11,6 +11,18 @@ on:
       - scripts/install-snow-shot-macos.sh
       - scripts/prepare-snow-shot-homebrew.sh
       - scripts/test-macos-installer.py
+      - scripts/snow-shot-macos-signing.py
+      - scripts/test-macos-release-signing.py
+      - scripts/package-snow-shot.sh
+      - scripts/run-snow-shot.sh
+      - scripts/test-macos-build-support.py
+      - scripts/snow-shot-remote-macos.py
+      - scripts/test-remote-macos-release.py
+      - CMakePresets.json
+      - cmake/SnowShotMacOS.cmake
+      - cmake/SnowShotMacOSPackage.cmake
+      - cmake/SignSnowShotMacOSDmg.cmake
+      - snow_shot/packaging/macos/release-signing.pem
       - homebrew/**
 
 permissions:
@@ -31,6 +43,17 @@ jobs:
           bash -n scripts/install-snow-shot-macos.sh scripts/prepare-snow-shot-homebrew.sh
           python3 scripts/test-macos-installer.py
           python3 scripts/test-snow-shot-homebrew.py
+          python3 scripts/test-macos-release-signing.py
+          python3 scripts/test-remote-macos-release.py
+          python3 scripts/test-macos-build-support.py \
+            MacOSBuildScripts.test_package_builds_before_cpack \
+            MacOSBuildScripts.test_arm_release_rejects_disabled_mini_before_packaging \
+            MacOSBuildScripts.test_skip_build_packages_existing_symbols_without_rebuilding \
+            MacOSBuildScripts.test_package_rejects_missing_project_key_before_clean_or_build \
+            MacOSBuildScripts.test_skip_build_rejects_old_adhoc_release_cache \
+            MacOSBuildScripts.test_release_presets_use_static_qt_and_isolated_dependencies \
+            MacOSBuildScripts.test_release_launch_uses_project_identity_without_creating_development_key \
+            MacOSSigningDeployment
       - name: Use current Homebrew audit rules
         run: |
           brew update

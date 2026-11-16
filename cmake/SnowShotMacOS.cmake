@@ -187,9 +187,27 @@ else()
     set(SNOW_MACDEPLOYQT "")
 endif()
 set(SNOW_MACOS_CODESIGN_IDENTITY "-" CACHE STRING
-    "Code-signing certificate name or SHA-1; AUTO provisions the local development identity; '-' uses ad-hoc signing")
+    "PROJECT requires the persistent release certificate; AUTO provisions a development identity; '-' uses ad-hoc signing")
 if(SNOW_MACOS_CODESIGN_IDENTITY STREQUAL "")
-    message(FATAL_ERROR "SNOW_MACOS_CODESIGN_IDENTITY must be AUTO, a certificate identity, or '-'")
+    message(FATAL_ERROR "SNOW_MACOS_CODESIGN_IDENTITY must be PROJECT, AUTO, a certificate identity, or '-'")
+elseif(SNOW_MACOS_CODESIGN_IDENTITY STREQUAL "PROJECT" OR SNOW_APPS_PACKAGE_SNOW_SHOT)
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_LIST_DIR}/../scripts/snow-shot-macos-signing.py" identity
+        RESULT_VARIABLE _snow_release_identity_result
+        OUTPUT_VARIABLE _snow_release_identity
+        ERROR_VARIABLE _snow_release_identity_error
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _snow_release_identity_result EQUAL 0)
+        message(FATAL_ERROR "Project release signing identity unavailable: ${_snow_release_identity_error}")
+    endif()
+    if(NOT SNOW_MACOS_CODESIGN_IDENTITY STREQUAL "PROJECT" AND
+       NOT SNOW_MACOS_CODESIGN_IDENTITY STREQUAL "${_snow_release_identity}")
+        message(FATAL_ERROR "Distributable DMGs must use the project release signing identity")
+    endif()
+    set(SNOW_MACOS_CODESIGN_IDENTITY "${_snow_release_identity}")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_LIST_DIR}/../snow_shot/packaging/macos/release-signing.pem"
+        "${CMAKE_CURRENT_LIST_DIR}/../scripts/install-snow-shot-macos.sh")
 elseif(SNOW_MACOS_CODESIGN_IDENTITY STREQUAL "AUTO")
     execute_process(
         COMMAND "${CMAKE_CURRENT_LIST_DIR}/../scripts/ensure-macos-codesign-identity.sh"

@@ -3,7 +3,8 @@ set -euo pipefail
 source "$(dirname "$0")/snow-build-environment.sh"
 if [[ "${1:-}" == --help ]]; then
     echo 'Usage: package-snow-shot.sh [snow-shot-macos-{arm64|x64}-release] [--parallel JOBS] [--skip-build]'
-    echo 'Builds an ad-hoc signed DMG; Developer ID signing/notarization is a separate release step.'
+    echo 'Builds a project-signed DMG and verifies identity continuity against the previous GitHub release.'
+    echo 'Offline audits: set SNOW_MACOS_PREVIOUS_FULL_DMG and SNOW_MACOS_PREVIOUS_MINI_DMG to previous published packages.'
     exit 0
 fi
 snow_require_macos
@@ -22,11 +23,12 @@ while [[ $# -gt 0 ]]; do
 done
 [[ "$parallelism" =~ ^[1-9][0-9]*$ ]] || snow_die '--parallel needs a positive integer'
 snow_setup_tools
+python3 "$snow_repo_root/scripts/snow-shot-macos-signing.py" identity >/dev/null
 if [[ "$skip_build" == 0 ]]; then
     targets=(--target snow_shot)
     if [[ "$snow_preset" == *-arm64-* ]]; then targets+=(--target snow_shot_mini); fi
     "$snow_repo_root/scripts/build.sh" "$snow_preset" --clean \
-        "${targets[@]}" --parallel "$parallelism"
+        "${targets[@]}" --parallel "$parallelism" -- -DSNOW_MACOS_CODESIGN_IDENTITY=PROJECT
 fi
 cache="$snow_build_dir/CMakeCache.txt"
 [[ -f "$cache" ]] || snow_die "CMake cache was not found: $cache"
@@ -45,6 +47,8 @@ for entry in \
     'QT_FEATURE_static:INTERNAL=ON'; do
     grep -Fqx "$entry" "$cache" || snow_die "Release cache is not production-safe; missing '$entry'."
 done
+grep -Eq '^SNOW_MACOS_CODESIGN_IDENTITY:[^=]+=PROJECT$' "$cache" ||
+    snow_die 'Release cache must use SNOW_MACOS_CODESIGN_IDENTITY=PROJECT; reconfigure before packaging.'
 grep -Eq "^VCPKG_TARGET_TRIPLET:.*=$snow_vcpkg_triplet$" "$cache" || snow_die 'Release cache does not use the static macOS vcpkg triplet.'
 cd "$snow_repo_root"
 cmake -P "$snow_build_dir/snow_shot/GenerateSnowShotDiagnosticsSymbols-Release.cmake"

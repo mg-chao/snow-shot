@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import re
 import shlex
 import shutil
 import subprocess
@@ -17,7 +18,7 @@ import unittest
 
 SCRIPT = Path(__file__).resolve().with_name('install-snow-shot-macos.sh')
 PREFLIGHT = SCRIPT.with_name('prepare-snow-shot-homebrew.sh')
-FINGERPRINT = 'A' * 40
+FINGERPRINT = re.search(r"PROJECT_SIGNING_CERTIFICATE_SHA1='([A-F0-9]{40})'", SCRIPT.read_text())[1]
 REQUIREMENT = 'identifier "com.snowshot.snow_shot" and anchor = H"' + FINGERPRINT + '"'
 API = 'https://api.github.com/repos/mg-chao/snow-shot/releases?per_page=100&page=1'
 GITEE_API = 'https://gitee.com/api/v5/repos/mg-chao/snow-apps/releases?per_page=100&page=1'
@@ -75,11 +76,9 @@ elif name == 'plutil':
     print(data[key])
 elif name == 'file': print('Mach-O 64-bit executable ' + os.environ.get('BINARY_ARCH', 'arm64'))
 elif name == 'codesign':
-    if '--force' in args:
-        assert '--deep' not in args
-        executable = pathlib.Path(args[-1]) / 'Contents/MacOS/snow_shot'
-        executable.write_bytes(executable.read_bytes() + b' locally signed')
-    elif '-d' in args: print('designated => ' + os.environ['REQUIREMENT'])
+    if '--force' in args or '--sign' in args: raise AssertionError('Installer must not re-sign')
+    if '-d' in args:
+        print('designated => ' + ('cdhash H"1234"' if os.environ.get('ADHOC_SIGNATURE') else os.environ['REQUIREMENT']))
     elif (pathlib.Path(args[-1]) / 'reject-signature').exists(): fail()
     elif os.environ.get('FAIL_FINAL') and args[-1] == str(root / 'Applications/Snow Shot.app'): fail()
     elif os.environ.get('FAIL_REQUIREMENT') and '-R' in args: fail()
@@ -235,9 +234,9 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(result.stdout.strip(), expected)
 
     def test_all_message_keys_have_three_translations(self):
-        result = self.shell("for key in usage help arguments platform root primary fallback unavailable verify invalid signing keychain identity continuity install sudo quit running done permissions failed rollback recovery detach state launch; do for language in en zh-CN zh-TW; do message \"$key\"; done; done")
+        result = self.shell("for key in usage help arguments platform root primary fallback unavailable verify invalid signing continuity install sudo quit running done permissions failed rollback recovery detach state launch; do for language in en zh-CN zh-TW; do message \"$key\"; done; done")
         lines = result.stdout.splitlines()
-        self.assertEqual(len(lines), 26 * 3)
+        self.assertEqual(len(lines), 24 * 3)
         for offset in range(0, len(lines), 3):
             self.assertTrue(all(lines[offset:offset+3]))
             self.assertNotEqual(lines[offset], lines[offset+1])
@@ -406,109 +405,48 @@ class InstallerTests(unittest.TestCase):
         self.shell('trap cleanup EXIT; local_dmg="$FIXTURE/package.dmg"; obtain_package', success=False, FAIL_ATTACH='1')
         self.assertFalse(self.work.exists())
 
-    def test_detach_failure_preserves_mount_and_removes_private_material(self):
-        (self.work / 'private.pem').write_text('secret fixture')
+    def test_detach_failure_preserves_mount(self):
         self.shell('trap cleanup EXIT; local_dmg="$FIXTURE/package.dmg"; obtain_package', success=False, FAIL_DETACH='1')
         self.assertTrue(self.work.exists())
         self.assertTrue((self.root / 'mounted').exists())
-        self.assertFalse((self.work / 'private.pem').exists())
 
-    def test_new_identity_trust_is_scoped_and_key_access_is_restricted(self):
-        self.shell('prepare_identity')
+    def test_project_signature_preserves_every_file_without_keychain_access(self):
+        self.stage()
+        self.shell('prepare_project_application')
+        for file in self.bundle.rglob('*'):
+            if file.is_file():
+                self.assertEqual(file.read_bytes(), (self.work / 'snow_shot.app' / file.relative_to(self.bundle)).read_bytes())
+        for command in ('security', 'openssl', 'uuidgen'):
+            self.assertFalse(self.calls(command))
+        self.assertFalse(any('--force' in call for call in self.calls('codesign')))
+        self.assertTrue(any('-R' in call and FINGERPRINT in call[call.index('-R')+1]
+                            for call in self.calls('codesign')))
+
+    def test_legacy_identity_and_requirement_are_preserved_but_not_used(self):
+        self.stage()
+        self.identity()
+        legacy = 'identifier "com.snowshot.snow_shot" and anchor H"' + 'B'*40 + '"'
+        (self.state / 'requirement').write_text(legacy)
+        self.shell('prepare_project_application', MISSING_IDENTITY='1')
+        self.assertEqual((self.state / 'requirement').read_text(), legacy)
         self.assertEqual((self.state / 'identity').read_text().strip(), FINGERPRINT)
-        security = self.calls('security')
-        trust = next(c for c in security if c[1] == 'add-trusted-cert')
-        self.assertNotIn('-d', trust)
-        self.assertEqual(trust[trust.index('-p')+1], 'codeSign')
-        imported = next(c for c in security if c[1] == 'import')
-        self.assertNotIn('-A', imported)
-        self.assertEqual(imported[imported.index('-T')+1], '/usr/bin/codesign')
-        self.assertEqual(imported[imported.index('-P')+1], 'B'*64)
-        exported = next(c for c in self.calls('openssl') if c[1] == 'pkcs12')
-        self.assertEqual(exported[exported.index('-passout')+1],
-                         'env:SNOW_INSTALLER_P12_PASSWORD')
-        self.assertFalse((self.work / 'private.pem').exists())
-        self.assertFalse((self.work / 'identity.p12').exists())
+        self.assertFalse(self.calls('security'))
 
-    def test_existing_identity_is_reused(self):
-        self.identity()
-        self.shell('prepare_identity')
-        self.assertEqual([c[1] for c in self.calls('security')], ['find-identity'])
-        self.assertFalse(self.calls('openssl'))
-
-    @unittest.skipUnless(sys.platform == 'darwin', 'Requires macOS system LibreSSL')
-    def test_native_certificate_generation_without_keychain_changes(self):
-        self.shell('''export PATH=/usr/bin:/bin:/usr/sbin:/sbin
-umask 077
-security() {
-    # Fake only Keychain operations; exercise the actual certificate and PKCS#12 tools.
-    if [[ "$1" == find-identity ]]; then printf '1) %s\\n' "$fingerprint"; fi
-}
-prepare_identity
-openssl x509 -in "$work/certificate.pem" -noout -text > "$FIXTURE/certificate.txt"
-''')
-        description = (self.root / 'certificate.txt').read_text()
-        self.assertIn('Code Signing', description)
-        self.assertIn('CA:FALSE', description)
-        self.assertEqual(len((self.state / 'identity').read_text().strip()), 40)
-
-    @unittest.skipUnless(sys.platform == 'darwin', 'Requires native codesign')
-    def test_native_outer_resigning_preserves_embedded_code(self):
-        # System binaries supply a fixture without a compiler or developer tools.
-        shutil.copyfile('/bin/echo', self.executable)
-        helper = self.bundle / 'Contents/MacOS/snow-ocr-process'
-        shutil.copyfile('/bin/echo', helper)
-        helper.chmod(0o755)
+    def test_wrong_project_signer_stops_before_replacement(self):
+        self.previous()
         self.stage()
-        # Ad-hoc fixture tests sealing only; permission continuity needs a real identity.
-        (self.state / 'requirement').write_text('identifier "com.snowshot.snow_shot"')
-        self.shell('''codesign() { /usr/bin/codesign "$@"; }
-prepare_identity() { signing_identity=-; }
-sign_application
-''')
-        for path in ['Contents/MacOS/snow-ocr-process', 'Contents/Resources/assets/ocr/asset-manifest.json']:
-            self.assertEqual((self.bundle / path).read_bytes(), (self.work / 'snow_shot.app' / path).read_bytes())
+        self.shell('prepare_project_application', success=False, FAIL_REQUIREMENT='1')
+        self.assertTrue((self.destination / 'old-marker').exists())
 
-    def test_missing_identity_never_regenerates(self):
-        self.identity()
-        self.shell('prepare_identity', success=False, MISSING_IDENTITY='1')
-        self.assertFalse(self.calls('openssl'))
-
-    def test_lowercase_saved_fingerprint_is_accepted(self):
-        (self.state / 'identity').write_text(FINGERPRINT.lower())
-        self.shell('prepare_identity')
-        self.assertFalse(self.calls('openssl'))
-
-    def test_incomplete_identity_never_regenerates(self):
-        (self.state / 'creating').touch()
-        self.shell('prepare_identity', success=False)
-        self.assertFalse(self.calls('openssl'))
-
-    def test_signature_preserves_helpers_and_manifest(self):
+    def test_build_specific_requirement_is_rejected(self):
         self.stage()
-        self.identity()
-        self.shell('sign_application')
-        for path in ['Contents/MacOS/snow-ocr-process', 'Contents/Resources/assets/ocr/asset-manifest.json']:
-            self.assertEqual((self.bundle / path).read_bytes(), (self.work / 'snow_shot.app' / path).read_bytes())
-        signing = [c for c in self.calls('codesign') if '--force' in c]
-        self.assertEqual(len(signing), 1)
-        self.assertNotIn('--deep', signing[0])
-
-    def test_saved_requirement_must_match(self):
-        self.stage()
-        self.identity()
-        (self.state / 'requirement').write_text(REQUIREMENT)
-        self.shell('sign_application', success=False, FAIL_REQUIREMENT='1')
-        self.assertFalse(self.destination.exists())
-
-    def test_build_specific_requirement_is_never_saved(self):
-        self.stage()
-        self.identity()
-        self.shell('''codesign() {
-    if [[ "$1" == -d ]]; then echo '# designated => cdhash H"0123"'; fi
-}
-sign_application''', success=False)
+        self.shell('prepare_project_application', success=False, ADHOC_SIGNATURE='1')
         self.assertFalse((self.state / 'requirement').exists())
+
+    def test_download_rejects_wrong_signer_before_copying(self):
+        self.shell('local_dmg="$FIXTURE/package.dmg"; obtain_package',
+                   success=False, FAIL_REQUIREMENT='1')
+        self.assertFalse(self.calls('ditto'))
 
     def test_state_lock_rejects_concurrent_installer(self):
         (self.state / 'lock').mkdir()
@@ -516,16 +454,20 @@ sign_application''', success=False)
         self.assertTrue((self.state / 'lock').is_dir())
 
     def test_state_symlink_is_rejected(self):
-        (self.state / 'identity').symlink_to(self.root / 'outside')
+        self.state.rmdir()
+        (self.root / 'outside').mkdir()
+        self.state.symlink_to(self.root / 'outside')
         self.shell('trap cleanup EXIT; prepare_state', success=False)
-        self.assertFalse((self.root / 'outside').exists())
+        self.assertEqual(list((self.root / 'outside').iterdir()), [])
         self.assertFalse((self.state / 'lock').exists())
 
     def test_homebrew_backup_does_not_require_signing_key(self):
         self.previous()
         code = 'source ' + shlex.quote(str(PREFLIGHT)) + '; homebrew_prepare_application "$FIXTURE/package.dmg" "$destination"'
         self.shell(code, MISSING_IDENTITY='1')
-        self.assertEqual(self.calls(), [['codesign', '--verify', '--deep', '--strict', str(self.destination)]])
+        self.assertTrue(any('-R' in call for call in self.calls('codesign')))
+        self.assertFalse(self.calls('security'))
+        self.shell(code, success=False, FAIL_REQUIREMENT='1')
         (self.destination / 'reject-signature').touch()
         self.shell(code, success=False)
         self.assertTrue((self.destination / 'old-marker').exists())
@@ -558,18 +500,18 @@ prepare_app="$FIXTURE/Prepared Snow Shot.app"
 validate_prepare_output
 prepare_state
 obtain_package
-sign_application
+prepare_project_application
 prepare_application
 '''
 
-    def test_prepare_app_reuses_identity_without_install_or_launch(self):
+    def test_prepare_app_preserves_identity_without_install_or_launch(self):
         self.previous()
         self.identity()
         self.shell(self.prepare_code())
         output = self.root / 'Prepared Snow Shot.app'
         self.assertTrue((output / 'Contents/MacOS/snow_shot').exists())
         self.assertTrue((self.destination / 'old-marker').exists())
-        self.assertEqual((self.state / 'requirement').read_text().strip(), REQUIREMENT)
+        self.assertFalse((self.state / 'requirement').exists())
         for name in ('curl', 'open', 'sudo', 'osascript', 'pgrep', 'openssl'):
             self.assertFalse(self.calls(name), name)
         for path in ['Contents/MacOS/snow-ocr-process', 'Contents/Resources/assets/ocr/asset-manifest.json']:
@@ -648,7 +590,7 @@ prepare_application''')
         self.assertFalse((self.destination / 'old-marker').exists())
         self.assertTrue((self.destination / 'Contents/MacOS/snow_shot').exists())
         self.assertFalse(list(self.apps.glob('.snow-shot-install.*')))
-        self.assertEqual((self.state / 'requirement').read_text().strip(), REQUIREMENT)
+        self.assertFalse((self.state / 'requirement').exists())
         self.assertFalse(self.calls('open'))
         self.assertFalse(self.calls('sudo'))
 

@@ -42,6 +42,10 @@ Dir.mktmpdir("snow-homebrew-installer-") do |directory|
         (stage/"install-snow-shot-macos.sh").write(<<~BASH)
           #!/bin/bash
           set -eu
+          if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+            verify_project_application() { codesign --verify --deep --strict "$1"; }
+            return 0
+          fi
           test "$HOME" = #{Shellwords.escape(Dir.home)}
           test "$1" = --edition
           test "$2" = #{edition}
@@ -97,9 +101,8 @@ Dir.mktmpdir("snow-homebrew-installer-") do |directory|
       engine.purge_backed_up_versioned_files
       raise "Upgrade did not install the new version" unless installed_version.read.strip == upgraded.version.to_s
 
-      # Both the failed successor and the backed-up signing installer reject
-      # signing. Restoration must verify/reuse the already signed backup.
-      (upgraded.staged_path/"install-snow-shot-macos.sh").write("#!/bin/bash\nexit 23\n")
+      # Failed successor preparation must restore the verified predecessor.
+      # Signature identity itself is covered by the native signing fixture.
       successor = load_cask.call(source.sub(/^  version .+$/, '  version "2096.0.2"'))
       successor_engine = Cask::Installer.new(successor)
       upgraded_engine.start_upgrade(successor: successor)

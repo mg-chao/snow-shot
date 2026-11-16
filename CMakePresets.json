@@ -240,6 +240,7 @@
         "SNOW_RUST_TARGET": "aarch64-apple-darwin",
         "CMAKE_BUILD_TYPE": "Release",
         "SNOW_APPS_PACKAGE_SNOW_SHOT": "ON",
+        "SNOW_MACOS_CODESIGN_IDENTITY": "PROJECT",
         "SNOW_APPS_ENABLE_RELEASE_OPTIMIZATION": "ON"
       }
     },
@@ -307,6 +308,7 @@
         "SNOW_RUST_TARGET": "x86_64-apple-darwin",
         "CMAKE_BUILD_TYPE": "Release",
         "SNOW_APPS_PACKAGE_SNOW_SHOT": "ON",
+        "SNOW_MACOS_CODESIGN_IDENTITY": "PROJECT",
         "SNOW_APPS_ENABLE_RELEASE_OPTIMIZATION": "ON",
         "SNOW_APPS_BUILD_SNOW_SHOT_MINI": "OFF"
       }
