@@ -1,3 +1,4 @@
+snow_embed_sparkle(snow_shot snow_shot.app SnowShot)
 # The Rust static archive does not propagate Cargo's native link metadata to CMake.
 find_package(PkgConfig REQUIRED)
 set(_snow_saved_pkg_config_path "$ENV{PKG_CONFIG_PATH}")

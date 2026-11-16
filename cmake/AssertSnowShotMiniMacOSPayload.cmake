@@ -30,8 +30,9 @@ if(SNOW_SHOT_MINI_STATIC)
     file(GLOB _mini_dynamic_files
         "${SNOW_SHOT_MINI_APP}/Contents/Frameworks/*"
         "${SNOW_SHOT_MINI_APP}/Contents/PlugIns/*")
+    list(REMOVE_ITEM _mini_dynamic_files "${SNOW_SHOT_MINI_APP}/Contents/Frameworks/Sparkle.framework")
     if(_mini_dynamic_files)
-        message(FATAL_ERROR "Static Mini macOS must not bundle dynamic frameworks or plugins")
+        message(FATAL_ERROR "Static Mini macOS may only bundle the Sparkle framework")
     endif()
 endif()
 

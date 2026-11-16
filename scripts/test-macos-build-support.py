@@ -467,7 +467,7 @@ class MacOSBundleMetadata(unittest.TestCase):
                 # and deployment APIs need neither a compiler nor native tools.
                 mocks = ''.join(f'function({command})\nendfunction()\n' for command in
                                 ('target_sources', 'target_link_options',
-                                 'add_custom_target', 'add_dependencies'))
+                                 'add_custom_target', 'add_dependencies', 'snow_embed_sparkle'))
                 qt_target = '' if static else f'''
 add_library(Qt6::QOffscreenIntegrationPlugin MODULE IMPORTED)
 set_target_properties(Qt6::QOffscreenIntegrationPlugin PROPERTIES

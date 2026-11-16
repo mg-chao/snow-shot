@@ -276,6 +276,13 @@ Copy-LicenseNotice -Category "project-notices" -Package "snow-shot-attributions"
     -RelativeName "THIRD_PARTY_NOTICES.md"
 
 if (-not $StandaloneMedia) {
+    if ($CargoTarget.EndsWith('-apple-darwin', [StringComparison]::Ordinal)) {
+        foreach ($notice in @('LICENSE', 'SOURCE.md')) {
+            Copy-LicenseNotice -Category 'source' -Package 'sparkle-2.10.1' `
+                -DeclaredLicense 'MIT and bundled component notices' `
+                -Source (Join-Path $PSScriptRoot "../licenses/sparkle/$notice") -RelativeName $notice
+        }
+    }
     $microTexLicenseRoot = Join-Path $PSScriptRoot "../licenses/microtex"
     $microTexNotices = [ordered]@{
         "LICENSE-MIT.txt" = "MIT"

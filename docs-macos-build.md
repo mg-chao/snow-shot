@@ -52,6 +52,71 @@ MCP discovery, and installer state use separate product identities. For direct
 staging, use `cmake --install build/<preset> --component SnowShotMini --prefix
 /path/to/staging`. Both editions share a version and release tag.
 
+## In-app updates
+
+Full and Mini use Sparkle 2.10.1 with the existing Qt Settings and About pages.
+macOS offers Manual, Check automatically, and Auto-update on next launch. The
+last option is the default on both platforms. On macOS, upgrading a configuration
+from schema version 6 or earlier migrates every update mode to `next_launch` once,
+including Manual and Check automatically; importing an older configuration follows
+the same rule. Schema version 7 records completion, so subsequent user changes and
+current configuration imports retain their selected mode. Windows preserves saved
+preferences and retains all four options, its updater, and its startup installation gate.
+
+On macOS, automatic updates download and verify in the background, then wait
+for the application process to quit normally. Closing the main window while
+Snow Shot remains in the menu bar does not install an update. The installer
+replaces the application after quit, so the next launch runs the new version.
+Changing the setting after preparation leaves that prepared installation intact.
+Only the explicit **Restart & update** action requests an immediate restart,
+through the existing application admission and editor checks. Missing updates
+and failed checks do not delay startup. Sparkle owns its native networking and
+scheduling; background downloads without native byte callbacks show indeterminate
+progress, while user-initiated downloads expose byte progress and cancellation.
+
+`scripts/bootstrap-macos.sh` provisions the checksum-pinned Sparkle archive from
+`snow_shot/packaging/macos/sparkle.json`. The framework, installer, XPC services,
+and upstream license are embedded in both bundles, including static Qt builds.
+Packaging signs the nested Sparkle components before sealing the application.
+The dedicated `snow-shot-sparkle` Keychain account holds the Ed25519 signing key;
+only the public key is checked in. `scripts/snow-shot-sparkle.py check-key` checks
+publisher readiness. Release commands never generate a replacement key. Provision
+the same private key securely on another publishing Mac using Sparkle's key tools;
+do not run key initialization to replace the pinned key.
+
+Packaging signs and verifies each final DMG and both appcasts, writing an adjacent
+`.sparkle.json` receipt. Remote packaging transfers this receipt bound to the DMG's
+SHA-256. After the release assets are uploaded and verified, the release publisher
+updates the `sparkle-appcasts` branch on GitHub and Gitee, preserving the other
+product/architecture feeds. The three feeds are `snow-shot-macos-arm64.xml`,
+`snow-shot-macos-x86_64.xml`, and `snow-shot-mini-macos-arm64.xml`. Each host's
+signed feed points to that host's DMG. A transport failure permits one mirror
+retry; signature, extraction, and installation failures do not bypass validation
+by falling back. Both signed appcasts and pre-extraction archive verification are
+required. Feed publication rejects equal or older build replacements.
+
+Publish the first signed feeds with the first Sparkle-enabled release; this
+implementation does not publish releases or modify remote branches by itself.
+Versions predating Sparkle need a manual upgrade once. Bundle versions must
+increase for each offered build, including prereleases.
+
+Focused validation (no production feeds, applications, or signing keys are used
+by the native fixture):
+
+```sh
+cmake --build build/snow-shot-macos-arm64-debug --target snow-shot-sparkle-fixture
+python3 scripts/test-snow-shot-sparkle.py
+python3 scripts/test-snow-shot-sparkle-native.py
+ctest --test-dir build/snow-shot-macos-arm64-debug --output-on-failure \
+  -R '^snow-shot-(update-adapter|update-settings|settings-catalog|configuration-schema|about-update|mcp-application)-tests$'
+```
+
+The native fixture uses disposable signed bundles, ephemeral test keys, and a
+loopback feed to exercise normal quit, closing a window, preference changes,
+manual download/restart, mirror recovery, and signature failures. Before shipping,
+also qualify installed Full and Mini DMGs on the target hardware with the release
+signing identity and verify continuity of macOS permissions across replacement.
+
 ## Homebrew installation
 
 The project tap is `mg-chao/homebrew-tap`. Stable releases update `snow-shot`;

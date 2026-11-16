@@ -223,6 +223,7 @@ if ($MacHost) {
     [IO.File]::WriteAllText((Join-Path $releaseDirectory 'setup/install-snow-shot-macos.sh'), $installer, [Text.UTF8Encoding]::new($false))
 }
 $githubAssets = @{}
+$sparkleReports = @()
 $nativeValidation = @()
 foreach ($architecture in @('x64', 'arm64')) {
     $BuildDirectory = $buildDirectories[$architecture]
@@ -336,6 +337,9 @@ if ($AuditOnly) {
             Copy-Item -LiteralPath (Join-Path $releaseDirectory "setup/${prefix}_macos-$assetArchitecture.dmg") -Destination $path
             $hash = (Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant()
             [IO.File]::WriteAllText("$path.sha256", "$hash  $name`n", [Text.UTF8Encoding]::new($false))
+            $sparkleReport = $path -replace '\.dmg$', '.sparkle.json'
+            Copy-Item -LiteralPath (Join-Path $releaseDirectory "setup/${prefix}_macos-$assetArchitecture.sparkle.json") -Destination $sparkleReport
+            $sparkleReports += $sparkleReport
             $githubAssets[$name] = $path
             $githubAssets["$name.sha256"] = "$path.sha256"
         }
@@ -362,7 +366,7 @@ if ($AuditOnly) {
                 sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() }
         }
         @{ schema = 1; tag = $tag; sourceCommit = $head; title = "Snow Shot $Version"; nativeValidation = $nativeValidation;
-            body = [IO.File]::ReadAllText($ReleaseNotesPath); assets = @($descriptors) } |
+            body = [IO.File]::ReadAllText($ReleaseNotesPath); assets = @($descriptors); sparkleReports = @($sparkleReports) } |
             ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $localManifestPath -Encoding utf8NoBOM
         $validationArguments = @(if ($SkipArm64NativeValidation) { '--skip-arm64-native-validation' })
         & python (Join-Path $PSScriptRoot 'publish-snow-shot-gitee-release.py') --manifest $localManifestPath --auditor $auditor --mini-auditor $miniAuditor --prepare-homebrew @validationArguments
@@ -372,6 +376,11 @@ if ($AuditOnly) {
         foreach ($asset in $localRelease.assets) { $githubAssets[$asset.name] = $asset.path }
     }
     Publish-SnowGitHubRelease $GitHubRepository $Version $githubAssets (Join-Path $releaseDirectory 'verify-github') -NotesPath $ReleaseNotesPath
+    if ($sparkleReports.Count -gt 0) {
+        $feedArguments = @($sparkleReports | ForEach-Object { '--report'; $_ })
+        & python (Join-Path $PSScriptRoot 'publish-snow-shot-sparkle.py') --host github @feedArguments
+        if ($LASTEXITCODE -ne 0) { throw 'GitHub Sparkle appcast publication failed after package verification.' }
+    }
     if (-not $SkipGitee) {
         & python (Join-Path $PSScriptRoot 'publish-snow-shot-gitee-release.py') --manifest $localManifestPath --auditor $auditor --mini-auditor $miniAuditor @validationArguments
         if ($LASTEXITCODE -ne 0) { throw "Local Gitee publication failed. Retry with the audited manifest: $localManifestPath" }

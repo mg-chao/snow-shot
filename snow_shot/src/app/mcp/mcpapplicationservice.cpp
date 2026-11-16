@@ -790,7 +790,8 @@ void McpApplicationService::Impl::handle(const ScreenshotMcpRequest& request,
                 error(QStringLiteral("unsupported"));
                 return;
             }
-            if (ports.updates->busy() || !activeUpdateJob.isEmpty()) {
+            if (ports.updates->busy() || !activeUpdateJob.isEmpty() ||
+                (action == u"check" && !ports.updates->canCheck())) {
                 error(QStringLiteral("busy"));
                 return;
             }

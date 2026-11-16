@@ -24,6 +24,7 @@ done
 [[ "$parallelism" =~ ^[1-9][0-9]*$ ]] || snow_die '--parallel needs a positive integer'
 snow_setup_tools
 python3 "$snow_repo_root/scripts/snow-shot-macos-signing.py" identity >/dev/null
+python3 "$snow_repo_root/scripts/snow-shot-sparkle.py" check-key
 if [[ "$skip_build" == 0 ]]; then
     targets=(--target snow_shot)
     if [[ "$snow_preset" == *-arm64-* ]]; then targets+=(--target snow_shot_mini); fi
@@ -60,3 +61,14 @@ cpack --preset "package-$snow_preset"
 if [[ "$snow_vcpkg_triplet" == arm64-* ]]; then
     cpack --config "$snow_build_dir/CPackSnowShotMiniConfig.cmake"
 fi
+
+for product in snow-shot snow-shot-mini; do
+    if [[ "$product" == snow-shot-mini && "$snow_preset" != *-arm64-* ]]; then continue; fi
+    arch=arm64
+    if [[ "$snow_preset" == *-x64-* ]]; then arch=x86_64; fi
+    version="$(sed -n 's/^set(SNOW_SHOT_VERSION "\([^"]*\)").*/\1/p' "$snow_repo_root/CMakeLists.txt")"
+    image="$snow_build_dir/$product-$version-macos-$arch.dmg"
+    python3 "$snow_repo_root/scripts/snow-shot-sparkle.py" prepare-release \
+        --dmg "$image" --product "$product" --version "$version" --architecture "$arch" \
+        --output "${image%.dmg}.sparkle.json"
+done

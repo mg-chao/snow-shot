@@ -747,12 +747,13 @@ void builtInCatalogIsCompleteAndValid() {
                     const auto& select = std::get<settings::SettingsSelectDefinition>(item.payload);
 #ifdef Q_OS_MACOS
                     require(select.binding == settings::SettingsSelectBinding::UpdateMode &&
-                                select.options.size() == 2 &&
+                                select.options.size() == 3 &&
+                                select.options[2].value == QStringLiteral("next_launch") &&
                                 select.options[0].value == QStringLiteral("manual") &&
                                 select.options[1].value == QStringLiteral("check") &&
                                 storage::ConfigurationSchema::defaultValue(item.configurationKey) ==
-                                    QStringLiteral("check"),
-                            "macOS exposes only manual and automatic checks");
+                                    QStringLiteral("next_launch"),
+                            "macOS exposes manual, check and next-launch policies");
                     const auto migrated = storage::ConfigurationSchema::normalize(
                         item.configurationKey, QStringLiteral("download"));
                     require(migrated.valid && migrated.changed &&
@@ -760,9 +761,9 @@ void builtInCatalogIsCompleteAndValid() {
                             "legacy automatic download migrates to check");
                     const auto nextLaunch = storage::ConfigurationSchema::normalize(
                         item.configurationKey, QStringLiteral("next_launch"));
-                    require(nextLaunch.valid && nextLaunch.changed &&
-                                nextLaunch.value == QStringLiteral("check"),
-                            "Windows next-launch installation migrates to checks on macOS");
+                    require(nextLaunch.valid && !nextLaunch.changed &&
+                                nextLaunch.value == QStringLiteral("next_launch"),
+                            "next-launch policy remains intact on macOS");
 #else
                     require(select.binding == settings::SettingsSelectBinding::UpdateMode &&
                                 select.options.size() == 4 &&
@@ -771,8 +772,8 @@ void builtInCatalogIsCompleteAndValid() {
                                 select.options[2].value == QStringLiteral("download") &&
                                 select.options[3].value == QStringLiteral("next_launch") &&
                                 storage::ConfigurationSchema::defaultValue(item.configurationKey) ==
-                                    QStringLiteral("download"),
-                            "update policy exposes all four modes with automatic download default");
+                                    QStringLiteral("next_launch"),
+                            "update policy exposes all four modes with next-launch default");
 #endif
                     foundUpdates = true;
                 }
@@ -3326,12 +3327,10 @@ void searchIndexIsGeneratedAndRanked() {
     require(!updates.isEmpty() &&
                 updates.constFirst().location.itemId == QStringLiteral("updates.mode"),
             "update policy is directly discoverable through settings search");
-#ifndef Q_OS_MACOS
     const auto nextLaunchUpdates = index.search(QStringLiteral("Auto-update on next launch"));
     require(!nextLaunchUpdates.isEmpty() &&
                 nextLaunchUpdates.constFirst().location.itemId == QStringLiteral("updates.mode"),
             "next-launch updates must be searchable by their option label");
-#endif
     const auto selectedText = index.search(QStringLiteral("Translate selected text"));
     require(!selectedText.isEmpty() &&
                 selectedText.constFirst().location ==

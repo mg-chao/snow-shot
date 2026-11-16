@@ -1047,7 +1047,8 @@ void AboutPageWidget::refreshUpdateStatus() {
     QString action = checkAction;
     switch (status.state) {
     case UpdateState::Unavailable:
-        text = tr("Automatic updates are unavailable for this copy");
+        text = status.error.isEmpty() ? tr("Automatic updates are unavailable for this copy")
+                                      : status.error;
         break;
     case UpdateState::Idle:
         text = status.version.isEmpty() ? (snow_shot::app::edition::isMini
@@ -1066,10 +1067,8 @@ void AboutPageWidget::refreshUpdateStatus() {
         break;
     case UpdateState::Available:
         text = tr("Update available: %1").arg(status.version);
-        action = m_ui->updates->capabilities().download
-                     ? tr("Download update")
-                     : (status.downloadUrl.host() == u"gitee.com" ? tr("Download from Gitee")
-                                                                  : tr("Download from GitHub"));
+        action = m_ui->updates->capabilities().download ? tr("Download update")
+                                                        : tr("View update details");
         statusIcon = outlined::CloudDownload();
         actionIcon = outlined::Download();
         statusColor = colors.colorInfoText;
@@ -1087,7 +1086,9 @@ void AboutPageWidget::refreshUpdateStatus() {
         statusIcon = outlined::SafetyCertificate();
         break;
     case UpdateState::Ready:
-        text = tr("Ready to install %1").arg(status.version);
+        text = m_ui->updates->installsOnQuit()
+                   ? tr("Update %1 will install when you quit").arg(status.version)
+                   : tr("Ready to install %1").arg(status.version);
         action = tr("Restart and update");
         statusIcon = outlined::CheckCircle();
         actionIcon = outlined::Reload();
@@ -1122,9 +1123,17 @@ void AboutPageWidget::refreshUpdateStatus() {
     m_ui->updateIcon->setPixmap(aboutIcon(statusIcon, m_ui->updateIcon->size(), this, statusColor));
     m_ui->updateStatus->setText(text);
     m_ui->updateStatus->setAccessibleName(text);
+    const QString detail = status.state == UpdateState::Ready && m_ui->updates->installsOnQuit()
+                               ? tr("Update %1 is ready. It will install after you quit and be "
+                                    "available on your next launch")
+                                     .arg(status.version)
+                               : QString();
+    m_ui->updateStatus->setToolTip(detail);
+    m_ui->updateStatus->setAccessibleDescription(detail);
     m_ui->updateCheck->setText(checkAction);
     m_ui->updateCheck->setAccessibleName(checkAction);
     m_ui->updateCheck->setVisible(!storeManaged && status.state == UpdateState::Available);
+    m_ui->updateCheck->setEnabled(m_ui->updates->canCheck());
     m_ui->updateAction->setText(action);
     m_ui->updateAction->setAccessibleName(action);
     m_ui->updateAction->setIconRef(actionIcon);
@@ -1134,15 +1143,15 @@ void AboutPageWidget::refreshUpdateStatus() {
                                                      : AdButton::ButtonStyle::Outline);
     m_ui->updateAction->setAccentRole(primaryAction ? AdButton::AccentRole::Primary
                                                     : AdButton::AccentRole::Neutral);
-    m_ui->updateAction->setEnabled(
-        storeManaged || status.state == UpdateState::Idle || status.state == UpdateState::Failed ||
-        status.state == UpdateState::Available || status.state == UpdateState::Ready);
+    m_ui->updateAction->setEnabled(storeManaged || m_ui->updates->canCheck() ||
+                                   status.state == UpdateState::Available ||
+                                   status.state == UpdateState::Ready);
     m_ui->updateAction->setToolTip(
         storeManaged ? QStringLiteral("ms-windows-store://downloadsandupdates") : QString());
     m_ui->updateCancel->setText(tr("Cancel download"));
     const bool downloading = !storeManaged && status.state == UpdateState::Downloading;
     QWidget* currentAction = m_ui->updateActionBlank;
-    if (downloading) {
+    if (downloading && m_ui->updates->canCancel()) {
         currentAction = m_ui->updateCancel;
     } else if (m_ui->updateAction->isEnabled()) {
         currentAction = m_ui->updateActionRow;

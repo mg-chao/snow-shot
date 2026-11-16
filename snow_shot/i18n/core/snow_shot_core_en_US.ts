@@ -102,14 +102,6 @@ so every moment on screen can be expressed clearly and shared easily</translatio
             <translation>Discussion and support · group no. %1</translation>
         </message>
         <message>
-            <source>Download from GitHub</source>
-            <translation>Download from GitHub</translation>
-        </message>
-        <message>
-            <source>Download from Gitee</source>
-            <translation>Download from Gitee</translation>
-        </message>
-        <message>
             <source>Download update</source>
             <translation>Download update</translation>
         </message>
@@ -234,6 +226,14 @@ so every moment on screen can be expressed clearly and shared easily</translatio
             <translation>Unavailable</translation>
         </message>
         <message>
+            <source>Update %1 is ready. It will install after you quit and be available on your next launch</source>
+            <translation>Update %1 is ready. It will install after you quit and be available on your next launch</translation>
+        </message>
+        <message>
+            <source>Update %1 will install when you quit</source>
+            <translation>Update %1 will install when you quit</translation>
+        </message>
+        <message>
             <source>Update available: %1</source>
             <translation>Update available: %1</translation>
         </message>
@@ -260,6 +260,10 @@ so every moment on screen can be expressed clearly and shared easily</translatio
         <message>
             <source>View the source and improve it together</source>
             <translation>View the source and improve it together</translation>
+        </message>
+        <message>
+            <source>View update details</source>
+            <translation>View update details</translation>
         </message>
         <message>
             <source>You are up to date</source>

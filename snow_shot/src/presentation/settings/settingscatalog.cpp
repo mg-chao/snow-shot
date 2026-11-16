@@ -1147,19 +1147,14 @@ SettingsItemDefinition updateModeItem() {
 #ifndef Q_OS_MACOS
         {QStringLiteral("download"),
          settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Download automatically"))},
+#endif
         {QStringLiteral("next_launch"),
          settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Auto-update on next launch"))},
-#endif
     };
     return {QStringLiteral("updates.mode"),
             settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Updates")),
-#ifdef Q_OS_MACOS
-            settingsText(
-                QT_TRANSLATE_NOOP("SettingsCatalog", "Check for new versions on GitHub and Gitee")),
-#else
             settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
                                            "Choose how updates are downloaded and installed")),
-#endif
             {settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Software updates"))},
             QStringLiteral("updates/mode"),
             payload};

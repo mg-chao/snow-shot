@@ -126,6 +126,7 @@ function(snow_shot_add_translations target)
                 "${CMAKE_CURRENT_SOURCE_DIR}/src/presentation/ocr/screenshotoriginalimagepreviewwindow.cpp"
                 "${CMAKE_CURRENT_SOURCE_DIR}/src/platform/macos/loginitembackend.mm"
                 "${CMAKE_CURRENT_SOURCE_DIR}/src/update/macosupdateservice.cpp"
+                "${CMAKE_CURRENT_SOURCE_DIR}/src/update/sparkleupdatedriver.mm"
                 "${CMAKE_CURRENT_SOURCE_DIR}/src/update/updateservice.cpp"
                 "${CMAKE_CURRENT_SOURCE_DIR}/src/platform/windows/nativeprint.cpp"
                 "${CMAKE_CURRENT_SOURCE_DIR}/src/platform/macos/nativeprint.mm"

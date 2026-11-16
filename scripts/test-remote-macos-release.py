@@ -54,6 +54,10 @@ class RemotePackageTests(unittest.TestCase):
             'version': self.request['version'],
             'architecture': 'x86_64' if self.request.get('architecture') == 'x64' else 'arm64',
             'certificateSha1': 'A' * 40, 'continuity': 'compatible'}))
+        image.with_suffix('.sparkle.json').write_text(json.dumps({
+            'schema': 1, 'packageSha256': remote.digest(image), 'product': product,
+            'version': self.request['version'],
+            'architecture': 'x86_64' if self.request.get('architecture') == 'x64' else 'arm64'}))
 
     def run_command(self, command, **kwargs):
         if command[0] == 'bash':

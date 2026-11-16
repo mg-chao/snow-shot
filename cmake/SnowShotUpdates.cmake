@@ -31,6 +31,7 @@ if(NOT APPLE AND NOT SNOW_SHOT_DISTRIBUTION_CHANNEL STREQUAL "store")
 endif()
 
 if(APPLE)
+    include("${CMAKE_CURRENT_LIST_DIR}/SnowShotSparkle.cmake")
     set(_snow_update_source src/update/macosupdateservice.cpp)
 else()
     set(_snow_update_source src/update/updateservice.cpp)
@@ -47,7 +48,9 @@ target_include_directories(snow_shot_updates PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}
 target_link_libraries(snow_shot_updates PUBLIC Qt6::Core)
 target_link_libraries(snow_shot_updates PRIVATE snow_shot_distribution)
 if(APPLE)
-    target_link_libraries(snow_shot_updates PRIVATE Qt6::Network)
+    target_sources(snow_shot_updates PRIVATE src/update/sparkleupdatedriver.mm)
+    set_source_files_properties(src/update/sparkleupdatedriver.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    target_link_libraries(snow_shot_updates PRIVATE SnowSparkle "-framework Foundation")
     target_compile_definitions(snow_shot_updates PRIVATE SNOW_SHOT_VERSION="${SNOW_SHOT_VERSION}")
 endif()
 target_link_libraries(snow_shot_settings PUBLIC snow_shot_updates)
@@ -84,16 +87,20 @@ if(SNOW_SHOT_BUILD_UPDATE_TESTS)
     add_test(NAME snow-shot-update-probe-tests COMMAND snow-shot-update-probe-tests)
     set_tests_properties(snow-shot-update-probe-tests PROPERTIES LABELS "unit" TIMEOUT 10)
     if(APPLE)
+        add_executable(snow-shot-sparkle-fixture MACOSX_BUNDLE tests/macos_sparkle_fixture.cpp)
+        target_link_libraries(snow-shot-sparkle-fixture PRIVATE snow_shot_updates Qt6::Widgets)
+        set_target_properties(snow-shot-sparkle-fixture PROPERTIES
+            MACOSX_BUNDLE_GUI_IDENTIFIER "com.snowshot.tests.sparkle-fixture")
+        add_custom_command(TARGET snow-shot-sparkle-fixture POST_BUILD
+            COMMAND /usr/bin/ditto "${SNOW_SPARKLE_FRAMEWORK}"
+                "$<TARGET_BUNDLE_DIR:snow-shot-sparkle-fixture>/Contents/Frameworks/Sparkle.framework")
         add_executable(snow-shot-update-adapter-tests tests/macos_update_tests.cpp)
         target_link_libraries(snow-shot-update-adapter-tests PRIVATE Qt6::Network)
     else()
-        # The macOS version-check service uses portable Qt networking. Exercise it on Windows
-        # as well, without linking the Windows helper adapter into the same executable.
         add_executable(snow-shot-macos-update-tests tests/macos_update_tests.cpp
             src/update/macosupdateservice.cpp include/snow_shot/update/updateservice.h)
         target_include_directories(snow-shot-macos-update-tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
-        target_link_libraries(snow-shot-macos-update-tests PRIVATE Qt6::Core Qt6::Network)
-        target_compile_definitions(snow-shot-macos-update-tests PRIVATE SNOW_SHOT_VERSION="${SNOW_SHOT_VERSION}")
+        target_link_libraries(snow-shot-macos-update-tests PRIVATE Qt6::Core)
         add_test(NAME snow-shot-macos-update-tests COMMAND snow-shot-macos-update-tests)
         set_tests_properties(snow-shot-macos-update-tests PROPERTIES LABELS "unit" TIMEOUT 30)
         add_executable(snow-shot-update-adapter-tests tests/update_adapter_tests.cpp)

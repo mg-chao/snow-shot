@@ -28,5 +28,14 @@
     <key>NSCameraUsageDescription</key><string>Snow Shot Mini records webcam video when you enable webcam recording for a screen recording.</string>
     <key>NSMicrophoneUsageDescription</key><string>Snow Shot Mini records microphone audio when you enable it for a screen recording.</string>
     <key>NSAudioCaptureUsageDescription</key><string>Snow Shot Mini captures system audio when you enable it for a screen recording.</string>
+    <key>SUFeedURL</key><string>${SNOW_SPARKLE_GITHUB_FEED_BASE}/snow-shot-mini-macos-${SNOW_SPARKLE_FEED_ARCH}.xml</string>
+    <key>SnowSparkleMirrorFeedURL</key><string>${SNOW_SPARKLE_GITEE_FEED_BASE}/snow-shot-mini-macos-${SNOW_SPARKLE_FEED_ARCH}.xml</string>
+    <key>SUPublicEDKey</key><string>${SNOW_SPARKLE_PUBLIC_KEY}</string>
+    <key>SUEnableAutomaticChecks</key><true/>
+    <key>SUAutomaticallyUpdate</key><true/>
+    <key>SUAllowsAutomaticUpdates</key><true/>
+    <key>SUVerifyUpdateBeforeExtraction</key><true/>
+    <key>SURequireSignedFeed</key><true/>
+    <key>SUEnableSystemProfiling</key><false/>
 </dict>
 </plist>
