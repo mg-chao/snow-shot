@@ -15,6 +15,9 @@
 #include "snow_shot/presentation/settings/applicationpriority.h"
 #include "snow_shot/platform/windows/autostartregistration.h"
 #include "snow_shot/platform/windows/administratorlaunch.h"
+#ifdef Q_OS_WIN
+#include "snow_shot/platform/windows/processpowerqos.h"
+#endif
 #include "snow_shot/app/distribution.h"
 #include "snow_shot/platform/windows/shellcontextmenuregistration.h"
 #include "widgets/platform_compatibility.h"
@@ -642,6 +645,11 @@ int main(int argc, char* argv[]) {
 #ifndef Q_OS_MACOS
     static_cast<void>(snow_shot::presentation::settings::applyConfiguredApplicationPriority());
 #endif
+#ifdef Q_OS_WIN
+    auto& applicationStorage = snow_shot::storage::ApplicationStorage::instance();
+    static_cast<void>(snow_shot::platform::windows::applyProcessPowerQoS(
+        applicationStorage.configuration().value(QStringLiteral("system/power_qos")).toString()));
+#endif
     QApplication::setQuitOnLastWindowClosed(false);
 #ifndef Q_OS_MACOS
     QApplication::setWindowIcon(
@@ -651,7 +659,6 @@ int main(int argc, char* argv[]) {
     snow_shot::presentation::LanguageManager::instance().initialize();
     snow_shot::presentation::styles::ThemeManager::instance().initialize(app);
 #ifdef Q_OS_WIN
-    auto& applicationStorage = snow_shot::storage::ApplicationStorage::instance();
     if (!snow_shot::app::distribution::isStoreManaged() && !updaterRelaunch &&
         snow_shot::update::startupUpdateMayDelayLaunch(launchArguments) &&
         applicationStorage.configuration().value(QStringLiteral("updates/mode")).toString() ==

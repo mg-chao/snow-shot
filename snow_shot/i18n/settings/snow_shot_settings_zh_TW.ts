@@ -2022,6 +2022,10 @@
             <translation>選擇自動選取視窗或視窗子元素，或手動選取</translation>
         </message>
         <message>
+            <source>Choose how Windows throttles the application's execution speed</source>
+            <translation>選擇 Windows 如何限制應用程式的執行速度</translation>
+        </message>
+        <message>
             <source>Choose how much execution time the application receives</source>
             <translation>選擇應用程式取得的執行時間</translation>
         </message>
@@ -3682,6 +3686,10 @@
             <translation>當前景視窗符合篩選條件且佔滿整個顯示器時，暫停所選的輸入功能</translation>
         </message>
         <message>
+            <source>Performance</source>
+            <translation>效能</translation>
+        </message>
+        <message>
             <source>Permanently remove all saved screenshots</source>
             <translation>永久移除所有已儲存的截圖</translation>
         </message>
@@ -3820,6 +3828,14 @@
         <message>
             <source>Portrait A4</source>
             <translation>直向 A4</translation>
+        </message>
+        <message>
+            <source>Power QoS</source>
+            <translation>電源 QoS</translation>
+        </message>
+        <message>
+            <source>Power saving</source>
+            <translation>省電</translation>
         </message>
         <message>
             <source>Preload the selected model for faster recognition. Requires a resident process and uses additional memory</source>

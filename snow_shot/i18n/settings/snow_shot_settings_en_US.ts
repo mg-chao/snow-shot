@@ -2022,6 +2022,10 @@
             <translation>Choose automatic window or window sub-element selection, or select manually</translation>
         </message>
         <message>
+            <source>Choose how Windows throttles the application's execution speed</source>
+            <translation>Choose how Windows throttles the application's execution speed</translation>
+        </message>
+        <message>
             <source>Choose how much execution time the application receives</source>
             <translation>Choose how much execution time the application receives</translation>
         </message>
@@ -3682,6 +3686,10 @@
             <translation>Pause the selected inputs while a matching focused window occupies an entire monitor</translation>
         </message>
         <message>
+            <source>Performance</source>
+            <translation>Performance</translation>
+        </message>
+        <message>
             <source>Permanently remove all saved screenshots</source>
             <translation>Permanently remove all saved screenshots</translation>
         </message>
@@ -3820,6 +3828,14 @@
         <message>
             <source>Portrait A4</source>
             <translation>Portrait A4</translation>
+        </message>
+        <message>
+            <source>Power QoS</source>
+            <translation>Power QoS</translation>
+        </message>
+        <message>
+            <source>Power saving</source>
+            <translation>Power saving</translation>
         </message>
         <message>
             <source>Preload the selected model for faster recognition. Requires a resident process and uses additional memory</source>
