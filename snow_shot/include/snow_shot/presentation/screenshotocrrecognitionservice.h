@@ -98,6 +98,9 @@ struct ScreenshotOcrRequest {
     bool prepareVisualColors = false;
     // Pinned windows rasterize transformed geometry but sample the original pixels.
     std::optional<ScreenshotOcrColorSource> colorSource = {};
+    // Keep a nonresident worker through callback delivery when the caller may enqueue follow-up
+    // OCR.
+    bool retainProcessThroughCompletion = false;
 };
 
 class ScreenshotOcrRecognitionPort : public QObject {
