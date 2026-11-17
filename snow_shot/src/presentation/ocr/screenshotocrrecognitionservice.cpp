@@ -366,8 +366,10 @@ class ScreenshotOcrRecognitionService::Impl final {
         if (it == m_jobs.end() || it.value()->cancelled.load())
             return false;
         it.value()->request.priority = priority;
-        if (priority == ScreenshotOcrRequestPriority::Interactive)
+        if (priority == ScreenshotOcrRequestPriority::Interactive) {
+            it.value()->request.retainProcessThroughCompletion = true;
             rearmResidency();
+        }
         scheduleReconcile();
         return true;
     }
@@ -478,6 +480,7 @@ class ScreenshotOcrRecognitionService::Impl final {
         bool running = false;
         bool processSubmitted = false;
         bool localRendering = false;
+        bool processContinuationPending = false;
         qint64 submittedAt = -1;
         qint64 completedAt = -1;
         qint64 childPid = 0;
@@ -802,7 +805,8 @@ class ScreenshotOcrRecognitionService::Impl final {
             ++m_configurationGeneration;
         }
         if (!demand && !residentEffective()) {
-            if (m_transport != nullptr) {
+            // The OCR completion callback may synchronously enqueue paragraph recognition.
+            if (m_processContinuations == 0 && m_transport != nullptr) {
                 m_processState = ProcessState::Stopping;
 
                 m_processStopReason = ProcessStopReason::Shutdown;
@@ -1225,6 +1229,10 @@ class ScreenshotOcrRecognitionService::Impl final {
             if (prepareColors) {
                 job->localRendering = true;
                 ++m_localRenderingCount;
+                if (job->request.retainProcessThroughCompletion) {
+                    job->processContinuationPending = true;
+                    ++m_processContinuations;
+                }
             }
         }
         if (job->localRendering) {
@@ -1240,7 +1248,8 @@ class ScreenshotOcrRecognitionService::Impl final {
                                    result = std::move(result), source, canvasRect, background,
                                    renderFiltered, backgroundFill]() mutable {
                     snow_shot::platform::applyApplicationQoSToCurrentThread();
-                    if (renderFiltered && alive->load(std::memory_order_acquire) && beforeRender)
+                    if (alive->load(std::memory_order_acquire) &&
+                        !job->cancelled.load(std::memory_order_acquire) && beforeRender)
                         beforeRender();
                     SnowCanvasRegionFilterScratch scratch;
                     if (alive->load(std::memory_order_acquire) && !job->cancelled.load()) {
@@ -1317,8 +1326,17 @@ class ScreenshotOcrRecognitionService::Impl final {
                 else if (job->completion)
                     job->completion(std::move(result));
             }
+            releaseProcessContinuation(job);
         }
         m_delivering = false;
+    }
+
+    void releaseProcessContinuation(const std::shared_ptr<Job>& job) {
+        if (!job->processContinuationPending)
+            return;
+        job->processContinuationPending = false;
+        if (m_processContinuations > 0)
+            --m_processContinuations;
     }
 
     void finishLocalJob(const std::shared_ptr<Job>& job, ScreenshotOcrRecognitionResult result) {
@@ -1473,6 +1491,7 @@ class ScreenshotOcrRecognitionService::Impl final {
             m_jobs.clear();
             m_pending.clear();
             m_localRenderingCount = 0;
+            m_processContinuations = 0;
             releaseTransport();
         }
     }
@@ -1528,7 +1547,7 @@ class ScreenshotOcrRecognitionService::Impl final {
     ScreenshotOcrTransport* m_transport = nullptr;
     ProcessStopReason m_processStopReason = ProcessStopReason::None;
     qsizetype m_slotBytes = 0;
-    int m_runningCount = 0, m_localRenderingCount = 0;
+    int m_runningCount = 0, m_localRenderingCount = 0, m_processContinuations = 0;
     QByteArray m_readBuffer;
     QByteArray m_stderrBuffer;
     qint64 m_childPid = 0;

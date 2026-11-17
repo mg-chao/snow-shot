@@ -3574,6 +3574,7 @@ void ScreenshotRecognitionSessionController::startTextRecognition(
     request.image = m_target.image;
     request.canvasRect = m_target.canvasRect;
     request.priority = priority;
+    request.retainProcessThroughCompletion = m_active && m_mode == Mode::Text;
     request.renderFilteredImage =
         m_active && m_mode == Mode::Text && shouldRenderRecognitionInWorker();
     request.backgroundFill = request.renderFilteredImage && backgroundFillEnabled();
