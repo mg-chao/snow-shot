@@ -572,7 +572,7 @@ void ScreenshotOverlayCanvasPresenter::setOverlayEffectCursor(
         handle == ScreenshotSelectionEffectHandle::Width
             ? adqt::icons::makeCursor(
                   snow_shot::presentation::icons::custom::cursor::SelectionShadowCursor(),
-                  QSize(32, 32), QPoint(3, 3), dpr)
+                  QSize(32, 32), QPoint(14, 10), dpr)
             : snowCanvasCornerRadiusCursor(dpr);
     canvas->setCursorForLayer(SnowCanvasCursorLayer::Host, cursor);
 }
