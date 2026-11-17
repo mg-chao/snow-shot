@@ -780,12 +780,18 @@ struct ScreenRecordingController::Impl {
             followGuideTick.reset();
             return;
         }
-        if (followScreen != screen || followScreenBounds != bounds) {
+#ifdef Q_OS_MACOS
+        const qreal scale = 1.0;
+#else
+        const qreal scale = screen->devicePixelRatio();
+#endif
+        if (followScreen != screen || followScreenBounds != bounds || followScreenScale != scale) {
             followScreen = screen;
             followScreenBounds = bounds;
+            followScreenScale = scale;
             followGuide.emplace(recordingRegion.size(), bounds,
                                 pointer ? QPointF(*pointer) : center, followMouseSmoothMovement,
-                                followMouseReduceJitter);
+                                followMouseReduceJitter, scale);
             followGuideTick.reset();
             lastFollowPointer = pointer;
             followGuideIdleSince = now;
@@ -2957,6 +2963,7 @@ struct ScreenRecordingController::Impl {
     uint64_t captureViewportRevision = 0;
     QPointer<QScreen> followScreen;
     QRect followScreenBounds;
+    qreal followScreenScale = 1.0;
     std::optional<snow_shot::presentation::recording::ScreenRecordingFollowGuideMotion> followGuide;
     std::optional<std::chrono::steady_clock::time_point> followGuideTick;
     std::optional<QPoint> lastFollowPointer;

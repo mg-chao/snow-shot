@@ -10,6 +10,15 @@
 #include <chrono>
 
 namespace snow_shot::presentation::recording {
+struct ScreenRecordingAreaFrameMetrics {
+    qreal borderWidth;
+    qreal paddingWidth;
+
+    [[nodiscard]] QRectF expandedRect(const QRectF& selectionRect) const;
+};
+
+[[nodiscard]] ScreenRecordingAreaFrameMetrics screenRecordingAreaFrameMetrics(qreal physicalScale);
+
 struct ScreenRecordingAreaFrameGeometry {
     QRect windowGeometry;
     QRectF frameRect;
@@ -26,13 +35,12 @@ struct ScreenRecordingAreaBorderGeometry {
     QRectF right;
 };
 
-inline constexpr int screenRecordingPhysicalFrameInset = 3;
-
 // Geometry uses physical desktop pixels on Windows and desktop points on macOS.
 class ScreenRecordingFollowGuideMotion {
   public:
     ScreenRecordingFollowGuideMotion(const QSizeF& selectionSize, const QRectF& bounds,
-                                     const QPointF& cursor, bool smoothMovement, bool reduceJitter);
+                                     const QPointF& cursor, bool smoothMovement, bool reduceJitter,
+                                     qreal physicalScale = 1.0);
 
     void track(const QPointF& cursor);
     void advance(std::chrono::duration<qreal> elapsed);
@@ -67,7 +75,7 @@ struct ScreenRecordingObservedGeometry {
 // The native client rectangle already uses virtual-desktop physical pixels.
 [[nodiscard]] ScreenRecordingObservedGeometry
 screenRecordingObservedGeometry(const QRect& physicalClientRect, qreal physicalScale,
-                                const QMargins& physicalInsets = QMargins(3, 3, 3, 3));
+                                const QMargins& physicalInsets);
 
 [[nodiscard]] ScreenRecordingAreaFrameGeometry
 screenRecordingAreaFrameGeometry(const QRectF& logicalRegion, qreal physicalScale);
@@ -77,8 +85,8 @@ screenRecordingAreaFrameGeometry(const QRectF& logicalRegion, qreal physicalScal
 screenRecordingFollowFrameGeometry(const QRectF& logicalRegion, qreal physicalScale);
 
 [[nodiscard]] ScreenRecordingAreaBorderGeometry
-screenRecordingAreaBorderGeometry(const QRectF& frameRect, const QRectF& selectionRect,
-                                  qreal paddingWidth);
+screenRecordingAreaBorderGeometry(QRectF frameRect, QRectF selectionRect, qreal paddingWidth,
+                                  qreal physicalScale);
 
 [[nodiscard]] QRect screenRecordingCompatibleCaptureRegion(const QRect& selectedRecordingRegion,
                                                            const QRect& physicalBounds);

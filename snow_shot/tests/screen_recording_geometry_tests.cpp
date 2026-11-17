@@ -22,11 +22,19 @@ void require(bool condition, const char* message) {
 
 void observedNativeGeometryFollowsDisplaysWithoutRescalingPhysicalCoordinates() {
     // Include negative origins, a display seam, odd extents, and the minimum-size window.
-    for (const QRect client : {QRect(-1920, -200, 647, 367), QRect(-80, 40, 320, 240),
-                               QRect(3000, 180, 1286, 726), QRect(40, 40, 8, 8)}) {
+    for (const QRect selection : {QRect(-1920, -200, 641, 361), QRect(-80, 40, 314, 234),
+                                  QRect(3000, 180, 1280, 720), QRect(40, 40, 2, 2)}) {
         for (const qreal scale : {1.0, 1.25, 1.5, 1.75, 2.0}) {
-            const auto observed = recording::screenRecordingObservedGeometry(client, scale);
-            require(observed.recordingRegion == client.adjusted(3, 3, -3, -3),
+#ifdef Q_OS_WIN
+            const int borderWidth = qCeil(2.0 * scale);
+#else
+            constexpr int borderWidth = 2;
+#endif
+            const int inset = borderWidth + 1;
+            const QMargins insets(inset, inset, inset + 1, inset + 1);
+            const auto observed = recording::screenRecordingObservedGeometry(
+                selection.marginsAdded(insets), scale, insets);
+            require(observed.recordingRegion == selection,
                     "DPI and display origins must not rescale native capture coordinates");
             require(qAbs(observed.selectionRect.width() * scale -
                          observed.recordingRegion.width()) < 0.0001 &&
@@ -34,25 +42,27 @@ void observedNativeGeometryFollowsDisplaysWithoutRescalingPhysicalCoordinates() 
                              observed.recordingRegion.height()) < 0.0001,
                     "fractional logical layout must cover exactly the physical capture pixels");
             const auto border = recording::screenRecordingAreaBorderGeometry(
-                observed.frameRect, observed.selectionRect, observed.paddingWidth);
-            require(qAbs(border.top.height() * scale - 2.0) < 0.0001 &&
-                        qAbs(border.right.width() * scale - 2.0) < 0.0001,
-                    "native resizing must retain the physical frame width");
-            require(
-                qAbs(observed.frameRect.width() * scale - client.width()) < 0.0001,
-                "fractional-DPI borders must reach the native client edge without rounding loss");
+                observed.frameRect, observed.selectionRect, observed.paddingWidth, scale);
+            require(qAbs(border.top.height() * scale - borderWidth) < 0.0001 &&
+                        qAbs(border.right.width() * scale - borderWidth) < 0.0001 &&
+                        qAbs(border.bottom.height() * scale - borderWidth) < 0.0001 &&
+                        qAbs(border.left.width() * scale - borderWidth) < 0.0001,
+                    "native synchronization must retain the DPI-dependent border on all sides");
+            require(qAbs(observed.paddingWidth * scale - 1.0) < 0.0001,
+                    "native synchronization must retain a physical pixel for encoder padding");
         }
     }
     const auto rounded = recording::screenRecordingObservedGeometry(QRect(36, 36, 329, 249), 1.5,
                                                                     QMargins(4, 4, 4, 4));
     require(rounded.recordingRegion == QRect(40, 40, 321, 241),
             "Qt's fractional-DPI outer rounding must not change the initial screenshot selection");
-    require(!recording::screenRecordingObservedGeometry(QRect(0, 0, 7, 8), 1.25)
-                 .recordingRegion.isValid(),
-            "undersized native geometry must not publish an invalid capture selection");
+    require(
+        !recording::screenRecordingObservedGeometry(QRect(0, 0, 9, 10), 1.25, QMargins(4, 4, 4, 4))
+             .recordingRegion.isValid(),
+        "undersized native geometry must not publish an invalid capture selection");
 }
 
-void recordingFrameStaysOutsideTheSelection(qreal scale) {
+void recordingFrameStaysOutsideTheSelection(qreal scale, int physicalWidth) {
     const QRectF selection(300.4, 200.8, 641.2, 359.6);
     const recording::ScreenRecordingAreaFrameGeometry geometry =
         recording::screenRecordingAreaFrameGeometry(selection, scale);
@@ -77,8 +87,8 @@ void recordingFrameStaysOutsideTheSelection(qreal scale) {
     require(qAbs(displayedFrame.top() + displayedFrame.height() - selection.top() -
                  selection.height() - frameInset) < 0.0001,
             "recording frame should leave the requested bottom padding");
-    require(qAbs(geometry.borderWidth * scale - 2.0) < 0.0001,
-            "recording border should remain two physical pixels on every side");
+    require(qAbs(geometry.borderWidth * scale - physicalWidth) < 0.0001,
+            "recording border should have the expected width in whole physical pixels");
     require(qAbs(geometry.paddingWidth * scale - 1.0) < 0.0001,
             "recording frame padding should remain one physical pixel on every side");
 }
@@ -138,8 +148,15 @@ void followGuideFitsThePaintedBorderInsideTheDisplay() {
     require(qAbs(oversized.width() - 594.0) < 0.0001 &&
                 qAbs(oversized.width() / oversized.height() - 1600.0 / 900.0) < 0.0001,
             "an oversized guide shrinks uniformly after reserving space for the border");
-    for (const auto& guide : {topLeft, bottomRight, oversized}) {
-        for (const qreal scale : {1.0, 1.25, 1.5, 2.0}) {
+    for (const qreal scale : {1.0, 1.25, 1.5, 2.0}) {
+        ScreenRecordingFollowGuideMotion scaled({320, 240}, bounds, bounds.topLeft(), false, false,
+                                                scale);
+        const auto scaledTopLeft = scaled.viewport();
+        scaled.track(bounds.bottomRight());
+        const auto scaledOversized = ScreenRecordingFollowGuideMotion(
+                                         {1600, 900}, bounds, bounds.topLeft(), false, false, scale)
+                                         .viewport();
+        for (const auto& guide : {scaledTopLeft, scaled.viewport(), scaledOversized}) {
             const auto frame = recording::screenRecordingFollowFrameGeometry(
                 QRectF(guide.topLeft() / scale, guide.size() / scale), scale);
             const auto desktopFrame = frame.frameRect.translated(frame.windowGeometry.topLeft());
@@ -477,7 +494,7 @@ void recordingBorderSidesMeetAtEveryPaddedCorner() {
     const auto geometry =
         recording::screenRecordingAreaFrameGeometry(QRectF(100, 80, 641, 359), 1.0);
     const auto border = recording::screenRecordingAreaBorderGeometry(
-        geometry.frameRect, geometry.selectionRect, geometry.paddingWidth);
+        geometry.frameRect, geometry.selectionRect, geometry.paddingWidth, 1.0);
 
     require(qAbs(border.left.top() - geometry.frameRect.top()) < 0.0001 &&
                 qAbs(border.left.bottom() - geometry.frameRect.bottom()) < 0.0001 &&
@@ -599,9 +616,16 @@ int main(int argc, char** argv) {
     smoothFollowGuideCatchesLargeJumpsImmediately();
     observedNativeGeometryFollowsDisplaysWithoutRescalingPhysicalCoordinates();
     physicalSelectionMapsToItsLogicalSubregion();
-    recordingFrameStaysOutsideTheSelection(1.0);
-    recordingFrameStaysOutsideTheSelection(1.5);
-    recordingFrameStaysOutsideTheSelection(2.0);
+    recordingFrameStaysOutsideTheSelection(1.0, 2);
+#ifdef Q_OS_WIN
+    recordingFrameStaysOutsideTheSelection(1.25, 3);
+    recordingFrameStaysOutsideTheSelection(1.5, 3);
+    recordingFrameStaysOutsideTheSelection(1.75, 4);
+    recordingFrameStaysOutsideTheSelection(2.0, 4);
+#else
+    recordingFrameStaysOutsideTheSelection(1.25, 2);
+    recordingFrameStaysOutsideTheSelection(2.0, 2);
+#endif
     toolbarUsesBottomRightThenTopRight();
     toolbarRemainsInsideTheAvailableScreen();
     toolbarChoosesItsVerticalAnchorAfterHorizontalClamping();
