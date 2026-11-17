@@ -1087,6 +1087,29 @@ SettingsItemDefinition applicationQoSItem() {
 }
 #endif
 
+#ifdef Q_OS_WIN
+SettingsItemDefinition powerQoSItem() {
+    SettingsSelectDefinition payload;
+    payload.binding = SettingsSelectBinding::PowerQoS;
+    payload.options = {
+        {QStringLiteral("performance"),
+         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Performance"))},
+        {QStringLiteral("normal"), settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Normal"))},
+        {QStringLiteral("power_saving"),
+         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Power saving"))},
+    };
+    return {
+        QStringLiteral("system.power-qos"),
+        settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Power QoS")),
+        settingsText(QT_TRANSLATE_NOOP(
+            "SettingsCatalog", "Choose how Windows throttles the application's execution speed")),
+        {},
+        QStringLiteral("system/power_qos"),
+        payload,
+    };
+}
+#endif
+
 #if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
 SettingsItemDefinition memoryOptimizationPolicyItem() {
     SettingsSelectDefinition payload;
@@ -4139,6 +4162,9 @@ constexpr CatalogItemFactory catalogPageGeneralSectionCoreItems[] = {
 #if !defined(Q_OS_MACOS)
     {applicationPriorityItem},
 #endif
+#if defined(Q_OS_WIN)
+    {powerQoSItem},
+#endif
 #if defined(Q_OS_MACOS)
     {applicationQoSItem},
 #endif
@@ -6234,6 +6260,9 @@ QStringList SettingsCatalog::validationErrors() const {
                         break;
                     case SettingsSelectBinding::ApplicationPriority:
                         expectedKey = QStringLiteral("system/application_priority");
+                        break;
+                    case SettingsSelectBinding::PowerQoS:
+                        expectedKey = QStringLiteral("system/power_qos");
                         break;
                     case SettingsSelectBinding::MemoryOptimizationPolicy:
                         expectedKey = QStringLiteral("system/memory_optimization_policy");

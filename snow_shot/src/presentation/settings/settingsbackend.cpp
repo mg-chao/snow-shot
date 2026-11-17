@@ -12,6 +12,9 @@
 #include "snow_shot/presentation/settings/applicationpriority.h"
 #include "snow_shot/platform/applicationqos.h"
 #include "snow_shot/platform/windows/autostartregistration.h"
+#ifdef Q_OS_WIN
+#include "snow_shot/platform/windows/processpowerqos.h"
+#endif
 #ifdef Q_OS_MACOS
 #include "snow_shot/platform/macos/loginitemservice.h"
 #include <QGuiApplication>
@@ -55,6 +58,8 @@ const QString kContextMenuShortcutKey =
     QStringLiteral("context_menu_shortcuts/edit_with_snow_shot");
 
 #ifdef Q_OS_WIN
+const QString kPowerQoSKey = QStringLiteral("system/power_qos");
+
 QString contextMenuAccessKey(const QJsonValue& value) {
     const auto bindings = shortcuts::shortcutBindingsFromJson(value, false);
     return bindings.isEmpty() ? QString() : bindings.first().portableText;
@@ -612,6 +617,15 @@ QVariant BuiltInSettingsBackend::selectValue(SettingsSelectBinding binding) cons
             .value(QStringLiteral("system/application_priority"))
             .toString();
     }
+    case SettingsSelectBinding::PowerQoS:
+#ifdef Q_OS_WIN
+        return storage::ApplicationStorage::instance()
+            .configuration()
+            .value(kPowerQoSKey)
+            .toString();
+#else
+        return {};
+#endif
     case SettingsSelectBinding::Proxy:
         return storage::NetworkSettings().proxy();
     case SettingsSelectBinding::UpdateMode:
@@ -850,6 +864,23 @@ bool BuiltInSettingsBackend::applySelectValue(SettingsSelectBinding binding,
             static_cast<void>(applyApplicationPriority(*previous));
         }
         return persisted;
+#endif
+    }
+    case SettingsSelectBinding::PowerQoS: {
+#ifdef Q_OS_WIN
+        auto& configuration = storage::ApplicationStorage::instance().configuration();
+        const QString previous = configuration.value(kPowerQoSKey).toString();
+        const QString requested = value.toString();
+        if (!platform::windows::applyProcessPowerQoS(requested))
+            return false;
+        if (!configuration.setValue(kPowerQoSKey, requested)) {
+            static_cast<void>(platform::windows::applyProcessPowerQoS(previous));
+            return false;
+        }
+        emit synchronized();
+        return true;
+#else
+        return false;
 #endif
     }
     case SettingsSelectBinding::MemoryOptimizationPolicy:
@@ -2568,6 +2599,7 @@ bool BuiltInSettingsBackend::importConfigurationSnapshot(
 #ifdef Q_OS_WIN
     const auto requestedContextMenu = importedValue(contextMenuKey);
     const auto requestedContextMenuShortcuts = importedValue(kContextMenuShortcutKey);
+    const auto requestedPowerQoS = importedValue(kPowerQoSKey);
 #endif
     // Startup preferences are committed by the native transaction. Keep its previous
     // configuration baseline intact even if querying the OS during rollback fails.
@@ -2581,6 +2613,7 @@ bool BuiltInSettingsBackend::importConfigurationSnapshot(
 #ifdef Q_OS_WIN
     staged.insert(contextMenuKey, previous.value(contextMenuKey));
     staged.insert(kContextMenuShortcutKey, previous.value(kContextMenuShortcutKey));
+    staged.insert(kPowerQoSKey, previous.value(kPowerQoSKey));
 #endif
     if (!configuration.applySnapshot(staged, schemaVersion))
         return false;
@@ -2631,6 +2664,10 @@ bool BuiltInSettingsBackend::importConfigurationSnapshot(
 #endif
     }
 #ifdef Q_OS_WIN
+    if (previous.value(kPowerQoSKey) != requestedPowerQoS)
+        accepted =
+            applySelectValue(SettingsSelectBinding::PowerQoS, requestedPowerQoS.toVariant()) &&
+            accepted;
     if (previous.value(contextMenuKey) != requestedContextMenu ||
         previous.value(kContextMenuShortcutKey) != requestedContextMenuShortcuts)
         accepted = applyContextMenuSettings(requestedContextMenu, requestedContextMenuShortcuts) &&
@@ -3369,17 +3406,29 @@ SettingsResetResult BuiltInSettingsBackend::resetSectionWithResults(SettingsSect
              storage::ConfigurationSchema::defaultValue(
                  QStringLiteral("system/application_priority"))},
         };
+        const bool priorityApplied = priority.has_value() && applyApplicationPriority(*priority);
+        bool runtimeAccepted = priorityApplied;
 #ifdef Q_OS_WIN
         defaults.insert(QStringLiteral("system/memory_optimization_policy"),
                         storage::ConfigurationSchema::defaultValue(
                             QStringLiteral("system/memory_optimization_policy")));
+        const auto defaultPowerQoS = storage::ConfigurationSchema::defaultValue(kPowerQoSKey);
+        defaults.insert(kPowerQoSKey, defaultPowerQoS);
+        const QString previousPowerQoS = storage.configuration().value(kPowerQoSKey).toString();
+        const bool changePowerQoS = previousPowerQoS != defaultPowerQoS.toString();
+        if (priorityApplied && changePowerQoS)
+            runtimeAccepted = platform::windows::applyProcessPowerQoS(defaultPowerQoS.toString());
 #endif
-        const bool accepted = priority.has_value() && applyApplicationPriority(*priority) &&
-                              storage.configuration().setValues(defaults);
+        const bool accepted = runtimeAccepted && storage.configuration().setValues(defaults);
         if (accepted) {
             emit synchronized();
-        } else if (previous.has_value()) {
-            static_cast<void>(applyApplicationPriority(*previous));
+        } else {
+#ifdef Q_OS_WIN
+            if (runtimeAccepted && changePowerQoS)
+                static_cast<void>(platform::windows::applyProcessPowerQoS(previousPowerQoS));
+#endif
+            if (previous.has_value())
+                static_cast<void>(applyApplicationPriority(*previous));
         }
         return accepted;
 #endif

@@ -70,6 +70,7 @@ enum class SettingsSelectBinding {
     PinTextFont,
     ApplicationPriority,
     ApplicationQoS,
+    PowerQoS,
     MemoryOptimizationPolicy,
     ContextMenuMode,
     Proxy,

@@ -480,6 +480,9 @@ constexpr SchemaAllowedValues kSchemaAllowed4 = {kSchemaStrings6, std::size(kSch
 constexpr SchemaString kSchemaStrings7[] = {u"user_interactive", u"user_initiated", u"default",
                                             u"utility", u"background"};
 constexpr SchemaAllowedValues kSchemaAllowed5 = {kSchemaStrings7, std::size(kSchemaStrings7)};
+constexpr SchemaString kPowerQoSValues[] = {u"performance", u"normal", u"power_saving"};
+constexpr SchemaAllowedValues kPowerQoSAllowedValues = {kPowerQoSValues,
+                                                        std::size(kPowerQoSValues)};
 constexpr SchemaString kSchemaStrings8[] = {u"smart_control", u"disabled"};
 constexpr SchemaAllowedValues kSchemaAllowed6 = {kSchemaStrings8, std::size(kSchemaStrings8)};
 constexpr SchemaString kSchemaStrings9[] = {u"images_only", u"image_files", u"disabled"};
@@ -918,6 +921,8 @@ constexpr SchemaEntryDescriptor kEntryDescriptors[] = {
      nullptr, &kSchemaAllowed4},
     {u"system/application_qos", stringDefault(u"user_interactive"), ConfigurationValueKind::String,
      nullptr, &kSchemaAllowed5},
+    {u"system/power_qos", stringDefault(u"performance"), ConfigurationValueKind::String, nullptr,
+     &kPowerQoSAllowedValues},
     {u"system/memory_optimization_policy", stringDefault(u"smart_control"),
      ConfigurationValueKind::String, nullptr, &kSchemaAllowed6},
 #ifdef Q_OS_MACOS

@@ -4115,23 +4115,26 @@ void memoryOptimizationPolicyCatalog() {
     const settings::SettingsSearchIndex index(registry);
 #if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
     const auto* section = catalog.section(QStringLiteral("general"), QStringLiteral("core"));
-    require(section != nullptr && section->items.size() == 2 && section->items.last().id == id &&
+    require(section != nullptr && !section->items.isEmpty() && section->items.last().id == id &&
                 section->reset == settings::SettingsSectionReset::SystemSettings &&
                 item != nullptr && item->configurationKey == key &&
                 item->title.translated() == QStringLiteral("Memory optimization policy"),
-            "supported platforms expose memory policy second in Application performance");
+            "supported platforms expose memory policy last in Application performance");
 #ifdef Q_OS_MACOS
-    require(section->items.first().id == QStringLiteral("system.application-qos") &&
+    require(section->items.size() == 2 &&
+                section->items.first().id == QStringLiteral("system.application-qos") &&
                 item->description.translated() ==
                     QStringLiteral("Smart control releases unused heap memory while the app is "
                                    "idle. Active captures and pinned images are kept"),
             "macOS exposes memory policy after QoS with heap reclamation guidance");
 #else
-    require(section->items.first().id == QStringLiteral("system.application-priority") &&
+    require(section->items.size() == 3 &&
+                section->items.first().id == QStringLiteral("system.application-priority") &&
+                section->items.at(1).id == QStringLiteral("system.power-qos") &&
                 item->description.translated() ==
                     QStringLiteral("Smart control trims resident memory while the app is idle. "
                                    "The next use may briefly take longer"),
-            "Windows retains memory policy after priority with resident memory guidance");
+            "Windows exposes memory policy after Power QoS with resident memory guidance");
 #endif
     const auto* select = std::get_if<settings::SettingsSelectDefinition>(&item->payload);
     require(select != nullptr &&

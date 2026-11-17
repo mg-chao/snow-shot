@@ -460,6 +460,20 @@
     },
     {
       "allowedStringValues": [
+        "performance",
+        "normal",
+        "power_saving"
+      ],
+      "defaultJsonType": 3,
+      "defaultStringIsNull": false,
+      "defaultValue": "performance",
+      "integerRange": null,
+      "key": "system/power_qos",
+      "maximumListItems": -1,
+      "valueKind": "String"
+    },
+    {
+      "allowedStringValues": [
         "smart_control",
         "disabled"
       ],

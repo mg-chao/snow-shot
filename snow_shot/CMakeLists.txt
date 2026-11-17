@@ -1030,6 +1030,8 @@ set(SNOW_SHOT_SETTINGS_SOURCES
 )
 if(WIN32)
     list(APPEND SNOW_SHOT_SETTINGS_SOURCES
+        include/snow_shot/platform/windows/processpowerqos.h
+        src/platform/windows/processpowerqos.cpp
         src/platform/windows/printscreenshortcutrecorder.cpp)
 endif()
 set(SNOW_SHOT_GLOBAL_SHORTCUT_SOURCES
@@ -12697,6 +12699,19 @@ if(APPLE AND SNOW_SHOT_BUILD_TESTS)
         set_tests_properties(snow-shot-application-qos-${_snow_qos}-tests PROPERTIES LABELS "unit;macos" TIMEOUT 30 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     endforeach()
     unset(_snow_qos)
+endif()
+
+if(WIN32 AND SNOW_SHOT_BUILD_TESTS)
+    add_executable(snow-shot-power-qos-settings-tests tests/power_qos_settings_tests.cpp
+        src/presentation/services/screenshotclipboardservice.cpp)
+    target_link_libraries(snow-shot-power-qos-settings-tests PRIVATE
+        snow_shot_settings snow_shot_image_codec)
+    snow_shot_import_offscreen_platform(snow-shot-power-qos-settings-tests)
+    add_test(NAME snow-shot-power-qos-settings-tests
+        COMMAND snow-shot-power-qos-settings-tests -platform offscreen)
+    set_tests_properties(snow-shot-power-qos-settings-tests PROPERTIES LABELS "unit;windows"
+        TIMEOUT 30 ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 endif()
 
 if(APPLE AND SNOW_SHOT_BUILD_TESTS)
