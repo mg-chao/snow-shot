@@ -1,5 +1,6 @@
 #include "snow_shot/presentation/screenshotocrcontroller.h"
 #include "snow_shot/presentation/screenshotclipboardcontent.h"
+#include "snow_shot/presentation/screenshotclipboardservice.h"
 #include "snow_shot/presentation/screenshotdocumentformatting.h"
 #include <QTextDocument>
 #include <QCryptographicHash>
