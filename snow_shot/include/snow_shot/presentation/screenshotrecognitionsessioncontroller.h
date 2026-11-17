@@ -214,7 +214,8 @@ class ScreenshotRecognitionSessionController final : public QObject {
     // Publishes received translation text before the host captures the displayed result.
     bool flushTranslationUpdates();
     [[nodiscard]] std::unique_ptr<QMimeData>
-    recognitionClipboardMimeData(const ScreenshotOcrPresentation* displayedPresentation = nullptr);
+    recognitionClipboardMimeData(const ScreenshotOcrPresentation* displayedPresentation = nullptr,
+                                 bool copyFullTextResult = false);
 #if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
     [[nodiscard]] ScreenshotDocumentCopyRequest documentCopyRequest() const;
 #endif

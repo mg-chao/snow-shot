@@ -2897,7 +2897,8 @@ void ScreenshotController::Impl::handleAutomaticTextRecognitionAction(bool avail
     }
 
     if (action == QStringLiteral("copy_text") || action == QStringLiteral("quick_copy_text")) {
-        static_cast<void>(m_ocrController->copyRecognitionToClipboard(false));
+        static_cast<void>(
+            m_ocrController->copyRecognitionToClipboard(false, /*copyFullTextResult=*/true));
     } else if (action == QStringLiteral("copy_text_and_end_screenshot") ||
                action == QStringLiteral("quick_copy_text_and_end_screenshot")) {
         m_ocrController->scheduleCopyRecognitionAndEndCapture();

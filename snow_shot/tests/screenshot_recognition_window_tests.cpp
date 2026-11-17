@@ -1472,11 +1472,9 @@ void ocrDoubleClickCopiesOnlyTheClickedBlock() {
                         settings.setDefaultPunctuation(QStringLiteral("full")),
                     "configure OCR block formatting and punctuation defaults");
             doubleClickAt(paragraphPoint);
-            require(
-                QApplication::clipboard()->text() ==
-                        QStringLiteral("First\uff0c \u4e2d\u6587 e\u0301Second\uff01 \U0001f642") &&
-                    presentation->selectedText() == paragraph,
-                "automatic copy applies OCR defaults without changing displayed text");
+            require(QApplication::clipboard()->text() == paragraph &&
+                        presentation->selectedText() == paragraph,
+                    "double-click copies the block with its original line breaks and punctuation");
 
             window.setOcrCopyDefaultsEnabled(false);
             const QString partial = QStringLiteral("Translated, paragraph\n\U0001f642");

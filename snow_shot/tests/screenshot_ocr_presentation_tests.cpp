@@ -254,10 +254,7 @@ void lineBoxSelectionPreviewsCurrentHitsAndCommitsFixedToggles() {
     presentation.beginLineBoxSelection(QPointF(-1, 39));
     presentation.updateLineBoxSelection(QRectF(-1, 39, 52, 12));
     presentation.finishLineBoxSelection();
-    require(presentation.selectedText() == QStringLiteral("Alpha\nGamma") &&
-                snow_shot::presentation::applyOcrTextTransforms(
-                    presentation, QStringLiteral("keep"), QString{}) ==
-                    QStringLiteral("Alpha\nGamma"),
+    require(presentation.selectedText() == QStringLiteral("Alpha\nGamma"),
             "sparse selection copies in reading order without inserting gaps for omitted lines");
     presentation.selectAll();
     require(presentation.selectedText() == QStringLiteral("Alpha\nBeta\nGamma"),

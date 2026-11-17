@@ -791,11 +791,21 @@ void smartTypesettingUsesRecognizedLayout() {
     presentation->beginTextSelection(ScreenshotOcrTextPosition{0, 8});
     presentation->updateTextSelection(ScreenshotOcrTextPosition{1, 6});
     presentation->finishTextSelection();
+    const QString selection = QStringLiteral("trans-\nlation");
     require(window.copyVisibleContentToClipboard() &&
-                QApplication::clipboard()->text() == QStringLiteral("translation") &&
+                QApplication::clipboard()->text() == selection &&
                 defaultController->recognitionClipboardMimeData(presentation.get())->text() ==
-                    QStringLiteral("translation"),
-            "default Smart Typesetting copies only selected characters across OCR lines");
+                    selection &&
+                defaultController->recognitionClipboardMimeData()->text() == selection,
+            "copying an OCR selection keeps its line breaks and hyphen with Smart Typesetting set");
+    const auto automaticCopy = defaultController->recognitionClipboardMimeData(
+        presentation.get(), /*copyFullTextResult=*/true);
+    require(automaticCopy && automaticCopy->text() == expectedDefault &&
+                presentation->selectedText() == selection,
+            "automatic copy uses both defaults on the complete result with a selection present");
+    presentation->selectAll();
+    require(window.copyVisibleContentToClipboard() && QApplication::clipboard()->text() == original,
+            "selecting all and copying keeps the original OCR text");
     presentation->clearTextSelection();
     defaultController->beginTextEditing();
     require(defaultController->textDraft() == expectedDefault,
@@ -860,11 +870,11 @@ void recognizedTextDefaultsApplyOnFirstEditAndOriginalCopy() {
     presentation->updateTextSelection(ScreenshotOcrTextPosition{1, 1});
     presentation->finishTextSelection();
     require(window.copyVisibleContentToClipboard() &&
-                QApplication::clipboard()->text() == QString(QChar(0xFF0C)) + QStringLiteral("B"),
-            "original-image window selection copy applies defaults");
+                QApplication::clipboard()->text() == QStringLiteral(",\nB"),
+            "original-image window selection copy preserves punctuation and line breaks");
     require(session.recognitionClipboardMimeData(presentation.get())->text() ==
-                QString(QChar(0xFF0C)) + QStringLiteral("B"),
-            "selected original-image copy uses the same defaults");
+                QStringLiteral(",\nB"),
+            "session selection copy preserves punctuation and line breaks");
     presentation->clearTextSelection();
     session.beginTextEditing();
     require(session.textDraft() ==

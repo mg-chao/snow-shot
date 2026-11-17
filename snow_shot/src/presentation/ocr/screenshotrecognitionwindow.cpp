@@ -1251,11 +1251,7 @@ std::unique_ptr<QMimeData> ScreenshotRecognitionWindow::textSelectionClipboardMi
         !m_ocrPresentation->hasTextSelection())
         return {};
     auto mime = std::make_unique<QMimeData>();
-    const snow_shot::storage::TextRecognitionSettings settings;
-    mime->setText(m_ocrCopyDefaultsEnabled ? snow_shot::presentation::applyOcrTextTransforms(
-                                                 *m_ocrPresentation, settings.defaultFormatting(),
-                                                 settings.defaultPunctuation())
-                                           : m_ocrPresentation->selectedText());
+    mime->setText(m_ocrPresentation->selectedText());
     return mime;
 }
 
@@ -2514,18 +2510,12 @@ bool ScreenshotRecognitionWindow::copyVisibleContentToClipboard() {
         contentAvailable = true;
         if (m_ocrPresentation->hasTextSelection()) {
             text = m_ocrPresentation->selectedText();
-        } else {
-            QStringList lines;
-            lines.reserve(m_ocrPresentation->lines.size());
-            for (const ScreenshotOcrLine& line : m_ocrPresentation->lines) {
-                lines.push_back(line.text);
-            }
-            text = lines.join(QLatin1Char('\n'));
-        }
-        if (m_ocrCopyDefaultsEnabled) {
+        } else if (m_ocrCopyDefaultsEnabled) {
             const snow_shot::storage::TextRecognitionSettings settings;
             text = snow_shot::presentation::applyOcrTextTransforms(
                 *m_ocrPresentation, settings.defaultFormatting(), settings.defaultPunctuation());
+        } else {
+            text = snow_shot::presentation::originalOcrText(*m_ocrPresentation);
         }
     }
     if (!contentAvailable) {
