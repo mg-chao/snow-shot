@@ -139,6 +139,39 @@ void mixedRegionsRetainTheBlurFallback() {
     require(source.pixelColor(30, 40) == QColor(Qt::black), "source must remain immutable");
 }
 
+void smartMergeFillsTheWholeParagraphWithTheSourceColor() {
+    const QColor background(36, 70, 91);
+    QImage source(160, 100, QImage::Format_RGB32);
+    source.fill(background);
+    {
+        QPainter painter(&source);
+        painter.fillRect(36, 29, 65, 3, Qt::red);
+        painter.fillRect(30, 63, 85, 3, Qt::red);
+    }
+    ScreenshotOcrPresentation presentation;
+    presentation.lines = {box(30, 25, 100, 50)};
+    auto& line = presentation.lines[0];
+    line.smartMergeTranslation = true;
+    line.sourceLineQuads = {box(36, 25, 70, 14).quad, box(30, 60, 100, 15).quad};
+    prepareScreenshotOcrFillColors(presentation, source, source.rect(), false);
+    require(line.backgroundFillColor == background && !presentation.solidBackgroundFill,
+            "Smart Merge samples its background even when the general OCR style is Blur");
+    const auto region = screenshotOcrFilterRegion(presentation, source.rect(), source.size());
+    QRect pixels;
+    const auto fill = renderScreenshotOcrFilteredImage(source, source.rect(), presentation,
+                                                       Qt::white, 1, &pixels);
+    require(region == QRegion(QRect(30, 25, 100, 50)) && pixels == region.boundingRect() &&
+                !fill.isNull(),
+            "Smart Merge fills the paragraph bounds, including the gaps between source rows");
+    for (const auto point : {QPoint(55, 30), QPoint(55, 50), QPoint(55, 64)})
+        require(fill.pixelColor(point - pixels.topLeft()) == background,
+                "paragraph ink and inter-row gaps receive the representative solid color");
+
+    line.smartMergeTranslation = false;
+    prepareScreenshotOcrFillColors(presentation, source, source.rect(), false);
+    require(!line.backgroundFillColor.isValid(), "Original restores the general OCR fill policy");
+}
+
 void flatPanelsSurviveTextNoiseAndGeometry() {
     for (const QColor background :
          {QColor(24, 32, 48), QColor(240, 232, 224), QColor(15, 70, 220)}) {
@@ -486,6 +519,7 @@ int main(int argc, char** argv) {
     splitBackgroundChoosesDominantPaletteColor();
     backgroundFillNeverBlurs();
     mixedRegionsRetainTheBlurFallback();
+    smartMergeFillsTheWholeParagraphWithTheSourceColor();
     flatPanelsSurviveTextNoiseAndGeometry();
     complexBackgroundsStillChooseSolidColors();
     clippingScalingAndModeChanges();

@@ -888,15 +888,21 @@ void prepareScreenshotOcrFillColors(ScreenshotOcrPresentation& presentation, con
     if (cancelled && cancelled->load(std::memory_order_relaxed))
         return;
     const QRectF normalized = canvasRect.normalized();
+    const bool hasSolidFill =
+        backgroundFill ||
+        std::ranges::any_of(presentation.lines, &ScreenshotOcrLine::smartMergeTranslation);
     const bool valid =
-        backgroundFill && !source.isNull() && normalized.isValid() && !normalized.isEmpty();
-    if (valid && presentation.solidBackgroundFill &&
+        hasSolidFill && !source.isNull() && normalized.isValid() && !normalized.isEmpty();
+    if (valid && presentation.solidBackgroundFill == backgroundFill &&
         presentation.m_fillColorImageKey == source.cacheKey() &&
         presentation.m_fillColorCanvasRect == normalized &&
         presentation.m_fillColorGeometry.size() == presentation.lines.size() &&
         std::equal(presentation.lines.cbegin(), presentation.lines.cend(),
                    presentation.m_fillColorGeometry.cbegin(),
-                   [](const auto& line, const auto& quad) { return line.quad == quad; }))
+                   [backgroundFill](const auto& line, const auto& geometry) {
+                       return line.quad == geometry.quad &&
+                              (backgroundFill || line.smartMergeTranslation) == geometry.solid;
+                   }))
         return;
 
     presentation.solidBackgroundFill = backgroundFill;
@@ -904,7 +910,8 @@ void prepareScreenshotOcrFillColors(ScreenshotOcrPresentation& presentation, con
     presentation.m_fillColorGeometry.clear();
     if (!valid) {
         for (qsizetype index = 0; index < presentation.lines.size(); ++index) {
-            if (presentation.lines.at(index).backgroundFillColor.isValid())
+            if (presentation.lines.at(index).backgroundFillColor.isValid() &&
+                !presentation.lines.at(index).smartMergeTranslation)
                 presentation.lines[index].backgroundFillColor = QColor();
         }
         return;
@@ -927,8 +934,10 @@ void prepareScreenshotOcrFillColors(ScreenshotOcrPresentation& presentation, con
         if (cancelled && cancelled->load(std::memory_order_relaxed))
             return;
         auto& line = presentation.lines[i];
-        line.backgroundFillColor = estimateBackground(source, quads.at(i), textRegions);
-        presentation.m_fillColorGeometry.push_back(line.quad);
+        const bool solid = backgroundFill || line.smartMergeTranslation;
+        line.backgroundFillColor =
+            solid ? estimateBackground(source, quads.at(i), textRegions) : QColor();
+        presentation.m_fillColorGeometry.push_back({line.quad, solid});
     }
     presentation.m_fillColorCanvasRect = normalized;
     presentation.m_fillColorImageKey = source.cacheKey();
@@ -1000,8 +1009,9 @@ QRegion screenshotOcrFilterRegion(const ScreenshotOcrPresentation& presentation,
     for (const ScreenshotOcrLine& line : presentation.lines) {
         // The displayed block is authoritative after layout processing, including its gaps.
         if (line.quad.size() >= 3) {
-            region += QRegion(imagePolygonForQuad(line.quad, normalized, pixelSize, true,
-                                                  presentation.solidBackgroundFill));
+            region += QRegion(imagePolygonForQuad(
+                line.quad, normalized, pixelSize, !line.smartMergeTranslation,
+                presentation.solidBackgroundFill || line.smartMergeTranslation));
         }
     }
     return region.intersected(QRect(QPoint(), pixelSize));
@@ -1059,12 +1069,13 @@ QImage renderScreenshotOcrFilteredImage(const QImage& source, const QRectF& canv
         if (line.quad.size() < 3) {
             continue;
         }
-        const QPolygon polygon = imagePolygonForQuad(line.quad, normalized, source.size(), true,
-                                                     presentation.solidBackgroundFill);
+        const bool solidFill = presentation.solidBackgroundFill || line.smartMergeTranslation;
+        const QPolygon polygon = imagePolygonForQuad(line.quad, normalized, source.size(),
+                                                     !line.smartMergeTranslation, solidFill);
         if (polygon.isEmpty()) {
             continue;
         }
-        if (presentation.solidBackgroundFill || line.backgroundFillColor.isValid()) {
+        if (solidFill || line.backgroundFillColor.isValid()) {
             QRegion region = QRegion(polygon).intersected(imageRect);
             if (!region.isEmpty()) {
                 crop = crop.united(region.boundingRect());

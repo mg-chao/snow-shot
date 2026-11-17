@@ -158,7 +158,7 @@ using snow_shot::translation::TranslationService;
 
 std::shared_ptr<ScreenshotOcrPresentation>
 prepareOverlayLayout(const ScreenshotOcrPresentation& source,
-                     const ScreenshotOcrPresentation& layout, const QFont& font) {
+                     const ScreenshotOcrPresentation& layout, const QFont& font, bool smartMerge) {
     auto overlay = std::make_shared<ScreenshotOcrPresentation>();
     overlay->selection = source.selection;
     overlay->lines = layout.lines;
@@ -167,7 +167,8 @@ prepareOverlayLayout(const ScreenshotOcrPresentation& source,
         const auto& indices = overlay->lines[index].sourceLineIndices;
         sourceIndices.push_back(indices.isEmpty() ? QVector<int>{index} : indices);
     }
-    setScreenshotOcrTranslationFontCaps(overlay->lines, source.lines, sourceIndices, font);
+    prepareScreenshotOcrTranslationLayout(overlay->lines, source.lines, sourceIndices, font,
+                                          smartMerge);
     overlay->prepareForRendering();
     return overlay;
 }
@@ -705,18 +706,19 @@ void ScreenshotRecognitionSessionController::seedRecognitionResults(
         entry.editingSession = std::move(editingSession);
 #if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
         QVector<int> paragraphsToRestore;
-        const auto sourceIndices =
-            results.translatedText
-                ? snow_shot::presentation::ocrTranslationSourceIndices(
-                      *results.translatedText, *entry.presentation, &paragraphsToRestore)
-                : std::nullopt;
+        bool smartMerge = false;
+        const auto sourceIndices = results.translatedText
+                                       ? snow_shot::presentation::ocrTranslationSourceIndices(
+                                             *results.translatedText, *entry.presentation,
+                                             &paragraphsToRestore, &smartMerge)
+                                       : std::nullopt;
         if (sourceIndices) {
             entry.overlayTranslation.presentation = copyTextPresentation(results.translatedText);
             for (const int index : paragraphsToRestore)
                 entry.overlayTranslation.presentation->lines[index].paragraph = true;
-            setScreenshotOcrTranslationFontCaps(entry.overlayTranslation.presentation->lines,
-                                                entry.presentation->lines, *sourceIndices,
-                                                QApplication::font());
+            prepareScreenshotOcrTranslationLayout(entry.overlayTranslation.presentation->lines,
+                                                  entry.presentation->lines, *sourceIndices,
+                                                  QApplication::font(), smartMerge);
             entry.overlayTranslation.status = TextCacheEntry::TranslationStatus::Completed;
             entry.overlayTranslation.captured = true;
             entry.translationConfiguration =
@@ -2884,7 +2886,7 @@ bool ScreenshotRecognitionSessionController::showOverlayTranslation() {
             guard->showOverlayTranslation();
             return;
         }
-        const auto prepared = prepareOverlayLayout(*source, *grouped, font);
+        const auto prepared = prepareOverlayLayout(*source, *grouped, font, grouped != source);
         // Failure layouts are usable for this action, but a later explicit action may retry.
         if (layout == QStringLiteral("original") || grouped != source)
             entry->overlayLayouts.insert(layout, prepared);

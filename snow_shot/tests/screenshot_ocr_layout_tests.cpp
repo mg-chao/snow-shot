@@ -61,6 +61,31 @@ int main(int argc, char** argv) {
                     std::optional{QVector<QVector<int>>{{1, 0, 2}}},
                 "translation provenance restores without heuristic regrouping");
     }
+    {
+        using snow_shot::presentation::mergeOcrParagraphs;
+        QVector<ScreenshotOcrLine> lines{box(QStringLiteral("left bottom"), 63, 53, 12, 44),
+                                         box(QStringLiteral("right bottom"), 79, 53, 14, 44),
+                                         box(QStringLiteral("left top"), 62, 1, 12, 44),
+                                         box(QStringLiteral("right top"), 80, 8, 12, 40)};
+        for (auto& line : lines)
+            line.direction = ScreenshotOcrTextDirection::Vertical;
+        const auto paragraph = mergeOcrParagraphs(lines, {{0, 2, 3, 1}});
+        require(
+            paragraph && paragraph->size() == 1 &&
+                paragraph->front().text ==
+                    QStringLiteral("right top right bottom left top left bottom") &&
+                paragraph->front().sourceLineIndices == QVector<int>{3, 1, 2, 0} &&
+                paragraph->front().sourceLineQuads ==
+                    QVector<QPolygonF>{lines[3].quad, lines[1].quad, lines[2].quad, lines[0].quad},
+            "vertical paragraphs read down each column before moving to the left");
+
+        lines.push_back(box(QStringLiteral("header"), 0, -40, 150));
+        lines.push_back(box(QStringLiteral("footer"), 0, 110, 150));
+        QVector<QVector<int>> order;
+        const auto separate = mergeOcrParagraphs(lines, {{2, 0}, {5}, {1, 3}, {4}}, &order);
+        require(separate && order == QVector<QVector<int>>{{4}, {3, 1}, {2, 0}, {5}},
+                "separate vertical paragraphs read right to left between horizontal blocks");
+    }
     // Fixtures adapted from STranslate OcrLayoutAnalyzerTests (MIT).
     const QVector<ScreenshotOcrLine> paragraph{
         box(QStringLiteral("This is the first line"), 0, 0, 180),
@@ -235,9 +260,10 @@ int main(int argc, char** argv) {
     for (auto& line : translation.lines)
         line.text = QStringLiteral("translated");
     QVector<int> paragraphsToRestore;
-    require(snow_shot::presentation::ocrTranslationSourceIndices(translation, source,
-                                                                 &paragraphsToRestore) == indices &&
-                paragraphsToRestore.isEmpty(),
+    bool smartMerge = false;
+    require(snow_shot::presentation::ocrTranslationSourceIndices(
+                translation, source, &paragraphsToRestore, &smartMerge) == indices &&
+                paragraphsToRestore.isEmpty() && smartMerge,
             "restoration reconstructs captured Smart Merge provenance without translated text");
     translation.lines[0].paragraph = false;
     require(snow_shot::presentation::ocrTranslationSourceIndices(translation, source,
@@ -257,9 +283,18 @@ int main(int argc, char** argv) {
             "unrelated paragraph flag changes do not qualify a capture for migration");
     translation.lines = source.lines;
     translation.lines[0].text = QStringLiteral("short");
-    require(snow_shot::presentation::ocrTranslationSourceIndices(translation, source) ==
-                QVector<QVector<int>>{{0}},
+    require(snow_shot::presentation::ocrTranslationSourceIndices(
+                translation, source, nullptr, &smartMerge) == QVector<QVector<int>>{{0}} &&
+                !smartMerge,
             "restoration also matches the original unmerged layout");
+    const auto singleton = snow_shot::presentation::mergeOcrParagraphs(source.lines, {{0}});
+    require(singleton.has_value(), "a Smart Merge group may contain a single source box");
+    translation.lines = *singleton;
+    require(snow_shot::presentation::ocrTranslationSourceIndices(
+                translation, source, nullptr, &smartMerge) == QVector<QVector<int>>{{0}} &&
+                smartMerge,
+            "saved single-box Smart Merge retains its explicit provenance");
+    translation.lines = source.lines;
     translation.lines[0].quad.translate(10, 0);
     require(!snow_shot::presentation::ocrTranslationSourceIndices(translation, source),
             "unrelated geometry must not inherit another source's font cap");
