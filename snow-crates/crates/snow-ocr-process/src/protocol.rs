@@ -1,7 +1,7 @@
 use std::io::{self, Read, Write};
 
 pub const MAGIC: [u8; 4] = *b"SOCR";
-pub const VERSION: u16 = 7;
+pub const VERSION: u16 = 8;
 pub const MAX_FRAME: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,6 +27,8 @@ pub enum Kind {
     DiscardImage = 18,
     ConfigureAcceleration = 19,
     AccelerationReady = 20,
+    GroupParagraphs = 21,
+    ParagraphsComplete = 22,
 }
 
 impl TryFrom<u16> for Kind {
@@ -53,6 +55,8 @@ impl TryFrom<u16> for Kind {
             18 => Ok(Self::DiscardImage),
             19 => Ok(Self::ConfigureAcceleration),
             20 => Ok(Self::AccelerationReady),
+            21 => Ok(Self::GroupParagraphs),
+            22 => Ok(Self::ParagraphsComplete),
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "unknown OCR protocol message",
@@ -157,6 +161,9 @@ impl<'a> Decoder<'a> {
     }
     pub fn u64(&mut self) -> io::Result<u64> {
         Ok(u64::from_le_bytes(self.take(8)?.try_into().unwrap()))
+    }
+    pub fn f32(&mut self) -> io::Result<f32> {
+        Ok(f32::from_le_bytes(self.take(4)?.try_into().unwrap()))
     }
     pub fn string(&mut self) -> io::Result<String> {
         let length = self.u32()? as usize;

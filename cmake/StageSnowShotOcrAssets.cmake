@@ -85,6 +85,7 @@ if(_small_model_index STREQUAL "")
     message(FATAL_ERROR "The checked-in OCR asset manifest does not describe the Small model.")
 endif()
 _snow_ocr_manifest_field(_model_id models ${_small_model_index} id)
+_snow_ocr_manifest_field(_paragraph_id paragraph_model id)
 
 string(JSON _runtime_file_count LENGTH "${_manifest}" runtime files)
 string(JSON _model_file_count LENGTH "${_manifest}" models ${_small_model_index} files)
@@ -188,7 +189,7 @@ file(GLOB _staged_model_directories LIST_DIRECTORIES TRUE
 foreach(_directory IN LISTS _staged_model_directories)
     if(IS_DIRECTORY "${_directory}")
         get_filename_component(_name "${_directory}" NAME)
-        if(NOT _name STREQUAL _model_id)
+        if(NOT _name STREQUAL _model_id AND NOT _name STREQUAL _paragraph_id)
             file(REMOVE_RECURSE "${_directory}")
         endif()
     endif()
@@ -318,4 +319,20 @@ if(NOT _runtime_ok OR NOT _models_ok)
 else()
     message(STATUS
         "Snow Shot OCR assets are staged in ${SNOW_OCR_DESTINATION}")
+endif()
+
+# Paragraph weights are independently verified: their absence never disables OCR.
+_snow_ocr_manifest_field(_paragraph_name paragraph_model files 0 name)
+_snow_ocr_manifest_field(_paragraph_size paragraph_model files 0 size)
+_snow_ocr_manifest_field(_paragraph_hash paragraph_model files 0 sha256)
+_snow_ocr_manifest_field(_paragraph_url paragraph_model files 0 url)
+set(_paragraph_cache "${SNOW_OCR_ARTIFACTS_DIR}/ocr-models-${_paragraph_id}/${_paragraph_name}")
+_snow_ocr_fetch("${_paragraph_url}" "${_paragraph_size}" "${_paragraph_hash}"
+    "${_paragraph_cache}" _paragraph_ready)
+if(_paragraph_ready)
+    set(_paragraph_directory "${SNOW_OCR_DESTINATION}/models/${_paragraph_id}")
+    file(MAKE_DIRECTORY "${_paragraph_directory}")
+    file(COPY_FILE "${_paragraph_cache}" "${_paragraph_directory}/${_paragraph_name}" ONLY_IF_DIFFERENT)
+    file(WRITE "${_paragraph_directory}/.complete.json"
+        "{\"schema\":1,\"component\":\"${_paragraph_id}\"}")
 endif()

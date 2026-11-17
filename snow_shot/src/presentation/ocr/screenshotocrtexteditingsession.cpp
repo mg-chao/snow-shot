@@ -130,7 +130,8 @@ bool ScreenshotOcrTextEditingSession::setFormatting(const QString& value,
         value == QStringLiteral("smart")) {
         normalized = value;
     }
-    if (normalized == m_formatting) {
+    if (normalized == m_formatting &&
+        (normalized != QStringLiteral("smart") || smartText == m_smartText)) {
         return false;
     }
     if (m_formatting.isEmpty() && m_punctuation.isEmpty()) {

@@ -34,6 +34,33 @@ void expect(const QVector<ScreenshotOcrLine>& input, const QStringList& expected
 int main(int argc, char** argv) {
     QCoreApplication application(argc, argv);
     using snow_shot::presentation::mergeOcrLayout;
+    {
+        using snow_shot::presentation::mergeOcrParagraphs;
+        const QVector<ScreenshotOcrLine> lines{box(QStringLiteral("second"), 0, 24, 100),
+                                               box(QStringLiteral("first"), 0, 0, 100),
+                                               box(QStringLiteral("distant"), 0, 1000, 100)};
+        const auto separate = mergeOcrParagraphs(lines, {{0}, {2}, {1}});
+        require(separate && separate->size() == 3 &&
+                    separate->at(0).text == QStringLiteral("first"),
+                "spatial order ignores model enumeration and cannot merge model singletons");
+        const auto combined = mergeOcrParagraphs(lines, {{2, 0, 1}});
+        const auto permuted = mergeOcrParagraphs(lines, {{1, 2, 0}});
+        require(combined && permuted && combined->size() == 1 &&
+                    combined->front().text == QStringLiteral("first second distant") &&
+                    combined->front().text == permuted->front().text &&
+                    combined->front().sourceLineIndices == QVector<int>{1, 0, 2},
+                "model membership overrides gaps while host geometry determines reading order");
+        require(!mergeOcrParagraphs(lines, {{0, 1}}) &&
+                    !mergeOcrParagraphs(lines, {{0, 1}, {1, 2}}) &&
+                    !mergeOcrParagraphs(lines, {{0, 1, 3}}),
+                "incomplete, duplicate and out-of-range membership must fail without guessing");
+        ScreenshotOcrPresentation source, translated;
+        source.lines = lines;
+        translated.lines = *combined;
+        require(snow_shot::presentation::ocrTranslationSourceIndices(translated, source) ==
+                    std::optional{QVector<QVector<int>>{{1, 0, 2}}},
+                "translation provenance restores without heuristic regrouping");
+    }
     // Fixtures adapted from STranslate OcrLayoutAnalyzerTests (MIT).
     const QVector<ScreenshotOcrLine> paragraph{
         box(QStringLiteral("This is the first line"), 0, 0, 180),

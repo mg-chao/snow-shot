@@ -158,6 +158,7 @@ class ScreenshotRecognitionWindow final : public QWidget {
         std::function<bool()> translationActive;
         std::function<std::unique_ptr<QMimeData>()> translationClipboard;
         std::function<bool(QString)> copyDocument = {};
+        std::function<bool(const ScreenshotOcrPresentation*)> copySmart = {};
     };
     [[nodiscard]] AttachmentToken attachSession(QObject* owner, SessionCallbacks callbacks);
     [[nodiscard]] bool ownsAttachment(const QObject* owner, AttachmentToken token) const;

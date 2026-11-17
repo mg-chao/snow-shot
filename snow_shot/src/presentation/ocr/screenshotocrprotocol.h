@@ -6,8 +6,8 @@
 
 namespace snow_shot::ocr::protocol {
 constexpr quint32 kProtocolMagic = 0x52434f53; // "SOCR" in little endian.
-constexpr quint16 kProtocolVersion = 7;
-constexpr auto kRuntimeVersion = "1.2.2";
+constexpr quint16 kProtocolVersion = 8;
+constexpr auto kRuntimeVersion = "1.3.0";
 constexpr quint16 kHello = 1;
 constexpr quint16 kReady = 2;
 constexpr quint16 kSubmit = 3;
@@ -20,6 +20,7 @@ constexpr quint16 kAttachBuffer = 12, kBufferAttached = 13;
 constexpr quint16 kRecognize = 14, kImageConsumed = 15;
 constexpr quint16 kDetachBuffer = 16, kBufferDetached = 17, kDiscardImage = 18;
 constexpr quint16 kConfigureAcceleration = 19, kAccelerationReady = 20;
+constexpr quint16 kGroupParagraphs = 21, kParagraphsComplete = 22;
 constexpr qsizetype kSlotHeaderBytes = 32;
 constexpr unsigned long kTransportStopTimeoutMilliseconds = 5000;
 constexpr qsizetype kMaximumFrameBytes = 1024LL * 1024LL;
@@ -46,6 +47,11 @@ inline void appendU32(QByteArray& bytes, quint32 value) {
 inline void appendU64(QByteArray& bytes, quint64 value) {
     for (int index = 0; index < 8; ++index)
         bytes.append(char((value >> (index * 8)) & 0xff));
+}
+inline void appendF32(QByteArray& bytes, float value) {
+    quint32 raw;
+    std::memcpy(&raw, &value, sizeof(raw));
+    appendU32(bytes, raw);
 }
 inline void appendString(QByteArray& bytes, const QString& value) {
     const QByteArray utf8 = value.toUtf8();

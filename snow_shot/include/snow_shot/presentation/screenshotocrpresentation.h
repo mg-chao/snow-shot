@@ -43,6 +43,8 @@ struct ScreenshotOcrLine {
     QColor sourceTextColor{};
     // Aligned with sourceLineQuads, including separate word boxes on the same visual row.
     QVector<QColor> sourceLineTextColors{};
+    // Derived translation provenance; never produced by OCR recognition.
+    QVector<int> sourceLineIndices{};
 };
 
 struct ScreenshotOcrTextUpdate {

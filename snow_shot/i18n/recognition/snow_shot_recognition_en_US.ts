@@ -184,6 +184,10 @@
             <translation>No table cells were recognized</translation>
         </message>
         <message>
+            <source>Paragraph grouping is unavailable. Using the original OCR lines</source>
+            <translation>Paragraph grouping is unavailable. Using the original OCR lines</translation>
+        </message>
+        <message>
             <source>Preparing text recognition components</source>
             <translation>Preparing text recognition components</translation>
         </message>

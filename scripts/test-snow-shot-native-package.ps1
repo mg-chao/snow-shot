@@ -113,7 +113,7 @@ function Invoke-SnowNativePackageProbe {
         }
         $workerArchitecture = if ($TargetArchitecture -eq 'arm64') { 'aarch64' } else { 'x86_64' }
         $identity = & $runtime.FullName --version 2>$null
-        if ($LASTEXITCODE -ne 0 -or $identity -cne "snow-ocr-process $version windows-$workerArchitecture protocol 7") {
+        if ($LASTEXITCODE -ne 0 -or $identity -cne "snow-ocr-process $version windows-$workerArchitecture protocol 8") {
             throw 'Packaged native OCR runtime probe failed.'
         }
     }
@@ -131,7 +131,23 @@ function Invoke-SnowNativePackageProbe {
         if ($defaultModel.Count -ne 1 -or $defaultModel[0].id -cnotin $models.Name) {
             throw 'Packaged OCR models omit the trusted default model.'
         }
+        if (-not $assets.paragraph_model -or $assets.paragraph_model.id -cnotin $models.Name) {
+            throw 'Packaged OCR models omit the trusted paragraph model.'
+        }
         foreach ($directory in $models) {
+            if ($directory.Name -ceq $assets.paragraph_model.id) {
+                $files = @($assets.paragraph_model.files)
+                if ($files.Count -ne 1 -or $files[0].name -cne 'line2para_1.onnx') {
+                    throw 'Packaged paragraph model has an invalid pinned file list.'
+                }
+                $path = Join-Path $directory.FullName $files[0].name
+                if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or
+                    $files[0].size -ne (Get-Item -LiteralPath $path).Length -or
+                    $files[0].sha256 -cne (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()) {
+                    throw 'Packaged paragraph model bytes differ from the trusted asset manifest.'
+                }
+                continue
+            }
             $model = @($assets.models | Where-Object { $_.id -ceq $directory.Name })
             if ($model.Count -ne 1) { throw 'Packaged OCR model set is absent from the trusted manifest.' }
             if (@($model[0].files).Count -ne 3) { throw 'Packaged OCR model set has an invalid pinned file list.' }

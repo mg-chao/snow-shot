@@ -1,6 +1,7 @@
 mod acceleration;
 mod buffer;
 use buffer::{SLOT_HEADER, SharedImage};
+mod paragraph;
 mod protocol;
 mod session;
 mod worker;
@@ -360,6 +361,37 @@ fn main() -> io::Result<()> {
             Ok(Event::Command(frame)) => frame,
             Ok(Event::Completed(result)) => {
                 match result {
+                    WorkResult::ParagraphsComplete(completion) => {
+                        active = None;
+                        let mut payload = Vec::new();
+                        if completion.cancelled {
+                            put_u8(&mut payload, 2);
+                            put_string(&mut payload, "cancelled");
+                        } else {
+                            match completion.result {
+                                Err(error) => {
+                                    put_u8(&mut payload, 0);
+                                    put_string(&mut payload, &error);
+                                }
+                                Ok(groups) => {
+                                    put_u8(&mut payload, 1);
+                                    put_u32(&mut payload, groups.len() as u32);
+                                    for group in groups {
+                                        put_u32(&mut payload, group.len() as u32);
+                                        for index in group {
+                                            put_u32(&mut payload, index as u32);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        write_frame(
+                            &mut writer,
+                            Kind::ParagraphsComplete,
+                            completion.id,
+                            &payload,
+                        )?;
+                    }
                     WorkResult::Prepared(id, ok) => {
                         write_frame(&mut writer, Kind::SessionReady, id, &[u8::from(ok)])?
                     }
@@ -481,7 +513,7 @@ fn main() -> io::Result<()> {
                 ack.extend_from_slice(&sequence.to_le_bytes());
                 write_frame(&mut writer, Kind::ImageConsumed, frame.request_id, &ack)?;
             }
-            Kind::Recognize => {
+            Kind::Recognize | Kind::GroupParagraphs => {
                 if active.is_some() {
                     return Err(io::Error::other("OCR inference is already running"));
                 }
@@ -493,14 +525,18 @@ fn main() -> io::Result<()> {
                 }
                 let cancelled = Arc::new(AtomicBool::new(false));
                 active = Some((id, Arc::clone(&cancelled)));
-                work_tx
-                    .send(Work::Recognize(Job {
-                        id,
-                        queued_at: Instant::now(),
-                        input,
-                        cancelled,
-                    }))
-                    .map_err(io::Error::other)?;
+                let job = Job {
+                    id,
+                    queued_at: Instant::now(),
+                    input,
+                    cancelled,
+                };
+                let work = if frame.kind == Kind::GroupParagraphs {
+                    Work::GroupParagraphs(job, paragraph::decode(&frame.payload)?)
+                } else {
+                    Work::Recognize(job)
+                };
+                work_tx.send(work).map_err(io::Error::other)?;
             }
             Kind::DiscardImage => {
                 if staged.as_ref().map(|(id, _)| *id) == Some(frame.request_id) {

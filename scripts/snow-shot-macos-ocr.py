@@ -283,8 +283,8 @@ def prepare_bundle(app, library_directory=None, runtime_only=False):
 
 
 def stage_models(manifest, cache, destination, all_models=False):
-    for model in manifest['models']:
-        if not all_models and model['type'] != 'small':
+    for model in [*manifest['models'], manifest['paragraph_model']]:
+        if not all_models and model.get('type', 'small') != 'small':
             continue
         for item in model['files']:
             cached = cache / ('ocr-models-' + model['id']) / item['name']
@@ -308,14 +308,14 @@ def runtime_manifest(source, runtime, arch='arm64'):
             raise ValueError(f'Expected a thin {architecture["label"]} Mach-O binary: {path}')
     if not os.access(runtime / RUNTIME_FILES[0], os.X_OK):
         raise ValueError('The OCR worker is not executable')
-    expected = f'snow-ocr-process {version} macos-{architecture["worker"]} protocol 7'
+    expected = f'snow-ocr-process {version} macos-{architecture["worker"]} protocol 8'
     if run(str(runtime / RUNTIME_FILES[0]), '--version') != expected:
         raise ValueError('The OCR worker version/protocol does not match the application')
     return dict(schema=3, default_model='small', runtime=dict(
-        version=version, platform=f'macos-{arch}', delivery='bundled', protocol=7,
+        version=version, platform=f'macos-{arch}', delivery='bundled', protocol=8,
         executable=RUNTIME_FILES[0],
         files=[descriptor(runtime / n) for n in runtime_files]),
-        models=source['models'])
+        models=source['models'], paragraph_model=source['paragraph_model'])
 
 
 def bundled_models_directory(runtime):
@@ -367,13 +367,13 @@ def verify_assets(source, runtime, runtime_only=False, arch='arm64'):
         raise ValueError('Bundled OCR manifest does not match finalized runtime bytes')
     if runtime_only:
         return actual
-    small = next(m for m in source['models'] if m['type'] == 'small')
-    directory = runtime / 'assets/ocr/models' / small['id']
-    for item in small['files']:
-        if not valid(directory / item['name'], item):
-            raise ValueError(f'Missing or corrupt bundled model: {item["name"]}')
-    if json.loads((directory / '.complete.json').read_text()) != dict(schema=1, component=small['id']):
-        raise ValueError('Invalid bundled model completion marker')
+    for model in [next(m for m in source['models'] if m['type'] == 'small'), source['paragraph_model']]:
+        directory = runtime / 'assets/ocr/models' / model['id']
+        for item in model['files']:
+            if not valid(directory / item['name'], item):
+                raise ValueError(f'Missing or corrupt bundled model: {item["name"]}')
+        if json.loads((directory / '.complete.json').read_text()) != dict(schema=1, component=model['id']):
+            raise ValueError('Invalid bundled model completion marker')
     return actual
 
 

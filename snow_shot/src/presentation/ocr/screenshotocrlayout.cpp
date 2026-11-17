@@ -3,6 +3,7 @@
 #include "snow_shot/presentation/screenshotocrlayout.h"
 
 #include <QRegularExpression>
+#include <QTransform>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -648,6 +649,90 @@ QVector<ScreenshotOcrLine> mergeOcrLayoutImpl(const QVector<ScreenshotOcrLine>& 
 }
 } // namespace
 
+std::optional<QVector<ScreenshotOcrLine>>
+mergeOcrParagraphs(const QVector<ScreenshotOcrLine>& lines, const QVector<QVector<int>>& groups,
+                   QVector<QVector<int>>* sourceIndices) {
+    QVector<bool> seen(lines.size(), false);
+    for (const auto& group : groups) {
+        if (group.isEmpty())
+            return std::nullopt;
+        for (int index : group) {
+            if (index < 0 || index >= lines.size() || seen[index])
+                return std::nullopt;
+            seen[index] = true;
+        }
+    }
+    if (!std::all_of(seen.cbegin(), seen.cend(), [](bool value) { return value; }))
+        return std::nullopt;
+    QVector<Segment> items;
+    QVector<qreal> heights;
+    for (int index = 0; index < lines.size(); ++index) {
+        const auto& line = lines[index];
+        if (line.quad.size() != 4)
+            return std::nullopt;
+        for (const auto& point : line.quad)
+            if (!std::isfinite(point.x()) || !std::isfinite(point.y()))
+                return std::nullopt;
+        items.push_back({line, line.quad.boundingRect(), 1, {index}});
+        heights.push_back(items.back().bounds.height());
+    }
+    // Rank original boxes by the established spatial regions, rows and columns.
+    // These regions never become paragraph memberships and no boxes are combined.
+    QVector<int> rank(lines.size());
+    int next = 0;
+    for (const auto& region : regions(items, std::max<qreal>(1, median(heights)))) {
+        for (auto row : rows(region.lines)) {
+            std::stable_sort(row.lines.begin(), row.lines.end(), [](const auto& a, const auto& b) {
+                return a.bounds.left() < b.bounds.left();
+            });
+            for (const auto& item : row.lines)
+                rank[item.sourceIndices.front()] = next++;
+        }
+    }
+    auto ordered = groups;
+    for (auto& group : ordered)
+        std::sort(group.begin(), group.end(), [&](int a, int b) { return rank[a] < rank[b]; });
+    std::sort(ordered.begin(), ordered.end(),
+              [&](const auto& a, const auto& b) { return rank[a.front()] < rank[b.front()]; });
+    QVector<ScreenshotOcrLine> result;
+    for (const auto& group : ordered) {
+        auto output = lines[group.front()];
+        output.sourceLineQuads.clear();
+        output.sourceLineTextColors.clear();
+        output.sourceLineIndices = group;
+        output.paragraph =
+            output.paragraph || group.size() > 1 || hasEmbeddedLineBreak(output.text);
+        Group sources;
+        for (int i = 0; i < group.size(); ++i) {
+            const auto& source = lines[group[i]];
+            if (i > 0)
+                output.text = join(output.text, source.text, true);
+            output.sourceLineQuads.push_back(source.quad);
+            output.sourceLineTextColors.push_back(source.sourceTextColor);
+            sources.add({source, source.quad.boundingRect(), 1, {group[i]}});
+        }
+        output.sourceTextColor = representativeSourceColor(sources);
+        if (group.size() > 1) {
+            // Preserve the first spatial line's orientation while enclosing every source quad.
+            const QPointF edge = output.quad[1] - output.quad[0];
+            QTransform rotation;
+            rotation.rotateRadians(-std::atan2(edge.y(), edge.x()));
+            QRectF bounds;
+            bool first = true;
+            for (const auto& sourceQuad : output.sourceLineQuads) {
+                const auto local = rotation.map(sourceQuad).boundingRect();
+                bounds = first ? local : bounds.united(local);
+                first = false;
+            }
+            output.quad = rotation.inverted().map(quad(bounds));
+        }
+        result.push_back(std::move(output));
+    }
+    if (sourceIndices)
+        *sourceIndices = std::move(ordered);
+    return result;
+}
+
 QVector<ScreenshotOcrLine> mergeOcrLayout(const QVector<ScreenshotOcrLine>& lines,
                                           const QPointF& imageOrigin,
                                           QVector<QVector<int>>* sourceIndices) {
@@ -662,6 +747,27 @@ ocrTranslationSourceIndices(const ScreenshotOcrPresentation& translation,
         paragraphsToRestore->clear();
     if (translation.selection != source.selection)
         return std::nullopt;
+    if (std::any_of(translation.lines.cbegin(), translation.lines.cend(),
+                    [](const auto& line) { return !line.sourceLineIndices.isEmpty(); })) {
+        QVector<QVector<int>> indices;
+        QVector<bool> seen(source.lines.size(), false);
+        for (const auto& line : translation.lines) {
+            if (line.sourceLineIndices.isEmpty() ||
+                line.sourceLineIndices.size() != line.sourceLineQuads.size())
+                return std::nullopt;
+            for (int i = 0; i < line.sourceLineIndices.size(); ++i) {
+                const int index = line.sourceLineIndices[i];
+                if (index < 0 || index >= source.lines.size() || seen[index] ||
+                    source.lines[index].quad != line.sourceLineQuads[i])
+                    return std::nullopt;
+                seen[index] = true;
+            }
+            indices.push_back(line.sourceLineIndices);
+        }
+        return std::all_of(seen.cbegin(), seen.cend(), [](bool value) { return value; })
+                   ? std::optional{indices}
+                   : std::nullopt;
+    }
     const auto matches = [&](const QVector<ScreenshotOcrLine>& lines,
                              const QVector<bool>* legacyParagraphs = nullptr) {
         if (translation.lines.size() != lines.size())

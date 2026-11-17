@@ -37,9 +37,9 @@ const QString kWindowsPlatform = QStringLiteral("windows-arm64");
 const QString kWindowsPlatform = QStringLiteral("windows-x64");
 #endif
 const QString kWindowsWorkerName =
-    QStringLiteral("snow-ocr-process-1.2.2-%1.exe").arg(kWindowsPlatform);
+    QStringLiteral("snow-ocr-process-1.3.0-%1.exe").arg(kWindowsPlatform);
 const QString kWindowsArchiveName =
-    QStringLiteral("snow-ocr-runtime-1.2.2-%1.zip").arg(kWindowsPlatform);
+    QStringLiteral("snow-ocr-runtime-1.3.0-%1.zip").arg(kWindowsPlatform);
 #ifdef Q_OS_MACOS
 const QString kWorkerName = QStringLiteral("snow-ocr-process");
 #if defined(Q_PROCESSOR_ARM_64)
@@ -135,13 +135,13 @@ void writeAssetManifest(const QString& root, bool completePayload) {
     const QByteArray recognizer("recognizer");
     const QByteArray dictionary("dictionary");
     const QString runtimeDirectory =
-        QDir(root).filePath(QStringLiteral("runtimes/1.2.2/%1").arg(kWindowsPlatform));
+        QDir(root).filePath(QStringLiteral("runtimes/1.3.0/%1").arg(kWindowsPlatform));
     if (completePayload) {
         writeFixture(QDir(runtimeDirectory).filePath(kWindowsWorkerName), process);
         writeFixture(QDir(runtimeDirectory).filePath(QStringLiteral("runtime-manifest.json")),
                      runtimeManifest);
         writeFixture(QDir(runtimeDirectory).filePath(QStringLiteral(".complete.json")),
-                     R"({"schema":1,"component":"1.2.2"})");
+                     R"({"schema":1,"component":"1.3.0"})");
         writeInstalledSmallModelFixture(root);
     }
     const QJsonArray runtimeFiles{
@@ -173,7 +173,7 @@ void writeAssetManifest(const QString& root, bool completePayload) {
         {QStringLiteral("schema"), 2},
         {QStringLiteral("default_model"), QStringLiteral("small")},
         {QStringLiteral("runtime"),
-         QJsonObject{{QStringLiteral("version"), QStringLiteral("1.2.2")},
+         QJsonObject{{QStringLiteral("version"), QStringLiteral("1.3.0")},
                      {QStringLiteral("platform"), kWindowsPlatform},
                      {QStringLiteral("archive"),
                       assetFile(kWindowsArchiveName, archive,
@@ -204,10 +204,10 @@ void writeAssetManifest(const QString& root, bool completePayload) {
     manifest.insert(QStringLiteral("schema"), 3);
     manifest.insert(
         QStringLiteral("runtime"),
-        QJsonObject{{QStringLiteral("version"), QStringLiteral("1.2.2")},
+        QJsonObject{{QStringLiteral("version"), QStringLiteral("1.3.0")},
                     {QStringLiteral("platform"), kMacPlatform},
                     {QStringLiteral("delivery"), QStringLiteral("bundled")},
-                    {QStringLiteral("protocol"), 7},
+                    {QStringLiteral("protocol"), 8},
                     {QStringLiteral("executable"), kWorkerName},
                     {QStringLiteral("files"), QJsonArray{assetFile(kWorkerName, macProcess)}}});
 #endif
@@ -282,6 +282,92 @@ bool writeDownloadedModelFixture(const QString& destination, QString* error) {
     return archive;
 }
 
+void paragraphAssetsAreIndependent() {
+    QTemporaryDir offline, cache;
+    writeAssetManifest(offline.path(), true);
+    const QString manifestPath =
+        QDir(offline.path()).filePath(QStringLiteral("asset-manifest.json"));
+    QFile file(manifestPath);
+    require(file.open(QIODevice::ReadOnly), "read paragraph fixture manifest");
+    auto manifest = QJsonDocument::fromJson(file.readAll()).object();
+    file.close();
+    manifest.insert(QStringLiteral("paragraph_model"),
+                    QJsonObject{{QStringLiteral("id"), QStringLiteral("line2para-1-c8cede9")},
+                                {QStringLiteral("files"),
+                                 QJsonArray{assetFile(
+                                     QStringLiteral("line2para_1.onnx"), QByteArray("paragraph"),
+                                     QStringLiteral("https://example.invalid/paragraph"))}}});
+    writeFixture(manifestPath, QJsonDocument(manifest).toJson());
+    ScreenshotOcrAssets::Options options;
+    options.offlineRoot = offline.path();
+    options.bundledRuntimeRoot = offline.path();
+    options.cacheRoot = cache.path();
+    int downloads = 0;
+    options.downloadOverride = [&](const QString& url, const QString& path, QString*) {
+        ++downloads;
+        require(url.endsWith(QStringLiteral("/paragraph")),
+                "grouping downloads only paragraph weights");
+        writeFixture(path, "paragraph");
+        return true;
+    };
+    {
+        ScreenshotOcrAssets recognition(options);
+        bool ready = false;
+        QObject::connect(&recognition, &ScreenshotOcrAssets::ready, &recognition,
+                         [&](const auto& result) { ready = result.valid(); });
+        recognition.prepare();
+        require(waitUntil([&] { return ready; }, 5000) && downloads == 0,
+                "ordinary OCR never acquires paragraph weights");
+    }
+    // Remove OCR weights: grouping needs only the independently available runtime.
+    const QDir model(QDir(offline.path()).filePath(QStringLiteral("models/ppocrv6-small-463ea9f")));
+    require(QFile::remove(model.filePath(QStringLiteral("PP-OCRv6_det_small.onnx"))),
+            "remove detector fixture");
+    options.paragraphGrouping = true;
+    ScreenshotOcrAssets paragraph(options);
+    int ready = 0;
+    QObject::connect(&paragraph, &ScreenshotOcrAssets::ready, &paragraph, [&](const auto& result) {
+        require(result.valid() && result.detectorModelPath.isEmpty() &&
+                    result.paragraphModelPath.endsWith(QStringLiteral("line2para_1.onnx")),
+                "paragraph resolution is independent of OCR model selection");
+        ++ready;
+    });
+    paragraph.prepare();
+    require(waitUntil([&] { return ready == 1; }, 5000) && downloads == 1,
+            "lazy paragraph acquisition");
+    paragraph.prepare();
+    require(waitUntil([&] { return ready == 2; }, 5000) && downloads == 1,
+            "verified paragraph cache reuse");
+    for (const bool corrupt : {false, true}) {
+        QTemporaryDir failedCache;
+        options.cacheRoot = failedCache.path();
+        int attempts = 0;
+        options.downloadOverride = [&](const QString&, const QString& path, QString* error) {
+            ++attempts;
+            if (corrupt) {
+                writeFixture(path, "incorrect");
+                return true;
+            }
+            *error = QStringLiteral("unavailable");
+            return false;
+        };
+        ScreenshotOcrAssets unavailable(options);
+        bool failed = false;
+        QObject::connect(&unavailable, &ScreenshotOcrAssets::failed, &unavailable,
+                         [&](const QString&) { failed = true; });
+        QObject::connect(&unavailable, &ScreenshotOcrAssets::ready, &unavailable, [&](const auto&) {
+            require(false, "invalid paragraph weights rejected");
+        });
+        unavailable.prepare();
+        require(waitUntil([&] { return failed; }, 5000) && attempts == 1,
+                "paragraph acquisition fails directly without automatic retry");
+        require(!QFileInfo::exists(
+                    QDir(failedCache.path())
+                        .filePath(QStringLiteral("models/line2para-1-c8cede9/.complete.json"))),
+                "failed paragraph downloads never become a usable cache");
+    }
+}
+
 void validOfflineAssetsAreSelectedWithoutNetwork() {
     QTemporaryDir offline;
     QTemporaryDir cache;
@@ -343,7 +429,7 @@ void installedAssetsUseLightweightChecks() {
 #else
             const QDir runtime(
                 QDir(payloadRoot)
-                    .filePath(QStringLiteral("runtimes/1.2.2/%1").arg(kWindowsPlatform)));
+                    .filePath(QStringLiteral("runtimes/1.3.0/%1").arg(kWindowsPlatform)));
             changeFixtureContentsWithoutResizing(runtime.filePath(kWindowsWorkerName));
             changeFixtureContentsWithoutResizing(
                 runtime.filePath(QStringLiteral("runtime-manifest.json")));
@@ -522,7 +608,7 @@ void acquiredRuntimeStillRequiresMatchingHashes() {
         require(
             !QDir(cache.path())
                     .exists(
-                        QStringLiteral("runtimes/1.2.2/%1/.complete.json").arg(kWindowsPlatform)) &&
+                        QStringLiteral("runtimes/1.3.0/%1/.complete.json").arg(kWindowsPlatform)) &&
                 QDir(QDir(cache.path()).filePath(QStringLiteral(".staging")))
                     .entryList(QDir::NoDotAndDotDot | QDir::AllEntries)
                     .isEmpty(),
@@ -1039,7 +1125,7 @@ void storeRuntimeNeverFallsBackToCachedCode() {
         writeAssetManifest(offline.path(), true);
         writeAssetManifest(cache.path(), true);
         const QString worker = QDir(offline.path())
-                                   .filePath(QStringLiteral("runtimes/1.2.2/%1/%2")
+                                   .filePath(QStringLiteral("runtimes/1.3.0/%1/%2")
                                                  .arg(kWindowsPlatform, kWindowsWorkerName));
         if (corrupt)
             changeFixtureContentsWithoutResizing(worker);
@@ -1341,6 +1427,7 @@ int main(int argc, char** argv) {
         std::cout << "locked" << std::endl;
         return application.exec();
     }
+    paragraphAssetsAreIndependent();
     validOfflineAssetsAreSelectedWithoutNetwork();
     installedAssetsUseLightweightChecks();
     downloadedModelsStillRequireMatchingHashes();

@@ -184,6 +184,10 @@
             <translation>未辨識到表格儲存格</translation>
         </message>
         <message>
+            <source>Paragraph grouping is unavailable. Using the original OCR lines</source>
+            <translation>段落分組無法使用，將使用原始 OCR 文字行</translation>
+        </message>
+        <message>
             <source>Preparing text recognition components</source>
             <translation>正在準備文字辨識元件</translation>
         </message>

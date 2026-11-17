@@ -298,6 +298,9 @@ class ScreenshotPinnedWindow final : public QWidget {
     [[nodiscard]] std::shared_ptr<ScreenshotExportArtifact>
     automationArtifact(bool original = false, bool viewport = false);
     [[nodiscard]] std::unique_ptr<QMimeData> automationClipboardMimeData(bool original) const;
+    bool
+    prepareAutomationSmartClipboard(bool original,
+                                    std::function<void(std::unique_ptr<QMimeData>)> completion);
     [[nodiscard]] std::optional<ScreenshotRecognitionFileSnapshot> automationFileSnapshot() const;
     [[nodiscard]] ScreenshotRecognitionResults recognitionSnapshot() const;
     [[nodiscard]] static ScreenshotRecognitionResults

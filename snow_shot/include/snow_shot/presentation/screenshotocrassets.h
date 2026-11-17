@@ -43,6 +43,7 @@ struct ScreenshotOcrResolvedAssets {
     QString recognizerModelPath;
     QString dictionaryPath;
     bool offline = false;
+    QString paragraphModelPath;
 
     [[nodiscard]] bool valid() const;
 };
@@ -69,6 +70,8 @@ class ScreenshotOcrAssets final : public QObject {
         QString bundledRuntimeRoot = {};
         // Executable code must come from the immutable application payload.
         bool requireBundledRuntime = false;
+        // Acquire only the runtime and the independent paragraph model.
+        bool paragraphGrouping = false;
     };
 
     explicit ScreenshotOcrAssets(Options options, QObject* parent = nullptr);
