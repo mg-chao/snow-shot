@@ -45,6 +45,7 @@ struct ScreenshotOcrLine {
     QVector<QColor> sourceLineTextColors{};
     // Derived translation provenance; never produced by OCR recognition.
     QVector<int> sourceLineIndices{};
+    bool smartMergeTranslation = false;
 };
 
 struct ScreenshotOcrTextUpdate {
@@ -127,12 +128,16 @@ class ScreenshotOcrPresentation final {
         QPolygonF quad;
         QVector<QPolygonF> sourceLineQuads;
     };
+    struct FillGeometry {
+        QPolygonF quad;
+        bool solid;
+    };
     qint64 m_textColorImageKey = 0;
     QRectF m_textColorCanvasRect;
     QVector<ColorGeometry> m_textColorGeometry;
     qint64 m_fillColorImageKey = 0;
     QRectF m_fillColorCanvasRect;
-    QVector<QPolygonF> m_fillColorGeometry;
+    QVector<FillGeometry> m_fillColorGeometry;
 
     struct CachedLineGeometry {
         QRectF bounds;

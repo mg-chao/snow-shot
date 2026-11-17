@@ -282,7 +282,7 @@ class TranslationServer final : public QObject {
 
 class ParagraphFixture final : public ScreenshotOcrRecognitionPort {
   public:
-    int requests = 0;
+    RequestToken requests = 0;
     RequestToken recognize(ScreenshotOcrRequest, QObject*, Completion) override {
         return 0;
     }
@@ -572,23 +572,27 @@ void smartLayoutStreamsParagraphsAndSwitchesModes() {
                 session.source->lines.size() == 3 &&
                 session.source->lines[0].text == QStringLiteral("source 0"),
             "Smart Merge sends one paragraph with combined geometry and preserves original OCR");
-    const auto paragraphCap = session.displayed->lines[0].fontSizeCapRatio;
-    const auto paragraphMetrics = session.displayed->lines[0].sourceTextMetrics;
-    require(paragraphCap && paragraphMetrics && !session.source->lines[0].fontSizeCapRatio &&
-                !session.source->lines[0].sourceTextMetrics,
-            "merged translations capture typography from the original OCR lines");
+    const auto paragraphQuad = session.displayed->lines[0].quad;
+    const auto sourceQuads = session.displayed->lines[0].sourceLineQuads;
+    require(session.displayed->lines[0].smartMergeTranslation &&
+                !session.displayed->lines[0].fontSizeCapRatio &&
+                !session.source->lines[0].smartMergeTranslation,
+            "only the Smart Merge overlay uses paragraph box fitting");
     server.delta(0, QStringLiteral("partial paragraph"));
     waitUntil([&]() { return session.textUpdates == 1; },
               "merged paragraph streams into its block");
-    require(session.displayed->lines[0].fontSizeCapRatio == paragraphCap &&
-                session.displayed->lines[0].sourceTextMetrics == paragraphMetrics,
-            "streaming updates preserve the original paragraph typography");
+    require(session.displayed->lines[0].smartMergeTranslation &&
+                session.displayed->lines[0].quad == paragraphQuad &&
+                session.displayed->lines[0].sourceLineQuads == sourceQuads,
+            "streaming updates preserve original paragraph and source row geometry");
     require(settings.setLayoutProcessing(QStringLiteral("original")),
             "switch layout while streaming");
     server.waitForStreams(4);
     waitUntil([&]() { return server.disconnected(0); },
               "layout change cancels stale paragraph request");
     require(session.displayed->lines.size() == 3 &&
+                !session.displayed->lines[0].smartMergeTranslation &&
+                session.displayed->lines[0].fontSizeCapRatio &&
                 session.displayed->lines[0].text == QStringLiteral("source 0") &&
                 server.streams[1].text == QStringLiteral("source 0") &&
                 server.streams[3].text == QStringLiteral("source 2"),
@@ -616,8 +620,41 @@ void smartLayoutStreamsParagraphsAndSwitchesModes() {
     require(session.displayed->lines[0].text == QStringLiteral("finished paragraph") &&
                 session.source->lines[2].text == QStringLiteral("source 2"),
             "merged output and original remain independent");
-    require(session.displayed->lines[0].fontSizeCapRatio == paragraphCap,
-            "layout changes and retries must derive caps from original text");
+    require(session.displayed->lines[0].smartMergeTranslation &&
+                session.displayed->lines[0].quad == paragraphQuad &&
+                session.displayed->lines[0].sourceLineQuads == sourceQuads,
+            "layout changes and retries must recover the same paragraph fit geometry");
+}
+
+void smartLayoutTranslatesVerticalColumnsInReadingOrder() {
+    configureTranslation();
+    const snow_shot::storage::ScreenshotTranslationSettings settings;
+    require(settings.setLayoutProcessing(QStringLiteral("smart_merge")), "enable Smart Merge");
+    TranslationServer server;
+    SnowShotApiClient api(server.url());
+    SessionProbe session(&api, 3);
+    const QVector<QRectF> boxes{{20, 0, 14, 110}, {43, 68, 14, 48}, {42, 12, 14, 48}};
+    for (int i = 0; i < boxes.size(); ++i) {
+        auto& line = session.source->lines[i];
+        const auto& bounds = boxes[i];
+        line.quad = {bounds.topLeft(), bounds.topRight(), bounds.bottomRight(),
+                     bounds.bottomLeft()};
+        line.direction = ScreenshotOcrTextDirection::Vertical;
+    }
+    session.source->prepareForRendering();
+
+    session.controller->beginTextTranslation();
+    server.waitForStreams(1);
+    require(server.streams[0].text == QStringLiteral("source 2 source 1 source 0") &&
+                session.displayed->lines.size() == 1 &&
+                session.displayed->lines[0].direction == ScreenshotOcrTextDirection::Vertical &&
+                session.displayed->lines[0].sourceLineIndices == QVector<int>{2, 1, 0},
+            "Smart Merge sends the full right column before the left column");
+    server.delta(0, QStringLiteral("translated vertical paragraph"));
+    server.finish(0);
+    waitUntil([&] { return !session.streaming; }, "vertical translation finishes");
+    require(session.displayed->lines[0].text == QStringLiteral("translated vertical paragraph"),
+            "the translated text streams back into the vertical paragraph");
 }
 
 void sourceSelectionSurvivesOriginalImageTranslation() {
@@ -1587,6 +1624,7 @@ void runOriginalImageTranslationTests() {
     translationSettingsSwitchKeepsReadableSize();
     confirmingTranslationDisplayModeRestartsTranslation();
     smartLayoutStreamsParagraphsAndSwitchesModes();
+    smartLayoutTranslatesVerticalColumnsInReadingOrder();
     sourceSelectionSurvivesOriginalImageTranslation();
     streamsIndividualBoxesAndKeepsOriginals();
     fourBoxesAndOwnerClosure();
@@ -1662,11 +1700,9 @@ void runPinnedOriginalImageTranslationTests() {
                         actual.sourceLineIndices == expected.sourceLineIndices &&
                         actual.direction == expected.direction,
                     "pin persistence must retain paragraph geometry and rendering metadata");
-            require(actual.fontSizeCapRatio && expected.fontSizeCapRatio &&
-                        std::abs(*actual.fontSizeCapRatio - *expected.fontSizeCapRatio) < 0.0001 &&
-                        actual.sourceTextMetrics &&
-                        actual.sourceTextMetrics == expected.sourceTextMetrics,
-                    "pin restoration reconstructs the original typography from saved OCR");
+            require(actual.smartMergeTranslation && expected.smartMergeTranslation &&
+                        std::abs(renderedFontSize(actual) - renderedFontSize(expected)) < 0.0001,
+                    "pin restoration reconstructs the Smart Merge fit from saved OCR");
             auto* content = window->findChild<ScreenshotRecognitionWindow*>();
             auto* layer =
                 content == nullptr

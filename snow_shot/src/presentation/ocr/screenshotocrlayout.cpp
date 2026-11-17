@@ -664,8 +664,11 @@ mergeOcrParagraphs(const QVector<ScreenshotOcrLine>& lines, const QVector<QVecto
     }
     if (!std::all_of(seen.cbegin(), seen.cend(), [](bool value) { return value; }))
         return std::nullopt;
-    QVector<Segment> items;
-    QVector<qreal> heights;
+    QVector<Segment> horizontalItems;
+    QVector<Segment> verticalItems;
+    QVector<qreal> horizontalHeights;
+    QVector<qreal> tops;
+    tops.reserve(lines.size());
     for (int index = 0; index < lines.size(); ++index) {
         const auto& line = lines[index];
         if (line.quad.size() != 4)
@@ -673,21 +676,50 @@ mergeOcrParagraphs(const QVector<ScreenshotOcrLine>& lines, const QVector<QVecto
         for (const auto& point : line.quad)
             if (!std::isfinite(point.x()) || !std::isfinite(point.y()))
                 return std::nullopt;
-        items.push_back({line, line.quad.boundingRect(), 1, {index}});
-        heights.push_back(items.back().bounds.height());
-    }
-    // Rank original boxes by the established spatial regions, rows and columns.
-    // These regions never become paragraph memberships and no boxes are combined.
-    QVector<int> rank(lines.size());
-    int next = 0;
-    for (const auto& region : regions(items, std::max<qreal>(1, median(heights)))) {
-        for (auto row : rows(region.lines)) {
-            std::stable_sort(row.lines.begin(), row.lines.end(), [](const auto& a, const auto& b) {
-                return a.bounds.left() < b.bounds.left();
-            });
-            for (const auto& item : row.lines)
-                rank[item.sourceIndices.front()] = next++;
+        const auto bounds = line.quad.boundingRect();
+        tops.push_back(bounds.top());
+        if (line.direction == ScreenshotOcrTextDirection::Vertical) {
+            // In reading coordinates, a vertical column is a row starting at the original top.
+            verticalItems.push_back(
+                {line,
+                 {bounds.top(), -bounds.right(), bounds.height(), bounds.width()},
+                 1,
+                 {index}});
+        } else {
+            horizontalItems.push_back({line, bounds, 1, {index}});
+            horizontalHeights.push_back(bounds.height());
         }
+    }
+    // Preserve the established spatial regions and rows for horizontal text.
+    const auto inlineOrder = [](const auto& a, const auto& b) {
+        return a.bounds.left() < b.bounds.left();
+    };
+    QVector<int> horizontalOrder;
+    for (const auto& region :
+         regions(horizontalItems, std::max<qreal>(1, median(horizontalHeights)))) {
+        for (auto row : rows(region.lines)) {
+            std::stable_sort(row.lines.begin(), row.lines.end(), inlineOrder);
+            for (const auto& item : row.lines)
+                horizontalOrder.push_back(item.sourceIndices.front());
+        }
+    }
+    QVector<int> verticalOrder;
+    for (auto column : rows(std::move(verticalItems))) {
+        std::stable_sort(column.lines.begin(), column.lines.end(), inlineOrder);
+        for (const auto& item : column.lines)
+            verticalOrder.push_back(item.sourceIndices.front());
+    }
+    // Interleave the two reading orders by the top edge of each next box on the image.
+    QVector<int> rank(lines.size());
+    qsizetype horizontal = 0, vertical = 0;
+    for (int next = 0; next < lines.size(); ++next) {
+        const bool takeHorizontal =
+            vertical == verticalOrder.size() ||
+            (horizontal < horizontalOrder.size() &&
+             tops[horizontalOrder[horizontal]] <= tops[verticalOrder[vertical]]);
+        const int index =
+            takeHorizontal ? horizontalOrder[horizontal++] : verticalOrder[vertical++];
+        rank[index] = next;
     }
     auto ordered = groups;
     for (auto& group : ordered)
@@ -742,9 +774,11 @@ QVector<ScreenshotOcrLine> mergeOcrLayout(const QVector<ScreenshotOcrLine>& line
 std::optional<QVector<QVector<int>>>
 ocrTranslationSourceIndices(const ScreenshotOcrPresentation& translation,
                             const ScreenshotOcrPresentation& source,
-                            QVector<int>* paragraphsToRestore) {
+                            QVector<int>* paragraphsToRestore, bool* smartMerge) {
     if (paragraphsToRestore)
         paragraphsToRestore->clear();
+    if (smartMerge)
+        *smartMerge = false;
     if (translation.selection != source.selection)
         return std::nullopt;
     if (std::any_of(translation.lines.cbegin(), translation.lines.cend(),
@@ -764,9 +798,11 @@ ocrTranslationSourceIndices(const ScreenshotOcrPresentation& translation,
             }
             indices.push_back(line.sourceLineIndices);
         }
-        return std::all_of(seen.cbegin(), seen.cend(), [](bool value) { return value; })
-                   ? std::optional{indices}
-                   : std::nullopt;
+        if (!std::all_of(seen.cbegin(), seen.cend(), [](bool value) { return value; }))
+            return std::nullopt;
+        if (smartMerge)
+            *smartMerge = true;
+        return indices;
     }
     const auto matches = [&](const QVector<ScreenshotOcrLine>& lines,
                              const QVector<bool>* legacyParagraphs = nullptr) {
@@ -799,6 +835,10 @@ ocrTranslationSourceIndices(const ScreenshotOcrPresentation& translation,
     QVector<bool> legacyParagraphs;
     const auto merged =
         mergeOcrLayoutImpl(source.lines, source.selection.topLeft(), &indices, &legacyParagraphs);
-    return matches(merged, &legacyParagraphs) ? std::optional{indices} : std::nullopt;
+    if (!matches(merged, &legacyParagraphs))
+        return std::nullopt;
+    if (smartMerge)
+        *smartMerge = true;
+    return indices;
 }
 } // namespace snow_shot::presentation

@@ -1,6 +1,7 @@
 #include "snow_shot/presentation/screenshotocrtextlayout.h"
 
 #include <QGuiApplication>
+#include <QFontDatabase>
 #include <QImage>
 #include <QPainter>
 
@@ -22,12 +23,204 @@ QPolygonF quad(const QRectF& rect) {
 }
 
 QImage paint(ScreenshotOcrTextLayout& layout, const QTransform& transform) {
-    QImage image(1000, 180, QImage::Format_ARGB32_Premultiplied);
+    QImage image(1000, 220, QImage::Format_ARGB32_Premultiplied);
     image.fill(Qt::transparent);
     QPainter painter(&image);
     painter.setTransform(transform);
     layout.paint(&painter);
     return image;
+}
+
+QVector<QRect> paintedRows(const QImage& image) {
+    QVector<QRect> rows;
+    for (int y = 0; y < image.height(); ++y) {
+        QRect scan;
+        for (int x = 0; x < image.width(); ++x)
+            if (image.pixelColor(x, y).alpha() > 48)
+                scan = scan.united(QRect(x, y, 1, 1));
+        if (scan.isEmpty())
+            continue;
+        if (!rows.isEmpty() && y == rows.last().bottom() + 1)
+            rows.back() = rows.back().united(scan);
+        else
+            rows.push_back(scan);
+    }
+    return rows;
+}
+
+void smartMergeReflowsMoreRowsAtTheAverageInkHeight() {
+    ScreenshotOcrLine line;
+    line.smartMergeTranslation = true;
+    line.text = QStringLiteral("HHHHHHHH HHHHHHHH HHHHHHHH HHHHHHHH HHHHHHHH");
+    const QRectF box(20, 20, 162, 158);
+    line.quad = quad(box);
+    line.sourceLineQuads = {quad(QRectF(83, 20, 97, 12)), quad(QRectF(20, 55, 84, 14)),
+                            quad(QRectF(109, 55, 73, 14)), quad(QRectF(20, 90, 130, 20)),
+                            quad(QRectF(20, 144, 115, 34))};
+    const auto font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    ScreenshotOcrTextLayout layout;
+    QTransform transform;
+    qreal size = 0;
+    require(
+        configureScreenshotOcrTextLayout(layout, line, {}, font, Qt::black, {}, &transform, &size),
+        "Smart Merge paragraph must fit");
+    const auto preview = paint(layout, transform);
+    const auto rows = paintedRows(preview);
+    require(rows.size() == 5, "four source rows must allow five full-width translated rows");
+    if (rows.size() != 5)
+        return;
+    for (qsizetype i = 0; i < rows.size(); ++i) {
+        require(std::abs(rows[i].height() - 20) <= 1 && rows[i].width() > 100 &&
+                    std::abs(rows[i].left() - box.left()) <= 1,
+                "every row, including the former indent, uses the full width at the ink cap");
+        if (i > 0)
+            require(std::abs(rows[i].top() - rows[i - 1].bottom() - 1 - size * 0.2) < 2,
+                    "each visible ink gap scales with the paragraph font");
+    }
+    require(std::abs((rows.first().top() + rows.last().bottom() + 1) / 2.0 - box.center().y()) < 1,
+            "the paragraph is vertically centered");
+    const auto fragments = layout.rangeFragments({0, static_cast<int>(line.text.size())});
+    require(fragments.size() == rows.size(), "selection exposes each reflowed row");
+    if (!fragments.isEmpty()) {
+        const auto& last = fragments.last();
+        require(layout.cursorPositionAt(last.rect.center()) >= last.range.start,
+                "clicking visible ink in the last row finds its text");
+    }
+    line.translationStreaming = true;
+    require(configureScreenshotOcrTextLayout(layout, line, {}, font, Qt::black, {}, &transform) &&
+                paint(layout, transform) == preview,
+            "equal Smart Merge preview and final text paint identically");
+    QTransform output;
+    output.translate(210, 10).scale(1.5, 1.5).rotate(24);
+    QTransform rotated;
+    require(configureScreenshotOcrTextLayout(layout, line, output, font, Qt::black, {}, &rotated) &&
+                rotated == transform * output,
+            "zoom and rotation must compose with the fitted paragraph");
+}
+
+void smartMergeKeepsAlignmentAndBlankRows() {
+    const auto font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    const QRectF box(20, 20, 220, 165);
+    ScreenshotOcrLine line;
+    line.smartMergeTranslation = true;
+    line.quad = quad(box);
+    ScreenshotOcrTextLayout layout;
+    QTransform transform;
+    for (const auto alignment : {Qt::AlignLeft, Qt::AlignHCenter, Qt::AlignRight}) {
+        line.sourceLineQuads = {quad(QRectF(20, 20, 220, 18))};
+        for (const auto& [width, top] : {std::pair(100, 70), std::pair(140, 167)}) {
+            const qreal spare = box.width() - width;
+            const qreal offset = alignment == Qt::AlignLeft      ? 0
+                                 : alignment == Qt::AlignHCenter ? spare / 2
+                                                                 : spare;
+            line.sourceLineQuads.push_back(quad(QRectF(box.left() + offset, top, width, 18)));
+        }
+        line.text = QStringLiteral("HHHH\r\n\t\t\nHH");
+        const auto configure = [&] {
+            return configureScreenshotOcrTextLayout(layout, line, {}, font, Qt::black, {},
+                                                    &transform);
+        };
+        require(configure(), "explicit and blank rows must configure");
+        const auto rows = paintedRows(paint(layout, transform));
+        require(rows.size() == 2, "blank rows take space without painting glyphs");
+        if (rows.size() != 2)
+            continue;
+        for (const auto& row : rows) {
+            const qreal error = alignment == Qt::AlignLeft ? row.left() - box.left()
+                                : alignment == Qt::AlignRight
+                                    ? row.right() + 1 - box.right()
+                                    : (row.left() + row.right() + 1) / 2.0 - box.center().x();
+            require(std::abs(error) < 2, "each visible row preserves the source alignment");
+        }
+        const auto fragments = layout.rangeFragments({0, static_cast<int>(line.text.size())});
+        require(fragments.size() == 2 && fragments.last().range.start == 9,
+                "CRLF and the blank row preserve logical selection offsets");
+        line.text = QStringLiteral("HHHH\nHH");
+        require(configure(), "consecutive visible rows must configure");
+        const auto withoutBlank = paintedRows(paint(layout, transform));
+        require(withoutBlank.size() == 2 &&
+                    rows.last().top() - rows.first().top() >
+                        withoutBlank.last().top() - withoutBlank.first().top() + 10,
+                "a blank row reserves a full font line height");
+        line.text.append(u'\u2029');
+        require(configure(), "trailing empty row must configure");
+        const auto trailingBlank = paintedRows(paint(layout, transform));
+        require(trailingBlank.size() == 2 && withoutBlank.size() == 2 &&
+                    trailingBlank.first().top() < withoutBlank.first().top() - 6,
+                "the final explicit break reserves a trailing blank row");
+    }
+}
+
+void smartMergeFitsInkAtDifferentHeights() {
+    ScreenshotOcrLine line;
+    line.smartMergeTranslation = true;
+    line.quad = quad(QRectF(20, 20, 140, 90));
+    line.sourceLineQuads = {quad(QRectF(20, 20, 140, 36)), quad(QRectF(20, 74, 140, 36))};
+    line.text = QStringLiteral("HHHH\n----\nHHHH\n----\nHHHH");
+    const auto font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    ScreenshotOcrTextLayout layout;
+    QTransform transform;
+    qreal size = 0;
+    require(
+        configureScreenshotOcrTextLayout(layout, line, {}, font, Qt::black, {}, &transform, &size),
+        "a tall translation must shrink to fit while keeping all of its rows");
+    const auto rows = paintedRows(paint(layout, transform));
+    require(rows.size() == 5, "font fitting preserves each explicitly broken row");
+    if (rows.size() != 5)
+        return;
+    require(rows.first().height() < 36 && rows[1].height() < rows.first().height() / 2 &&
+                std::abs(rows.first().top() - 20) <= 1 &&
+                std::abs(rows.last().bottom() + 1 - 110) <= 1,
+            "the paragraph uses the largest size that fits its actual mixed ink heights");
+    for (qsizetype i = 1; i < rows.size(); ++i)
+        require(std::abs(rows[i].top() - rows[i - 1].bottom() - 1 - size * 0.2) < 2,
+                "small glyphs and tall glyphs have the same visible line gap");
+}
+
+void smartMergeBalancesVerticalColumnsAndWhitespace() {
+    ScreenshotOcrLine line;
+    line.smartMergeTranslation = true;
+    line.direction = ScreenshotOcrTextDirection::Vertical;
+    line.text = QStringLiteral("HHHHH \r\n\n\t HHHHH");
+    line.quad = quad(QRectF(20, 20, 160, 138));
+    line.sourceLineQuads = {quad(QRectF(20, 20, 13, 100)), quad(QRectF(70, 20, 15, 108)),
+                            quad(QRectF(148, 20, 32, 138))};
+    const auto font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    ScreenshotOcrTextLayout layout;
+    QTransform transform;
+    const auto configure = [&] {
+        return configureScreenshotOcrTextLayout(layout, line, {}, font, Qt::black, {}, &transform);
+    };
+    require(configure(), "vertical Smart Merge lays out the whole paragraph");
+    const auto columns = layout.rangeFragments({0, static_cast<int>(line.text.size())});
+    require(columns.size() == 3, "vertical Smart Merge uses the minimum three columns");
+    if (columns.size() != 3)
+        return;
+    const auto rectFor = [](const ScreenshotTextAnnotationFragment& cell) {
+        return cell.localToSource.mapRect(cell.rect);
+    };
+    const auto first = rectFor(columns.first());
+    const auto second = rectFor(columns[1]);
+    const auto third = rectFor(columns.last());
+    require(first.left() > second.left() && second.left() > third.left() &&
+                first.top() == second.top() && third.top() == first.top() &&
+                first.height() == second.height() &&
+                std::abs(3 * second.height() - 4 * third.height()) < 0.001,
+            "eleven cells are balanced 4, 4, 3 from the right edge with equal top alignment");
+    const QRectF paintedBox = transform.mapRect(first.united(second).united(third));
+    require(std::abs(paintedBox.center().x() - 100) < 0.001 &&
+                std::abs(paintedBox.top() - 20) < 0.001 &&
+                std::abs(transform.mapRect(first).width() - 20) < 0.001 &&
+                paintedBox.bottom() <= 158.001,
+            "column width reaches the mean source width with the group centered and contained");
+    require(columns[1].range.start == 4 && columns[1].range.end == 13 &&
+                layout.rangeFragments({5, 6}).size() == 1 &&
+                layout.cursorPositionAt(second.topLeft() + QPointF(second.width() / 2, 0)) == 4,
+            "vertical cells preserve offsets and identify the clicked column");
+    const auto withWhitespace = paint(layout, transform);
+    line.text = QStringLiteral("HHHHH HHHHH");
+    require(configure() && paint(layout, transform) == withWhitespace,
+            "vertical whitespace collapses to one ordinary blank cell");
 }
 
 void sourceTextFillsWideQuadsAtFullHeight() {
@@ -179,7 +372,7 @@ void translationRetainsSourceSizeAndBaseline() {
     QVector<ScreenshotOcrLine> translation{source};
     translation[0].text = QStringLiteral("Agyp");
     const QFont font = QGuiApplication::font();
-    setScreenshotOcrTranslationFontCaps(translation, {source}, {{0}}, font);
+    prepareScreenshotOcrTranslationLayout(translation, {source}, {{0}}, font);
     ScreenshotOcrTextLayout layout;
     QTransform transform;
     qreal size = 0;
@@ -202,7 +395,7 @@ void longSingleLineTranslationWrapsAtEveryZoom() {
     source.quad = quad(QRectF(20, 30, 150, 32));
     const QFont font = QGuiApplication::font();
     QVector<ScreenshotOcrLine> translation{source};
-    setScreenshotOcrTranslationFontCaps(translation, {source}, {{0}}, font);
+    prepareScreenshotOcrTranslationLayout(translation, {source}, {{0}}, font);
     auto& line = translation.front();
     line.text = QStringLiteral("Long translation ").repeated(6).trimmed();
     const auto length = static_cast<int>(line.text.size());
@@ -236,7 +429,7 @@ void narrowTranslationKeepsLineBreaksAtEveryZoom() {
     source.quad = quad(QRectF(20, 30, 73, 9));
     const QFont font = QGuiApplication::font();
     QVector<ScreenshotOcrLine> translation{source};
-    setScreenshotOcrTranslationFontCaps(translation, {source}, {{0}}, font);
+    prepareScreenshotOcrTranslationLayout(translation, {source}, {{0}}, font);
     auto& line = translation.front();
     line.text = QStringLiteral("The same text flows after a transform");
     const auto length = static_cast<int>(line.text.size());
@@ -406,6 +599,10 @@ int main(int argc, char** argv) {
     longSingleLineTranslationWrapsAtEveryZoom();
     narrowTranslationKeepsLineBreaksAtEveryZoom();
     translationKeepsHardBreaksAndCompactsOverflowingRows();
+    smartMergeReflowsMoreRowsAtTheAverageInkHeight();
+    smartMergeKeepsAlignmentAndBlankRows();
+    smartMergeFitsInkAtDifferentHeights();
+    smartMergeBalancesVerticalColumnsAndWhitespace();
     sourceColorsPaintWithoutChangingSelectionOrShaping();
     sourceRowsKeepTheirColorsAfterSorting();
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

@@ -223,12 +223,15 @@ ScreenshotRecognitionResults decodeScreenshotPinnedRecognition(const QByteArray&
         }
         results.translatedText->prepareForRendering();
         QVector<int> paragraphsToRestore;
+        bool smartMerge = false;
         if (const auto indices = snow_shot::presentation::ocrTranslationSourceIndices(
-                *results.translatedText, *results.text->presentation, &paragraphsToRestore)) {
+                *results.translatedText, *results.text->presentation, &paragraphsToRestore,
+                &smartMerge)) {
             for (const int index : paragraphsToRestore)
                 results.translatedText->lines[index].paragraph = true;
-            setScreenshotOcrTranslationFontCaps(results.translatedText->lines,
-                                                results.text->presentation->lines, *indices, font);
+            prepareScreenshotOcrTranslationLayout(results.translatedText->lines,
+                                                  results.text->presentation->lines, *indices, font,
+                                                  smartMerge);
         }
 #else
         // Consume the legacy extension without constructing a translated presentation.

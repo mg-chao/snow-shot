@@ -659,7 +659,7 @@ void tablePreparationPreservesSessionAndSiblingPopovers() {
 // steered by the test, mirroring ScreenshotOcrAssets status reporting.
 class ControllableOcrRecognition final : public ScreenshotOcrRecognitionPort {
   public:
-    int paragraphRequests = 0;
+    RequestToken paragraphRequests = 0;
     ParagraphCompletion pendingParagraph;
     ScreenshotOcrParagraphResult paragraphResult{{{2}, {1, 0}}, {}};
     bool holdParagraphs = false;

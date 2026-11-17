@@ -14540,6 +14540,10 @@ foreach(_target IN LISTS _pinned_render_targets)
         list(APPEND _pinned_render_sources
             src/presentation/services/screenshotpinnedrecognition.cpp)
     endif()
+    if("src/presentation/ocr/screenshotrecognitionimage.cpp" IN_LIST _sources AND
+            NOT "src/presentation/ocr/screenshotocrvisuals.cpp" IN_LIST _pinned_render_sources)
+        list(APPEND _pinned_render_sources src/presentation/ocr/screenshotocrvisuals.cpp)
+    endif()
     foreach(_source IN LISTS _pinned_render_sources)
         if(NOT _source IN_LIST _sources)
             target_sources(${_target} PRIVATE ${_source})

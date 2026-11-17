@@ -1,5 +1,6 @@
 #include "snow_shot/presentation/screenshotrecognitionimage.h"
 #include "snow_shot/presentation/screenshotocrtextlayout.h"
+#include "snow_shot/presentation/screenshotocrvisuals.h"
 #include "snow_draw_engine_qt/snow_canvas_image.h"
 #include "snow_shot/presentation/screenshotselectionshadowrenderer.h"
 #include "../../test-support/virtualmemory.h"
@@ -58,8 +59,8 @@ void translationsNeverExceedTheirSourceFontSize() {
             original.quad = QTransform().rotate(angle).map(original.quad);
             const qreal baseline = fittedFontSize(original);
             QVector<ScreenshotOcrLine> translated{original};
-            setScreenshotOcrTranslationFontCaps(translated, {original}, {{0}},
-                                                QGuiApplication::font());
+            prepareScreenshotOcrTranslationLayout(translated, {original}, {{0}},
+                                                  QGuiApplication::font());
             require(translated[0].fontSizeCapRatio && !original.fontSizeCapRatio,
                     "only the translation owns a source font cap");
             for (const QString& text : {QStringLiteral("M"), QString(QChar(0x7530)), original.text,
@@ -85,136 +86,29 @@ void translationsNeverExceedTheirSourceFontSize() {
     }
 }
 
-void mergedFontCapsUseTheMedianOriginalBaseline() {
-    QVector<ScreenshotOcrLine> source;
-    QVector<qreal> sizes;
-    for (const int count : {20, 40, 30, 50}) {
-        auto line = fixture().lines[0];
-        line.text = QString(count, QLatin1Char('M'));
-        line.quad.translate(0, static_cast<qreal>(source.size()) * 48);
-        sizes.push_back(fittedFontSize(line));
-        source.push_back(line);
-    }
-    for (const int count : {3, 4}) {
-        auto line = fixture().lines[0];
-        line.text = QStringLiteral("M");
-        line.paragraph = true;
-        line.quad = {{660, 380}, {920, 380}, {920, 380 + count * 48.0}, {660, 380 + count * 48.0}};
-        QVector<int> indices;
-        for (int index = 0; index < count; ++index) {
-            line.sourceLineQuads.push_back(source[index].quad);
-            indices.push_back(index);
-        }
-        QVector<ScreenshotOcrLine> translation{line};
-        setScreenshotOcrTranslationFontCaps(translation, source, {indices},
-                                            QGuiApplication::font());
-        auto sorted = sizes.mid(0, count);
-        std::sort(sorted.begin(), sorted.end());
-        const qreal median = count == 3 ? sorted[1] : (sorted[1] + sorted[2]) / 2;
-        require(translation[0].fontSizeCapRatio &&
-                    std::abs(*translation[0].fontSizeCapRatio * count * 48 - median) < 0.0001 &&
-                    std::abs(fittedFontSize(translation[0]) - median) < 0.0001,
-                "a sparse paragraph uses the median original fitted size, including even counts");
-        const auto cap = translation[0].fontSizeCapRatio;
-        auto changedSource = source;
-        changedSource[0].text = QStringLiteral("different source");
-        setScreenshotOcrTranslationFontCaps(translation, changedSource, {indices},
-                                            QFont(QStringLiteral("Arial")));
-        require(translation[0].fontSizeCapRatio == cap,
-                "an established translation baseline is immutable");
-    }
-}
-
-void sourceRowFontCapsPreserveSlotsAndInvalidateLayouts() {
+void streamingTextKeepsItsFirstGlyphInPlace() {
     ScreenshotOcrLine line;
-    line.text = QString(31, QChar(0x7530));
-    line.paragraph = true;
-    line.quad = {{0, 0}, {300, 0}, {300, 96}, {0, 96}};
-    for (const QRectF& row :
-         {QRectF(0, 0, 300, 24), QRectF(0, 36, 300, 24), QRectF(0, 72, 180, 24)}) {
-        line.sourceLineQuads.push_back(
-            {row.topLeft(), row.topRight(), row.bottomRight(), row.bottomLeft()});
-    }
+    line.quad = {{0, 0}, {180, 0}, {180, 24}, {0, 24}};
+    line.fontSizeCapRatio = 16.0 / 24;
     ScreenshotOcrTextLayout layout;
     QTransform transform;
-    qreal originalSize = 0;
-    require(configureScreenshotOcrTextLayout(layout, line, {}, QGuiApplication::font(), Qt::black,
-                                             {}, &transform, &originalSize) &&
-                layout.usesSourceRows(),
-            "source-row fixture must use fixed original slots");
-    const QTransform originalTransform = transform;
-    for (const qreal factor : {0.9, 0.8}) {
-        line.fontSizeCapRatio = originalSize * factor / 96;
-        qreal capped = 0;
+    const auto firstCharacter = [&] {
         require(configureScreenshotOcrTextLayout(layout, line, {}, QGuiApplication::font(),
-                                                 Qt::black, {}, &transform, &capped) &&
-                    layout.usesSourceRows(),
-                "moderate source-row caps retain the original row layout");
-        require(capped <= originalSize * factor + 0.0001 && transform == originalTransform,
-                "cap changes reshape glyphs without shrinking or relocating the row slots");
-    }
-    line.text = QStringLiteral("M");
-    qreal capped = 0;
-    require(configureScreenshotOcrTextLayout(layout, line, {}, QGuiApplication::font(), Qt::black,
-                                             {}, &transform, &capped) &&
-                !layout.usesSourceRows() && capped <= originalSize * 0.8 + 0.0001,
-            "sparse translations remain capped when source rows fall back to paragraph fitting");
-}
-
-void streamingTextKeepsItsFirstGlyphInPlace() {
-    for (const bool paragraph : {false, true}) {
-        ScreenshotOcrLine line;
-        line.paragraph = paragraph;
-        const qreal height = paragraph ? 96 : 24;
-        line.quad = {{0, 0}, {180, 0}, {180, height}, {0, height}};
-        line.fontSizeCapRatio = 16 / height;
-        const qreal left = paragraph ? 20 : 0;
-        if (paragraph) {
-            line.sourceLineQuads = {{{left, 0}, {180, 0}, {180, 24}, {left, 24}},
-                                    {{0, 36}, {180, 36}, {180, 60}, {0, 60}},
-                                    {{0, 72}, {150, 72}, {150, 96}, {0, 96}}};
-        }
-        ScreenshotOcrTextLayout layout;
-        QTransform transform;
-        const auto configure = [&] {
-            require(configureScreenshotOcrTextLayout(layout, line, {}, QGuiApplication::font(),
-                                                     Qt::black, {}, &transform),
-                    "configure the live translation layout");
-        };
-        const auto characterRect = [&](int index) {
-            const auto fragments = layout.rangeFragments({index, 1});
-            require(fragments.size() == 1, "one Latin character occupies one selection fragment");
-            const auto& fragment = fragments.first();
-            return (fragment.localToSource * transform).mapRect(fragment.rect);
-        };
-        line.text = QStringLiteral("Hi");
-        configure();
-        const QRectF finalFirst = characterRect(0);
-        line.translationStreaming = true;
-        configure();
-        const QRectF first = characterRect(0);
-        require(std::abs(first.left() - left) < 2 && first.top() < 12 && finalFirst != first,
-                "partial text starts at the left of the first source row");
-        line.text += QStringLiteral(" there");
-        configure();
-        require(QLineF(first.topLeft(), characterRect(0).topLeft()).length() < 0.5 &&
-                    characterRect(1).right() < first.right() + 15,
-                "new letters keep the prefix anchored and naturally spaced");
-        if (paragraph) {
-            line.text += QStringLiteral(" friend. The rest of the text wraps onto the next line.");
-            configure();
-            require(QLineF(first.topLeft(), characterRect(0).topLeft()).length() < 0.5 &&
-                        characterRect(static_cast<int>(line.text.size()) - 1).top() >
-                            first.bottom(),
-                    "streaming wraps below the first row without rebalancing the prefix");
-        }
-        line.text = QStringLiteral("Hi");
-        configure();
-        line.translationStreaming = false;
-        configure();
-        require(characterRect(0) == finalFirst,
-                "completion with identical text restores the original fitted layout");
-    }
+                                                 Qt::black, {}, &transform),
+                "configure the Original box translation");
+        const auto fragments = layout.rangeFragments({0, 1});
+        require(fragments.size() == 1, "one Latin character occupies one selection fragment");
+        const auto& fragment = fragments.first();
+        return (fragment.localToSource * transform).mapRect(fragment.rect);
+    };
+    line.text = QStringLiteral("Hi");
+    const auto finalFirst = firstCharacter();
+    line.translationStreaming = true;
+    const auto first = firstCharacter();
+    require(first == finalFirst, "identical Original text uses the same preview and final fit");
+    line.text += QStringLiteral(" there");
+    require(QLineF(first.topLeft(), firstCharacter().topLeft()).length() < 0.5,
+            "adding letters keeps a fitting Original prefix anchored");
 }
 
 void streamingVerticalTextGrowsDownTheColumn() {
@@ -239,7 +133,7 @@ void streamingVerticalTextGrowsDownTheColumn() {
                 std::abs(second.height() - 2 * first.height()) < 0.01,
             "vertical streaming adds a natural cell below the first one");
     line.translationStreaming = false;
-    require(bounds().height() > second.height(), "the final column resumes fitted spacing");
+    require(bounds() == second, "the completed Original box keeps the same vertical geometry");
 }
 
 void streamingTypeMatchesTheRenderedOcr() {
@@ -272,19 +166,19 @@ void streamingTypeMatchesTheRenderedOcr() {
         original.direction = vertical ? ScreenshotOcrTextDirection::Vertical
                                       : ScreenshotOcrTextDirection::Horizontal;
         QVector<ScreenshotOcrLine> translated{original};
-        setScreenshotOcrTranslationFontCaps(translated, {original}, {{0}}, QGuiApplication::font());
+        prepareScreenshotOcrTranslationLayout(translated, {original}, {{0}},
+                                              QGuiApplication::font());
         auto& line = translated[0];
         for (const qreal zoom : {1.0, 2.0}) {
             const auto source = measure(original, zoom);
-            require(source.advance > source.fontSize * 1.4, "fixture has expanded OCR spacing");
             line.text = original.text.left(3);
             line.translationStreaming = false;
             const auto final = measure(line, zoom);
             line.translationStreaming = true;
             const auto prefix = measure(line, zoom);
             require(std::abs(prefix.fontSize - source.fontSize) < zoom &&
-                        std::abs(prefix.advance - source.advance) < zoom,
-                    "partial translation uses the rendered OCR font size and character advance");
+                        std::abs(prefix.advance - final.advance) < 0.01,
+                    "Original translations use the source font cap and stable natural spacing");
             line.text += original.text.left(2);
             const auto more = measure(line, zoom);
             require(QLineF(more.start, prefix.start).length() < 0.5 &&
@@ -300,35 +194,13 @@ void streamingTypeMatchesTheRenderedOcr() {
         }
     }
 
-    QVector<ScreenshotOcrLine> sourceRows;
-    ScreenshotOcrLine paragraph;
-    paragraph.paragraph = true;
-    paragraph.quad = {{0, 0}, {300, 0}, {300, 96}, {0, 96}};
-    for (const int width : {300, 240, 180}) {
-        ScreenshotOcrLine row;
-        row.text = QStringLiteral("HHHHHH");
-        row.quad = {{0, 0}, {qreal(width), 0}, {qreal(width), 24}, {0, 24}};
-        row.quad.translate(0, static_cast<qreal>(sourceRows.size()) * 36);
-        sourceRows.append(row);
-        paragraph.sourceLineQuads.append(row.quad);
-    }
-    QVector<ScreenshotOcrLine> translated{paragraph};
-    setScreenshotOcrTranslationFontCaps(translated, sourceRows, {{0, 1, 2}},
-                                        QGuiApplication::font());
-    translated[0].translationStreaming = true;
-    translated[0].text = QStringLiteral("HHH");
-    const auto preview = measure(translated[0], 1);
-    const auto middleRow = measure(sourceRows[1], 1);
-    require(std::abs(preview.advance - middleRow.advance) < 1 &&
-                std::abs(preview.fontSize - middleRow.fontSize) < 1,
-            "a merged paragraph streams at the median source size and spacing");
 }
 
 void cappedSnapshotsMatchDirectPaintingAtEveryResolution() {
     auto snapshot = fixture();
     snapshot.lines[0].text = QString(32, QLatin1Char('M'));
     const auto source = snapshot.lines;
-    setScreenshotOcrTranslationFontCaps(snapshot.lines, source, {{0}}, snapshot.font);
+    prepareScreenshotOcrTranslationLayout(snapshot.lines, source, {{0}}, snapshot.font);
     snapshot.lines[0].text = QStringLiteral("M");
     for (const qreal scale : {0.5, 1.25, 2.0}) {
         auto scaled = snapshot;
@@ -358,6 +230,55 @@ void cappedSnapshotsMatchDirectPaintingAtEveryResolution() {
     }
 }
 
+void smartMergeExportSamplesTheSourceBeforeTheLiveFillArrives() {
+    auto snapshot = fixture();
+    const QColor ink(195, 35, 53);
+    const QColor background(232, 220, 180);
+    snapshot.image.fill(background);
+    const QColor outside(18, 36, 55);
+    snapshot.image.setPixelColor(19, 40, outside);
+    const auto canvasQuad = [&](const QRectF& pixels) {
+        const auto box = pixels.translated(snapshot.canvasRect.topLeft());
+        return QPolygonF{box.topLeft(), box.topRight(), box.bottomRight(), box.bottomLeft()};
+    };
+    auto& line = snapshot.lines[0];
+    line.smartMergeTranslation = true;
+    line.translationStreaming = true;
+    line.text = QStringLiteral("MMMM\nMMMMMMMM");
+    line.quad = canvasQuad(QRectF(20, 20, 260, 80));
+    line.sourceLineQuads = {canvasQuad(QRectF(20, 20, 220, 18)),
+                            canvasQuad(QRectF(20, 82, 260, 18))};
+    {
+        QPainter painter(&snapshot.image);
+        for (const int y : {21, 83})
+            for (int x = 24; x < 230; x += 11)
+                painter.fillRect(x, y, 3, 15, ink);
+    }
+    auto prepared = snapshot;
+    ScreenshotOcrPresentation presentation;
+    presentation.lines = snapshot.lines;
+    prepareScreenshotOcrTextColors(presentation, snapshot.image, snapshot.canvasRect);
+    prepareScreenshotOcrFillColors(presentation, snapshot.image, snapshot.canvasRect, false);
+    prepared.lines = presentation.lines;
+    require(prepared.lines[0].sourceTextColor == ink &&
+                prepared.lines[0].backgroundFillColor == background,
+            "the reference overlay recovers both colors");
+    QRect pixels;
+    prepared.filteredImage = renderScreenshotOcrFilteredImage(snapshot.image, snapshot.canvasRect,
+                                                              presentation, Qt::white, 1, &pixels);
+    prepared.filteredCanvasRect =
+        screenshotOcrFilteredImageCanvasRect(snapshot.canvasRect, snapshot.image.size(), pixels);
+    const auto exported = renderScreenshotRecognitionImage(snapshot);
+    require(exported == renderScreenshotRecognitionImage(prepared) &&
+                exported.pixelColor(25, 23) == background && exported.pixelColor(19, 40) == outside,
+            "early export matches the prepared overlay and fills only the paragraph");
+    bool foundInk = false;
+    for (int y = 20; y < 100 && !foundInk; ++y)
+        for (int x = 20; x < 280 && !foundInk; ++x)
+            foundInk = exported.pixelColor(x, y) == ink;
+    require(foundInk, "the exported translation paints in the source ink color");
+}
+
 void overflowingSingleLineTranslationWrapsInExport() {
     auto snapshot = fixture();
     const QRect footprint(20, 20, 112, 48);
@@ -365,7 +286,7 @@ void overflowingSingleLineTranslationWrapsInExport() {
     auto& line = snapshot.lines[0];
     line.quad = {bounds.topLeft(), bounds.topRight(), bounds.bottomRight(), bounds.bottomLeft()};
     const auto source = snapshot.lines;
-    setScreenshotOcrTranslationFontCaps(snapshot.lines, source, {{0}}, snapshot.font);
+    prepareScreenshotOcrTranslationLayout(snapshot.lines, source, {{0}}, snapshot.font);
     snapshot.lines[0].text = QStringLiteral("MMMMMM ").repeated(6).trimmed();
 
     const QImage rendered = renderScreenshotRecognitionImage(snapshot);
@@ -681,12 +602,11 @@ int main(int argc, char** argv) {
         if (application.arguments().contains(QStringLiteral("--overflow-wrap-only")))
             return 0;
         translationsNeverExceedTheirSourceFontSize();
-        mergedFontCapsUseTheMedianOriginalBaseline();
-        sourceRowFontCapsPreserveSlotsAndInvalidateLayouts();
         streamingTextKeepsItsFirstGlyphInPlace();
         streamingVerticalTextGrowsDownTheColumn();
         streamingTypeMatchesTheRenderedOcr();
         cappedSnapshotsMatchDirectPaintingAtEveryResolution();
+        smartMergeExportSamplesTheSourceBeforeTheLiveFillArrives();
         rendersNativeCoordinatesAndPreservesSource();
         displayedBackgroundAndEffectsAreAppliedOnce();
         effectsScaleOnceForEverySelectionShape();
