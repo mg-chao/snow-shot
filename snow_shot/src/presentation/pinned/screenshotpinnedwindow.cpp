@@ -6260,7 +6260,6 @@ void ScreenshotPinnedWindow::updateOcrPresentation() {
     }
     m_displayOcrPresentation = std::move(presentation);
     if (m_hiddenTextSelection && m_recognitionContent != nullptr) {
-        m_recognitionContent->setOcrCopyDefaultsEnabled(true);
         m_recognitionContent->setOcrPresentation(
             m_displayOcrPresentation, ScreenshotOcrTextLayer::RenderingMode::SelectionOnly, false);
     } else if (m_ocrMode) {

@@ -568,11 +568,11 @@ void ScreenshotOcrController::scheduleCopyRecognitionAndEndCapture() {
     QTimer::singleShot(0, this, [this, activation = m_activationId] {
         if (activation == m_activationId && m_active && m_mode == Mode::Text && !translating() &&
             hasTextResult())
-            static_cast<void>(copyRecognitionToClipboard(true));
+            static_cast<void>(copyRecognitionToClipboard(true, /*copyFullTextResult=*/true));
     });
 }
 
-bool ScreenshotOcrController::copyRecognitionToClipboard(bool endCapture) {
+bool ScreenshotOcrController::copyRecognitionToClipboard(bool endCapture, bool copyFullTextResult) {
     if (!m_active || QApplication::clipboard() == nullptr) {
         return false;
     }
@@ -616,11 +616,12 @@ bool ScreenshotOcrController::copyRecognitionToClipboard(bool endCapture) {
         }
     }
     // Conversion toolbar Copy exports source; selection Copy is handled inside the preview.
-    bool copied = !m_session->conversionModeActive() && m_recognitionWindow != nullptr &&
-                  m_recognitionWindow->copyVisibleContentToClipboard();
+    const bool copied = !copyFullTextResult && !m_session->conversionModeActive() &&
+                        m_recognitionWindow != nullptr &&
+                        m_recognitionWindow->copyVisibleContentToClipboard();
     if (!copied) {
         std::unique_ptr<QMimeData> mimeData =
-            m_session->recognitionClipboardMimeData(m_presentation.get());
+            m_session->recognitionClipboardMimeData(m_presentation.get(), copyFullTextResult);
         if (mimeData == nullptr) {
             if (m_session->translating())
                 showStatus(QCoreApplication::translate("ScreenshotRecognitionSessionController",

@@ -16194,7 +16194,7 @@ void pinnedHiddenFormattedBackgroundDoubleClickUsesPinAction() {
     }
 }
 
-void pinnedCopyDefaultsCoverHiddenSelectionAndAutomation() {
+void pinnedHiddenTextCopyPreservesSelectionWithOcrDefaults() {
     using Access = ScreenshotPinnedWindowTestAccess;
     const snow_shot::storage::TextRecognitionSettings textSettings;
     const QString priorFormatting = textSettings.defaultFormatting();
@@ -16204,7 +16204,7 @@ void pinnedCopyDefaultsCoverHiddenSelectionAndAutomation() {
     require(textSettings.setDefaultFormatting(QStringLiteral("remove")) &&
                 textSettings.setDefaultPunctuation(QStringLiteral("full")) &&
                 pinSettings.setTextSelectionOnRecognitionResults(QStringLiteral("always")),
-            "enable hidden recognized-text copy defaults");
+            "enable OCR defaults and hidden text selection");
     auto config = cachedOcrPinConfig(nullptr);
     auto presentation = config.recognitionResults.text->presentation;
     presentation->lines[0].text = QStringLiteral("A,");
@@ -16219,13 +16219,12 @@ void pinnedCopyDefaultsCoverHiddenSelectionAndAutomation() {
             "cached OCR installs the hidden selectable text layer");
     Access::selectHiddenText(window);
     Access::copyCurrentViewport(window);
-    const QString expected =
-        QStringLiteral("A") + QChar(0xFF0C) + QStringLiteral("B") + QChar(0xFF01);
+    const QString expected = QStringLiteral("A,\nB!");
     require(QApplication::clipboard()->text() == expected,
-            "pinned image copy transforms the hidden OCR selection");
+            "pinned image copy preserves the hidden OCR selection's line breaks and punctuation");
     const auto automation = Access::automationClipboard(window);
     require(automation != nullptr && automation->text() == expected,
-            "pinned automation copy uses the same transformed selection");
+            "pinned automation copy preserves the same selection");
     require(textSettings.setDefaultFormatting(QStringLiteral("smart")),
             "enable default Smart Typesetting for hidden OCR selection");
     auto smartConfig = cachedOcrPinConfig(nullptr);
@@ -16242,11 +16241,11 @@ void pinnedCopyDefaultsCoverHiddenSelectionAndAutomation() {
     require(Access::hiddenSelection(smartWindow), "Smart fixture installs its hidden text layer");
     Access::selectHiddenText(smartWindow);
     Access::copyCurrentViewport(smartWindow);
-    const QString smartExpected = QStringLiteral("translation") + QChar(0xFF01);
+    const QString smartExpected = QStringLiteral("trans-\nlation!");
     const auto smartAutomation = Access::automationClipboard(smartWindow);
     require(QApplication::clipboard()->text() == smartExpected && smartAutomation != nullptr &&
                 smartAutomation->text() == smartExpected,
-            "hidden OCR selection and automation share default Smart Typesetting copy");
+            "hidden OCR selection copy keeps the original text with Smart Typesetting set");
     require(textSettings.setDefaultFormatting(priorFormatting) &&
                 textSettings.setDefaultPunctuation(priorPunctuation) &&
                 pinSettings.setTextSelectionOnRecognitionResults(priorSelection),
@@ -28884,7 +28883,7 @@ int main(int argc, char* argv[]) {
             pinnedHiddenFormattedSelectionFollowsImageCoordinates();
             pinnedHiddenTextSelectionOffscreen();
             pinnedHiddenFormattedTextSelectionOffscreen();
-            pinnedCopyDefaultsCoverHiddenSelectionAndAutomation();
+            pinnedHiddenTextCopyPreservesSelectionWithOcrDefaults();
             return 0;
         }
         if (app.arguments().contains(QStringLiteral("--recognition-save-only"))) {

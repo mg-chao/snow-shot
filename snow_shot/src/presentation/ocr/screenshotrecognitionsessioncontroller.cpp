@@ -3281,7 +3281,7 @@ bool ScreenshotRecognitionSessionController::copyDocumentPreview(QString selecti
 #endif
 
 std::unique_ptr<QMimeData> ScreenshotRecognitionSessionController::recognitionClipboardMimeData(
-    const ScreenshotOcrPresentation* displayedPresentation) {
+    const ScreenshotOcrPresentation* displayedPresentation, bool copyFullTextResult) {
 #if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
     const QPointer<const ScreenshotRecognitionSessionController> lifetime(this);
     const auto transition = m_transitionGeneration;
@@ -3302,7 +3302,7 @@ std::unique_ptr<QMimeData> ScreenshotRecognitionSessionController::recognitionCl
 #endif
     // Result widgets own their text and table selections. Resolve those before falling
     // back to complete cached results; conversion Copy above intentionally exports source.
-    if (m_active && !originalImageTranslationActive() && content()) {
+    if (!copyFullTextResult && m_active && !originalImageTranslationActive() && content()) {
         if (auto selected = content()->textSelectionClipboardMimeData())
             return selected;
     }
@@ -3333,8 +3333,6 @@ std::unique_ptr<QMimeData> ScreenshotRecognitionSessionController::recognitionCl
 #endif
     }
 
-    QString text;
-    bool resultAvailable = false;
 #if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
     if (translating()) {
         const auto entry = m_textCache.constFind(m_translationKey);
@@ -3369,42 +3367,42 @@ std::unique_ptr<QMimeData> ScreenshotRecognitionSessionController::recognitionCl
                                        : (entry.overlayTranslation.presentation
                                               ? entry.overlayTranslation.presentation.get()
                                               : entry.presentation.get());
-        resultAvailable = presentation != nullptr;
-        if (presentation != nullptr) {
-            text = presentation->hasTextSelection()
-                       ? presentation->selectedText()
-                       : snow_shot::presentation::originalOcrText(*presentation);
-        }
-    } else
+        if (presentation == nullptr)
+            return {};
+        mimeData->setText(presentation->hasTextSelection()
+                              ? presentation->selectedText()
+                              : snow_shot::presentation::originalOcrText(*presentation));
+        return mimeData;
+    }
 #endif
-        if (editing()) {
-        resultAvailable = hasTextResult();
-        text = textDraft();
-    } else if (displayedPresentation != nullptr) {
-        resultAvailable = true;
-        text = displayedPresentation->hasTextSelection()
-                   ? displayedPresentation->selectedText()
-                   : snow_shot::presentation::originalOcrText(*displayedPresentation);
-    } else {
-        resultAvailable = hasTextResult();
-        text = originalText();
+    if (!copyFullTextResult && editing()) {
+        if (!hasTextResult())
+            return {};
+        mimeData->setText(textDraft());
+        return mimeData;
     }
-    if (!resultAvailable) {
+    if (displayedPresentation == nullptr && !hasTextResult())
         return {};
-    }
+
     const QString key = m_textCacheKey.isEmpty() ? m_target.key : m_textCacheKey;
-    if (!editing() && !originalImageTranslationActive() && !m_textCache.value(key).formatted) {
+    const auto entry = m_textCache.value(key);
+    const auto* presentation =
+        displayedPresentation != nullptr ? displayedPresentation : entry.presentation.get();
+    if (!copyFullTextResult && presentation != nullptr && presentation->hasTextSelection()) {
+        mimeData->setText(presentation->selectedText());
+    } else if (entry.formatted) {
+        mimeData->setText(displayedPresentation == nullptr
+                              ? originalText()
+                              : snow_shot::presentation::originalOcrText(*displayedPresentation));
+    } else {
         const snow_shot::storage::TextRecognitionSettings settings;
-        const auto* presentation = displayedPresentation != nullptr
-                                       ? displayedPresentation
-                                       : m_textCache.value(key).presentation.get();
-        text = presentation != nullptr
-                   ? snow_shot::presentation::applyOcrTextTransforms(
-                         *presentation, settings.defaultFormatting(), settings.defaultPunctuation())
-                   : snow_shot::presentation::applyOcrTextTransforms(
-                         text, settings.defaultFormatting(), settings.defaultPunctuation());
+        mimeData->setText(
+            presentation != nullptr
+                ? snow_shot::presentation::applyOcrTextTransforms(
+                      *presentation, settings.defaultFormatting(), settings.defaultPunctuation())
+                : snow_shot::presentation::applyOcrTextTransforms(
+                      originalText(), settings.defaultFormatting(), settings.defaultPunctuation()));
     }
-    mimeData->setText(text);
     return mimeData;
 }
 
