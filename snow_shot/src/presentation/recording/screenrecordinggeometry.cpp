@@ -6,13 +6,22 @@
 #include <cmath>
 
 namespace {
-constexpr int kPhysicalBorderWidth = 2;
+constexpr qreal kBaseBorderWidth = 2.0;
 // The encoder may expand an odd-sized capture by one physical pixel. Keep
 // that expansion in a transparent gap instead of on the visible frame.
 constexpr int kPhysicalBorderPadding = 1;
 
 qreal validScale(qreal scale) {
     return std::isfinite(scale) && scale > 0.0 ? scale : 1.0;
+}
+
+qreal physicalBorderWidth(qreal scale) {
+#ifdef Q_OS_WIN
+    return std::ceil(kBaseBorderWidth * scale);
+#else
+    Q_UNUSED(scale);
+    return kBaseBorderWidth;
+#endif
 }
 
 bool entersFollowMargin(qreal cursor, qreal origin, qreal extent, qreal minOrigin,
@@ -42,13 +51,21 @@ qreal keepFollowCursorInView(qreal origin, qreal cursor, qreal extent, qreal min
 } // namespace
 
 namespace snow_shot::presentation::recording {
-ScreenRecordingFollowGuideMotion::ScreenRecordingFollowGuideMotion(const QSizeF& selectionSize,
-                                                                   const QRectF& bounds,
-                                                                   const QPointF& cursor,
-                                                                   bool smoothMovement,
-                                                                   bool reduceJitter)
+QRectF ScreenRecordingAreaFrameMetrics::expandedRect(const QRectF& selectionRect) const {
+    const qreal inset = borderWidth + paddingWidth;
+    return selectionRect.adjusted(-inset, -inset, inset, inset);
+}
+
+ScreenRecordingAreaFrameMetrics screenRecordingAreaFrameMetrics(qreal physicalScale) {
+    const qreal scale = validScale(physicalScale);
+    return {physicalBorderWidth(scale) / scale, kPhysicalBorderPadding / scale};
+}
+
+ScreenRecordingFollowGuideMotion::ScreenRecordingFollowGuideMotion(
+    const QSizeF& selectionSize, const QRectF& bounds, const QPointF& cursor, bool smoothMovement,
+    bool reduceJitter, qreal physicalScale)
     : m_interior(bounds), m_smoothMovement(smoothMovement), m_reduceJitter(reduceJitter) {
-    constexpr qreal inset = screenRecordingPhysicalFrameInset;
+    const qreal inset = physicalBorderWidth(validScale(physicalScale)) + kPhysicalBorderPadding;
     m_interior.adjust(inset, inset, -inset, -inset);
     if (selectionSize.isEmpty() || !m_interior.isValid())
         return;
@@ -156,9 +173,8 @@ ScreenRecordingObservedGeometry screenRecordingObservedGeometry(const QRect& phy
     const qreal scale = validScale(physicalScale);
     const QRectF selection(physicalInsets.left() / scale, physicalInsets.top() / scale,
                            selected.width() / scale, selected.height() / scale);
-    const qreal inset = screenRecordingPhysicalFrameInset / scale;
-    return {selected, selection.adjusted(-inset, -inset, inset, inset), selection,
-            kPhysicalBorderPadding / scale};
+    const auto metrics = screenRecordingAreaFrameMetrics(scale);
+    return {selected, metrics.expandedRect(selection), selection, metrics.paddingWidth};
 }
 
 ScreenRecordingAreaFrameGeometry screenRecordingAreaFrameGeometry(const QRectF& logicalRegion,
@@ -167,20 +183,13 @@ ScreenRecordingAreaFrameGeometry screenRecordingAreaFrameGeometry(const QRectF& 
         return {};
     }
 
-    const qreal scale = validScale(physicalScale);
-    const qreal borderWidth = static_cast<qreal>(kPhysicalBorderWidth) / scale;
-    const qreal paddingWidth = static_cast<qreal>(kPhysicalBorderPadding) / scale;
-    const qreal frameInset = borderWidth + paddingWidth;
-    const QRectF frameGeometry =
-        logicalRegion.adjusted(-frameInset, -frameInset, frameInset, frameInset);
+    const auto metrics = screenRecordingAreaFrameMetrics(physicalScale);
+    const QRectF frameGeometry = metrics.expandedRect(logicalRegion);
     const QRect windowGeometry = frameGeometry.toAlignedRect();
     const QRectF selectionRect = logicalRegion.translated(-windowGeometry.topLeft());
-    const QRectF frameRect =
-        selectionRect.adjusted(-frameInset, -frameInset, frameInset, frameInset);
 
-    return ScreenRecordingAreaFrameGeometry{
-        windowGeometry, frameRect, selectionRect, borderWidth, paddingWidth,
-    };
+    return {windowGeometry, metrics.expandedRect(selectionRect), selectionRect, metrics.borderWidth,
+            metrics.paddingWidth};
 }
 
 ScreenRecordingAreaFrameGeometry screenRecordingFollowFrameGeometry(const QRectF& logicalRegion,
@@ -192,10 +201,7 @@ ScreenRecordingAreaFrameGeometry screenRecordingFollowFrameGeometry(const QRectF
     // The extra logical pixel covers every fractional origin without resizing
     // the backing store as the viewport pans. The painted frame remains exact.
     const qreal guard = 1.0 / validScale(physicalScale);
-    const QRectF frame = logicalRegion.adjusted(-geometry.borderWidth - geometry.paddingWidth,
-                                                -geometry.borderWidth - geometry.paddingWidth,
-                                                geometry.borderWidth + geometry.paddingWidth,
-                                                geometry.borderWidth + geometry.paddingWidth);
+    const QRectF frame = geometry.frameRect.translated(geometry.windowGeometry.topLeft());
     const QRectF envelope = frame.adjusted(-guard, -guard, guard, guard);
     geometry.windowGeometry = QRect(QPoint(static_cast<int>(std::floor(envelope.left())),
                                            static_cast<int>(std::floor(envelope.top()))),
@@ -206,9 +212,22 @@ ScreenRecordingAreaFrameGeometry screenRecordingFollowFrameGeometry(const QRectF
     return geometry;
 }
 
-ScreenRecordingAreaBorderGeometry screenRecordingAreaBorderGeometry(const QRectF& frameRect,
-                                                                    const QRectF& selectionRect,
-                                                                    qreal paddingWidth) {
+ScreenRecordingAreaBorderGeometry screenRecordingAreaBorderGeometry(QRectF frameRect,
+                                                                    QRectF selectionRect,
+                                                                    qreal paddingWidth,
+                                                                    qreal physicalScale) {
+#ifdef Q_OS_WIN
+    const qreal scale = validScale(physicalScale);
+    // Snap before drawing so the rasterizer cannot round the two edges of a strip differently.
+    const QRectF aligned(QPointF((selectionRect.topLeft() * scale).toPoint()) / scale,
+                         QSizeF((selectionRect.size() * scale).toSize()) / scale);
+    const QPointF nearOffset = aligned.topLeft() - selectionRect.topLeft();
+    const QPointF farOffset = aligned.bottomRight() - selectionRect.bottomRight();
+    frameRect.adjust(nearOffset.x(), nearOffset.y(), farOffset.x(), farOffset.y());
+    selectionRect = aligned;
+#else
+    Q_UNUSED(physicalScale);
+#endif
     const qreal selectionRight = selectionRect.left() + selectionRect.width();
     const qreal selectionBottom = selectionRect.top() + selectionRect.height();
     const qreal borderInnerLeft = selectionRect.left() - paddingWidth;

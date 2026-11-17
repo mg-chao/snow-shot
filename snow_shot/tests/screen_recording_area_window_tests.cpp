@@ -653,6 +653,43 @@ void geometryAndTransparentCanvasFollowThePhysicalSelection() {
             "an empty recording canvas should remain fully transparent");
 }
 
+#ifdef Q_OS_WIN
+void recordingBorderPaintsWholePixelsOutsideTheCapture(bool follow) {
+    ScreenRecordingAreaWindow area;
+    // Odd extents exercise the one-pixel expansion used by the encoder.
+    const QRect selected = testRecordingRegion().adjusted(1, 1, 0, 0);
+    area.setRecordingRegion(selected);
+    area.setFollowCaptureActive(follow);
+    area.setRecordingState(ScreenshotToolPalette::RecordingState::Recording);
+    area.show();
+    QCoreApplication::processEvents();
+
+    const qreal scale = area.devicePixelRatioF();
+    const int borderWidth = qCeil(2.0 * scale);
+    const QRect localSelection((area.selectionRect().topLeft() * scale).toPoint(), selected.size());
+    const QRect inner = localSelection.adjusted(-1, -1, 1, 1);
+    const QRect outer = inner.adjusted(-borderWidth, -borderWidth, borderWidth, borderWidth);
+    const QImage image = renderWidget(area, scale);
+    require(image.rect().contains(outer), "the window must fit the scaled recording border");
+    const QColor recordingColor(0xf5, 0x22, 0x2d);
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const QPoint point(x, y);
+            const QColor color = image.pixelColor(point);
+            const bool isBorder = outer.contains(point) && !inner.contains(point);
+            const bool matches = isBorder ? color == recordingColor : color.alpha() == 0;
+            if (!matches)
+                qInfo() << "Recording border pixel mismatch" << point << color << "expected border"
+                        << isBorder << "follow" << follow << "scale" << scale << "selection"
+                        << area.selectionRect() << "physical selection" << localSelection;
+            require(
+                matches,
+                "the painted frame must have the exact DPI width and leave capture pixels clear");
+        }
+    }
+}
+#endif
+
 void inputModesOwnOnlyDrawingInputAndRestoreRequestedState() {
     ScreenRecordingAreaWindow area;
     area.setRecordingRegion(testRecordingRegion());
@@ -1400,7 +1437,7 @@ void countdownUsesThePausedBorderAndCentersItsIndicator() {
 #endif
     const auto frame = recording::screenRecordingAreaFrameGeometry(logical, scale);
     const auto border = recording::screenRecordingAreaBorderGeometry(
-        frame.frameRect, frame.selectionRect, frame.paddingWidth);
+        frame.frameRect, frame.selectionRect, frame.paddingWidth, scale);
     const auto borderColor = [&area](const QPointF& position) {
         const QImage image = renderWidget(area);
         return image.pixelColor(qRound(position.x()), qRound(position.y()));
@@ -2541,6 +2578,12 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (application.arguments().contains(QStringLiteral("--follow-viewport-only"))) {
+#ifdef Q_OS_WIN
+        if (QGuiApplication::platformName() == QStringLiteral("offscreen")) {
+            recordingBorderPaintsWholePixelsOutsideTheCapture(false);
+            recordingBorderPaintsWholePixelsOutsideTheCapture(true);
+        }
+#endif
         followViewportPreservesSelectionAndCanvas();
         followPanningKeepsItsBackingSize();
         followPanningRepaintsOnlyChangedBorderPixels();

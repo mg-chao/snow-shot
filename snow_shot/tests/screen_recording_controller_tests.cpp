@@ -8727,6 +8727,14 @@ void recordingFollowDisplayHandoff() {
     const QRect firstBounds = bounds(*first);
     const QRect secondBounds = bounds(*second);
     require(secondBounds.x() < firstBounds.x(), "the second display is left of the first");
+    const auto guideInset = [](const QScreen& screen) {
+#ifdef Q_OS_WIN
+        return qCeil(2.0 * screen.devicePixelRatio()) + 1;
+#else
+        Q_UNUSED(screen);
+        return 3;
+#endif
+    };
 
     std::optional<QPoint> cursor = firstBounds.center();
     ScreenRecordingController controller(testEffectsSource);
@@ -8777,7 +8785,7 @@ void recordingFollowDisplayHandoff() {
         controller.pollCaptureViewportForTests();
         const QRectF resizedGuide = area->captureViewport();
         require(resizedGuide.left() < originalGuide.left() &&
-                    resizedGuide.right() == resizedBounds.right() + 1 - 3 &&
+                    resizedGuide.right() == resizedBounds.right() + 1 - guideInset(*first) &&
                     resizedGuide.size() == originalGuide.size(),
                 "the guide clamps to the smaller display with the same viewport revision");
     }
@@ -8788,7 +8796,9 @@ void recordingFollowDisplayHandoff() {
             "an unavailable cursor sample falls back to the confirmed snapshot center");
     cursor = secondBounds.topLeft();
     area->followPointerMoved(*cursor);
-    const QRectF edgeGuide(secondBounds.topLeft() + QPoint(3, 3), selected.size());
+    const int secondInset = guideInset(*second);
+    const QRectF edgeGuide(secondBounds.topLeft() + QPoint(secondInset, secondInset),
+                           selected.size());
     require(area->captureViewport() == edgeGuide,
             "same-display movement clamps the painted guide inside the display");
     cursor = firstBounds.center();
@@ -8816,7 +8826,7 @@ void recordingFollowDisplayHandoff() {
 
     snapshot(6, secondBounds.center());
     const QRectF clampedGuide(
-        QPointF(secondBounds.x() + secondBounds.width() - 3 - selected.width(), cursor->y() - 120),
+        QPointF(secondBounds.right() + 1 - secondInset - selected.width(), cursor->y() - 120),
         selected.size());
     require(area->captureViewport() == clampedGuide,
             "a confirmed switch clamps to its destination when the cursor has already left");
