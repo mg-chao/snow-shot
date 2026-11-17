@@ -90,8 +90,11 @@ class NativeSigning(unittest.TestCase):
         cls.keychain = cls.root / 'fixture.keychain-db'
         password = secrets.token_hex(24)
         cls.addClassCleanup(cls.temporary.cleanup)
+        search_list = ('/usr/bin/security', 'list-keychains', '-d', 'user')
+        original_keychains = shlex.split(signing.run(*search_list))
         cls.addClassCleanup(lambda: subprocess.run(
             ['/usr/bin/security', 'delete-keychain', str(cls.keychain)], capture_output=True))
+        cls.addClassCleanup(signing.run, *search_list, '-s', *original_keychains)
         signing.run('/usr/bin/security', 'create-keychain', '-p', password, str(cls.keychain))
         signing.run('/usr/bin/security', 'unlock-keychain', '-p', password, str(cls.keychain))
         cls.identities = []
@@ -111,6 +114,8 @@ class NativeSigning(unittest.TestCase):
             cls.identities.append(signing.fingerprint(cert))
         signing.run('/usr/bin/security', 'set-key-partition-list', '-S', 'apple-tool:,apple:',
                     '-s', '-k', password, str(cls.keychain))
+        # codesign uses the user search list to build the certificate chain even with --keychain.
+        signing.run(*search_list, '-s', str(cls.keychain), *original_keychains)
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(dir=self.root)
