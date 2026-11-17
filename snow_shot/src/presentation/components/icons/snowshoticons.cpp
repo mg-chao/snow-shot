@@ -124,25 +124,15 @@ constexpr IconDescriptor kEntries[] = {
     </filter>
   </defs>
 
-  <g transform="translate(0.5 0.5) scale(0.66)"
-     stroke-linecap="round"
-     stroke-linejoin="round">
-    <g filter="url(#soft-black-edge)">
-      <path d="M 5.72 5.50
-               C 5.36 5.36, 5.12 5.73, 5.27 6.10
-               L 12.93 25.36
-               C 13.20 26.03, 14.15 26.02, 14.41 25.35
-               L 17.52 17.79
-               C 17.64 17.48, 17.88 17.24, 18.19 17.12
-               L 25.987 14.19
-               C 26.667 13.93, 26.687 12.98, 26.007 12.71
-               Z"
-            fill="#000000"
-            stroke="#FFFFFF"
-            stroke-width="2.484375"
-            transform="matrix(1.08330 0 0 1.08330 -1.44035 -1.34575)"/>
-    </g>
+  <g filter="url(#soft-black-edge)">
+    <path d="M 3 10 L 9 5 V 8 H 19 V 5 L 25 10 L 19 15 V 12 H 9 V 15 Z"
+          fill="#000000"
+          stroke="#FFFFFF"
+          stroke-width="1.8"
+          stroke-linejoin="round"/>
+  </g>
 
+  <g transform="translate(0.5 0.5) scale(0.66)">
     <g filter="url(#soft-black-edge-light)"
        stroke="#FFFFFF"
        stroke-width="2.484375">
@@ -152,7 +142,7 @@ constexpr IconDescriptor kEntries[] = {
   </g>
 </svg>
 )ADQT_SVG_4"),
-     std::string_view("660f556578200f849e2addcf99a6274cf9eb22d6d5b160c117316fea92cac8ec"),
+     std::string_view("2552af22372a17826fb044bb9cbc9e9a82f2ac172ac912d55597f2d026b032b6"),
      IconColorModel::FullColor, IconFit::Contain,
      IconStaticColors{std::string_view(""), std::string_view(""), std::string_view("")}, false},
     {std::string_view("snow-shot"), std::string_view("outlined"), std::string_view("actual-size"),
@@ -2673,7 +2663,7 @@ SOFTWARE.
 
 constexpr IconPack kStaticPack{
     std::string_view("snow-shot"), std::string_view("Snow Shot project-owned static SVG assets"),
-    std::string_view("fa13c117c82481308a56c51d54358e6ffa23fef7645edf7ea1c6074e519d5f99"), kEntries,
+    std::string_view("7bf52084e406d7a2d169e86166a927396535fb68ce9f04d2c3b8868e9c739203"), kEntries,
     sizeof(kEntries) / sizeof(kEntries[0])};
 
 } // namespace

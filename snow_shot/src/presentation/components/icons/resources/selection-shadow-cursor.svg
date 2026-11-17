@@ -38,25 +38,15 @@
     </filter>
   </defs>
 
-  <g transform="translate(0.5 0.5) scale(0.66)"
-     stroke-linecap="round"
-     stroke-linejoin="round">
-    <g filter="url(#soft-black-edge)">
-      <path d="M 5.72 5.50
-               C 5.36 5.36, 5.12 5.73, 5.27 6.10
-               L 12.93 25.36
-               C 13.20 26.03, 14.15 26.02, 14.41 25.35
-               L 17.52 17.79
-               C 17.64 17.48, 17.88 17.24, 18.19 17.12
-               L 25.987 14.19
-               C 26.667 13.93, 26.687 12.98, 26.007 12.71
-               Z"
-            fill="#000000"
-            stroke="#FFFFFF"
-            stroke-width="2.484375"
-            transform="matrix(1.08330 0 0 1.08330 -1.44035 -1.34575)"/>
-    </g>
+  <g filter="url(#soft-black-edge)">
+    <path d="M 3 10 L 9 5 V 8 H 19 V 5 L 25 10 L 19 15 V 12 H 9 V 15 Z"
+          fill="#000000"
+          stroke="#FFFFFF"
+          stroke-width="1.8"
+          stroke-linejoin="round"/>
+  </g>
 
+  <g transform="translate(0.5 0.5) scale(0.66)">
     <g filter="url(#soft-black-edge-light)"
        stroke="#FFFFFF"
        stroke-width="2.484375">

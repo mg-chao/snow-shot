@@ -331,16 +331,24 @@ void geometryAndCursorsRespectDisplayScale() {
                 "shared corner cursor must preserve hotspot and device scale");
         const auto shadow = adqt::icons::makeCursor(
             snow_shot::presentation::icons::custom::cursor::SelectionShadowCursor(), QSize(32, 32),
-            QPoint(3, 3), scale);
-        require(shadow.shape() == Qt::BitmapCursor && shadow.hotSpot() == QPoint(3, 3) &&
+            QPoint(14, 10), scale);
+        require(shadow.shape() == Qt::BitmapCursor &&
                     shadow.pixmap().size() == QSize(qCeil(32 * scale), qCeil(32 * scale)) &&
                     qFuzzyCompare(shadow.pixmap().devicePixelRatio(), scale),
                 "shadow cursor must rasterize at the target device scale");
         if (scale >= 1) {
             const auto pixels = shadow.pixmap().toImage();
-            const QRect pointerRegion(0, 0, qCeil(20 * scale), qCeil(15 * scale));
-            require(pixels.copy(pointerRegion) == cursor.pixmap().toImage().copy(pointerRegion),
-                    "shadow and corner radius cursors must share the same pointer artwork");
+            const auto pixelAt = [&](int x, int y) {
+                return pixels.pixelColor(qFloor(x * scale), qFloor(y * scale));
+            };
+            const auto isInk = [&](int x, int y) {
+                const auto color = pixelAt(x, y);
+                return color.alpha() > 200 && color.value() < 64;
+            };
+            require(isInk(6, 10) && isInk(14, 10) && isInk(21, 10) && pixelAt(8, 7).alpha() > 200 &&
+                        pixelAt(19, 7).alpha() > 200 && pixelAt(8, 13).alpha() > 200 &&
+                        pixelAt(19, 13).alpha() > 200 && pixelAt(14, 5).alpha() == 0,
+                    "shadow cursor must show a horizontal shaft with an arrowhead on both ends");
             const QColor foreground = pixels.pixelColor(qRound(22 * scale), qRound(20 * scale));
             const QColor offsetShadow = pixels.pixelColor(qRound(27 * scale), qRound(27 * scale));
             require(foreground.alpha() > 200 && foreground.value() < 32 &&
@@ -399,9 +407,14 @@ void leftShadowHandleSupportsHoverAndDragging() {
     f.mouse(QEvent::MouseMove, point, Qt::NoButton, Qt::NoButton);
     require(f.interaction.hoveredEffectHandle() == Handle::Width && f.state().effectPreviewVisible,
             "left shadow control must support hover and preview");
+    const QCursor hoverCursor = f.canvas->cursor();
+    require(hoverCursor.shape() == Qt::BitmapCursor && hoverCursor.hotSpot() == QPoint(14, 10),
+            "hover must place the cursor hotspot at the center of the horizontal arrow");
     f.mouse(QEvent::MouseButtonPress, point, Qt::LeftButton, Qt::LeftButton);
     require(f.input->effectDragActive(), "left shadow control must own the pointer gesture");
     f.mouse(QEvent::MouseMove, point + QPointF(-20, 45), Qt::NoButton, Qt::LeftButton);
+    require(f.canvas->cursor() == hoverCursor,
+            "dragging outside the control must retain the horizontal arrow cursor");
     require(f.selection.shadowWidth() == 20 && f.toolbarShadow == 20 && f.writes == 0 &&
                 f.selection.normalizedSelection() == bounds && f.layout().shadow == point,
             "leftward dragging of the left control must increase shadow width without resizing");
