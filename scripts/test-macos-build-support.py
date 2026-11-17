@@ -1036,13 +1036,15 @@ class MacOSBuildScripts(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         shutil.copytree(ROOT / "scripts", self.root / "scripts")
+        (self.root / 'CMakeLists.txt').write_text('set(SNOW_SHOT_VERSION "1.2.3")\n')
         (self.root / 'scripts/snow-shot-macos-signing.py').write_text(
             "import os, sys\n"
             "if os.environ.get('SNOW_TEST_RELEASE_IDENTITY_MISSING'): sys.exit(1)\n"
             "print('A' * 40)\n")
         ocr_pin = self.root / 'snow-crates/crates/simd-paddle-ocr-rs/rust-toolchain.toml'
         ocr_pin.parent.mkdir(parents=True)
-        shutil.copyfile(ROOT / 'snow-crates/crates/simd-paddle-ocr-rs/rust-toolchain.toml', ocr_pin)
+        # Match the mocked rustup toolchain list, including in CI checkouts without submodules.
+        ocr_pin.write_text('[toolchain]\nchannel = "nightly-2026-09-08"\n')
         self.bin = self.root / ".tools/macos-dev/bin"
         self.bin.mkdir(parents=True)
         self.log = self.root / "commands.jsonl"
@@ -1153,6 +1155,7 @@ if name == 'openssl':
         if option in sys.argv:
             pathlib.Path(sys.argv[sys.argv.index(option) + 1]).touch()
 """
+        (self.root / 'scripts/snow-shot-sparkle.py').write_text(mock)
         tools = ("cmake", "cpack", "ninja", "cargo", "rustc", "rustup", "pkg-config", "uname",
                  "open", "ps", "xcode-select", "xcrun", "git", "lsregister", "security",
                  "openssl", "arch", "sysctl", "cc", "c++", "clang++")
@@ -1492,9 +1495,15 @@ if name == 'openssl':
         self.assertLess(build, symbols)
         self.assertLess(symbols, pack)
         self.assertEqual(calls[pack], ['cpack', '--preset', 'package-snow-shot-macos-arm64-release'])
-        self.assertTrue(any(call[0] == 'cpack' and
-                            any(arg.endswith('CPackSnowShotMiniConfig.cmake') for arg in call)
-                            for call in calls))
+        mini_pack = next(i for i, call in enumerate(calls) if call[0] == 'cpack' and
+                         any(arg.endswith('CPackSnowShotMiniConfig.cmake') for arg in call))
+        self.assertLess(calls.index(['snow-shot-sparkle.py', 'check-key']), build)
+        for product, package in (('snow-shot', pack), ('snow-shot-mini', mini_pack)):
+            dmg = stale.parent / f'{product}-1.2.3-macos-arm64.dmg'
+            prepare = ['snow-shot-sparkle.py', 'prepare-release', '--dmg', str(dmg),
+                       '--product', product, '--version', '1.2.3', '--architecture', 'arm64',
+                       '--output', str(dmg.with_suffix('.sparkle.json'))]
+            self.assertLess(package, calls.index(prepare))
         self.assertFalse(stale.exists())
 
     def test_arm_release_rejects_disabled_mini_before_packaging(self):
