@@ -2439,6 +2439,9 @@ bool ScreenshotRecognitionWindow::copyVisibleContentToClipboard() {
         const auto copy = m_actions.copyOcrResult;
         return copy();
     }
+    if (m_ocrPresentation && m_sessionCallbacks.copySmart &&
+        m_sessionCallbacks.copySmart(m_ocrPresentation.get()))
+        return true;
 #if SNOW_SHOT_ENABLE_IMAGE_CONVERSION
     if (m_conversionView != nullptr) {
         return m_conversionView->copyToClipboard();

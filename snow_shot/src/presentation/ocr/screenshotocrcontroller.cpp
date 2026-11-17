@@ -576,6 +576,28 @@ bool ScreenshotOcrController::copyRecognitionToClipboard(bool endCapture, bool c
     if (!m_active || QApplication::clipboard() == nullptr) {
         return false;
     }
+    const auto smartPublication = ScreenshotClipboardService::reservePublication();
+    const QPointer<ScreenshotOcrController> smartGuard(this);
+    const auto smartActivation = m_activationId;
+    if (m_session->prepareSmartClipboard(
+            m_presentation.get(), copyFullTextResult,
+            [smartGuard, smartActivation, smartPublication, endCapture](auto mime) {
+                if (!smartGuard || !smartGuard->m_active ||
+                    smartActivation != smartGuard->m_activationId)
+                    return;
+                static_cast<void>(ScreenshotClipboardService::commitMimeData(
+                    QApplication::clipboard(), smartGuard, mime.release(), smartPublication,
+                    [smartGuard, smartActivation, endCapture](const auto& result) {
+                        if (!smartGuard || !smartGuard->m_active ||
+                            smartActivation != smartGuard->m_activationId)
+                            return;
+                        if (!result.succeeded())
+                            smartGuard->showStatus(result.errorString(), true);
+                        else if (endCapture && !result.superseded)
+                            smartGuard->m_context.cancelCapture();
+                    }));
+            }))
+        return true;
 #if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
     if (m_session->mode() == ScreenshotRecognitionSessionController::Mode::Document) {
         const auto request = m_session->documentCopyRequest();

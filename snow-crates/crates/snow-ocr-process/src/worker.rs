@@ -78,11 +78,13 @@ pub(super) enum Work {
     Prepare(u64, Config),
     Release(u64),
     Recognize(Job),
+    GroupParagraphs(Job, crate::paragraph::Config),
 }
 pub(super) enum WorkResult {
     Prepared(u64, bool),
     Released(u64),
     Complete(Box<Completion>),
+    ParagraphsComplete(crate::paragraph::Completion),
 }
 
 fn infer(
@@ -152,6 +154,9 @@ pub(super) fn worker_loop(
     for work in rx {
         let release_caches = matches!(&work, Work::Prepare(..) | Work::Release(_));
         let result = match work {
+            Work::GroupParagraphs(job, config) => {
+                WorkResult::ParagraphsComplete(crate::paragraph::infer(job, config, &acceleration))
+            }
             Work::Prepare(id, next) => {
                 let ready = if configuration.as_ref() == Some(&next) && session.engine().is_some() {
                     session.recreate(|previous| {

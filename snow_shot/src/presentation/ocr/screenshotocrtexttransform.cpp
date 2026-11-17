@@ -17,14 +17,6 @@ QString originalOcrText(const ScreenshotOcrPresentation& presentation) {
     return lines.join(QChar('\n'));
 }
 
-QString smartOcrText(const ScreenshotOcrPresentation& presentation) {
-    QStringList paragraphs;
-    for (const auto& line : mergeOcrLayout(presentation.lines, presentation.selection.topLeft())) {
-        paragraphs.append(line.text);
-    }
-    return paragraphs.join(QChar('\n'));
-}
-
 QString removeOcrLineBreaks(const QString& text) {
     QString result = text;
     result.remove(QChar('\n'));
@@ -71,8 +63,8 @@ QString applyOcrTextTransforms(const QString& text, const QString& formatting,
 
 QString applyOcrTextTransforms(const ScreenshotOcrPresentation& presentation,
                                const QString& formatting, const QString& punctuation) {
-    const QString text = formatting == QStringLiteral("smart") ? smartOcrText(presentation)
-                                                               : originalOcrText(presentation);
+    // Smart formatting is prepared asynchronously by the session controller.
+    const QString text = originalOcrText(presentation);
     return applyOcrTextTransforms(text, formatting, punctuation);
 }
 

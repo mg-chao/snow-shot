@@ -32,7 +32,7 @@ function New-TestRuntime([string]$Architecture, [string]$Case) {
     )
     if ($Case -eq 'wrong-file-hash') { $files[0].sha256 = '0' * 64 }
     $platform = if ($Case -eq 'wrong-platform') { 'windows-unknown' } else { "windows-$Architecture" }
-    [ordered]@{ schema = 1; version = '1.2.0'; platform = $platform; protocol = 7; files = $files } |
+    [ordered]@{ schema = 1; version = '1.2.0'; platform = $platform; protocol = 8; files = $files } |
         ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $stage 'runtime-manifest.json') -Encoding utf8NoBOM
     if ($Case -eq 'unexpected-file') { [IO.File]::WriteAllText((Join-Path $stage 'extra.dll'), 'unexpected') }
     $archive = "$stage.zip"
@@ -170,8 +170,22 @@ try {
                     sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() }
             }) }) }
     $assetManifest = Join-Path $assets 'asset-manifest.json'
+    $paragraph = Join-Path $assets 'models/fixture-paragraph'
+    $null = New-Item -ItemType Directory -Path $paragraph
+    $paragraphPath = Join-Path $paragraph 'line2para_1.onnx'
+    [IO.File]::WriteAllText($paragraphPath, 'paragraph fixture')
+    $packagedAssets.paragraph_model = @{ id = 'fixture-paragraph'; files = @(@{
+        name = 'line2para_1.onnx'; size = (Get-Item -LiteralPath $paragraphPath).Length
+        sha256 = (Get-FileHash -LiteralPath $paragraphPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    }) }
     $packagedAssets | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $assetManifest -Encoding utf8NoBOM
     Invoke-SnowNativePackageProbe -Stage $probeStage -Product snow-shot -TargetArchitecture $hostArchitecture -Version '1.2.3'
+    [IO.File]::WriteAllText($paragraphPath, 'corrupt paragraph')
+    $rejected = $false
+    try { Invoke-SnowNativePackageProbe -Stage $probeStage -Product snow-shot -TargetArchitecture $hostArchitecture -Version '1.2.3' }
+    catch { $rejected = $_.Exception.Message -ceq 'Packaged paragraph model bytes differ from the trusted asset manifest.' }
+    if (-not $rejected) { throw 'Native package proof accepted corrupt paragraph weights.' }
+    [IO.File]::WriteAllText($paragraphPath, 'paragraph fixture')
     [IO.File]::WriteAllText((Join-Path $model 'dictionary.txt'), 'invalid dictionary')
     $rejected = $false
     try { Invoke-SnowNativePackageProbe -Stage $probeStage -Product snow-shot -TargetArchitecture $hostArchitecture -Version '1.2.3' }

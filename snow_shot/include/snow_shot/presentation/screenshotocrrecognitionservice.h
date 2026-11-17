@@ -5,6 +5,7 @@
 #include <QColor>
 #include <QObject>
 #include <QRectF>
+#include <QPolygonF>
 #include <QSize>
 #include <QString>
 
@@ -36,6 +37,16 @@ struct ScreenshotOcrRecognitionResult {
 };
 
 enum class ScreenshotOcrRequestPriority { Interactive, Prefetch };
+
+struct ScreenshotOcrParagraphRequest {
+    QImage image;
+    QRectF canvasRect;
+    QVector<QPolygonF> quads;
+};
+struct ScreenshotOcrParagraphResult {
+    QVector<QVector<int>> groups;
+    QString error;
+};
 
 struct ScreenshotOcrColorSource {
     QImage image;
@@ -94,8 +105,16 @@ class ScreenshotOcrRecognitionPort : public QObject {
     explicit ScreenshotOcrRecognitionPort(QObject* parent = nullptr) : QObject(parent) {}
     using RequestToken = quint64;
     using Completion = std::function<void(ScreenshotOcrRecognitionResult)>;
+    using ParagraphCompletion = std::function<void(ScreenshotOcrParagraphResult)>;
 
     virtual ~ScreenshotOcrRecognitionPort() = default;
+    virtual RequestToken groupParagraphs(ScreenshotOcrParagraphRequest request, QObject* receiver,
+                                         ParagraphCompletion completion) {
+        Q_UNUSED(request);
+        Q_UNUSED(receiver);
+        Q_UNUSED(completion);
+        return 0;
+    }
     virtual RequestToken recognize(ScreenshotOcrRequest request, QObject* receiver,
                                    Completion completion) = 0;
     // Optional render-only operation. The default is a no-op so test doubles
@@ -161,11 +180,15 @@ class ScreenshotOcrRecognitionService final : public ScreenshotOcrRecognitionPor
         int retryTimeUnitMilliseconds = 1000;
         // Optional worker-side barrier for deterministic rendering/lifecycle tests.
         std::function<void()> beforeLocalRender;
+        QString paragraphModelPath;
     };
 
     explicit ScreenshotOcrRecognitionService(QObject* parent = nullptr);
     explicit ScreenshotOcrRecognitionService(const Options& options, QObject* parent = nullptr);
     ~ScreenshotOcrRecognitionService() override;
+
+    RequestToken groupParagraphs(ScreenshotOcrParagraphRequest request, QObject* receiver,
+                                 ParagraphCompletion completion) override;
 
     RequestToken recognize(ScreenshotOcrRequest request, QObject* receiver,
                            Completion completion) override;

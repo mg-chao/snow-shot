@@ -4,7 +4,12 @@
 #include "snow_shot/presentation/screenshotocrpresentation.h"
 
 namespace snow_shot::presentation {
+// Membership comes exclusively from the paragraph operation. Spatial ordering is independent.
+[[nodiscard]] std::optional<QVector<ScreenshotOcrLine>>
+mergeOcrParagraphs(const QVector<ScreenshotOcrLine>& lines, const QVector<QVector<int>>& groups,
+                   QVector<QVector<int>>* sourceIndices = nullptr);
 // STranslate Smart layout adapted to image-coordinate OCR lines. The input is never modified.
+// Legacy saved-translation compatibility only. New requests use mergeOcrParagraphs.
 [[nodiscard]] QVector<ScreenshotOcrLine>
 mergeOcrLayout(const QVector<ScreenshotOcrLine>& lines, const QPointF& imageOrigin = {},
                QVector<QVector<int>>* sourceIndices = nullptr);

@@ -1,6 +1,6 @@
-# OCR protocol 7
+# OCR protocol 8
 
-Runtime 1.2.2 uses a binary stdin/stdout command channel. Diagnostics use stderr.
+Runtime 1.3.0 uses a binary stdin/stdout command channel. Diagnostics use stderr.
 The application and runtime are released together; earlier protocols are incompatible.
 All integers and IEEE-754 floats are little-endian. A string is a `u32` byte
 length followed by UTF-8. Frames have a 20-byte header: `SOCR`, version `u16`,
@@ -28,6 +28,8 @@ kind `u16`, operation ID `u64`, payload size `u32`. Payloads are capped at 1 MiB
 | 18 | DiscardImage | Recognition token | Empty |
 | 19 | ConfigureAcceleration | 0 | Enabled `u8` (0 or 1) |
 | 20 | AccelerationReady | 0 | Empty |
+| 21 | GroupParagraphs | Grouping token | Paragraph model path string, hardware acceleration `u8`, line count `u32`, eight pixel-coordinate `f32`s per original line |
+| 22 | ParagraphsComplete | Grouping token | Status `u8`; success: group count `u32`, then member count `u32` and source indices `u32` per group; failure/cancellation: error string |
 
 `Ready` establishes only the command channel. It does not open an image buffer,
 probe a model, or create an inference session. Model creation and inference run
@@ -103,3 +105,18 @@ each line's text string, confidence `f32`, and eight quad-coordinate `f32`s.
 The parent preserves callback submission order even when local image rendering
 finishes later. It validates process generation, session operation, mapping
 generation, and image sequence before applying acknowledgements.
+
+## Independent paragraph grouping
+
+Protocol 8 adds GroupParagraphs and ParagraphsComplete. Recognition requests and
+Complete payloads do not contain paragraphs. GroupParagraphs consumes a staged
+image through the existing transfer acknowledgements and single inference
+executor, without PrepareSession or recognition models. It loads the verified
+paragraph model only for that operation and releases its request/weights afterward.
+The explicit execution target selects an already-ready GPU when requested,
+otherwise CPU; failures are returned directly without CPU retry. Cancel uses the
+grouping token and suppresses publication after inference drains.
+
+Paragraph members are original input indices. Their enumeration is not reading
+order: the host validates a complete disjoint partition and independently applies
+spatial ordering. Images and quads must describe the same source pixel space.

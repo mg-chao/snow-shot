@@ -220,6 +220,10 @@ class ScreenshotRecognitionSessionController final : public QObject {
     [[nodiscard]] ScreenshotDocumentCopyRequest documentCopyRequest() const;
 #endif
     // Commits active table edits before copying the complete document for file saving.
+    // Returns true when a smart full-text copy was accepted (possibly asynchronously).
+    bool prepareSmartClipboard(const ScreenshotOcrPresentation* displayedPresentation,
+                               bool copyFullTextResult,
+                               std::function<void(std::unique_ptr<QMimeData>)> completion);
     [[nodiscard]] std::optional<ScreenshotRecognitionFileSnapshot> fileExportSnapshot();
     void setTextDraft(const QString& text);
     [[nodiscard]] QJsonObject workflowState() const;
@@ -236,6 +240,21 @@ class ScreenshotRecognitionSessionController final : public QObject {
     void workflowStateChanged() const;
 
   private:
+    struct ParagraphPreparation {
+        std::shared_ptr<ScreenshotOcrPresentation> source;
+        QImage image;
+        QRectF canvasRect;
+        QVector<QPolygonF> quads;
+        std::shared_ptr<ScreenshotOcrPresentation> result;
+        ScreenshotOcrRecognitionPort::RequestToken token = 0;
+        QVector<std::function<void(std::shared_ptr<ScreenshotOcrPresentation>)>> waiting;
+    };
+    QHash<QString, std::shared_ptr<ParagraphPreparation>> m_paragraphPreparations;
+    quint64 m_formattingGeneration = 0;
+    void
+    prepareParagraphs(const QString& key,
+                      std::function<void(std::shared_ptr<ScreenshotOcrPresentation>)> completion);
+    void cancelParagraphPreparations();
     [[nodiscard]] bool canPublishUi() const;
     // Asset downloads can surface before recognition acquires a view. Only the current
     // host may publish those prompts, including their eventual cleanup.

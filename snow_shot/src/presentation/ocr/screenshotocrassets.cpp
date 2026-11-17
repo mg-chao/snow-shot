@@ -72,6 +72,7 @@ struct FileDescriptor {
 };
 
 struct ModelDescriptor {
+    bool paragraph = false;
     ScreenshotOcrModelType type = ScreenshotOcrModelType::Small;
     QString id;
     QString detector;
@@ -81,6 +82,7 @@ struct ModelDescriptor {
 };
 
 struct Descriptor {
+    QJsonObject paragraphModel;
     bool bundled = false;
     QString executable;
     QString runtimeVersion;
@@ -244,6 +246,7 @@ std::optional<Descriptor> loadDescriptor(const QString& root, QString* error) {
     const QJsonObject rootObject = document.object();
     const QJsonObject runtime = rootObject.value(QStringLiteral("runtime")).toObject();
     Descriptor result;
+    result.paragraphModel = rootObject.value(QStringLiteral("paragraph_model")).toObject();
     result.runtimeVersion = runtime.value(QStringLiteral("version")).toString();
     result.platform = runtime.value(QStringLiteral("platform")).toString();
 #ifdef Q_OS_MACOS
@@ -459,9 +462,13 @@ ScreenshotOcrResolvedAssets resolved(const QString& runtimeRoot, const QString& 
     result.runtimeDirectory = runtimeDirectory(runtimeRoot, descriptor);
     result.processPath = QDir(result.runtimeDirectory).filePath(descriptor.executable);
     const QString models = modelDirectory(modelRoot, model);
-    result.detectorModelPath = QDir(models).filePath(model.detector);
-    result.recognizerModelPath = QDir(models).filePath(model.recognizer);
-    result.dictionaryPath = QDir(models).filePath(model.dictionary);
+    if (model.paragraph) {
+        result.paragraphModelPath = QDir(models).filePath(model.files.front().name);
+    } else {
+        result.detectorModelPath = QDir(models).filePath(model.detector);
+        result.recognizerModelPath = QDir(models).filePath(model.recognizer);
+        result.dictionaryPath = QDir(models).filePath(model.dictionary);
+    }
     result.offline = offline;
     return result;
 }
@@ -667,8 +674,9 @@ bool downloadOnce(QNetworkAccessManager* manager, const FileDescriptor& descript
 }
 
 bool download(QNetworkAccessManager* manager, const FileDescriptor& descriptor,
-              const QString& destination, const Progress& progress, QString* error) {
-    for (int attempt = 0; attempt < 3; ++attempt) {
+              const QString& destination, const Progress& progress, QString* error,
+              int attempts = 3) {
+    for (int attempt = 0; attempt < attempts; ++attempt) {
         if (interruptionRequested()) {
             if (error != nullptr)
                 *error = QString::fromLatin1(kInterruptedError);
@@ -798,8 +806,10 @@ ScreenshotOcrModelType screenshotOcrModelTypeFromValue(const QString& value) {
 
 bool ScreenshotOcrResolvedAssets::valid() const {
     return !modelId.isEmpty() && !runtimeVersion.isEmpty() && QFileInfo(processPath).isFile() &&
-           QFileInfo(detectorModelPath).isFile() && QFileInfo(recognizerModelPath).isFile() &&
-           QFileInfo(dictionaryPath).isFile();
+           (!paragraphModelPath.isEmpty() ? QFileInfo(paragraphModelPath).isFile()
+                                          : QFileInfo(detectorModelPath).isFile() &&
+                                                QFileInfo(recognizerModelPath).isFile() &&
+                                                QFileInfo(dictionaryPath).isFile());
 }
 
 class ScreenshotOcrAssets::Impl final {
@@ -937,6 +947,22 @@ class ScreenshotOcrAssets::Impl final {
             return false;
         }
         const ModelDescriptor* model = modelDescriptor(*descriptor, options.modelType);
+        ModelDescriptor paragraph;
+        if (options.paragraphGrouping) {
+            const auto object = descriptor->paragraphModel;
+            paragraph.id = object.value(QStringLiteral("id")).toString();
+            const auto files = object.value(QStringLiteral("files")).toArray();
+            if (paragraph.id != QStringLiteral("line2para-1-c8cede9") || files.size() != 1) {
+                *error = QStringLiteral("invalid paragraph model descriptor");
+                return false;
+            }
+            auto file = parseFile(files.first().toObject(), true, error);
+            if (!file || file->name != QStringLiteral("line2para_1.onnx"))
+                return false;
+            paragraph.files.push_back(std::move(*file));
+            paragraph.paragraph = true;
+            model = &paragraph;
+        }
         if (model == nullptr) {
             *error = QStringLiteral("selected OCR model is unavailable");
             return false;
@@ -1064,7 +1090,7 @@ class ScreenshotOcrAssets::Impl final {
                           [this, generation](qint64 received, qint64 total) {
                               progress(generation, QStringLiteral("models"), received, total);
                           },
-                          error);
+                          error, options.paragraphGrouping ? 1 : 3);
             if (!acquired) {
                 QDir(staging).removeRecursively();
                 return false;
@@ -1111,7 +1137,7 @@ class ScreenshotOcrAssets::Impl final {
                           [this, generation](qint64 received, qint64 total) {
                               progress(generation, QStringLiteral("runtime"), received, total);
                           },
-                          error);
+                          error, options.paragraphGrouping ? 1 : 3);
         if (downloaded && interruptionRequested()) {
             if (error != nullptr)
                 *error = QString::fromLatin1(kInterruptedError);

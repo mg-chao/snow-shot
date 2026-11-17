@@ -1,7 +1,7 @@
 # OCR runtime and V6 models
 
 Snow Shot uses CPU inference and optional GPU acceleration through the `simd-paddle-ocr-rs` Git submodule.
-Runtime **1.2.2** uses protocol **7**. Initialize submodules before building;
+Runtime **1.3.0** uses protocol **8**. Initialize submodules before building;
 the worker alone uses the library's pinned `nightly-2026-09-08` compiler.
 Other Rust packages keep their existing toolchain. The runtime takes verified
 local model paths, borrows child-owned BGR pixels, and returns owned text,
@@ -74,7 +74,7 @@ Windows x64 and ARM64 ZIPs contain exactly the versioned worker executable and
 `runtime-manifest.json`. There are no inference DLLs. The trusted descriptors in
 this directory are generated from the actual built bytes, including archive and
 entry hashes. Preparation creates local artifacts; publication is a release step.
-Keep all earlier published archives unchanged. Publish the exact pinned 1.2.2
+Keep all earlier published archives unchanged. Publish the exact pinned 1.3.0
 archives before distributing this application revision.
 
 ```powershell
@@ -87,13 +87,13 @@ architecture, dependency imports, archive inventory and hashes, then emits the
 trusted descriptor and native-validation status. Cross-built ARM64 artifacts
 still require native validation before production publication.
 
-Full offline Windows packages bundle Small V6. Online and Mini variants acquire
+Full offline Windows packages bundle Small V6 and the independent line2para model. Online and Mini variants acquire
 the trusted runtime and selected model on demand. Offline staging and managed
 downloads use the same pinned descriptors. Rollback requires the preceding app
 and its matching runtime and manifest.
 
 macOS x64/ARM64 builds bundle the local worker, without ONNX Runtime dylibs, and
-use a generated schema-3 manifest. Full bundles Small V6; Mini bundles the worker
+use a generated schema-3 manifest. Full bundles Small V6 and line2para; Mini bundles the worker
 and downloads selected models. Runtime code updates only with the app. Models
 and manifests are sealed under `Contents/Resources/assets` and exposed through
 the relative `Contents/MacOS/assets` resource link. Hashes are finalized after
@@ -115,10 +115,10 @@ Supply verified models as `<model-root>/<cache-id>/<filename>` for real inferenc
 $env:SNOW_TEST_OCR_TEXT_FIXTURE = (Resolve-Path snow_shot/tests/baselines/ocr-model-versions.png).Path
 $test = 'build/windows-msvc-debug/snow_shot/test-bin/Debug/snow-shot-ocr-recognition-service-tests.exe'
 $modelRoot = (Resolve-Path build/ocr-versioned-models).Path
-$worker = (Resolve-Path artifacts/snow-ocr-runtime-1.2.2/snow-ocr-process-1.2.2-windows-x64.exe).Path
+$worker = (Resolve-Path artifacts/snow-ocr-runtime-1.3.0/snow-ocr-process-1.3.0-windows-x64.exe).Path
 & $test "--model-root=$modelRoot" "--worker=$worker"
 & $test "--model-root=$modelRoot" "--worker=$worker" --resident-models
-& $test "--downloaded-runtime=$((Resolve-Path artifacts/snow-ocr-runtime-1.2.2-windows-x64.zip).Path)"
+& $test "--downloaded-runtime=$((Resolve-Path artifacts/snow-ocr-runtime-1.3.0-windows-x64.zip).Path)"
 ```
 
 The downloaded-runtime check copies the prepared archive and models through the
@@ -129,3 +129,25 @@ cancellation, session replacement,
 and hot start. `--validate-model-set <detector> <recognizer> <dictionary>` checks
 initialization independently. Performance measurements require a performance
 preset; do not use Debug or packaging presets for benchmarks.
+
+## On-demand paragraphs
+
+`paragraph_model` is separate from the three OCR model selections. Its pinned
+`line2para_1.onnx` (3,062,018 bytes) lives in `models/line2para-1-c8cede9`, with the
+same verified publication and completion-marker policy as OCR weights. Online
+and Mini packages include only its descriptor; offline, portable and development
+payloads include the weights. The macOS runtime-only package excludes them.
+
+Smart merge and Smart typesetting explicitly request grouping using the source
+image and original quadrilaterals. Recognition, prefetch and warm-up never run it
+or add groups to OCR output. Successful memberships are cached separately for the
+current source. Model membership is authoritative; Snow Shot's spatial ordering
+is independent of the model's output ordering. Downloads and inference have no
+automatic grouping retries. Failure uses the original unmerged lines and one
+Message, without action buttons. Translation-only source indices survive saving;
+older saved translations remain readable without running the model.
+
+The published export declares checkpoint `3180f1a5` and connected-component
+partitioning at logit 0. The paragraph loader supports that export as well as the
+upstream epoch-15 evidence decoder, validating the checkpoint and declared policy
+together. Do not substitute epoch-15 metadata or decoding rules for this model.

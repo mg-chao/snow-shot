@@ -371,8 +371,8 @@ void diskBackedEngineCompletesThroughTheQtWorker(bool managedRuntime = false) {
                        : options.processPath;
 #else
         managedRuntime ? QDir(QCoreApplication::applicationDirPath())
-                             .filePath(QStringLiteral("assets/ocr/runtimes/1.2.2/windows-x64/"
-                                                      "snow-ocr-process-1.2.2-windows-x64.exe"))
+                             .filePath(QStringLiteral("assets/ocr/runtimes/1.3.0/windows-x64/"
+                                                      "snow-ocr-process-1.3.0-windows-x64.exe"))
                        : options.processPath;
 #endif
     if (managedRuntime) {
@@ -1154,7 +1154,7 @@ void actualOcrCrashAfterInference() {
     const auto bytes = dump.readAll();
     dump.close();
     require(bytes.contains(diagnostics.status().sessionId.toUtf8()) &&
-                bytes.contains("ocr.operation_started") && bytes.contains("1.2.2"),
+                bytes.contains("ocr.operation_started") && bytes.contains("1.3.0"),
             "actual OCR dump retains parent session, operation and runtime version");
     require(diagnostics.flush(), "actual OCR final diagnostics flush");
     diagnostics.shutdown();
@@ -1353,10 +1353,84 @@ void downloadedRuntimeRecognizesText(const QString& archive) {
 }
 #endif
 
+void paragraphOperationDoesNotRequireRecognitionModels() {
+    QTemporaryDir fixture;
+    require(fixture.isValid(), "paragraph fixture directory");
+    {
+        ScreenshotOcrRecognitionService::Options options;
+        options.offlineRoot = fixture.path();
+        options.cacheRoot = fixture.path();
+        ScreenshotOcrRecognitionService service(options);
+        QObject receiver;
+        bool completed = false;
+        const auto cancelled =
+            service.groupParagraphs({}, &receiver, [&](auto) { completed = true; });
+        require(cancelled != 0, "empty grouping is admitted without assets");
+        service.cancel(cancelled);
+        QCoreApplication::processEvents();
+        require(!completed && service.processId() == 0, "trivial grouping can be cancelled");
+        service.groupParagraphs({}, &receiver, [&](auto result) {
+            require(result.groups.isEmpty() && result.error.isEmpty(), "empty grouping result");
+            completed = true;
+        });
+        require(waitUntil([&] { return completed; }, 5000) && service.processId() == 0,
+                "trivial grouping needs no worker or model download");
+    }
+    for (bool fail : {false, true}) {
+        ScreenshotOcrRecognitionService::Options options;
+        options.processPath = qEnvironmentVariable("SNOW_TEST_OCR_WORKER");
+        options.paragraphModelPath = qEnvironmentVariable("SNOW_TEST_PARAGRAPH_MODEL");
+        if (fail) {
+            options.paragraphModelPath = fixture.filePath(QStringLiteral("invalid.onnx"));
+            QFile invalid(options.paragraphModelPath);
+            require(invalid.open(QIODevice::WriteOnly), "invalid paragraph fixture");
+            invalid.write("invalid model");
+        }
+        ScreenshotOcrRecognitionService service(options);
+        require(!service.modelFilesReady() && service.processId() == 0,
+                "paragraph assets neither satisfy OCR readiness nor start inference eagerly");
+        QObject receiver;
+        QImage image(160, 100, QImage::Format_ARGB32);
+        image.fill(Qt::white);
+        ScreenshotOcrParagraphRequest request{image,
+                                              QRectF(-50, -30, 80, 50),
+                                              {{{-45, -25}, {20, -25}, {20, -20}, {-45, -20}},
+                                               {{-45, -17}, {20, -17}, {20, -12}, {-45, -12}},
+                                               {{-45, 5}, {20, 5}, {20, 10}, {-45, 10}}}};
+        bool completed = false;
+        require(service.groupParagraphs(
+                    request, &receiver,
+                    [&](auto result) {
+                        if (result.error.isEmpty() == fail)
+                            qWarning() << "paragraph result:" << result.error;
+                        require(result.error.isEmpty() != fail,
+                                "model failure belongs only to the paragraph operation");
+                        if (!fail) {
+                            QVector<int> indices;
+                            for (const auto& group : result.groups)
+                                indices += group;
+                            std::sort(indices.begin(), indices.end());
+                            require(indices == QVector<int>{0, 1, 2},
+                                    "real model returns a complete index partition");
+                        }
+                        completed = true;
+                    }) != 0,
+                "independent paragraph operation is admitted");
+        require(waitUntil([&] { return completed; }, 30000),
+                "independent paragraph operation completes");
+        require(!service.modelFilesReady(), "grouping does not prepare recognition models");
+    }
+}
+
 void ocrProxyConfigurationTests();
 
 int main(int argc, char** argv) {
     QCoreApplication application(argc, argv);
+    if (application.arguments().contains(QStringLiteral("--paragraph-only"))) {
+        paragraphOperationDoesNotRequireRecognitionModels();
+        return 0;
+    }
+
     if (application.arguments().contains(QStringLiteral("--proxy-configuration-only"))) {
         ocrProxyConfigurationTests();
         return 0;

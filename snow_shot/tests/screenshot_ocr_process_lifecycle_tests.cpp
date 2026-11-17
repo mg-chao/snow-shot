@@ -233,7 +233,7 @@ int runOcrLifecycleChild() {
         QByteArray frame;
         QDataStream stream(&frame, QIODevice::WriteOnly);
         stream.setByteOrder(QDataStream::LittleEndian);
-        const quint16 version = qEnvironmentVariableIsSet("SNOW_TEST_OCR_OLD_PROTOCOL") ? 6 : 7;
+        const quint16 version = qEnvironmentVariableIsSet("SNOW_TEST_OCR_OLD_PROTOCOL") ? 7 : 8;
         stream << quint32(0x52434f53) << version << kind << token << quint32(payload.size());
         frame.append(payload);
         std::fwrite(frame.constData(), 1, static_cast<std::size_t>(frame.size()), stdout);
@@ -272,7 +272,7 @@ int runOcrLifecycleChild() {
         quint16 version = 0, kind = 0;
         quint64 token = 0;
         input >> magic >> version >> kind >> token >> size;
-        if (magic != 0x52434f53 || version != 7 || size > 1024 * 1024)
+        if (magic != 0x52434f53 || version != 8 || size > 1024 * 1024)
             return 2;
         QByteArray payload(size, '\0');
         if (std::fread(payload.data(), 1, size, stdin) != size)
@@ -297,8 +297,8 @@ int runOcrLifecycleChild() {
             QDataStream output(&ready, QIODevice::WriteOnly);
             output.setByteOrder(QDataStream::LittleEndian);
             output << quint8(1) << quint32(0) << quint32(5);
-            output.writeRawData("1.2.2", 5);
-            output << quint32(7);
+            output.writeRawData("1.3.0", 5);
+            output << quint32(8);
             reply(2, 0, ready);
         } else if (kind == 19) {
             event("acceleration " + payload.toHex());
@@ -1117,7 +1117,7 @@ void ocrProcessLifecycleTests() {
             {image, QRectF(0, 0, 8, 8)}, &receiver,
             [&](ScreenshotOcrRecognitionResult result) { rejected = !result.error.isEmpty(); });
         require(waitUntil([&] { return rejected; }),
-                "protocol 6 workers must be rejected explicitly");
+                "protocol 7 workers must be rejected explicitly");
         qunsetenv("SNOW_TEST_OCR_OLD_PROTOCOL");
     }
     qputenv("SNOW_TEST_OCR_TEXT_COLOR", "1");

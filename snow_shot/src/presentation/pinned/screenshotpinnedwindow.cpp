@@ -196,7 +196,7 @@ QTransform imagePixelsToCanvasTransform(const QTransform& imageTransform,
 
 #if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
 constexpr quint32 kTextTranslationPayloadMarker = 0x53535452;
-constexpr quint8 kTextTranslationPayloadVersion = 2;
+constexpr quint8 kTextTranslationPayloadVersion = 3;
 #endif
 
 QList<QKeyCombination> standardKeyCombinations(QKeySequence::StandardKey standardKey) {
@@ -258,7 +258,7 @@ QByteArray serializeRecognitionResults(const ScreenshotRecognitionResults& sourc
         for (const auto& line : results.translatedText->lines) {
             stream << line.text << line.confidence << line.quad
                    << quint8(line.direction == ScreenshotOcrTextDirection::Vertical ? 1 : 0)
-                   << line.paragraph << line.sourceLineQuads;
+                   << line.paragraph << line.sourceLineQuads << line.sourceLineIndices;
         }
     }
 #endif
@@ -6298,6 +6298,19 @@ void ScreenshotPinnedWindow::copyEditToolbarContent() {
         return;
     }
     const auto publicationId = beginCopyRequest();
+    const QPointer<ScreenshotPinnedWindow> smartGuard(this);
+    if (m_recognitionSession->prepareSmartClipboard(
+            m_displayOcrPresentation.get(), false, [smartGuard, publicationId](auto mime) {
+                if (!smartGuard || smartGuard->m_copyPublicationId != publicationId)
+                    return;
+                smartGuard->m_clipboardCommit = ScreenshotClipboardService::commitMimeData(
+                    QApplication::clipboard(), smartGuard, mime.release(), publicationId,
+                    [smartGuard](const auto& result) {
+                        if (smartGuard && !result.succeeded())
+                            showPinnedRecognitionMessage(smartGuard, result.errorString(), true);
+                    });
+            }))
+        return;
 #if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
     if (const auto request = m_recognitionSession->documentCopyRequest(); request.document) {
         const QPointer<ScreenshotPinnedWindow> guard(this);
@@ -8046,8 +8059,7 @@ void ScreenshotPinnedWindow::saveAsFile() {
         const QString primaryPath =
             ScreenshotRecognitionFileExport::normalizedPath(selectedPath, fileSnapshot->kind);
         if (!ScreenshotRecognitionFileExport::confirmOverwrite(
-                this,
-                ScreenshotRecognitionFileExport::outputPaths(primaryPath, *fileSnapshot)))
+                this, ScreenshotRecognitionFileExport::outputPaths(primaryPath, *fileSnapshot)))
             return;
         saveRecognitionSnapshot(*fileSnapshot, primaryPath);
         return;
@@ -10920,9 +10932,9 @@ QJsonObject ScreenshotPinnedWindow::automationEdit(const QString& action,
             return fail("action_unavailable");
         return {{QStringLiteral("payload"), QString::fromUtf8(serialized)}};
     } else if (action == QStringLiteral("recognize")) {
-        const QStringList kinds{QStringLiteral("text"), QStringLiteral("table"),
-                                QStringLiteral("qr"),   QStringLiteral("markdown"),
-                                QStringLiteral("html"), QStringLiteral("latex"),
+        const QStringList kinds{QStringLiteral("text"),    QStringLiteral("table"),
+                                QStringLiteral("qr"),      QStringLiteral("markdown"),
+                                QStringLiteral("html"),    QStringLiteral("latex"),
                                 QStringLiteral("document")};
         const qsizetype mode = kinds.indexOf(payload.value(QStringLiteral("kind")).toString());
         if (mode < 0)
@@ -11060,6 +11072,14 @@ ScreenshotPinnedWindow::automationClipboardMimeData(bool original) const {
     } else
         return {};
     return mime;
+}
+
+bool ScreenshotPinnedWindow::prepareAutomationSmartClipboard(
+    bool original, std::function<void(std::unique_ptr<QMimeData>)> completion) {
+    return !original && !m_hiddenTextSelection && m_ocrMode && m_recognitionSession &&
+           m_recognitionSession->active() &&
+           m_recognitionSession->prepareSmartClipboard(m_displayOcrPresentation.get(), false,
+                                                       std::move(completion));
 }
 
 #if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION

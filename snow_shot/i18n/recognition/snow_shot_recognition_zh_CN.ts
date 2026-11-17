@@ -184,6 +184,10 @@
             <translation>未识别到表格单元格</translation>
         </message>
         <message>
+            <source>Paragraph grouping is unavailable. Using the original OCR lines</source>
+            <translation>段落分组不可用，将使用原始 OCR 文本行</translation>
+        </message>
+        <message>
             <source>Preparing text recognition components</source>
             <translation>正在准备文本识别组件</translation>
         </message>

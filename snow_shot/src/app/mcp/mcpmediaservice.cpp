@@ -798,6 +798,34 @@ void McpMediaService::request(const ScreenshotMcpRequest& r,
                 }
             }
 #endif
+            const auto publication = ScreenshotClipboardService::reservePublication();
+            const auto cancelled = std::make_shared<bool>(false);
+            const auto publicationHandle = std::make_shared<ScreenshotClipboardCommitHandle>();
+            const QPointer<McpMediaService> lifetime(this);
+            if (window->prepareAutomationSmartClipboard(
+                    original, [lifetime, owner = r.connectionId, publication, cancelled,
+                               publicationHandle, reply](auto mime) {
+                        if (!lifetime || *cancelled)
+                            return;
+                        *publicationHandle = lifetime->m_impl->clipboardScope(owner).commitMimeData(
+                            QApplication::clipboard(), lifetime, mime.release(),
+                            [reply](const auto& result) {
+                                reply({{QStringLiteral("copied"), result.succeeded()}},
+                                      result.succeeded() ? QString()
+                                                         : QStringLiteral("clipboard_failed"));
+                            },
+                            publication);
+                        if (!publicationHandle->isValid())
+                            reply({}, QStringLiteral("clipboard_failed"));
+                    })) {
+                s.cancellations.insert(QString::number(r.connectionId) + u':' + r.requestId,
+                                       [cancelled, publicationHandle, reply] {
+                                           *cancelled = true;
+                                           publicationHandle->cancel();
+                                           reply({}, QStringLiteral("cancelled"));
+                                       });
+                return;
+            }
             if (auto mime = window->automationClipboardMimeData(original)) {
                 auto commit =
                     s.clipboardScope(r.connectionId)

@@ -280,7 +280,30 @@ class TranslationServer final : public QObject {
     int orderedStreams = 0;
 };
 
+class ParagraphFixture final : public ScreenshotOcrRecognitionPort {
+  public:
+    int requests = 0;
+    RequestToken recognize(ScreenshotOcrRequest, QObject*, Completion) override {
+        return 0;
+    }
+    RequestToken groupParagraphs(ScreenshotOcrParagraphRequest request, QObject* receiver,
+                                 ParagraphCompletion completion) override {
+        QVector<int> group;
+        for (int i = static_cast<int>(request.quads.size()) - 1; i >= 0; --i)
+            group.push_back(i);
+        QTimer::singleShot(0, receiver, [completion = std::move(completion), group] {
+            completion({{group}, {}});
+        });
+        return ++requests;
+    }
+    void cancel(RequestToken) override {}
+    bool reprioritize(RequestToken, ScreenshotOcrRequestPriority) override {
+        return true;
+    }
+};
+
 struct SessionProbe {
+    ParagraphFixture paragraphFixture;
     std::shared_ptr<ScreenshotOcrPresentation> source =
         std::make_shared<ScreenshotOcrPresentation>();
     std::shared_ptr<ScreenshotOcrPresentation> displayed;
@@ -351,8 +374,8 @@ struct SessionProbe {
                 require(!undo && !redo && !reset, "overlay translation has no editing history");
             }
         };
-        controller = std::make_unique<ScreenshotRecognitionSessionController>(ocr, nullptr, api,
-                                                                              std::move(actions));
+        controller = std::make_unique<ScreenshotRecognitionSessionController>(
+            ocr ? ocr : &paragraphFixture, nullptr, api, std::move(actions));
         const int imageHeight = std::max(240, boxes * 25);
         source->selection = QRect(0, 0, 160, imageHeight);
         for (int index = 0; index < boxes; ++index) {
@@ -1636,6 +1659,7 @@ void runPinnedOriginalImageTranslationTests() {
             require(actual.text == expected.text && actual.quad == expected.quad &&
                         actual.paragraph == expected.paragraph &&
                         actual.sourceLineQuads == expected.sourceLineQuads &&
+                        actual.sourceLineIndices == expected.sourceLineIndices &&
                         actual.direction == expected.direction,
                     "pin persistence must retain paragraph geometry and rendering metadata");
             require(actual.fontSizeCapRatio && expected.fontSizeCapRatio &&
