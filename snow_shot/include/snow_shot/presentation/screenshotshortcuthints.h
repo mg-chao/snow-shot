@@ -270,7 +270,7 @@ screenshotShortcutHintRowsForMode(ScreenshotShortcutHintMode mode,
             appendScreenshotConfiguredShortcutHintRow(
                 rows, configuredShortcuts,
                 QStringLiteral("keep_selection_width_and_height_consistent"),
-                "Maintain selection aspect ratio");
+                "Keep selection width and height consistent");
         }
     }
     if (!context.multiRegionEditing && !regionInputActive) {

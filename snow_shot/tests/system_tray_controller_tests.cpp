@@ -893,6 +893,9 @@ void verifyTrayClickActions() {
                                    QStringLiteral("show_main_window"),
                                    QStringLiteral("screenshot_copy"),
                                    QStringLiteral("screenshot_fixed"),
+                                   QStringLiteral("pin_clipboard_content"),
+                                   QStringLiteral("restore_last_closed_windows"),
+                                   QStringLiteral("hide_show_all_windows"),
                                    QStringLiteral("open_capture_history"),
                                    QStringLiteral("open_pin_to_screen_management"),
                                    QStringLiteral("open_function_settings")};
@@ -922,6 +925,12 @@ void verifyTrayClickActions() {
             } else if (action == QStringLiteral("screenshot_fixed")) {
                 expected.push_back(
                     snow_shot::presentation::GlobalShortcutAction::ScreenshotPinToScreen);
+            } else if (action == QStringLiteral("pin_clipboard_content")) {
+                expected.push_back(GlobalShortcutAction::PinClipboardContent);
+            } else if (action == QStringLiteral("restore_last_closed_windows")) {
+                expected.push_back(GlobalShortcutAction::RestoreLastClosedWindows);
+            } else if (action == QStringLiteral("hide_show_all_windows")) {
+                expected.push_back(GlobalShortcutAction::HideShowAllWindows);
             } else if (action == QStringLiteral("open_capture_history")) {
                 expected.push_back(GlobalShortcutAction::OpenCaptureHistory);
             } else if (action == QStringLiteral("open_pin_to_screen_management")) {

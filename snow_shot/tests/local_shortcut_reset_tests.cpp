@@ -50,6 +50,11 @@ void duplicateShortcutSharesOnlyHistoryContexts(settings::SettingsRuntimeSession
 
 void screenshotQuickActionShortcutsReset(settings::SettingsRuntimeSession& session) {
     using Action = snow_shot::presentation::GlobalShortcutAction;
+    const shortcuts::ShortcutBindingList historyBinding{QStringLiteral("Ctrl+Alt+F12")};
+    require(session.applyShortcuts(Action::OpenCaptureHistory, historyBinding) &&
+                session.reset(settings::SettingsSectionReset::OtherShortcuts) &&
+                session.shortcutState(Action::OpenCaptureHistory).shortcuts == historyBinding,
+            "Other reset must preserve the Screenshot history hotkey");
     require(
         session.applyShortcuts(Action::ScreenshotScrolling, {QStringLiteral("Ctrl+Alt+F9")}) &&
             session.applyShortcuts(Action::ScreenshotSave, {QStringLiteral("Ctrl+Alt+F10")}) &&
@@ -58,7 +63,8 @@ void screenshotQuickActionShortcutsReset(settings::SettingsRuntimeSession& sessi
     require(session.reset(settings::SettingsSectionReset::ScreenshotShortcuts) &&
                 session.shortcutState(Action::ScreenshotScrolling).shortcuts.isEmpty() &&
                 session.shortcutState(Action::ScreenshotSave).shortcuts.isEmpty() &&
-                session.shortcutState(Action::ScreenshotQuickSave).shortcuts.isEmpty(),
+                session.shortcutState(Action::ScreenshotQuickSave).shortcuts.isEmpty() &&
+                session.shortcutState(Action::OpenCaptureHistory).shortcuts.isEmpty(),
             "Screenshot reset clears optional hotkeys to their unset defaults");
     const auto& configuration = storage::ApplicationStorage::instance().configuration();
     require(configuration.value(QStringLiteral("global_shortcuts/screenshot_scrolling"))
@@ -68,6 +74,9 @@ void screenshotQuickActionShortcutsReset(settings::SettingsRuntimeSession& sessi
                     .toArray()
                     .isEmpty() &&
                 configuration.value(QStringLiteral("global_shortcuts/screenshot_quick_save"))
+                    .toArray()
+                    .isEmpty() &&
+                configuration.value(QStringLiteral("global_shortcuts/open_capture_history"))
                     .toArray()
                     .isEmpty(),
             "Screenshot reset persists cleared optional hotkeys");

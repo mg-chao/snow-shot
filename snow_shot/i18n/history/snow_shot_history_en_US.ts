@@ -2180,10 +2180,6 @@ Files:
             <translation>Pause</translation>
         </message>
         <message>
-            <source>Pin to screen management</source>
-            <translation>Pin to screen management</translation>
-        </message>
-        <message>
             <source>Pinned content</source>
             <translation>Pinned content</translation>
         </message>
@@ -2361,6 +2357,10 @@ Files:
         <message>
             <source>Uploading to cloud... %1%</source>
             <translation>Uploading to cloud... %1%</translation>
+        </message>
+        <message>
+            <source>Window management</source>
+            <translation>Window management</translation>
         </message>
     </context>
     <context>

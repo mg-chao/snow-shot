@@ -1391,13 +1391,15 @@ void shortcutHintsFollowRegionOperationTransitions() {
             hints->accessibleName().contains(QStringLiteral("Copy color")) &&
                 hints->accessibleName().contains(QStringLiteral("Move entire selection")) &&
                 !hints->accessibleName().contains(
-                    QStringLiteral("Maintain selection aspect ratio")) &&
+                    QStringLiteral("Keep selection width and height consistent")) &&
                 !hints->accessibleName().contains(QStringLiteral("Selection aspect ratio snap")),
             "committing an operation must restore whole-selection movement without resize hints");
         fixture.selection.setSelectionRect(QRect(700, 100, 200, 150));
         fixture.services->updateOverlayState();
         fixture.flushFrame();
         require(hints->accessibleName().contains(QStringLiteral("Move entire selection")) &&
+                    hints->accessibleName().contains(
+                        QStringLiteral("Keep selection width and height consistent")) &&
                     !hints->accessibleName().contains(QStringLiteral("Duplicate latest region")),
                 "replacing the multi-region capture must restore the single-selection hints");
     }

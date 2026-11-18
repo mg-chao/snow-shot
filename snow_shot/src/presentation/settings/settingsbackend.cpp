@@ -2816,6 +2816,8 @@ SettingsResetResult BuiltInSettingsBackend::resetSectionWithResults(SettingsSect
                       QStringLiteral("global_shortcuts/screenshot_full_screen"));
         resetShortcut(GlobalShortcutAction::ScreenshotFocusedWindow,
                       QStringLiteral("global_shortcuts/screenshot_focused_window"));
+        resetShortcut(GlobalShortcutAction::OpenCaptureHistory,
+                      QStringLiteral("global_shortcuts/open_capture_history"));
         accepted = applyIntegerValue(SettingsIntegerBinding::ScreenshotDelaySeconds,
                                      storage::ConfigurationSchema::defaultValue(
                                          QStringLiteral("screenshot/delay_seconds"))
@@ -2846,8 +2848,6 @@ SettingsResetResult BuiltInSettingsBackend::resetSectionWithResults(SettingsSect
             if (storage::ConfigurationSchema::contains(key))
                 accepted = applyShortcuts(action, shortcutListDefault(key)) && accepted;
         };
-        resetShortcut(GlobalShortcutAction::OpenCaptureHistory,
-                      QStringLiteral("global_shortcuts/open_capture_history"));
         resetShortcut(GlobalShortcutAction::GlobalCanvas,
                       QStringLiteral("global_shortcuts/global_canvas"));
         resetShortcut(GlobalShortcutAction::StitchSelectedImages,

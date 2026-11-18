@@ -3230,6 +3230,10 @@
             <translation>关闭应用程序后仍保留可用的截图</translation>
         </message>
         <message>
+            <source>Keep selection width and height consistent</source>
+            <translation>保持选区宽高一致</translation>
+        </message>
+        <message>
             <source>Keep the Snow Shot save dialog open after saving to show the result</source>
             <translation>保存后保持 Snow Shot 保存对话框打开，以显示保存结果</translation>
         </message>
@@ -3372,10 +3376,6 @@
         <message>
             <source>Main interface skin position</source>
             <translation>主界面皮肤位置</translation>
-        </message>
-        <message>
-            <source>Maintain selection aspect ratio</source>
-            <translation>保持选区宽高比</translation>
         </message>
         <message>
             <source>Manage macOS permissions for Snow Shot</source>

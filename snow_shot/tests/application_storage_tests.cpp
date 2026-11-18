@@ -1369,12 +1369,16 @@ void settingsSchemaDefaultsAndValidationAreComplete() {
         {QStringLiteral("tray/left_click_action"),
          {QStringLiteral("none"), QStringLiteral("screenshot"), QStringLiteral("show_main_window"),
           QStringLiteral("screenshot_copy"), QStringLiteral("screenshot_fixed"),
-          QStringLiteral("open_capture_history"), QStringLiteral("open_pin_to_screen_management"),
+          QStringLiteral("pin_clipboard_content"), QStringLiteral("restore_last_closed_windows"),
+          QStringLiteral("hide_show_all_windows"), QStringLiteral("open_capture_history"),
+          QStringLiteral("open_pin_to_screen_management"),
           QStringLiteral("open_function_settings")}},
         {QStringLiteral("tray/middle_click_action"),
          {QStringLiteral("none"), QStringLiteral("screenshot"), QStringLiteral("show_main_window"),
           QStringLiteral("screenshot_copy"), QStringLiteral("screenshot_fixed"),
-          QStringLiteral("open_capture_history"), QStringLiteral("open_pin_to_screen_management"),
+          QStringLiteral("pin_clipboard_content"), QStringLiteral("restore_last_closed_windows"),
+          QStringLiteral("hide_show_all_windows"), QStringLiteral("open_capture_history"),
+          QStringLiteral("open_pin_to_screen_management"),
           QStringLiteral("open_function_settings")}},
     };
     for (auto it = allowedStringValues.cbegin(); it != allowedStringValues.cend(); ++it) {
@@ -4377,8 +4381,10 @@ void trayClickSettingsSurviveRestart() {
                                                   QStringLiteral("tray.restart-app"),
                                                   QStringLiteral("tray.exit")},
             "tray click choices and Restart App must survive storage restart");
-    for (const auto& action : {QStringLiteral("open_capture_history"),
-                               QStringLiteral("open_pin_to_screen_management")}) {
+    for (const auto& action :
+         {QStringLiteral("pin_clipboard_content"), QStringLiteral("restore_last_closed_windows"),
+          QStringLiteral("hide_show_all_windows"), QStringLiteral("open_capture_history"),
+          QStringLiteral("open_pin_to_screen_management")}) {
         const auto previousMiddle = tray.middleClickAction();
         require(tray.setLeftClickAction(action) && tray.middleClickAction() == previousMiddle &&
                     applicationStorage.flushNow().success,
