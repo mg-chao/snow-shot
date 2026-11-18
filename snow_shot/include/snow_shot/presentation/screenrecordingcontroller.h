@@ -13,6 +13,9 @@
 #include <optional>
 
 class RecordingEffectsSource;
+namespace snow_shot::presentation {
+struct AppPermissionSnapshot;
+}
 
 class ScreenRecordingController final : public QObject {
     Q_OBJECT
@@ -27,6 +30,10 @@ class ScreenRecordingController final : public QObject {
     void open(const QRect& recordingRegion);
     using PermissionCheck = std::function<bool(bool microphone, bool input, bool notify)>;
     void setPermissionCheck(PermissionCheck check);
+#ifdef Q_OS_MACOS
+    void
+    setPreviewPermissionSnapshot(const snow_shot::presentation::AppPermissionSnapshot& snapshot);
+#endif
     bool isOpen() const;
     bool isRecording() const;
     [[nodiscard]] bool blocksMemoryTrimming() const;

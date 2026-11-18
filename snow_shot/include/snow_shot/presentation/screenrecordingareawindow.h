@@ -51,6 +51,9 @@ class ScreenRecordingAreaWindow final : public QWidget {
     [[nodiscard]] QRectF captureViewport() const;
     [[nodiscard]] bool canRestoreRecordingRegion() const;
     bool restoreRecordingRegion(const QRect& region);
+    [[nodiscard]] bool regionInteractionActive() const {
+        return m_regionDragActive;
+    }
     void setRecordingState(ScreenshotToolPalette::RecordingState state);
     void setInputMode(InputMode mode);
     [[nodiscard]] InputMode inputMode() const;
