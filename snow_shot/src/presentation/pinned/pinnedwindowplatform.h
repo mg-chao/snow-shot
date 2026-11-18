@@ -37,6 +37,11 @@ using PinnedPlacement = storage::PinnedWindowPlacement;
 [[nodiscard]] PinnedPlacement recoverPinnedPlacement(PinnedPlacement placement,
                                                      const QScreen& screen);
 
+#ifdef Q_OS_MACOS
+[[nodiscard]] QRegion updateCocoaPinnedInputMask(const QRegion& previous, const QImage& image,
+                                                 const QRegion& dirty, qreal scale);
+#endif
+
 class PinnedWindowPlatform : public QObject {
   public:
     enum class Role { Image, Auxiliary };
@@ -50,6 +55,8 @@ class PinnedWindowPlatform : public QObject {
                    GeometryUpdate update = GeometryUpdate::PreserveContents) = 0;
     [[nodiscard]] virtual std::optional<PinnedPlacement> placement() const = 0;
     [[nodiscard]] virtual bool setInputTransparent(bool transparent) = 0;
+    virtual void setTransparentPixelInput(bool) {}
+    virtual void updateTransparentPixelInput() {}
     [[nodiscard]] virtual bool setStaysOnTop(bool) {
         return false;
     }

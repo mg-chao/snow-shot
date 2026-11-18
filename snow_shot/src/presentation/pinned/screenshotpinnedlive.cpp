@@ -226,6 +226,7 @@ bool ScreenshotPinnedWindow::initializeLivePresentation(QString* error) {
     connect(m_liveSource.get(), &LiveWindowSource::nativePresentationChanged, this,
             [this](bool native) {
                 m_liveNativePresentation = native;
+                updateTransparentLayer();
                 updateLiveState();
             });
     connect(qApp, &QCoreApplication::aboutToQuit, this, &ScreenshotPinnedWindow::closeLiveWindow);
@@ -273,7 +274,11 @@ bool ScreenshotPinnedWindow::synchronizeLivePresentation(QString* error) {
         presentation.backgroundColor = palette().color(QPalette::Window);
     presentation.backgroundColor.setAlpha(255);
     const bool result = m_liveSource->setPresentation(presentation, error);
-    m_liveNativePresentation = m_liveSource->usesNativePresentation();
+    const bool native = m_liveSource->usesNativePresentation();
+    if (m_liveNativePresentation != native) {
+        m_liveNativePresentation = native;
+        updateTransparentLayer();
+    }
     if (m_canvas)
         m_canvas->setVisible(liveFrameAvailable() && !m_liveNativePresentation);
     update();

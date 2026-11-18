@@ -1995,6 +1995,59 @@ void borderAndShadowStatesRoundTripWithLegacyDefaults() {
                 !loaded->borderAppearance,
             "legacy records must restore with the border visible and shadow hidden");
 }
+void transparentLayerModesRoundTrip() {
+    using Mode = storage::PinnedTransparentLayerMode;
+    QTemporaryDir directory;
+    require(directory.isValid(), "transparent layer fixture storage must exist");
+    auto record = recordWithId(QUuid::createUuid().toString(QUuid::WithoutBraces),
+                               patternedImage(QSize(200, 100), 5));
+    {
+        storage::PinnedWindowRepository repository(directory.path());
+        require(repository.upsert(record).success && repository.flush().success,
+                "save the initial pinned record");
+    }
+    const auto manifest = directory.filePath(QStringLiteral("pinned_windows_v2/index.json"));
+    const auto modeKey = QStringLiteral("transparent_layer_mode");
+    for (const auto& [mode, key] :
+         {std::pair{Mode::ClickThrough, QStringLiteral("click_through")},
+          std::pair{Mode::KeepTransparent, QStringLiteral("keep_transparent")},
+          std::pair{Mode::Checkerboard, QStringLiteral("checkerboard")}}) {
+        {
+            storage::PinnedWindowRepository repository(directory.path());
+            record.transparentLayerMode = mode;
+            require(repository.updateState(record).success && repository.flush().success,
+                    "save the transparent layer mode as presentation state");
+        }
+        const auto root = QJsonDocument::fromJson(readBytes(manifest)).object();
+        require(root.value(QStringLiteral("records")).toArray().first().toObject().value(modeKey) ==
+                    key,
+                "persist each mode with its stable string value");
+        storage::PinnedWindowRepository repository(directory.path());
+        const auto loaded = repository.loadRecord(record.id);
+        require(loaded && loaded->transparentLayerMode == mode, "load the saved mode from disk");
+    }
+
+    auto root = QJsonDocument::fromJson(readBytes(manifest)).object();
+    auto records = root.value(QStringLiteral("records")).toArray();
+    auto item = records.first().toObject();
+    for (const auto& value :
+         {QJsonValue(QJsonValue::Undefined), QJsonValue(QStringLiteral("future")), QJsonValue(1)}) {
+        item.insert(modeKey, value);
+        records.replace(0, item);
+        root.insert(QStringLiteral("records"), records);
+        const auto bytes = QJsonDocument(root).toJson();
+        QFile file(manifest);
+        require(file.open(QIODevice::WriteOnly | QIODevice::Truncate) &&
+                    file.write(bytes) == bytes.size(),
+                "write missing or invalid transparent layer metadata");
+        file.close();
+        storage::PinnedWindowRepository repository(directory.path());
+        const auto loaded = repository.loadRecord(record.id);
+        require(loaded && !loaded->transparentLayerMode,
+                "older or invalid layer metadata retains the source's default");
+    }
+}
+
 void malformedCustomBorderRejectsRecord() {
     QTemporaryDir directory;
     const auto id = QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -3250,6 +3303,10 @@ void closeRestoreAndRetentionRevealHiddenSiblings() {
 
 int main(int argc, char* argv[]) {
     QCoreApplication application(argc, argv);
+    if (application.arguments().contains(QStringLiteral("--transparent-layer-only"))) {
+        transparentLayerModesRoundTrip();
+        return 0;
+    }
     thumbnailSourcesAreBounded();
     if (application.arguments().contains(QStringLiteral("--thumbnail-only")))
         return EXIT_SUCCESS;
@@ -3374,6 +3431,7 @@ int main(int argc, char* argv[]) {
     alwaysOnTopStateRoundTripsAndDefaultsToEnabledForLegacyRecords();
     pinSourceIdentitySurvivesRestart();
     borderAndShadowStatesRoundTripWithLegacyDefaults();
+    transparentLayerModesRoundTrip();
     malformedCustomBorderRejectsRecord();
     thumbnailStateSurvivesRestartAndExit();
     hideToTopRoundTripsAndRecoversLegacyMetadata();

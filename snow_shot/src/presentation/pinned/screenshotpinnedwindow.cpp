@@ -295,6 +295,7 @@ namespace pinned_platform = snow_shot::presentation;
 namespace resize_geometry = screenshot_pinned_resize_geometry;
 namespace outlined_icons = adqt::icons::antd::outlined;
 namespace custom_outlined_icons = snow_shot::presentation::icons::custom::outlined;
+using snow_shot::storage::PinnedTransparentLayerMode;
 
 constexpr int kControlsInset = 16;
 constexpr int kControlButtonSpacing = 8;
@@ -304,6 +305,7 @@ constexpr int kMinimumScalePercent = 10;
 constexpr int kMaximumScalePercent = 500;
 constexpr int kMinimumOpacityPercent = 25;
 constexpr int kMaximumOpacityPercent = 100;
+const QColor kPinnedTransparentLayerFill(0, 0, 0, 1);
 const QColor kDefaultPinnedBorderColor(219, 219, 219, 255);
 const QColor kDefaultPinnedLockedBorderColor(250, 173, 20, 255);
 const QColor kDefaultPinnedBorderActiveColor(105, 177, 255, 255);
@@ -1855,6 +1857,7 @@ snow_shot::storage::PinnedWindowRecord ScreenshotPinnedWindow::persistenceRecord
     record.alwaysOnTop = m_alwaysOnTop;
     record.showBorder = m_showBorder;
     record.showShadow = m_showShadow;
+    record.transparentLayerMode = m_transparentLayerMode;
     record.preThumbnailNativeGeometry =
         snow_shot::presentation::pinnedContentRect(m_preThumbnailNativeGeometry);
     record.resultStyle = encodeScreenshotResultStyle(m_resultStyle);
@@ -1950,6 +1953,8 @@ void ScreenshotPinnedWindow::restorePersistentState(const Config& config) {
             : 50;
     m_borderAppearance = config.borderAppearance;
     m_checkerboardEnabled = config.checkerboardEnabled;
+    m_transparentLayerMode =
+        config.restorePersistentState ? config.persistedTransparentLayerMode : std::nullopt;
     if (!m_checkerboardEnabled && styleHasTransparentShape(m_resultStyle, m_originalPixelSize)) {
         m_checkerboardEnabled = true;
     }
@@ -2079,6 +2084,8 @@ bool ScreenshotPinnedWindow::event(QEvent* event) {
          event->type() == QEvent::WindowStateChange || scaleMayHaveChanged ||
          assignedScreenMayHaveChanged);
     const bool handled = QWidget::event(event);
+    if (event && event->type() == QEvent::UpdateRequest && !m_closing)
+        m_platform->updateTransparentPixelInput();
     if (event && (event->type() == QEvent::Show || event->type() == QEvent::Hide ||
                   event->type() == QEvent::WindowStateChange || assignedScreenMayHaveChanged))
         updateAnimationSuspension();
@@ -3588,6 +3595,7 @@ void ScreenshotPinnedWindow::resetContextMenuActions() {
     m_alwaysOnTopAction = nullptr;
     m_showBorderAction = nullptr;
     m_showShadowAction = nullptr;
+    m_transparentLayerActions = nullptr;
     m_showMainInterfaceAction = nullptr;
     m_closeAction = nullptr;
     m_loadContentAction = nullptr;
@@ -3987,6 +3995,30 @@ void ScreenshotPinnedWindow::createContextMenu() {
             m_showShadowAction->setCheckable(true);
             connect(m_showShadowAction, &QAction::triggered, this,
                     &ScreenshotPinnedWindow::toggleShowShadow);
+            auto* transparentLayer = windowManagementMenu->addLazySubMenu(
+                tr("Transparent layer"),
+                [this](auto* menu) {
+                    menu->setObjectName(QStringLiteral("screenshotPinnedTransparentLayerMenu"));
+                    m_transparentLayerActions = new QActionGroup(menu);
+                    const auto addMode = [&](const char* source, PinnedTransparentLayerMode mode) {
+                        auto* action = menu->addItem(translatePinnedText(source));
+                        setActionTranslationSource(action, source);
+                        action->setCheckable(true);
+                        action->setData(static_cast<int>(mode));
+                        m_transparentLayerActions->addAction(action);
+                        connect(action, &QAction::triggered, this,
+                                [this, mode] { setTransparentLayerMode(mode); });
+                    };
+                    addMode(QT_TRANSLATE_NOOP("ScreenshotPinnedWindow", "Click-through"),
+                            PinnedTransparentLayerMode::ClickThrough);
+                    addMode(QT_TRANSLATE_NOOP("ScreenshotPinnedWindow", "Keep transparent"),
+                            PinnedTransparentLayerMode::KeepTransparent);
+                    addMode(QT_TRANSLATE_NOOP("ScreenshotPinnedWindow", "Checkerboard"),
+                            PinnedTransparentLayerMode::Checkerboard);
+                    refreshContextMenu();
+                },
+                custom_outlined_icons::TransparentLayer());
+            setActionTranslationSource(transparentLayer, "Transparent layer");
             if (!isLiveWindow()) {
                 windowManagementMenu->addSeparator();
                 auto* batch = windowManagementMenu->addLazySubMenu(
@@ -4247,6 +4279,14 @@ void ScreenshotPinnedWindow::refreshContextMenu() {
     if (m_showShadowAction != nullptr) {
         const QSignalBlocker blocker(m_showShadowAction);
         m_showShadowAction->setChecked(m_showShadow);
+    }
+    if (m_transparentLayerActions != nullptr) {
+        for (QAction* action : m_transparentLayerActions->actions()) {
+            if (action->data().toInt() == static_cast<int>(transparentLayerMode())) {
+                action->setChecked(true);
+                break;
+            }
+        }
     }
     if (m_thumbnailAction != nullptr) {
         const QSignalBlocker blocker(m_thumbnailAction);
@@ -4510,8 +4550,27 @@ void ScreenshotPinnedWindow::updateBorderOutline() {
         ->updateDecoration(borderOutline, cornerRadii, m_showBorder || m_cropRect.has_value(),
                            m_showShadow && !m_cropRect);
 
-    m_screenshotRenderer->setPinnedCheckerboardEnabled(!m_originalImage.isNull() &&
-                                                       m_checkerboardEnabled.value_or(false));
+    updateTransparentLayer();
+}
+
+void ScreenshotPinnedWindow::updateTransparentLayer() {
+    if (!m_screenshotRenderer)
+        return;
+    const bool showCheckerboard =
+        m_thumbnailMode || !m_transparentLayerMode
+            ? m_checkerboardEnabled.value_or(false)
+            : m_transparentLayerMode == PinnedTransparentLayerMode::Checkerboard;
+    m_screenshotRenderer->setPinnedCheckerboardEnabled(showCheckerboard &&
+                                                       !m_originalImage.isNull());
+    QColor background;
+    if (m_thumbnailMode)
+        background = opaquePinnedBackground(this);
+    else if (m_transparentLayerMode == PinnedTransparentLayerMode::KeepTransparent)
+        background = kPinnedTransparentLayerFill;
+    m_screenshotRenderer->setPinnedBackgroundColor(background);
+    m_platform->setTransparentPixelInput(!m_thumbnailMode && !m_liveNativePresentation &&
+                                         m_transparentLayerMode ==
+                                             PinnedTransparentLayerMode::ClickThrough);
 }
 
 void ScreenshotPinnedWindow::updateCanvasViewport() {
@@ -9254,6 +9313,15 @@ void ScreenshotPinnedWindow::toggleShowShadow() {
     setShowShadow(!m_showShadow);
 }
 
+void ScreenshotPinnedWindow::setTransparentLayerMode(PinnedTransparentLayerMode mode) {
+    if (m_closing || m_transparentLayerMode == mode)
+        return;
+    m_transparentLayerMode = mode;
+    updateTransparentLayer();
+    refreshContextMenu();
+    schedulePersistence();
+}
+
 void ScreenshotPinnedWindow::shutdownClickThrough() {
     if (internalWinId() != 0) {
         static_cast<void>(m_platform->setInputTransparent(false));
@@ -9289,10 +9357,6 @@ void ScreenshotPinnedWindow::shutdownClickThrough() {
 void ScreenshotPinnedWindow::updateThumbnailPresentation() {
     updateAnimationSuspension();
     synchronizeHiddenTextSelection();
-    if (m_screenshotRenderer != nullptr) {
-        m_screenshotRenderer->setPinnedBackgroundColor(
-            m_thumbnailMode ? opaquePinnedBackground(this) : QColor());
-    }
     updateBorderOutline();
     if (m_thumbnailAction != nullptr) {
         const QSignalBlocker blocker(m_thumbnailAction);

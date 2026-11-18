@@ -50,6 +50,8 @@ class PinnedWindowGroupManager final : public QObject {
     [[nodiscard]] bool hasWindow(const QString& persistenceId) const;
     [[nodiscard]] ::ScreenshotPinnedWindow* liveWindow(const QString& persistenceId) const;
     [[nodiscard]] QVector<::ScreenshotPinnedWindow*> liveWindows() const;
+    [[nodiscard]] QSet<storage::PinnedTransparentLayerMode>
+    activeGroupTransparentLayerModes() const;
     [[nodiscard]] quint64 automationRevision() const {
         return m_automationRevision;
     }
@@ -59,6 +61,7 @@ class PinnedWindowGroupManager final : public QObject {
     }
 
     bool setActiveGroup(const QString& groupId);
+    void setActiveGroupTransparentLayerMode(storage::PinnedTransparentLayerMode mode);
     [[nodiscard]] std::optional<QString>
     createGroup(const QString& name, ::ScreenshotPinnedWindow* currentWindow = nullptr);
     [[nodiscard]] std::optional<QString>
@@ -95,6 +98,7 @@ class PinnedWindowGroupManager final : public QObject {
     void groupDeletionRequested(const QString& groupId);
 
   private:
+    [[nodiscard]] QVector<QPointer<::ScreenshotPinnedWindow>> activeGroupOpenWindows() const;
     [[nodiscard]] QString normalizedDisplayName(const storage::PinnedWindowGroup& group) const;
     [[nodiscard]] QString windowKey(::ScreenshotPinnedWindow* window) const;
     [[nodiscard]] bool persist();

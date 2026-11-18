@@ -617,6 +617,14 @@ void verifyLazyGroupMenuRefresh() {
                        menuActionNamed(group, QStringLiteral("systemTrayGroupAction-default")),
                        QStringLiteral("Default"), QStringLiteral("20/20"),
                        "submenu opening snapshots the latest pending counts");
+    auto* transparentLayer =
+        menuActionNamed(group, QStringLiteral("systemTrayTransparentLayerAction"));
+    require(transparentLayer && transparentLayer->text() == QStringLiteral("Transparent layer") &&
+                transparentLayer->menu() && !transparentLayer->isEnabled() &&
+                adqt::icons::describeIcon(group->actionIcon(transparentLayer)).key.name ==
+                    QStringLiteral("transparent-layer") &&
+                !transparentLayer->icon().pixmap(QSize(16, 16)).isNull(),
+            "the tray group submenu shows the transparency icon and requires an open pin");
     groups.completePendingPin(QStringLiteral("lazy-tray-0"));
     QCoreApplication::processEvents();
     requireGroupAction(

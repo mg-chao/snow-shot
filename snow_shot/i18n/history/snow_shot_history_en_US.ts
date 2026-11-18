@@ -1949,6 +1949,10 @@ Files:
             <translation>Cancel</translation>
         </message>
         <message>
+            <source>Checkerboard</source>
+            <translation>Checkerboard</translation>
+        </message>
+        <message>
             <source>Click-through</source>
             <translation>Click-through</translation>
         </message>
@@ -2126,6 +2130,10 @@ Files:
         <message>
             <source>Increase speed</source>
             <translation>Increase speed</translation>
+        </message>
+        <message>
+            <source>Keep transparent</source>
+            <translation>Keep transparent</translation>
         </message>
         <message>
             <source>Live content is unavailable. Retrying...</source>
@@ -2341,6 +2349,10 @@ Files:
         <message>
             <source>Translation results</source>
             <translation>Translation results</translation>
+        </message>
+        <message>
+            <source>Transparent layer</source>
+            <translation>Transparent layer</translation>
         </message>
         <message>
             <source>Unavailable</source>

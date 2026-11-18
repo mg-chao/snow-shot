@@ -186,7 +186,7 @@ if(APPLE)
     target_include_directories(snow_shot_macos_window_platform PRIVATE include)
     target_link_libraries(snow_shot_macos_window_platform PUBLIC Qt6::Widgets
         PRIVATE Qt6::GuiPrivate adqt::native_window snow_shot_macos_cursor "-framework AppKit" "-framework ApplicationServices"
-        "-framework QuartzCore")
+        "-framework QuartzCore" "-framework IOSurface")
 endif()
 
 
@@ -2768,6 +2768,11 @@ if(SNOW_SHOT_BUILD_TESTS)
              COMMAND snow-shot-pinned-window-repository-tests --visibility-only)
     add_test(NAME snow-shot-pinned-text-type-storage-tests
         COMMAND snow-shot-pinned-window-repository-tests --text-type-only)
+    add_test(NAME snow-shot-pinned-transparent-layer-storage-tests
+        COMMAND snow-shot-pinned-window-repository-tests --transparent-layer-only)
+    set_tests_properties(snow-shot-pinned-transparent-layer-storage-tests PROPERTIES
+        LABELS "unit" SNOW_TEST_CROSS_PLATFORM TRUE TIMEOUT 30
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
     set_tests_properties(snow-shot-pinned-text-type-storage-tests PROPERTIES
         LABELS "unit" TIMEOUT 30
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
@@ -5801,6 +5806,24 @@ if(SNOW_SHOT_BUILD_TESTS)
         COMMAND snow-shot-pinned-window-tests --checkerboard-only -platform offscreen)
     set_tests_properties(snow-shot-pinned-checkerboard-tests PROPERTIES LABELS "unit"
         RUN_SERIAL TRUE TIMEOUT 60)
+    add_test(NAME snow-shot-pinned-transparent-layer-tests
+        COMMAND snow-shot-pinned-window-tests --transparent-layer-only -platform offscreen)
+    set_tests_properties(snow-shot-pinned-transparent-layer-tests PROPERTIES
+        LABELS "unit" SNOW_TEST_CROSS_PLATFORM TRUE RUN_SERIAL TRUE TIMEOUT 60
+        ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+    if(APPLE)
+        target_sources(snow-shot-pinned-window-tests PRIVATE tests/macos_pinned_transparent_layer_tests.mm)
+        add_test(NAME snow-shot-pinned-transparent-layer-native-tests
+            COMMAND snow-shot-pinned-window-tests --transparent-layer-native-only -platform cocoa)
+        set_tests_properties(snow-shot-pinned-transparent-layer-native-tests PROPERTIES
+            LABELS "interactive;macos" RUN_SERIAL TRUE TIMEOUT 60)
+    elseif(WIN32)
+        add_test(NAME snow-shot-pinned-transparent-layer-native-tests
+            COMMAND snow-shot-pinned-window-tests --transparent-layer-native-only -platform windows)
+        set_tests_properties(snow-shot-pinned-transparent-layer-native-tests PROPERTIES
+            LABELS "interactive;windows" RUN_SERIAL TRUE TIMEOUT 60)
+    endif()
     add_test(NAME snow-shot-pinned-selection-annotations-tests
         COMMAND snow-shot-pinned-window-tests --selection-annotations-only -platform offscreen)
     set_tests_properties(snow-shot-pinned-selection-annotations-tests PROPERTIES LABELS "unit"

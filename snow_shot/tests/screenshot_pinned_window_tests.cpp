@@ -36,6 +36,9 @@
 #ifdef Q_OS_MACOS
 #include <CoreGraphics/CoreGraphics.h>
 int macLivePinnedWindowTests();
+void macPlacePinnedTestUnderlay(QWidget& underlay, QWidget& pin);
+bool macPinnedHitTest(QWidget& expected, const QPoint& globalPoint);
+qintptr macPinnedWindowNumber(QWidget& pin);
 #endif
 #include "snow_shot/presentation/screenshotautofiltercontroller.h"
 #include "snow_shot/presentation/screenshottoolbarmainpanel.h"
@@ -203,6 +206,7 @@ int macPinnedContentDragTests(
 #include <iostream>
 #include <memory>
 #include <stdexcept>
+#include <tuple>
 #include <utility>
 #include <vector>
 #include <qpa/qplatformscreen.h>
@@ -7018,7 +7022,8 @@ void pinnedLazyMenuHeadersRetranslate() {
     const QStringList menuNames{QStringLiteral("screenshotPinnedWindowManagementMenu"),
                                 QStringLiteral("screenshotPinnedOpacityMenu"),
                                 QStringLiteral("screenshotPinnedScaleMenu"),
-                                QStringLiteral("screenshotPinnedLoadContentMenu")};
+                                QStringLiteral("screenshotPinnedLoadContentMenu"),
+                                QStringLiteral("screenshotPinnedTransparentLayerMenu")};
     QList<QPointer<QAction>> headers;
     QStringList originalLabels;
     for (const auto& name : menuNames) {
@@ -7026,6 +7031,11 @@ void pinnedLazyMenuHeadersRetranslate() {
         require(menu != nullptr, "the lazy menu header must exist before changing languages");
         headers.append(menu->menuAction());
         originalLabels.append(menu->menuAction()->text());
+    }
+    auto* transparentLayerMenu = headers.constLast()->menu();
+    for (auto* action : transparentLayerMenu->actions()) {
+        headers.append(action);
+        originalLabels.append(action->text());
     }
     require(originalLabels.constFirst() == QStringLiteral("Window management"),
             "the window management submenu must use its English source label");
@@ -7036,7 +7046,11 @@ void pinnedLazyMenuHeadersRetranslate() {
             if (QByteArray(context) == "ScreenshotPinnedWindow" &&
                 (QByteArray(source) == "Window management" || QByteArray(source) == "Opacity" ||
                  QByteArray(source) == "Scale" || QByteArray(source) == "Load new content" ||
-                 QByteArray(source) == "Enable hide at top")) {
+                 QByteArray(source) == "Enable hide at top" ||
+                 QByteArray(source) == "Transparent layer" ||
+                 QByteArray(source) == "Click-through" ||
+                 QByteArray(source) == "Keep transparent" ||
+                 QByteArray(source) == "Checkerboard")) {
                 return QStringLiteral("Translated ") + QString::fromUtf8(source);
             }
             return {};
@@ -7048,9 +7062,14 @@ void pinnedLazyMenuHeadersRetranslate() {
     QCoreApplication::sendEvent(&window, &languageChange);
     require(hideAll->text() == QStringLiteral("Translated Enable hide at top"),
             "an existing bulk Hide to Top action must follow LanguageChange");
-    const QStringList translatedLabels{
-        QStringLiteral("Translated Window management"), QStringLiteral("Translated Opacity"),
-        QStringLiteral("Translated Scale"), QStringLiteral("Translated Load new content")};
+    const QStringList translatedLabels{QStringLiteral("Translated Window management"),
+                                       QStringLiteral("Translated Opacity"),
+                                       QStringLiteral("Translated Scale"),
+                                       QStringLiteral("Translated Load new content"),
+                                       QStringLiteral("Translated Transparent layer"),
+                                       QStringLiteral("Translated Click-through"),
+                                       QStringLiteral("Translated Keep transparent"),
+                                       QStringLiteral("Translated Checkerboard")};
     for (int index = 0; index < headers.size(); ++index) {
         require(headers.at(index) && headers.at(index)->text() == translatedLabels.at(index),
                 "an existing lazy submenu header must follow LanguageChange");
@@ -11666,12 +11685,17 @@ void pinnedBatchHideToTop() {
     require(menu && hideAll && shadow && load && !hideAll->isCheckable(),
             "Window Management must expose the non-checkable bulk Hide to Top action");
     auto* batch = window.findChild<QAction*>(QStringLiteral("screenshotPinnedBatchActionsAction"));
+    auto* transparentLayer = window.findChild<adqt::widgets::AdContextMenu*>(
+        QStringLiteral("screenshotPinnedTransparentLayerMenu"));
     const auto actions = menu->actions();
     const auto shadowIndex = actions.indexOf(shadow);
-    require(batch && shadowIndex >= 0 && actions.indexOf(batch) == shadowIndex + 2 &&
-                actions.at(shadowIndex + 1)->isSeparator() &&
+    require(batch && transparentLayer && shadowIndex >= 0 &&
+                actions.indexOf(transparentLayer->menuAction()) == shadowIndex + 1 &&
+                actions.indexOf(batch) == shadowIndex + 3 &&
+                actions.at(shadowIndex + 2)->isSeparator() &&
                 actions.indexOf(load) == actions.indexOf(batch) + 1,
-            "Show shadow is followed by a separator, Batch Actions, then Load content");
+            "Show shadow is followed by Transparent layer, a separator, Batch Actions, and Load "
+            "content");
 
     hideAll->trigger();
     for (auto* pin : {&window, &thumbnail, &locked, &clickThrough}) {
@@ -13791,6 +13815,320 @@ void pinnedCheckerboardTracksContentSource() {
             "RGB replacement must clear checkerboard");
     replacementWindow.close();
 }
+
+ScreenshotPinnedWindow::Config transparentLayerTestConfig(QScreen& screen) {
+    auto config = clickThroughTestConfig(screen);
+    QImage image = config.imageSource.materializedImage;
+    QPainter painter(&image);
+    painter.setCompositionMode(QPainter::CompositionMode_Source);
+    painter.fillRect(QRect(120, 120, 160, 160), Qt::transparent);
+    painter.end();
+    config.imageSource = ScreenshotImageSource::fromImage(image, config.canvasSourceRect);
+    config.initialBorderVisible = false;
+    config.initialShadowVisible = false;
+    return config;
+}
+
+QList<QAction*> transparentLayerActions(ScreenshotPinnedWindow& window) {
+    materializePinnedMenuTree(window);
+    const auto* menu = window.findChild<adqt::widgets::AdContextMenu*>(
+        QStringLiteral("screenshotPinnedTransparentLayerMenu"));
+    require(menu && menu->menuAction()->text() == QStringLiteral("Transparent layer") &&
+                !menu->menuAction()->icon().pixmap(QSize(16, 16)).isNull() &&
+                menu->actions().size() == 3,
+            "the Transparent layer menu must show its icon and offer three modes");
+    return menu->actions();
+}
+
+void activeGroupTransparentLayerOffscreen() {
+    using Mode = snow_shot::storage::PinnedTransparentLayerMode;
+    IsolatedPinnedStorage storage;
+    snow_shot::presentation::PinnedWindowGroupManager groups;
+    const auto otherGroup = groups.createGroup(QStringLiteral("Other pins"));
+    require(otherGroup.has_value(), "the tray scope fixture needs an inactive group");
+    ScreenshotPinnedWindow first;
+    ScreenshotPinnedWindow second;
+    ScreenshotPinnedWindow other;
+    ScreenshotPinnedWindow closing;
+    other.setGroupId(*otherGroup);
+    second.setTransparentLayerMode(Mode::ClickThrough);
+    for (auto* window : {&first, &second, &other, &closing})
+        groups.registerWindow(window, window->groupId());
+    groups.markWindowClosing(&closing);
+    require(groups.activeGroupTransparentLayerModes() ==
+                QSet<Mode>{Mode::Checkerboard, Mode::ClickThrough},
+            "the tray reports mixed modes from the current group");
+
+    groups.setActiveGroupTransparentLayerMode(Mode::KeepTransparent);
+    require(first.transparentLayerMode() == Mode::KeepTransparent &&
+                second.transparentLayerMode() == Mode::KeepTransparent &&
+                other.transparentLayerMode() == Mode::Checkerboard &&
+                closing.transparentLayerMode() == Mode::Checkerboard &&
+                groups.activeGroupTransparentLayerModes() == QSet<Mode>{Mode::KeepTransparent},
+            "the tray changes only open pins in the current group");
+}
+
+void pinnedTransparentLayerOffscreen() {
+    using Access = ScreenshotPinnedWindowTestAccess;
+    using Mode = snow_shot::storage::PinnedTransparentLayerMode;
+    QScreen* screen = QGuiApplication::primaryScreen();
+    require(screen != nullptr, "transparent layer needs a screen");
+    ScreenshotPinnedWindow window;
+    Access::prepareReplacement(window, transparentLayerTestConfig(*screen));
+    window.show();
+    const auto actions = transparentLayerActions(window);
+    auto* clickThrough = actions.at(0);
+    auto* keepTransparent = actions.at(1);
+    auto* checkerboard = actions.at(2);
+    require(clickThrough->text() == QStringLiteral("Click-through") &&
+                keepTransparent->text() == QStringLiteral("Keep transparent") &&
+                checkerboard->text() == QStringLiteral("Checkerboard"),
+            "transparent layer options must appear in the requested order");
+    const auto requireChecked = [&](QAction* selected) {
+        for (const QAction* action : actions) {
+            require(action->isCheckable() && action->isChecked() == (action == selected),
+                    "only the selected Transparent layer option can be checked");
+        }
+    };
+    requireChecked(checkerboard);
+    const auto initialPreview = renderWidget(window);
+    const QColor checkerColor = initialPreview.pixelColor(initialPreview.rect().center());
+    require(checkerColor.alpha() == 255, "the default checkerboard must back the hole");
+
+    for (const auto& [action, mode, expected] :
+         {std::tuple{clickThrough, Mode::ClickThrough, QColor(Qt::transparent)},
+          std::tuple{keepTransparent, Mode::KeepTransparent, QColor(0, 0, 0, 1)},
+          std::tuple{checkerboard, Mode::Checkerboard, checkerColor}}) {
+        action->trigger();
+        requireChecked(action);
+        const auto snapshot = window.persistenceSnapshot();
+        require(
+            snapshot.transparentLayerMode == mode && !snapshot.clickThroughMode &&
+                snapshot.checkerboardEnabled == true,
+            "the menu must set the pin mode independently of its source and whole-window input");
+        const auto preview = renderWidget(window);
+        require(preview.pixelColor(preview.rect().center()) == expected &&
+                    preview.pixelColor(preview.width() / 4, preview.height() / 2) ==
+                        QColor(42, 84, 126) &&
+                    renderWholeWidget(window).pixelColor(0, 0).alpha() == 0,
+                "the mode must back only the transparent content and leave the outer gutter clear");
+
+        QImage exported;
+        bool completed = false;
+        auto artifact = Access::fileSave(window);
+        require(artifact && artifact->requestImage(&window,
+                                                   [&](ScreenshotExportImageResult result) {
+                                                       exported = std::move(result.image);
+                                                       completed = true;
+                                                   }),
+                "transparent pin export must start");
+        translation_tests::waitUntil([&] { return completed; }, "transparent pin export finishes");
+        require(!exported.isNull() && exported.pixelColor(exported.rect().center()).alpha() == 0,
+                "transparent layer modes must preserve export alpha");
+    }
+
+    clickThrough->trigger();
+    Access::thumbnailForHideTest(window, true);
+    const auto thumbnail = renderWidget(window);
+    require(thumbnail.pixelColor(thumbnail.rect().center()).alpha() == 255,
+            "the thumbnail keeps its opaque presentation");
+    Access::thumbnailForHideTest(window, false);
+    const auto expanded = renderWidget(window);
+    require(expanded.pixelColor(expanded.rect().center()).alpha() == 0,
+            "expanding the thumbnail reapplies the selected mode");
+    requireChecked(clickThrough);
+    window.close();
+
+    ScreenshotPinnedWindow legacy;
+    auto legacyConfig = transparentLayerTestConfig(*screen);
+    legacyConfig.checkerboardEnabled = false;
+    Access::prepareReplacement(legacy, legacyConfig);
+    legacy.show();
+    const auto legacyActions = transparentLayerActions(legacy);
+    const auto paintedCenter = [&] {
+        const auto image = renderWidget(legacy);
+        return image.pixelColor(image.rect().center());
+    };
+    require(paintedCenter().alpha() == 0 && !legacy.persistenceSnapshot().transparentLayerMode,
+            "a pin without a saved choice retains its source's transparent background");
+    legacyActions.at(2)->trigger();
+    require(paintedCenter().alpha() == 255 &&
+                legacy.persistenceSnapshot().transparentLayerMode == Mode::Checkerboard,
+            "selecting Checkerboard fills a transparent hole regardless of the source default");
+    legacy.close();
+}
+
+void pinnedTransparentLayerRestores() {
+    using Access = ScreenshotPinnedWindowTestAccess;
+    using Mode = snow_shot::storage::PinnedTransparentLayerMode;
+    IsolatedPinnedStorage storage;
+    QScreen* screen = QGuiApplication::primaryScreen();
+    require(screen != nullptr, "transparent layer restore needs a screen");
+    auto record = savedPinnedRecord(*screen, 1.0, QSize(400, 400), 100.0, QPoint(40, 40));
+    record.image = transparentLayerTestConfig(*screen).imageSource.materializedImage;
+    record.checkerboardEnabled = false;
+    record.transparentLayerMode = Mode::Checkerboard;
+    ScreenshotSelectionExportUiServices services;
+    auto* restored = restoreSeededPinnedWindow(services, record);
+    const auto preview = renderWidget(*restored);
+    const auto actions = transparentLayerActions(*restored);
+    require(actions.at(2)->isChecked() &&
+                preview.pixelColor(preview.rect().center()).alpha() == 255,
+            "a restored pin must apply an explicit Checkerboard over the source default");
+    actions.at(0)->trigger();
+    require(Access::persistencePending(*restored), "changing the layer schedules a state save");
+    Access::persistNow(*restored);
+    const auto updated =
+        snow_shot::storage::ApplicationStorage::instance().pinnedWindows().loadRecord(record.id);
+    require(updated && updated->transparentLayerMode == Mode::ClickThrough,
+            "the menu must save the newly selected mode through the pin state writer");
+    closeRestoredPinnedWindow(restored, record.id);
+}
+
+#ifdef Q_OS_MACOS
+void cocoaPinnedTransparentInputMaskOffscreen() {
+    using snow_shot::presentation::updateCocoaPinnedInputMask;
+    QImage pixels(QSize(12, 6), QImage::Format_ARGB32_Premultiplied);
+    pixels.fill(Qt::transparent);
+    pixels.setPixelColor(1, 1, QColor(0, 0, 0, 1));
+    pixels.setPixelColor(5, 1, Qt::black);
+    const auto initial = updateCocoaPinnedInputMask({}, pixels, QRegion(0, 0, 6, 3), 2);
+    require(initial == QRegion(0, 0, 1, 1) + QRect(2, 0, 1, 1),
+            "any nonzero backing pixel makes its Retina logical cell interactive");
+
+    pixels.fill(Qt::transparent);
+    pixels.setPixelColor(5, 3, Qt::black);
+    pixels.setPixelColor(11, 5, Qt::black);
+    const auto updated = updateCocoaPinnedInputMask(initial, pixels, QRegion(2, 0, 1, 2), 2);
+    require(updated == QRegion(0, 0, 1, 1) + QRect(2, 1, 1, 1),
+            "mask updates replace only the painted region and reuse the surrounding cells");
+}
+#endif
+
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+void pinnedTransparentLayerNativeHitTesting() {
+    using Access = ScreenshotPinnedWindowTestAccess;
+    QScreen* screen = QGuiApplication::primaryScreen();
+    require(screen != nullptr, "native transparency needs a screen");
+    ScreenshotPinnedWindow window;
+    window.setAttribute(Qt::WA_DeleteOnClose, false);
+    auto config = transparentLayerTestConfig(*screen);
+#ifdef Q_OS_MACOS
+    config.initialBorderVisible = true;
+#endif
+    require(window.present(config), "show the native transparent pin");
+    translation_tests::waitUntil(
+        [&] { return window.automationState().value(QStringLiteral("ready")).toBool(); },
+        "the native transparent pin must publish its content");
+    QWidget underlay(nullptr, Qt::Window | Qt::FramelessWindowHint);
+    underlay.setGeometry(window.geometry());
+    underlay.show();
+#ifdef Q_OS_MACOS
+    macPlacePinnedTestUnderlay(underlay, window);
+    const qintptr nativeWindowNumber = macPinnedWindowNumber(window);
+#endif
+
+    const QRect content = Access::contentViewport(window).toAlignedRect();
+    const QPoint hole = content.center();
+    const QPoint opaque(content.left() + content.width() / 4, hole.y());
+    const auto hits = [&](QWidget& expected, const QPoint& localPoint) {
+#ifdef Q_OS_WIN
+        const QPoint point = Access::nativePoint(window, localPoint);
+        return WindowFromPoint(POINT{point.x(), point.y()}) == toNativeHwnd(expected.winId());
+#else
+        return macPinnedHitTest(expected, window.mapToGlobal(localPoint));
+#endif
+    };
+    const auto actions = transparentLayerActions(window);
+    translation_tests::waitUntil([&] { return hits(window, hole) && hits(window, opaque); },
+                                 "checkerboard and opaque image pixels must hit the pin");
+#ifdef Q_OS_MACOS
+    const QPoint rim(content.left() - 1, hole.y());
+    const QPoint gutter(content.left() / 2, hole.y());
+    const QImage withBorder = renderPinnedWithBorder(window);
+    require(withBorder.pixelColor(0, withBorder.height() / 2).alpha() > 0 &&
+                renderWholeWidget(window).pixelColor(gutter).alpha() == 0,
+            "the border-only decoration needs a painted rim and a clear outer gutter");
+#endif
+    actions.at(0)->trigger();
+    translation_tests::waitUntil([&] { return hits(underlay, hole) && hits(window, opaque); },
+                                 "the transparent hole must hit the underlay");
+#ifdef Q_OS_MACOS
+    require(hits(window, rim) && hits(underlay, gutter),
+            "masked input must hit the rim and pass through the clear outer gutter");
+    const QRegion initialMask = window.windowHandle()->mask();
+    require(!initialMask.isEmpty() && initialMask.contains(opaque) && !initialMask.contains(hole),
+            "the macOS mask must follow the painted pixels");
+    require(macPinnedWindowNumber(window) == nativeWindowNumber,
+            "applying the mask must preserve the initial native window");
+    {
+        QWidget patch(&window);
+        patch.setAutoFillBackground(true);
+        patch.setGeometry(QRect(hole - QPoint(10, 10), QSize(20, 20)));
+        patch.show();
+        patch.raise();
+        translation_tests::waitUntil(
+            [&] { return hits(window, hole) && hits(window, opaque); },
+            "a newly painted child adds input without dropping the cached opaque pixels");
+        const QPoint movedHole = hole + QPoint(30, 0);
+        patch.move(movedHole - QPoint(10, 10));
+        translation_tests::waitUntil(
+            [&] { return hits(underlay, hole) && hits(window, movedHole) && hits(window, opaque); },
+            "moving an opaque child refreshes the old and new portions of the mask");
+        patch.hide();
+        translation_tests::waitUntil(
+            [&] {
+                return hits(underlay, movedHole) &&
+                       window.windowHandle()->mask().xored(initialMask).isEmpty();
+            },
+            "hiding the child removes its input without changing the rest of the mask");
+    }
+#else
+    require(window.windowHandle()->mask().isEmpty(), "Windows uses the layered window alpha");
+#endif
+    require(Access::setClickThrough(window, true), "enable the separate whole-window mode");
+    translation_tests::waitUntil([&] { return hits(underlay, hole) && hits(underlay, opaque); },
+                                 "whole-window mode must pass through both points");
+    require(Access::setClickThrough(window, false), "leave the separate whole-window mode");
+    translation_tests::waitUntil([&] { return hits(underlay, hole) && hits(window, opaque); },
+                                 "leaving whole-window mode restores per-pixel input");
+#ifdef Q_OS_MACOS
+    const qintptr restoredWindowNumber = macPinnedWindowNumber(window);
+#endif
+    actions.at(1)->trigger();
+    translation_tests::waitUntil([&] { return hits(window, hole) && hits(window, opaque); },
+                                 "the nearly transparent fill must hit the pin");
+    require(window.windowHandle()->mask().isEmpty(), "leaving pixel passthrough clears the mask");
+    Access::setGeneralOpacity(window, 25);
+    translation_tests::waitUntil([&] { return hits(window, hole); },
+                                 "the fill must still hit the pin at minimum menu opacity");
+    Access::setGeneralOpacity(window, 100);
+    actions.at(0)->trigger();
+    ScreenshotClipboardContent replacement;
+    replacement.image = QImage(QSize(400, 400), QImage::Format_ARGB32_Premultiplied);
+    replacement.image.fill(QColor(42, 84, 126));
+    {
+        QPainter painter(&replacement.image);
+        painter.setCompositionMode(QPainter::CompositionMode_Source);
+        painter.fillRect(QRect(40, 120, 120, 160), Qt::transparent);
+    }
+    require(Access::replace(window, std::move(replacement)), "move the pin's transparent hole");
+    translation_tests::waitUntil(
+        [&] {
+            const QRect viewport = Access::contentViewport(window).toAlignedRect();
+            const QPoint center = viewport.center();
+            const QPoint newHole(viewport.left() + viewport.width() / 4, center.y());
+            return hits(window, center) && hits(underlay, newHole);
+        },
+        "native input must follow the newly painted alpha");
+#ifdef Q_OS_MACOS
+    require(window.windowHandle()->mask() != initialMask &&
+                macPinnedWindowNumber(window) == restoredWindowNumber,
+            "redrawing alpha must update the mask on the existing window");
+#endif
+    window.close();
+}
+#endif
 
 void pinnedThumbnailBorderContainsBackgroundOffscreen() {
     using Access = ScreenshotPinnedWindowTestAccess;
@@ -28801,6 +29139,21 @@ int main(int argc, char* argv[]) {
             pinnedCheckerboardTracksContentSource();
             return 0;
         }
+        if (app.arguments().contains(QStringLiteral("--transparent-layer-only"))) {
+            pinnedTransparentLayerOffscreen();
+            pinnedTransparentLayerRestores();
+            activeGroupTransparentLayerOffscreen();
+#ifdef Q_OS_MACOS
+            cocoaPinnedTransparentInputMaskOffscreen();
+#endif
+            return 0;
+        }
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+        if (app.arguments().contains(QStringLiteral("--transparent-layer-native-only"))) {
+            pinnedTransparentLayerNativeHitTesting();
+            return 0;
+        }
+#endif
         if (app.arguments().contains(QStringLiteral("--selection-annotations-only"))) {
             pinnedDocumentSelectionUsesLocalCaptureGeometry();
             pinnedAnnotationsIgnoreSelectionShape();
