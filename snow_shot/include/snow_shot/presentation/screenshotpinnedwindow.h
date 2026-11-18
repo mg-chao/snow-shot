@@ -623,6 +623,7 @@ class ScreenshotPinnedWindow final : public QWidget {
     [[nodiscard]] QRect authoritativeContentNativeGeometry() const;
     [[nodiscard]] QRectF contentViewRect() const;
     [[nodiscard]] QRect contentWidgetRect() const;
+    [[nodiscard]] bool borderResizeMarginEnabled() const;
     [[nodiscard]] std::optional<int> resizeHandleAt(const QPointF& position) const;
     [[nodiscard]] QRect observedNativeGeometry() const;
     void toggleHideToTop();
