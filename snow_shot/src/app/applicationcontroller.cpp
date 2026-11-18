@@ -1384,6 +1384,12 @@ class ApplicationController::Impl {
                     required.append(presentation::AppPermission::InputMonitoring);
                 return notify ? allowPermissions(required) : permissions.allow(required);
             });
+            screenshotController->setRecordingPreviewPermissionSnapshot(permissions.snapshot());
+            QObject::connect(&permissions, &presentation::AppPermissionService::changed,
+                             screenshotController.get(), [this] {
+                                 screenshotController->setRecordingPreviewPermissionSnapshot(
+                                     permissions.snapshot());
+                             });
 #else
             screenshotController->setRecordingPermissionCheck(
                 [](bool, bool, bool) { return true; });

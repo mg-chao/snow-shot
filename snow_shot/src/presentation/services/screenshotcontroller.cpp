@@ -37,6 +37,7 @@
 #include <cmath>
 #include "snow_shot/platform/screenshotnative.h"
 #ifdef Q_OS_MACOS
+#include "snow_shot/presentation/apppermissionservice.h"
 #include "snow_shot/platform/macos/recapturefocus.h"
 #include "snow_shot/platform/macos/applicationactivation.h"
 #include "snow_shot/platform/macos/screenshotsessionfocus.h"
@@ -747,6 +748,9 @@ struct ScreenshotController::Impl final : public ScreenshotToolbarCommandSink,
     ScreenshotUiPreferences m_uiPreferences;
     ScreenshotGuideVisibilityState m_guideVisibility;
     std::function<bool(bool, bool, bool)> m_recordingPermissionCheck;
+#ifdef Q_OS_MACOS
+    std::optional<snow_shot::presentation::AppPermissionSnapshot> m_recordingPreviewPermissions;
+#endif
     std::unique_ptr<ScreenRecordingController> m_screenRecordingController;
     bool m_constructingRecognitionFeature = false;
     bool m_constructingScrollingFeature = false;
@@ -1461,6 +1465,10 @@ bool ScreenshotController::Impl::ensureRecordingFeature() {
                          emit owner.captureActivityChanged(QStringLiteral("recording"), active);
                      });
     m_screenRecordingController->setPermissionCheck(m_recordingPermissionCheck);
+#ifdef Q_OS_MACOS
+    if (m_recordingPreviewPermissions)
+        m_screenRecordingController->setPreviewPermissionSnapshot(*m_recordingPreviewPermissions);
+#endif
     return m_screenRecordingController != nullptr;
 }
 
@@ -7155,6 +7163,15 @@ void ScreenshotController::setRecordingPermissionCheck(
     if (m_impl->m_screenRecordingController)
         m_impl->m_screenRecordingController->setPermissionCheck(m_impl->m_recordingPermissionCheck);
 }
+
+#ifdef Q_OS_MACOS
+void ScreenshotController::setRecordingPreviewPermissionSnapshot(
+    const snow_shot::presentation::AppPermissionSnapshot& snapshot) {
+    m_impl->m_recordingPreviewPermissions = snapshot;
+    if (m_impl->m_screenRecordingController)
+        m_impl->m_screenRecordingController->setPreviewPermissionSnapshot(snapshot);
+}
+#endif
 
 void ScreenshotController::prepareForSessionEnd(int timeoutMs) {
     if (m_impl->m_screenRecordingController)

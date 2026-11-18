@@ -9150,6 +9150,13 @@ if(SNOW_SHOT_BUILD_TESTS)
     set_tests_properties(snow-shot-recording-area-history-tests PROPERTIES
         LABELS "unit" TIMEOUT 60
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+    if(APPLE)
+        add_test(NAME snow-shot-macos-recording-region-drag-preview-tests
+            COMMAND snow-shot-screen-recording-controller-tests --region-drag-preview-only
+                -platform offscreen)
+        set_tests_properties(snow-shot-macos-recording-region-drag-preview-tests PROPERTIES
+            LABELS "unit;macos" TIMEOUT 30)
+    endif()
     add_test(NAME snow-shot-recording-startup-retry-tests
         COMMAND snow-shot-screen-recording-controller-tests --startup-retry-only -platform offscreen)
     set_tests_properties(snow-shot-recording-startup-retry-tests PROPERTIES
