@@ -299,13 +299,13 @@ using snow_shot::storage::PinnedTransparentLayerMode;
 
 constexpr int kControlsInset = 16;
 constexpr int kControlButtonSpacing = 8;
+constexpr int kResizeHitWidth = 6;
 constexpr int kThumbnailSize = 83;
 constexpr int kThumbnailAnimationDurationMs = 150;
 constexpr int kMinimumScalePercent = 10;
 constexpr int kMaximumScalePercent = 500;
 constexpr int kMinimumOpacityPercent = 25;
 constexpr int kMaximumOpacityPercent = 100;
-const QColor kPinnedTransparentLayerFill(0, 0, 0, 1);
 const QColor kDefaultPinnedBorderColor(219, 219, 219, 255);
 const QColor kDefaultPinnedLockedBorderColor(250, 173, 20, 255);
 const QColor kDefaultPinnedBorderActiveColor(105, 177, 255, 255);
@@ -314,6 +314,26 @@ const QColor kDefaultPinnedShadowActiveColor(105, 177, 255, 255);
 const QColor kDefaultPinnedLockedShadowColor(250, 173, 20, 255);
 constexpr auto kPinnedBorderColorProperty = "borderColor";
 constexpr auto kPinnedShadowColorProperty = "shadowColor";
+
+QRect pinnedOuterResizeBounds(const QRect& content, qreal dpr) {
+    if (!content.isValid())
+        return {};
+    const int width =
+        std::min(qRound(kResizeHitWidth * dpr), pinned_platform::pinnedShadowMargin());
+    return content.adjusted(-width, -width, width, width);
+}
+
+QColor pinnedTransparentInputFill(int opacityPercent) {
+#ifdef Q_OS_WIN
+    // Qt supplies an 8-bit window opacity to the layered-window blend. Keep the
+    // blended alpha at one by reaching its round-up threshold of 128/255.
+    const int nativeOpacity = qRound(255.0 * opacityPercent / 100.0);
+    return QColor(0, 0, 0, qCeil(128.0 / nativeOpacity));
+#else
+    Q_UNUSED(opacityPercent);
+    return QColor(0, 0, 0, 1);
+#endif
+}
 
 bool styleHasTransparentShape(const ScreenshotResultStyle& style, const QSize& contentSize) {
     if (!style.region) {
@@ -565,10 +585,11 @@ class PinnedDecorationFrame final : public QFrame {
     }
 
     void updateDecoration(const QRectF& outline, const QSizeF& radii, bool showBorder,
-                          bool showShadow) {
+                          bool showShadow, const QColor& resizeFill) {
         QTransform toDevice;
         toDevice.scale(devicePixelRatioF(), devicePixelRatioF());
-        const auto next = deviceGeometry(toDevice, outline, radii, showBorder, showShadow);
+        const auto next =
+            deviceGeometry(toDevice, outline, radii, showBorder, showShadow, resizeFill);
         if (m_stateValid && next == m_state && property("borderOutline").toRectF() == outline &&
             property("cornerRadii").toSizeF() == radii && !isHidden())
             return;
@@ -609,9 +630,9 @@ class PinnedDecorationFrame final : public QFrame {
         QPainter painter(this);
         const QTransform surfaceTransform = painter.combinedTransform();
         const QRectF borderOutline = property("borderOutline").toRectF();
-        const auto geometry =
-            deviceGeometry(surfaceTransform, borderOutline, property("cornerRadii").toSizeF(),
-                           property("showBorder").toBool(), property("showShadow").toBool());
+        const auto geometry = deviceGeometry(
+            surfaceTransform, borderOutline, property("cornerRadii").toSizeF(),
+            property("showBorder").toBool(), property("showShadow").toBool(), m_state.resizeFill);
         if (geometry.content.isEmpty() || (!geometry.showBorder && !geometry.showShadow))
             return;
 
@@ -625,6 +646,10 @@ class PinnedDecorationFrame final : public QFrame {
             return;
         }
         painter.setTransform(painter.transform() * toSurface);
+        // A layered window only receives mouse input where its backing pixels have alpha.
+        for (const QRect& band : geometry.resizeMargin())
+            painter.fillRect(band, geometry.resizeFill);
+
         ScreenshotPinnedDecorationStyle style;
         style.borderWidth = geometry.showBorder ? geometry.borderWidth : 0;
         style.borderColor = color;
@@ -649,17 +674,25 @@ class PinnedDecorationFrame final : public QFrame {
         int shadowWidth = 0;
         bool showBorder = false;
         bool showShadow = false;
+        QColor resizeFill;
         qreal dpr = 1.0;
         bool operator==(const DecorationState&) const = default;
+
+        QRegion resizeMargin() const {
+            if (!resizeFill.isValid())
+                return {};
+            return QRegion(pinnedOuterResizeBounds(content, dpr)) - QRegion(content);
+        }
     };
 
     DecorationState deviceGeometry(const QTransform& transform, const QRectF& borderOutline,
-                                   const QSizeF& cornerRadii, bool showBorder,
-                                   bool showShadow) const {
+                                   const QSizeF& cornerRadii, bool showBorder, bool showShadow,
+                                   const QColor& resizeFill) const {
         DecorationState state;
         state.dpr = devicePixelRatioF();
         state.showBorder = showBorder;
         state.showShadow = showShadow;
+        state.resizeFill = resizeFill;
         state.borderWidth = std::max(1, qCeil(window()->devicePixelRatioF()));
         state.shadowWidth = pinned_platform::kPinnedGeometryUnits ==
                                     pinned_platform::PinnedGeometryUnits::LogicalPixels
@@ -702,9 +735,10 @@ class PinnedDecorationFrame final : public QFrame {
     }
 
     QRegion decorationDamage(const DecorationState& state) const {
-        const QRegion deviceDamage = ScreenshotPinnedDecorationRenderer::damageRegion(
+        QRegion deviceDamage = ScreenshotPinnedDecorationRenderer::damageRegion(
             state.outline, state.radii, state.showBorder ? state.borderWidth : 0,
             state.showShadow ? state.shadowWidth : 0, state.outer);
+        deviceDamage += state.resizeMargin();
         QRegion logicalDamage;
         for (const QRect& band : deviceDamage) {
             logicalDamage += QRectF(band.x() / state.dpr, band.y() / state.dpr,
@@ -1982,12 +2016,12 @@ void ScreenshotPinnedWindow::restorePersistentState(const Config& config) {
     applyStaysOnTopFlag(this, m_alwaysOnTop, m_platform.get());
     m_showBorder = config.persistedShowBorder;
     m_showShadow = config.persistedShowShadow;
-    updateBorderOutline();
     // The scale value is not restored state: it derives from the restored
     // physical geometry alone, so the monitor DPI never influences it.
     m_hideToTop->setAccentIndex(config.persistedHideToTopAccentIndex);
     m_opacityPercent =
         qBound(config.persistedHideToTopMode ? 25 : 1, config.persistedOpacityPercent, 100);
+    updateBorderOutline();
     applyEffectiveOpacity();
     m_imageTransform = config.persistedImageTransform;
     m_quarterTurns = qBound(0, config.persistedQuarterTurns, 3);
@@ -2705,14 +2739,30 @@ QRect ScreenshotPinnedWindow::contentWidgetRect() const {
                  QPoint(qFloor(content.right()) - 1, qFloor(content.bottom()) - 1));
 }
 
+bool ScreenshotPinnedWindow::borderResizeMarginEnabled() const {
+#ifdef Q_OS_WIN
+    return m_showBorder && !m_showShadow && !m_cropRect && !m_lockedMode && !m_thumbnailMode;
+#else
+    return false;
+#endif
+}
+
 std::optional<int> ScreenshotPinnedWindow::resizeHandleAt(const QPointF& position) const {
     if (isControlsPanelPosition(position.toPoint()))
         return std::nullopt;
     const QRect outer = currentNativeGeometry();
     const ScreenshotPinnedGeometryMapping mapping(outer, size(), devicePixelRatioF());
-    const auto handle = resize_geometry::hitHandle(
-        mapping.nativePosition(position), outer, snow_shot::presentation::pinnedContentRect(outer),
-        mapping.nativeHitSize(6));
+    const QRect content = pinned_platform::pinnedContentRect(outer);
+    const QPointF nativePosition = mapping.nativePosition(position);
+    const bool useBorderResizeMargin = borderResizeMarginEnabled();
+    // An integer native hit can round-trip through fractional widget coordinates.
+    // Test the same physical pixel that the layered backing store publishes.
+    const QPointF hitPosition =
+        useBorderResizeMargin ? QPointF(nativePosition.toPoint()) : nativePosition;
+    const QRect resizeBounds =
+        useBorderResizeMargin ? pinnedOuterResizeBounds(content, devicePixelRatioF()) : outer;
+    const auto handle = resize_geometry::hitHandle(hitPosition, resizeBounds, content,
+                                                   mapping.nativeHitSize(kResizeHitWidth));
     return handle ? std::optional<int>(static_cast<int>(*handle)) : std::nullopt;
 }
 
@@ -4547,8 +4597,10 @@ void ScreenshotPinnedWindow::updateBorderOutline() {
         cornerRadii = QSizeF(0, 0);
     }
     static_cast<PinnedDecorationFrame*>(m_borderFrame)
-        ->updateDecoration(borderOutline, cornerRadii, m_showBorder || m_cropRect.has_value(),
-                           m_showShadow && !m_cropRect);
+        ->updateDecoration(
+            borderOutline, cornerRadii, m_showBorder || m_cropRect.has_value(),
+            m_showShadow && !m_cropRect,
+            borderResizeMarginEnabled() ? pinnedTransparentInputFill(m_opacityPercent) : QColor());
 
     updateTransparentLayer();
 }
@@ -4566,7 +4618,7 @@ void ScreenshotPinnedWindow::updateTransparentLayer() {
     if (m_thumbnailMode)
         background = opaquePinnedBackground(this);
     else if (m_transparentLayerMode == PinnedTransparentLayerMode::KeepTransparent)
-        background = kPinnedTransparentLayerFill;
+        background = pinnedTransparentInputFill(m_opacityPercent);
     m_screenshotRenderer->setPinnedBackgroundColor(background);
     m_platform->setTransparentPixelInput(!m_thumbnailMode && !m_liveNativePresentation &&
                                          m_transparentLayerMode ==
@@ -8807,7 +8859,10 @@ void ScreenshotPinnedWindow::setLockedMode(bool enabled) {
         if (m_closing)
             return;
     }
+    const bool hadResizeMargin = borderResizeMarginEnabled();
     m_lockedMode = enabled;
+    if (hadResizeMargin != borderResizeMarginEnabled())
+        updateBorderOutline();
     if (!enabled && m_scaleLabel && m_scaleLabel->message() == CanvasStatusReadout::Message::Locked)
         m_scaleLabel->dismiss();
     clearWindowDragCursor();
@@ -8882,8 +8937,12 @@ void ScreenshotPinnedWindow::setOpacityPercent(int percent) {
         return;
     }
     const bool changed = percent != m_opacityPercent;
+    const bool inputFillChanged =
+        pinnedTransparentInputFill(percent) != pinnedTransparentInputFill(m_opacityPercent);
     m_opacityPercent = percent;
     applyEffectiveOpacity();
+    if (inputFillChanged)
+        updateBorderOutline();
     schedulePersistence();
     refreshContextMenu();
     if (changed) {
