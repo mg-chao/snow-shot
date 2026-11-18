@@ -75,6 +75,10 @@ int main(int argc, char** argv) {
             "source-language catalog compaction must preserve singular and plural forms");
 
     require(manager.setLanguage(QStringLiteral("zh_CN")), "Simplified Chinese should load");
+    require(QCoreApplication::translate("SettingsCatalog",
+                                        "Keep selection width and height consistent") ==
+                QString::fromUtf8("保持选区宽高一致"),
+            "Simplified Chinese should describe the square selection shortcut");
     require(QCoreApplication::translate("SettingsCatalog", "Mouse wheel opacity step") ==
                     QString::fromUtf8("鼠标滚轮不透明度步长") &&
                 QCoreApplication::translate("SettingsCatalog", "Mouse wheel zoom step") ==
@@ -106,6 +110,9 @@ int main(int argc, char** argv) {
             "Ant Design Qt should follow Simplified Chinese");
     require(settings.language() == QStringLiteral("zh_CN"),
             "a selected locale should persist immediately");
+    require(QCoreApplication::translate("ScreenshotPinnedWindow", "Window management") ==
+                QString::fromUtf8("窗口管理"),
+            "Simplified Chinese should translate the pinned window management menu");
     require(QCoreApplication::translate("PinnedWindowManagementPageWidget",
                                         "Pin to screen management") ==
                 QString::fromUtf8("固定到屏幕管理"),
@@ -118,6 +125,10 @@ int main(int argc, char** argv) {
             "Simplified Chinese management should use the same window terminology");
 
     require(manager.setLanguage(QStringLiteral("zh_TW")), "Traditional Chinese should load");
+    require(QCoreApplication::translate("SettingsCatalog",
+                                        "Keep selection width and height consistent") ==
+                QString::fromUtf8("保持選取範圍長寬一致"),
+            "Traditional Chinese should describe the square selection shortcut");
     require(QCoreApplication::translate("CanvasStatusReadout", "Scale: %1%") ==
                     QString::fromUtf8("縮放：%1%") &&
                 QCoreApplication::translate("CanvasStatusReadout", "Locked") ==
@@ -142,6 +153,9 @@ int main(int argc, char** argv) {
                 QCoreApplication::translate("SettingsCatalog", "Increase scale by 10%") ==
                     QString::fromUtf8("縮放比例增加 10%"),
             "Traditional Chinese must translate pinned image adjustment commands");
+    require(QCoreApplication::translate("ScreenshotPinnedWindow", "Window management") ==
+                QString::fromUtf8("視窗管理"),
+            "Traditional Chinese should translate the pinned window management menu");
     require(QCoreApplication::translate("PinnedWindowManagementPageWidget",
                                         "Pin to screen management") ==
                 QString::fromUtf8("固定到螢幕管理"),

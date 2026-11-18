@@ -3962,7 +3962,7 @@ void ScreenshotPinnedWindow::createContextMenu() {
     connect(m_lockAction, &QAction::toggled, this, &ScreenshotPinnedWindow::setLockedMode);
 
     auto* managementAction = m_contextMenu->addLazySubMenu(
-        tr("Pin to screen management"),
+        tr("Window management"),
         [this](auto* windowManagementMenu) {
             windowManagementMenu->setObjectName(
                 QStringLiteral("screenshotPinnedWindowManagementMenu"));
@@ -4053,7 +4053,7 @@ void ScreenshotPinnedWindow::createContextMenu() {
             refreshContextMenu();
         },
         outlined_icons::Apartment());
-    setActionTranslationSource(managementAction, "Pin to screen management");
+    setActionTranslationSource(managementAction, "Window management");
     managementAction->setObjectName(QStringLiteral("screenshotPinnedWindowManagementAction"));
 
     m_contextMenu->addSeparator();

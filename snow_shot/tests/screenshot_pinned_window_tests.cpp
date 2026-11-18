@@ -7015,7 +7015,8 @@ void pinnedLazyMenuHeadersRetranslate() {
         window.findChild<QAction*>(QStringLiteral("screenshotPinnedBatchEnableHideToTopAction"));
     require(hideAll && hideAll->text() == QStringLiteral("Enable hide at top"),
             "the bulk Hide to Top action must use its English source label");
-    const QStringList menuNames{QStringLiteral("screenshotPinnedOpacityMenu"),
+    const QStringList menuNames{QStringLiteral("screenshotPinnedWindowManagementMenu"),
+                                QStringLiteral("screenshotPinnedOpacityMenu"),
                                 QStringLiteral("screenshotPinnedScaleMenu"),
                                 QStringLiteral("screenshotPinnedLoadContentMenu")};
     QList<QPointer<QAction>> headers;
@@ -7026,13 +7027,15 @@ void pinnedLazyMenuHeadersRetranslate() {
         headers.append(menu->menuAction());
         originalLabels.append(menu->menuAction()->text());
     }
+    require(originalLabels.constFirst() == QStringLiteral("Window management"),
+            "the window management submenu must use its English source label");
     class MenuTranslator final : public QTranslator {
       public:
         QString translate(const char* context, const char* source, const char*,
                           int) const override {
             if (QByteArray(context) == "ScreenshotPinnedWindow" &&
-                (QByteArray(source) == "Opacity" || QByteArray(source) == "Scale" ||
-                 QByteArray(source) == "Load new content" ||
+                (QByteArray(source) == "Window management" || QByteArray(source) == "Opacity" ||
+                 QByteArray(source) == "Scale" || QByteArray(source) == "Load new content" ||
                  QByteArray(source) == "Enable hide at top")) {
                 return QStringLiteral("Translated ") + QString::fromUtf8(source);
             }
@@ -7045,9 +7048,9 @@ void pinnedLazyMenuHeadersRetranslate() {
     QCoreApplication::sendEvent(&window, &languageChange);
     require(hideAll->text() == QStringLiteral("Translated Enable hide at top"),
             "an existing bulk Hide to Top action must follow LanguageChange");
-    const QStringList translatedLabels{QStringLiteral("Translated Opacity"),
-                                       QStringLiteral("Translated Scale"),
-                                       QStringLiteral("Translated Load new content")};
+    const QStringList translatedLabels{
+        QStringLiteral("Translated Window management"), QStringLiteral("Translated Opacity"),
+        QStringLiteral("Translated Scale"), QStringLiteral("Translated Load new content")};
     for (int index = 0; index < headers.size(); ++index) {
         require(headers.at(index) && headers.at(index)->text() == translatedLabels.at(index),
                 "an existing lazy submenu header must follow LanguageChange");

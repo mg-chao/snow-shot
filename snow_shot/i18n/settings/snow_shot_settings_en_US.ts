@@ -3230,6 +3230,10 @@
             <translation>Keep screenshots available after the application closes</translation>
         </message>
         <message>
+            <source>Keep selection width and height consistent</source>
+            <translation>Keep selection width and height consistent</translation>
+        </message>
+        <message>
             <source>Keep the Snow Shot save dialog open after saving to show the result</source>
             <translation>Keep the Snow Shot save dialog open after saving to show the result</translation>
         </message>
@@ -3372,10 +3376,6 @@
         <message>
             <source>Main interface skin position</source>
             <translation>Main interface skin position</translation>
-        </message>
-        <message>
-            <source>Maintain selection aspect ratio</source>
-            <translation>Maintain selection aspect ratio</translation>
         </message>
         <message>
             <source>Manage macOS permissions for Snow Shot</source>

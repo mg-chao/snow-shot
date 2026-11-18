@@ -877,7 +877,9 @@ void traySettingsAndFunctionNavigation() {
     for (const auto& action :
          {QStringLiteral("none"), QStringLiteral("screenshot"), QStringLiteral("show_main_window"),
           QStringLiteral("screenshot_copy"), QStringLiteral("screenshot_fixed"),
-          QStringLiteral("open_capture_history"), QStringLiteral("open_pin_to_screen_management"),
+          QStringLiteral("pin_clipboard_content"), QStringLiteral("restore_last_closed_windows"),
+          QStringLiteral("hide_show_all_windows"), QStringLiteral("open_capture_history"),
+          QStringLiteral("open_pin_to_screen_management"),
           QStringLiteral("open_function_settings")}) {
         const auto previousMiddle = backend.selectValue(middle);
         require(backend.applySelectValue(left, action) && backend.selectValue(left) == action &&

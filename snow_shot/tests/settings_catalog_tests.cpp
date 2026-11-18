@@ -76,17 +76,26 @@ void trayClickActionSettingsRespectPlatformSupport() {
                                    QStringLiteral("show_main_window"),
                                    QStringLiteral("screenshot_copy"),
                                    QStringLiteral("screenshot_fixed"),
+                                   QStringLiteral("pin_clipboard_content"),
+                                   QStringLiteral("restore_last_closed_windows"),
+                                   QStringLiteral("hide_show_all_windows"),
                                    QStringLiteral("open_capture_history"),
                                    QStringLiteral("open_pin_to_screen_management"),
                                    QStringLiteral("open_function_settings")};
     require(leftSelect.options.size() == actionValues.size() &&
                 leftSelect.options.constFirst().label.translated() == QStringLiteral("None"),
-            "tray left-click action must expose eight options with None first");
+            "tray left-click action must expose all options with None first");
     require(leftSelect.options.at(5).label.translated() ==
-                    QStringLiteral("Open screenshot history") &&
+                    QStringLiteral("Pin clipboard content to screen") &&
                 leftSelect.options.at(6).label.translated() ==
+                    QStringLiteral("Restore last closed window") &&
+                leftSelect.options.at(7).label.translated() ==
+                    QStringLiteral("Hide/show all windows") &&
+                leftSelect.options.at(8).label.translated() ==
+                    QStringLiteral("Open screenshot history") &&
+                leftSelect.options.at(9).label.translated() ==
                     QStringLiteral("Open pin to screen management"),
-            "tray selectors must name the history and pin management destinations");
+            "tray selectors must label the pin actions, history, and pin management");
     for (qsizetype index = 0; index < actionValues.size(); ++index) {
         require(leftSelect.options.at(index).value == actionValues.at(index),
                 "tray left-click actions must retain their ordered values");
@@ -1894,7 +1903,7 @@ void builtInCatalogIsCompleteAndValid() {
             screenshotShortcuts->items.at(5).title.translated() ==
                 QStringLiteral("Move entire selection") &&
             screenshotShortcuts->items.at(6).title.translated() ==
-                QStringLiteral("Maintain selection aspect ratio") &&
+                QStringLiteral("Keep selection width and height consistent") &&
             screenshotShortcuts->items.at(7).title.translated() ==
                 QStringLiteral("Selection aspect ratio snap") &&
             screenshotShortcuts->items.at(8).title.translated() ==
@@ -2584,15 +2593,15 @@ void globalShortcutActionsHaveStableContracts() {
         {Action::ScreenshotFocusedWindow, "screenshot", "quick.screenshot-focused-window",
          "global_shortcuts/screenshot_focused_window",
          settings::SettingsCommandKind::ExecuteQuickAction},
+        {Action::OpenCaptureHistory, "screenshot", "quick.open-capture-history",
+         "global_shortcuts/open_capture_history",
+         settings::SettingsCommandKind::ExecuteQuickAction},
         {Action::ScreenRecord, "screen-recording", "quick.screen-record",
          "global_shortcuts/screen_record", settings::SettingsCommandKind::ExecuteQuickAction},
         {Action::ScreenRecordCopy, "screen-recording", "quick.screen-record-copy",
          "global_shortcuts/screen_record_copy", settings::SettingsCommandKind::ExecuteQuickAction},
         {Action::OpenScreenRecordingFolder, "screen-recording",
          "quick.open-screen-recording-folder", "global_shortcuts/open_screen_recording_folder",
-         settings::SettingsCommandKind::ExecuteQuickAction},
-        {Action::OpenCaptureHistory, "other", "quick.open-capture-history",
-         "global_shortcuts/open_capture_history",
          settings::SettingsCommandKind::ExecuteQuickAction},
         {Action::OpenPinToScreenManagement, "pin-to-screen", "quick.open-pin-to-screen-management",
          "global_shortcuts/open_pin_to_screen_management",
@@ -2771,28 +2780,28 @@ void globalShortcutActionsHaveStableContracts() {
     const auto* trayMenuSchema =
         storage::ConfigurationSchema::entry(QStringLiteral("tray/menu_options"));
     require(trayGroups.size() == 5 && trayGroups.at(0).id == QStringLiteral("screenshot") &&
-                trayGroups.at(0).options.size() == 12 &&
+                trayGroups.at(0).options.size() == 13 &&
                 trayGroups.at(1).id == QStringLiteral("pin-to-screen") &&
                 trayGroups.at(1).options.size() == 5 &&
                 trayGroups.at(2).id == QStringLiteral("screen-recording") &&
                 trayGroups.at(2).options.size() == 3 &&
                 trayGroups.at(3).id == QStringLiteral("other") &&
-                trayGroups.at(3).options.size() == 9 + WINDOW_TOPMOST_ACTION_COUNT &&
+                trayGroups.at(3).options.size() == 8 + WINDOW_TOPMOST_ACTION_COUNT &&
                 trayGroups.at(4).id == QStringLiteral("system") &&
                 trayGroups.at(4).options.size() == 4 &&
                 trayOptionIds.size() == 33 + WINDOW_TOPMOST_ACTION_COUNT &&
                 trayOptionIds.at(6) == QStringLiteral("quick.screenshot-scrolling") &&
                 trayOptionIds.at(8) == QStringLiteral("quick.screenshot-save") &&
                 trayOptionIds.at(9) == QStringLiteral("quick.screenshot-quick-save") &&
-                trayOptionIds.at(12) == QStringLiteral("quick.pin-clipboard-content") &&
-                trayOptionIds.at(13) == QStringLiteral("quick.pin-selected-files") &&
-                trayOptionIds.at(14) == QStringLiteral("quick.restore-last-closed-windows") &&
-                trayOptionIds.at(15) == QStringLiteral("quick.hide-show-all-windows") &&
-                trayOptionIds.at(16) == QStringLiteral("quick.open-pin-to-screen-management") &&
-                trayOptionIds.at(17) == QStringLiteral("quick.screen-record") &&
-                trayOptionIds.at(18) == QStringLiteral("quick.screen-record-copy") &&
-                trayOptionIds.at(19) == QStringLiteral("quick.open-screen-recording-folder") &&
-                trayOptionIds.at(20) == QStringLiteral("quick.open-capture-history") &&
+                trayOptionIds.at(12) == QStringLiteral("quick.open-capture-history") &&
+                trayOptionIds.at(13) == QStringLiteral("quick.pin-clipboard-content") &&
+                trayOptionIds.at(14) == QStringLiteral("quick.pin-selected-files") &&
+                trayOptionIds.at(15) == QStringLiteral("quick.restore-last-closed-windows") &&
+                trayOptionIds.at(16) == QStringLiteral("quick.hide-show-all-windows") &&
+                trayOptionIds.at(17) == QStringLiteral("quick.open-pin-to-screen-management") &&
+                trayOptionIds.at(18) == QStringLiteral("quick.screen-record") &&
+                trayOptionIds.at(19) == QStringLiteral("quick.screen-record-copy") &&
+                trayOptionIds.at(20) == QStringLiteral("quick.open-screen-recording-folder") &&
                 trayOptionIds.at(21) == QStringLiteral("quick.global-canvas") &&
                 trayOptionIds.at(22) == QStringLiteral("quick.stitch-selected-images") &&
                 trayOptionIds.at(23) == QStringLiteral("quick.split-selected-images") &&
@@ -2991,8 +3000,10 @@ void globalShortcutActionsHaveStableContracts() {
         catalog.item({QStringLiteral("global-hotkeys"), QStringLiteral("screen-recording"),
                       QStringLiteral("quick.open-screen-recording-folder")});
     const auto* openHistory =
-        catalog.item({QStringLiteral("global-hotkeys"), QStringLiteral("other"),
+        catalog.item({QStringLiteral("global-hotkeys"), QStringLiteral("screenshot"),
                       QStringLiteral("quick.open-capture-history")});
+    require(openHistory != nullptr && openHistory == &screenshotSection->items.constLast(),
+            "Screenshot history must be the last Screenshot quick action");
     const auto* pinClipboard =
         catalog.item({QStringLiteral("global-hotkeys"), QStringLiteral("pin-to-screen"),
                       QStringLiteral("quick.pin-clipboard-content")});
@@ -3002,24 +3013,22 @@ void globalShortcutActionsHaveStableContracts() {
     const auto* otherShortcuts =
         catalog.section(QStringLiteral("global-hotkeys"), QStringLiteral("other"));
     require(otherShortcuts != nullptr &&
-                otherShortcuts->items.size() == 9 + WINDOW_TOPMOST_ACTION_COUNT &&
-                otherShortcuts->items.at(0).id == QStringLiteral("quick.open-capture-history") &&
-                otherShortcuts->items.at(1).id == QStringLiteral("quick.global-canvas") &&
-                otherShortcuts->items.at(2).id == QStringLiteral("quick.stitch-selected-images") &&
-                otherShortcuts->items.at(3).id == QStringLiteral("quick.split-selected-images") &&
-                otherShortcuts->items.at(4).id == QStringLiteral("quick.edit-selected-images") &&
-                otherShortcuts->items.at(5).id == QStringLiteral("quick.translate-selected-text") &&
-                otherShortcuts->items.at(6 + WINDOW_TOPMOST_ACTION_COUNT).id ==
+                otherShortcuts->items.size() == 8 + WINDOW_TOPMOST_ACTION_COUNT &&
+                otherShortcuts->items.at(0).id == QStringLiteral("quick.global-canvas") &&
+                otherShortcuts->items.at(1).id == QStringLiteral("quick.stitch-selected-images") &&
+                otherShortcuts->items.at(2).id == QStringLiteral("quick.split-selected-images") &&
+                otherShortcuts->items.at(3).id == QStringLiteral("quick.edit-selected-images") &&
+                otherShortcuts->items.at(4).id == QStringLiteral("quick.translate-selected-text") &&
+                otherShortcuts->items.at(5 + WINDOW_TOPMOST_ACTION_COUNT).id ==
                     QStringLiteral("quick.toggle-global-hotkeys") &&
-                otherShortcuts->items.at(7 + WINDOW_TOPMOST_ACTION_COUNT).id ==
+                otherShortcuts->items.at(6 + WINDOW_TOPMOST_ACTION_COUNT).id ==
                     QStringLiteral("quick.toggle-global-mouse") &&
-                otherShortcuts->items.at(8 + WINDOW_TOPMOST_ACTION_COUNT).id ==
+                otherShortcuts->items.at(7 + WINDOW_TOPMOST_ACTION_COUNT).id ==
                     QStringLiteral("quick.toggle-disable-on-focused-fullscreen-window"),
-            "Other quick actions expose history, canvas, stitching, splitting, translation, and "
-            "hotkey toggles");
+            "Other quick actions preserve their order after moving Screenshot history");
 #ifdef Q_OS_WIN
     const auto* windowTopmost = catalog.itemForShortcut(Action::ToggleWindowUnderCursorAlwaysOnTop);
-    require(windowTopmost && otherShortcuts->items.at(6).id == windowTopmost->id &&
+    require(windowTopmost && otherShortcuts->items.at(5).id == windowTopmost->id &&
                 windowTopmost->title.translated() ==
                     QStringLiteral("Toggle always on top for the window under the cursor") &&
                 trayOptionIds.at(26) == windowTopmost->id &&

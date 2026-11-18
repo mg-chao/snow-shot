@@ -2172,10 +2172,6 @@ Files:
             <translation>暂停</translation>
         </message>
         <message>
-            <source>Pin to screen management</source>
-            <translation>固定到屏幕管理</translation>
-        </message>
-        <message>
             <source>Pinned content</source>
             <translation>固定到屏幕的内容</translation>
         </message>
@@ -2352,6 +2348,10 @@ Files:
         <message>
             <source>Uploading to cloud... %1%</source>
             <translation>正在上传到云端… %1%</translation>
+        </message>
+        <message>
+            <source>Window management</source>
+            <translation>窗口管理</translation>
         </message>
     </context>
     <context>
