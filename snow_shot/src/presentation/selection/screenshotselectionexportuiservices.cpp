@@ -1752,6 +1752,7 @@ bool ScreenshotSelectionExportUiServices::presentRestoredRecord(
     config.persistedAlwaysOnTop = record.alwaysOnTop;
     config.persistedShowBorder = record.showBorder;
     config.persistedShowShadow = record.showShadow;
+    config.persistedTransparentLayerMode = record.transparentLayerMode;
     config.persistedPreThumbnailNativeGeometry = geometry(restored.preThumbnailPlacement);
     config.persistedPreThumbnailPlacement = restored.preThumbnailPlacement;
     config.persistedFirstCreationTextDpi = record.firstCreationTextDpi;

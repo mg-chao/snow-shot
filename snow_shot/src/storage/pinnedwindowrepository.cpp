@@ -73,6 +73,28 @@ bool sourceKindFromString(const QString& value, PinnedWindowSourceKind* kind) {
     return true;
 }
 
+QString transparentLayerModeToString(PinnedTransparentLayerMode mode) {
+    switch (mode) {
+    case PinnedTransparentLayerMode::ClickThrough:
+        return QStringLiteral("click_through");
+    case PinnedTransparentLayerMode::KeepTransparent:
+        return QStringLiteral("keep_transparent");
+    case PinnedTransparentLayerMode::Checkerboard:
+        return QStringLiteral("checkerboard");
+    }
+    return QStringLiteral("checkerboard");
+}
+
+std::optional<PinnedTransparentLayerMode> transparentLayerModeFromString(const QString& value) {
+    if (value == QStringLiteral("click_through"))
+        return PinnedTransparentLayerMode::ClickThrough;
+    if (value == QStringLiteral("keep_transparent"))
+        return PinnedTransparentLayerMode::KeepTransparent;
+    if (value == QStringLiteral("checkerboard"))
+        return PinnedTransparentLayerMode::Checkerboard;
+    return std::nullopt;
+}
+
 QJsonObject rectFToJson(const QRectF& rect) {
     return {{QStringLiteral("x"), rect.x()},
             {QStringLiteral("y"), rect.y()},
@@ -693,6 +715,10 @@ QJsonObject recordToJson(const PinnedWindowRecord& record, const QJsonObject& pa
         {QStringLiteral("always_on_top"), record.alwaysOnTop},
         {QStringLiteral("show_border"), record.showBorder},
         {QStringLiteral("show_shadow"), record.showShadow},
+        {QStringLiteral("transparent_layer_mode"),
+         record.transparentLayerMode
+             ? QJsonValue(transparentLayerModeToString(*record.transparentLayerMode))
+             : QJsonValue()},
         {QStringLiteral("border_appearance"), borderAppearanceToJson(record.borderAppearance)},
         {QStringLiteral("checkerboard_enabled"),
          record.checkerboardEnabled ? QJsonValue(*record.checkerboardEnabled) : QJsonValue()},
@@ -1221,6 +1247,8 @@ bool parseRecord(const QJsonObject& object, const QString& root, PinnedWindowRec
     record.showBorder = object.value(QStringLiteral("show_border")).toBool(true);
     // Older pins had no presentation shadow, independently of current defaults.
     record.showShadow = object.value(QStringLiteral("show_shadow")).toBool(false);
+    record.transparentLayerMode = transparentLayerModeFromString(
+        object.value(QStringLiteral("transparent_layer_mode")).toString());
     record.borderAppearance =
         borderAppearanceFromJson(object.value(QStringLiteral("border_appearance")));
     const QJsonValue checkerboard = object.value(QStringLiteral("checkerboard_enabled"));

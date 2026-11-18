@@ -6,10 +6,23 @@
 
 #import <AppKit/AppKit.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <CoreVideo/CVPixelBuffer.h>
+#import <IOSurface/IOSurface.h>
+#import <QuartzCore/QuartzCore.h>
+#include <QBackingStore>
+#include <QBitmap>
 #include <QGuiApplication>
+#include <QHash>
+#include <QPaintEvent>
+#include <QScopeGuard>
 #include <QScopedValueRollback>
 #include <QThread>
+#include <QVarLengthArray>
 #include <QWindow>
+#include <QtMath>
+#include <qpa/qplatformbackingstore.h>
+#include <qpa/qplatformwindow_p.h>
+#include <algorithm>
 #include <cmath>
 
 namespace snow_shot::presentation {
@@ -29,6 +42,129 @@ bool hasPinnedLayer(QWidget* widget) {
     using namespace snow_shot::platform::detail;
     return widget && widget->property(kScreenshotLayer).isValid() &&
            widget->property(kCaptureFamily).toInt() == static_cast<int>(CaptureFamily::Pinned);
+}
+
+QRegion nontransparentRegion(const QImage& image, const QRegion& dirty, qreal scale) {
+    if (!image.hasAlphaChannel())
+        return dirty;
+
+    const QImage pixels = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    if (pixels.isNull())
+        return dirty;
+    const auto* data = reinterpret_cast<const QRgb*>(pixels.constBits());
+    const qsizetype stride = pixels.bytesPerLine() / qsizetype(sizeof(QRgb));
+    QRegion region;
+    for (const QRect& rect : dirty) {
+        QImage mask(rect.size(), QImage::Format_MonoLSB);
+        if (mask.isNull()) {
+            region += rect;
+            continue;
+        }
+        mask.setColor(0, QColor(Qt::color0).rgb());
+        mask.setColor(1, QColor(Qt::color1).rgb());
+        mask.fill(0);
+        // Each logical pixel is interactive if any of its backing pixels is painted.
+        // Calculate the intervals once and stop reading a cell at its first nonzero alpha.
+        QVarLengthArray<int> columns(rect.width() + 1);
+        for (int x = 0; x <= rect.width(); ++x)
+            columns[x] = std::min(pixels.width(), qCeil((rect.x() + x) * scale));
+        for (int y = 0; y < rect.height(); ++y) {
+            const int top = std::min(pixels.height(), qCeil((rect.y() + y) * scale));
+            const int bottom = std::min(pixels.height(), qCeil((rect.y() + y + 1) * scale));
+            auto* maskRow = mask.scanLine(y);
+            for (int x = 0; x < rect.width(); ++x) {
+                bool painted = false;
+                for (int py = top; py < bottom && !painted; ++py) {
+                    const auto* row = data + py * stride;
+                    for (int px = columns[x]; px < columns[x + 1] && !painted; ++px)
+                        painted = qAlpha(row[px]) != 0;
+                }
+                if (painted)
+                    maskRow[x / 8] |= 1 << (x % 8);
+            }
+        }
+        region += QRegion(QBitmap::fromImage(std::move(mask))).translated(rect.topLeft());
+    }
+    return region;
+}
+
+bool readDisplayedPixels(QWindow& window, auto&& read) {
+    auto* cocoa = window.nativeInterface<QNativeInterface::Private::QCocoaWindow>();
+    CALayer* layer = cocoa ? cocoa->contentLayer() : nil;
+    id contents = layer.contents;
+    if (!contents || CFGetTypeID(reinterpret_cast<CFTypeRef>(contents)) != IOSurfaceGetTypeID())
+        return false;
+
+    auto surface = reinterpret_cast<IOSurfaceRef>(contents);
+    if (IOSurfaceGetPixelFormat(surface) != kCVPixelFormatType_32BGRA ||
+        IOSurfaceLock(surface, kIOSurfaceLockReadOnly, nullptr) != kIOReturnSuccess)
+        return false;
+    const auto unlock =
+        qScopeGuard([surface] { IOSurfaceUnlock(surface, kIOSurfaceLockReadOnly, nullptr); });
+    // Use the front buffer that Qt just presented. The backing-store snapshot copies the
+    // entire raster, even when only a small paint region is needed.
+    const QImage image(static_cast<const uchar*>(IOSurfaceGetBaseAddress(surface)),
+                       static_cast<int>(IOSurfaceGetWidth(surface)),
+                       static_cast<int>(IOSurfaceGetHeight(surface)),
+                       static_cast<qsizetype>(IOSurfaceGetBytesPerRow(surface)),
+                       QImage::Format_ARGB32_Premultiplied);
+    if (image.isNull())
+        return false;
+    read(image);
+    return true;
+}
+
+class CocoaPinnedPaintObserver final : public QObject {
+  public:
+    explicit CocoaPinnedPaintObserver(QObject* parent) : QObject(parent) {}
+
+    void add(QWidget* window, std::function<void(const QRegion&, bool)> changed) {
+        if (m_windows.isEmpty())
+            qApp->installEventFilter(this);
+        m_windows.insert(window, std::move(changed));
+    }
+
+    void remove(QWidget* window) {
+        m_windows.remove(window);
+        if (m_windows.isEmpty() && qApp)
+            qApp->removeEventFilter(this);
+    }
+
+  protected:
+    bool eventFilter(QObject* target, QEvent* event) override {
+        const bool paint = event->type() == QEvent::Paint;
+        if (!paint && event->type() != QEvent::Move)
+            return false;
+        auto* widget = qobject_cast<QWidget*>(target);
+        if (!widget)
+            return false;
+        auto* window = widget->window();
+        auto changed = m_windows.constFind(window);
+        if (changed == m_windows.cend() || (!paint && widget == window))
+            return false;
+
+        const QPoint origin = widget->mapTo(window, QPoint());
+        if (paint) {
+            (*changed)(static_cast<QPaintEvent*>(event)->region().translated(origin), true);
+        } else {
+            // Qt can blit a moved opaque child without a paint at its destination.
+            const auto* move = static_cast<QMoveEvent*>(event);
+            const QPoint previous = origin + move->oldPos() - move->pos();
+            (*changed)(QRegion(QRect(origin, widget->size())) + QRect(previous, widget->size()),
+                       false);
+        }
+        return false;
+    }
+
+  private:
+    QHash<QWidget*, std::function<void(const QRegion&, bool)>> m_windows;
+};
+
+CocoaPinnedPaintObserver* pinnedPaintObserver() {
+    static QPointer<CocoaPinnedPaintObserver> observer;
+    if (!observer)
+        observer = new CocoaPinnedPaintObserver(qApp);
+    return observer;
 }
 
 class CocoaPinnedWakeNotifications final : public QObject {
@@ -87,6 +223,8 @@ class CocoaPinnedWindowPlatform final : public PinnedWindowPlatform {
             window, [this] { static_cast<void>(attach()); }, this);
     }
     ~CocoaPinnedWindowPlatform() override {
+        if (m_paintObserver)
+            m_paintObserver->remove(m_window);
         m_nativeObserver.reset();
         detach();
     }
@@ -105,6 +243,8 @@ class CocoaPinnedWindowPlatform final : public PinnedWindowPlatform {
         if (window != m_native) {
             detach();
             m_native = [window retain];
+            m_inputOverridden = false;
+            m_inputMaskSize = {};
             m_observers = [[NSMutableArray alloc] init];
             for (NSNotificationName name in @[
                      NSWindowDidChangeScreenNotification,
@@ -176,8 +316,10 @@ class CocoaPinnedWindowPlatform final : public PinnedWindowPlatform {
         constraints.hidesOnDeactivate = false;
         // Normal pins leave temporary Qt input ownership (for example recapture)
         // intact. Click-through pins require pass-through until explicitly exited.
-        if (m_transparent)
+        if (m_transparent) {
             constraints.ignoresMouseEvents = true;
+            m_inputOverridden = true;
+        }
         // Release the old level owner before applying its replacement. Otherwise
         // capture's unchanged-level fast path can bypass the normal-level setter.
         if (pinnedLayer && !m_staysOnTop)
@@ -279,13 +421,94 @@ class CocoaPinnedWindowPlatform final : public PinnedWindowPlatform {
         const bool previous = m_transparent;
         m_transparent = transparent;
         if (attach()) {
-            if (!transparent)
+            if (!transparent && m_native.ignoresMouseEvents) {
                 m_native.ignoresMouseEvents = NO;
+                m_inputOverridden = true;
+            }
+            if (!transparent && m_transparentPixelInput)
+                m_window->update();
             if (m_native.ignoresMouseEvents == transparent)
                 return true;
         }
         m_transparent = previous;
         return false;
+    }
+    void setTransparentPixelInput(bool enabled) override {
+        if (m_transparentPixelInput == enabled)
+            return;
+        m_transparentPixelInput = enabled;
+        if (enabled) {
+            m_paintObserver = pinnedPaintObserver();
+            m_paintObserver->add(m_window, [this](const QRegion& region, bool paint) {
+                m_inputDirty += region;
+                if (paint && !m_inputRefreshPending) {
+                    m_inputRefreshPending = true;
+                    // Expose and resize can flush without a QWidget UpdateRequest.
+                    QMetaObject::invokeMethod(
+                        this,
+                        [this] {
+                            m_inputRefreshPending = false;
+                            updateTransparentPixelInput();
+                        },
+                        Qt::QueuedConnection);
+                }
+            });
+            m_window->update();
+        } else {
+            if (m_paintObserver)
+                m_paintObserver->remove(m_window);
+            m_paintObserver.clear();
+            m_inputMask = {};
+            m_inputDirty = {};
+            m_inputMaskSize = {};
+            if (m_surface)
+                m_surface->setMask({});
+        }
+    }
+    void updateTransparentPixelInput() override {
+        if (!m_transparentPixelInput || m_transparent || !m_surface || !m_window ||
+            !m_window->isVisible() || isMinimized())
+            return;
+        if (m_inputOverridden) {
+            if (!m_resetInputPending) {
+                m_resetInputPending = true;
+                QMetaObject::invokeMethod(
+                    this, [this] { resetShapedInput(); }, Qt::QueuedConnection);
+            }
+            return;
+        }
+
+        const QSize size = m_window->size();
+        const qreal scale = m_window->devicePixelRatioF();
+        const QRect bounds(QPoint(), size);
+        const bool rebuild = m_inputMaskSize != size || m_inputMaskScale != scale;
+        const QRegion dirty = rebuild ? QRegion(bounds) : m_inputDirty.intersected(bounds);
+        if (dirty.isEmpty())
+            return;
+        QRegion updated;
+        const auto read = [&](const QImage& image) {
+            updated =
+                updateCocoaPinnedInputMask(rebuild ? QRegion() : m_inputMask, image, dirty, scale);
+        };
+        if (!readDisplayedPixels(*m_surface, read)) {
+            auto* backingStore = m_window->backingStore();
+            if (!backingStore || !backingStore->handle())
+                return;
+            const auto image = backingStore->handle()->toImage();
+            if (image.isNull())
+                return;
+            read(image);
+        }
+        m_inputMask = std::move(updated);
+        m_inputDirty = {};
+        m_inputMaskSize = size;
+        m_inputMaskScale = scale;
+
+        // An empty QWindow mask removes the shape. An off-window region keeps a fully
+        // transparent pin click-through even when its border is hidden.
+        const QRegion region = m_inputMask.isEmpty() ? QRegion(QRect(-1, -1, 1, 1)) : m_inputMask;
+        if (rebuild || m_surface->mask() != region)
+            m_surface->setMask(region);
     }
     bool setStaysOnTop(bool staysOnTop) override {
         m_staysOnTop = staysOnTop;
@@ -321,17 +544,49 @@ class CocoaPinnedWindowPlatform final : public PinnedWindowPlatform {
     }
 
   private:
+    void resetShapedInput() {
+        m_resetInputPending = false;
+        if (!m_inputOverridden || !m_transparentPixelInput || m_transparent || !m_surface ||
+            !m_window || !m_window->isVisible() || isMinimized())
+            return;
+        // AppKit has no public setter for automatic hit testing once the whole-window
+        // ignoresMouseEvents override has been used. Recreate only the native surface.
+        QWindow* surface = m_surface;
+        surface->destroy();
+        surface->show();
+        if (attach())
+            m_window->update();
+    }
+
     NSWindow* m_native = nil;
     NSMutableArray* m_observers = nil;
     QPointer<CocoaPinnedWakeNotifications> m_wakeNotifications;
+    QPointer<CocoaPinnedPaintObserver> m_paintObserver;
     adqt::widgets::detail::MacNativeWindowPolicy m_interactionPolicy;
     std::unique_ptr<adqt::widgets::detail::WindowSurfaceObserver> m_nativeObserver;
+    QRegion m_inputMask;
+    QRegion m_inputDirty;
+    QSize m_inputMaskSize;
+    qreal m_inputMaskScale = 0;
     bool m_applying = false;
     bool m_detaching = false;
     bool m_attaching = false;
     bool m_staysOnTop = true;
+    bool m_transparentPixelInput = false;
+    bool m_inputOverridden = false;
+    bool m_resetInputPending = false;
+    bool m_inputRefreshPending = false;
 };
 } // namespace
+QRegion updateCocoaPinnedInputMask(const QRegion& previous, const QImage& image,
+                                   const QRegion& dirty, qreal scale) {
+    const auto painted = nontransparentRegion(image, dirty, scale);
+    // Equivalent coverage can have a different rectangle decomposition after a partial paint.
+    if (previous.intersected(dirty).xored(painted).isEmpty())
+        return previous;
+    return (previous - dirty) + painted;
+}
+
 QRect cocoaPinnedUsableGeometry(const QScreen& screen) {
     for (NSScreen* native in NSScreen.screens) {
         const QRectF frame = desktopRect(native.frame);

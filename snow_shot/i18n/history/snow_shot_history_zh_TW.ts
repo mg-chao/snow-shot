@@ -1942,6 +1942,10 @@ Files:
             <translation>取消</translation>
         </message>
         <message>
+            <source>Checkerboard</source>
+            <translation>棋盤格</translation>
+        </message>
+        <message>
             <source>Click-through</source>
             <translation>滑鼠穿透</translation>
         </message>
@@ -2118,6 +2122,10 @@ Files:
         <message>
             <source>Increase speed</source>
             <translation>提高速度</translation>
+        </message>
+        <message>
+            <source>Keep transparent</source>
+            <translation>保持透明</translation>
         </message>
         <message>
             <source>Live content is unavailable. Retrying...</source>
@@ -2332,6 +2340,10 @@ Files:
         <message>
             <source>Translation results</source>
             <translation>翻譯結果</translation>
+        </message>
+        <message>
+            <source>Transparent layer</source>
+            <translation>透明圖層</translation>
         </message>
         <message>
             <source>Unavailable</source>

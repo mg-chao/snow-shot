@@ -1703,6 +1703,14 @@
     },
     {
       "variant": "outlined",
+      "symbol": "TransparentLayer",
+      "name": "transparent-layer",
+      "source": "../src/presentation/components/icons/resources/transparent-layer.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
       "symbol": "Trash",
       "name": "trash",
       "source": "../src/presentation/components/icons/resources/trash.svg",

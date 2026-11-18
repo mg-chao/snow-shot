@@ -38,6 +38,36 @@ QVector<::ScreenshotPinnedWindow*> PinnedWindowGroupManager::liveWindows() const
             result.append(window.data());
     return result;
 }
+
+QVector<QPointer<::ScreenshotPinnedWindow>>
+PinnedWindowGroupManager::activeGroupOpenWindows() const {
+    QVector<QPointer<::ScreenshotPinnedWindow>> windows;
+    for (auto it = m_windows.cbegin(); it != m_windows.cend(); ++it) {
+        if (it.value() && it.value()->groupId() == m_activeGroupId &&
+            !m_inactiveClosing.contains(it.key())) {
+            windows.append(it.value());
+        }
+    }
+    return windows;
+}
+
+QSet<storage::PinnedTransparentLayerMode>
+PinnedWindowGroupManager::activeGroupTransparentLayerModes() const {
+    QSet<storage::PinnedTransparentLayerMode> modes;
+    for (const auto& window : activeGroupOpenWindows())
+        modes.insert(window->transparentLayerMode());
+    return modes;
+}
+
+void PinnedWindowGroupManager::setActiveGroupTransparentLayerMode(
+    storage::PinnedTransparentLayerMode mode) {
+    for (const auto& window : activeGroupOpenWindows()) {
+        if (window)
+            QMetaObject::invokeMethod(window, "setTransparentLayerMode", Qt::DirectConnection,
+                                      mode);
+    }
+}
+
 namespace {
 constexpr auto kDefaultGroupId = "default";
 constexpr auto kDefaultGroupName = "Default";

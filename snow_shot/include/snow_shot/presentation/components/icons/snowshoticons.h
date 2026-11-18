@@ -275,6 +275,7 @@ SequenceNumberSolidSquare(const adqt::icons::IconColors& colors = {});
 [[nodiscard]] adqt::icons::IconRef ToolUnderline(const adqt::icons::IconColors& colors = {});
 [[nodiscard]] adqt::icons::IconRef ToolWatermark(const adqt::icons::IconColors& colors = {});
 [[nodiscard]] adqt::icons::IconRef ToolWavyUnderline(const adqt::icons::IconColors& colors = {});
+[[nodiscard]] adqt::icons::IconRef TransparentLayer(const adqt::icons::IconColors& colors = {});
 [[nodiscard]] adqt::icons::IconRef Trash(const adqt::icons::IconColors& colors = {});
 [[nodiscard]] adqt::icons::IconRef WatermarkGap(const adqt::icons::IconColors& colors = {});
 [[nodiscard]] adqt::icons::IconRef WheelMouse(const adqt::icons::IconColors& colors = {});

@@ -2521,42 +2521,54 @@ SOFTWARE.
      std::string_view("10062adc39a9f6975e6f06d66be661ca626e0fe195f55ad1ea787f8bbe7202c8"),
      IconColorModel::Monochrome, IconFit::Contain,
      IconStaticColors{std::string_view(""), std::string_view(""), std::string_view("")}, false},
+    {std::string_view("snow-shot"), std::string_view("outlined"),
+     std::string_view("transparent-layer"),
+     std::string_view(
+         R"ADQT_SVG_212(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none" stroke="__ADQT_SLOT_PRIMARY__" stroke-width="72" stroke-linecap="round">
+  <path d="M276 128h584a36 36 0 0 1 36 36v584"/>
+  <rect x="128" y="256" width="640" height="640" rx="36"/>
+  <path fill="__ADQT_SLOT_PRIMARY__" stroke="none" d="M288 416h160v160H288zM448 576h160v160H448z"/>
+</svg>
+)ADQT_SVG_212"),
+     std::string_view("fcbde9ac01725bfd3d5982b210d126df9066a4de9aacb8a43bfe3075fd9e8c55"),
+     IconColorModel::Monochrome, IconFit::Contain,
+     IconStaticColors{std::string_view(""), std::string_view(""), std::string_view("")}, false},
     {std::string_view("snow-shot"), std::string_view("outlined"), std::string_view("trash"),
      std::string_view(
-         R"ADQT_SVG_212(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none" stroke="__ADQT_SLOT_PRIMARY__" stroke-width="80.64" stroke-linecap="round" stroke-linejoin="round">
+         R"ADQT_SVG_213(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none" stroke="__ADQT_SLOT_PRIMARY__" stroke-width="80.64" stroke-linecap="round" stroke-linejoin="round">
   <path d="M126.72 252.16h770.56"/>
   <path d="M341.76 252.16v-107.52h340.48v107.52"/>
   <path d="M216.32 252.16l38.08 636.16a53.76 53.76 0 0 0 53.76 49.28h407.68a53.76 53.76 0 0 0 53.76-49.28l38.08-636.16"/>
   <path d="M413.44 404.48v367.36M610.56 404.48v367.36"/>
 </svg>
-)ADQT_SVG_212"),
+)ADQT_SVG_213"),
      std::string_view("a0716d7e89c5e51fcd75ee550394098107a6b9667f3582e87f6040b8acb69562"),
      IconColorModel::Monochrome, IconFit::Contain,
      IconStaticColors{std::string_view(""), std::string_view(""), std::string_view("")}, false},
     {std::string_view("snow-shot"), std::string_view("outlined"), std::string_view("watermark-gap"),
      std::string_view(
-         R"ADQT_SVG_213(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="__ADQT_SLOT_PRIMARY__">
+         R"ADQT_SVG_214(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="__ADQT_SLOT_PRIMARY__">
   <path d="M90.88 81.92h62.72a8.96 8.96 0 0 1 8.96 8.96v842.24a8.96 8.96 0 0 1-8.96 8.96h-62.72a8.96 8.96 0 0 1-8.96-8.96V90.88a8.96 8.96 0 0 1 8.96-8.96Zm779.52 0h62.72a8.96 8.96 0 0 1 8.96 8.96v842.24a8.96 8.96 0 0 1-8.96 8.96h-62.72a8.96 8.96 0 0 1-8.96-8.96V90.88a8.96 8.96 0 0 1 8.96-8.96Z"/>
   <path d="M477.95 225.28h68.1a8.96 8.96 0 0 1 8.4 5.82l207.42 555.52a8.96 8.96 0 0 1-8.4 12.1h-70.78a8.96 8.96 0 0 1-8.51-5.94L621.31 646.4H402.69l-52.86 146.38a8.96 8.96 0 0 1-8.51 5.94h-70.78a8.96 8.96 0 0 1-8.4-12.1l207.42-555.52a8.96 8.96 0 0 1 8.4-5.82ZM431.81 565.76h160.38L512 343.55 431.81 565.76Z"/>
 </svg>
-)ADQT_SVG_213"),
+)ADQT_SVG_214"),
      std::string_view("cb217825f1fe28f8374e2c6c5fc8171b4ff178ebd828289c9f8ecd09d7083f21"),
      IconColorModel::Monochrome, IconFit::Contain,
      IconStaticColors{std::string_view(""), std::string_view(""), std::string_view("")}, false},
     {std::string_view("snow-shot"), std::string_view("outlined"), std::string_view("wheel-mouse"),
      std::string_view(
-         R"ADQT_SVG_214(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none" stroke="__ADQT_SLOT_PRIMARY__" stroke-width="80.64" stroke-linejoin="round">
+         R"ADQT_SVG_215(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none" stroke="__ADQT_SLOT_PRIMARY__" stroke-width="80.64" stroke-linejoin="round">
   <path d="M512 104.32c-168 0-304.64 136.64-304.64 304.64v206.08c0 168 136.64 304.64 304.64 304.64s304.64-136.64 304.64-304.64V408.96c0-168-136.64-304.64-304.64-304.64Z"/>
   <path d="M207.36 467.2h609.28"/>
   <rect x="471.68" y="198.4" width="80.64" height="161.28" rx="40.32" fill="__ADQT_SLOT_PRIMARY__" stroke="none"/>
 </svg>
-)ADQT_SVG_214"),
+)ADQT_SVG_215"),
      std::string_view("282848a54a352d90293fc1822e55f8a6bfb1474e29d237afa619233166c9a3cb"),
      IconColorModel::Monochrome, IconFit::Contain,
      IconStaticColors{std::string_view(""), std::string_view(""), std::string_view("")}, false},
     {std::string_view("snow-shot"), std::string_view("outlined"), std::string_view("window"),
      std::string_view(
-         R"ADQT_SVG_215(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none" stroke="__ADQT_SLOT_PRIMARY__" stroke-width="80.64" stroke-linejoin="round">
+         R"ADQT_SVG_216(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none" stroke="__ADQT_SLOT_PRIMARY__" stroke-width="80.64" stroke-linejoin="round">
   <rect x="104.32" y="117.76" width="815.36" height="788.48" rx="53.76"/>
   <path d="M104.32 332.8h815.36"/>
   <g fill="__ADQT_SLOT_PRIMARY__" stroke="none">
@@ -2565,41 +2577,41 @@ SOFTWARE.
     <circle cx="417.92" cy="225.28" r="40.32"/>
   </g>
 </svg>
-)ADQT_SVG_215"),
+)ADQT_SVG_216"),
      std::string_view("4edc8bc549c06070b5ffbe5c72daf003f22cb26233e1fe5a31ac75884d9751b7"),
      IconColorModel::Monochrome, IconFit::Contain,
      IconStaticColors{std::string_view(""), std::string_view(""), std::string_view("")}, false},
     {std::string_view("snow-shot"), std::string_view("outlined"),
      std::string_view("window-group-switch"),
      std::string_view(
-         R"ADQT_SVG_216(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="__ADQT_SLOT_PRIMARY__">
+         R"ADQT_SVG_217(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="__ADQT_SLOT_PRIMARY__">
   <path d="M280 112h560a72 72 0 0 1 72 72v560a8 8 0 0 1-8 8h-56a8 8 0 0 1-8-8V184H280a8 8 0 0 1-8-8v-56a8 8 0 0 1 8-8Z"/>
   <path d="M184 272h536a72 72 0 0 1 72 72v496a72 72 0 0 1-72 72H184a72 72 0 0 1-72-72V344a72 72 0 0 1 72-72Zm0 72v496h536V344H184Z" fill-rule="evenodd"/>
   <path d="M240 432h304v-76l136 112-136 112v-76H240Z"/>
   <path d="M664 680H360v-76L224 716l136 112v-76h304Z"/>
 </svg>
-)ADQT_SVG_216"),
+)ADQT_SVG_217"),
      std::string_view("ab735a412b318d0e70db3d889088294517cea452e9945e276f4220746ca22ab3"),
      IconColorModel::Monochrome, IconFit::Contain,
      IconStaticColors{std::string_view(""), std::string_view(""), std::string_view("")}, false},
     {std::string_view("snow-shot"), std::string_view("outlined"),
      std::string_view("window-under-cursor-always-on-top"),
      std::string_view(
-         R"ADQT_SVG_217(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="__ADQT_SLOT_PRIMARY__">
+         R"ADQT_SVG_218(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="__ADQT_SLOT_PRIMARY__">
   <path d="M184 240h352v72H184v504h656V568h72v248a72 72 0 0 1-72 72H184a72 72 0 0 1-72-72V312a72 72 0 0 1 72-72Z"/>
   <path d="M148 384h388v72H148Z"/>
   <path d="M644 144h224v72h-32v112l48 48v56H628v-56l48-48V216h-32Z" fill="none" stroke="__ADQT_SLOT_PRIMARY__" stroke-width="72" stroke-linejoin="round"/>
   <path d="M720 432h72v112a8 8 0 0 1-8 8h-56a8 8 0 0 1-8-8Z"/>
   <path d="M304 520a8 8 0 0 1 13-6l224 176a8 8 0 0 1-4 14l-96 9-52 82a8 8 0 0 1-15-2l-70-271Z"/>
 </svg>
-)ADQT_SVG_217"),
+)ADQT_SVG_218"),
      std::string_view("93dffa197d0a856580d7eba56185bd5aeedbc02d307d853f5272c3699603e3bc"),
      IconColorModel::Monochrome, IconFit::Contain,
      IconStaticColors{std::string_view(""), std::string_view(""), std::string_view("")}, false},
     {std::string_view("snow-shot"), std::string_view("twotone"),
      std::string_view("live-window-closed"),
      std::string_view(
-         R"ADQT_SVG_218(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none" stroke="__ADQT_SLOT_PRIMARY__" stroke-width="4" stroke-opacity=".6" stroke-linecap="round" stroke-linejoin="round">
+         R"ADQT_SVG_219(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none" stroke="__ADQT_SLOT_PRIMARY__" stroke-width="4" stroke-opacity=".6" stroke-linecap="round" stroke-linejoin="round">
   <rect x="8" y="14" width="72" height="58" rx="8" fill="__ADQT_SLOT_PRIMARY__" fill-opacity=".06" stroke="none"/>
   <path d="M44 72H16a8 8 0 0 1-8-8V22a8 8 0 0 1 8-8h56a8 8 0 0 1 8 8v22M8 32h72"/>
   <path d="M19 23h1m8 0h1" stroke-width="3"/>
@@ -2609,14 +2621,14 @@ SOFTWARE.
     <path d="m62 61 14 14m0-14L62 75"/>
   </g>
 </svg>
-)ADQT_SVG_218"),
+)ADQT_SVG_219"),
      std::string_view("7240ad4c9acbc420f83d980c76d75679b09c85b51498750e3721af9672b68c1f"),
      IconColorModel::TwoTone, IconFit::Contain,
      IconStaticColors{std::string_view(""), std::string_view(""), std::string_view("")}, false},
     {std::string_view("snow-shot"), std::string_view("twotone"),
      std::string_view("live-window-minimized"),
      std::string_view(
-         R"ADQT_SVG_219(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none" stroke="__ADQT_SLOT_PRIMARY__" stroke-width="4" stroke-opacity=".6" stroke-linecap="round" stroke-linejoin="round">
+         R"ADQT_SVG_220(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none" stroke="__ADQT_SLOT_PRIMARY__" stroke-width="4" stroke-opacity=".6" stroke-linecap="round" stroke-linejoin="round">
   <rect x="8" y="14" width="72" height="58" rx="8" fill="__ADQT_SLOT_PRIMARY__" fill-opacity=".06" stroke="none"/>
   <path d="M44 72H16a8 8 0 0 1-8-8V22a8 8 0 0 1 8-8h56a8 8 0 0 1 8 8v22M8 32h72"/>
   <path d="M19 23h1m8 0h1" stroke-width="3"/>
@@ -2626,14 +2638,14 @@ SOFTWARE.
     <path d="M61 73h16"/>
   </g>
 </svg>
-)ADQT_SVG_219"),
+)ADQT_SVG_220"),
      std::string_view("f153fa84144f70bf4655f2066a310e5e45b5a2d238d1a400dd3ce9c7811f5966"),
      IconColorModel::TwoTone, IconFit::Contain,
      IconStaticColors{std::string_view(""), std::string_view(""), std::string_view("")}, false},
     {std::string_view("snow-shot"), std::string_view("twotone"),
      std::string_view("live-window-unavailable"),
      std::string_view(
-         R"ADQT_SVG_220(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none" stroke="__ADQT_SLOT_PRIMARY__" stroke-width="4" stroke-opacity=".6" stroke-linecap="round" stroke-linejoin="round">
+         R"ADQT_SVG_221(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none" stroke="__ADQT_SLOT_PRIMARY__" stroke-width="4" stroke-opacity=".6" stroke-linecap="round" stroke-linejoin="round">
   <rect x="8" y="14" width="72" height="58" rx="8" fill="__ADQT_SLOT_PRIMARY__" fill-opacity=".06" stroke="none"/>
   <path d="M44 72H16a8 8 0 0 1-8-8V22a8 8 0 0 1 8-8h56a8 8 0 0 1 8 8v22M8 32h72"/>
   <path d="M19 23h1m8 0h1" stroke-width="3"/>
@@ -2643,18 +2655,18 @@ SOFTWARE.
     <path d="M69 58v11m0 8v1"/>
   </g>
 </svg>
-)ADQT_SVG_220"),
+)ADQT_SVG_221"),
      std::string_view("bd88cf3119b3e36a1772038c6a12d1d0b4eb58ccb7cb18ff965de75debc16bcc"),
      IconColorModel::TwoTone, IconFit::Contain,
      IconStaticColors{std::string_view(""), std::string_view(""), std::string_view("")}, false},
     {std::string_view("snow-shot"), std::string_view("twotone"),
      std::string_view("screenshot-feature"),
      std::string_view(
-         R"ADQT_SVG_221(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="__ADQT_SLOT_PRIMARY__">
+         R"ADQT_SVG_222(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="__ADQT_SLOT_PRIMARY__">
   <path d="M189.44 28.16h62.72a8.96 8.96 0 0 1 8.96 8.96v725.76h725.76a8.96 8.96 0 0 1 8.96 8.96v62.72a8.96 8.96 0 0 1-8.96 8.96H843.52v143.36a8.96 8.96 0 0 1-8.96 8.96h-62.72a8.96 8.96 0 0 1-8.96-8.96V843.52H216.32a35.84 35.84 0 0 1-35.84-35.84V261.12H37.12a8.96 8.96 0 0 1-8.96-8.96v-62.72a8.96 8.96 0 0 1 8.96-8.96h143.36V37.12a8.96 8.96 0 0 1 8.96-8.96Z"/>
   <path d="M350.72 180.48h456.96a35.84 35.84 0 0 1 35.84 35.84v456.96a8.96 8.96 0 0 1-8.96 8.96h-62.72a8.96 8.96 0 0 1-8.96-8.96V261.12H350.72a8.96 8.96 0 0 1-8.96-8.96v-62.72a8.96 8.96 0 0 1 8.96-8.96Z" fill="__ADQT_SLOT_SECONDARY__"/>
 </svg>
-)ADQT_SVG_221"),
+)ADQT_SVG_222"),
      std::string_view("20916d90e3d38348535e406f1a6c310411444110cd204710d55e49f43587c5ab"),
      IconColorModel::TwoTone, IconFit::Contain,
      IconStaticColors{std::string_view(""), std::string_view("#9254DE"), std::string_view("")},
@@ -2663,7 +2675,7 @@ SOFTWARE.
 
 constexpr IconPack kStaticPack{
     std::string_view("snow-shot"), std::string_view("Snow Shot project-owned static SVG assets"),
-    std::string_view("7bf52084e406d7a2d169e86166a927396535fb68ce9f04d2c3b8868e9c739203"), kEntries,
+    std::string_view("c16231bc9a25f657e3314b35ef120a3e130d5b721421f651a44dd84f1641bb0e"), kEntries,
     sizeof(kEntries) / sizeof(kEntries[0])};
 
 } // namespace
@@ -3543,28 +3555,32 @@ adqt::icons::IconRef ToolWavyUnderline(const adqt::icons::IconColors& colors) {
     return pack().icon(211, colors);
 }
 
-adqt::icons::IconRef Trash(const adqt::icons::IconColors& colors) {
+adqt::icons::IconRef TransparentLayer(const adqt::icons::IconColors& colors) {
     return pack().icon(212, colors);
 }
 
-adqt::icons::IconRef WatermarkGap(const adqt::icons::IconColors& colors) {
+adqt::icons::IconRef Trash(const adqt::icons::IconColors& colors) {
     return pack().icon(213, colors);
 }
 
-adqt::icons::IconRef WheelMouse(const adqt::icons::IconColors& colors) {
+adqt::icons::IconRef WatermarkGap(const adqt::icons::IconColors& colors) {
     return pack().icon(214, colors);
 }
 
-adqt::icons::IconRef Window(const adqt::icons::IconColors& colors) {
+adqt::icons::IconRef WheelMouse(const adqt::icons::IconColors& colors) {
     return pack().icon(215, colors);
 }
 
-adqt::icons::IconRef WindowGroupSwitch(const adqt::icons::IconColors& colors) {
+adqt::icons::IconRef Window(const adqt::icons::IconColors& colors) {
     return pack().icon(216, colors);
 }
 
-adqt::icons::IconRef WindowUnderCursorAlwaysOnTop(const adqt::icons::IconColors& colors) {
+adqt::icons::IconRef WindowGroupSwitch(const adqt::icons::IconColors& colors) {
     return pack().icon(217, colors);
+}
+
+adqt::icons::IconRef WindowUnderCursorAlwaysOnTop(const adqt::icons::IconColors& colors) {
+    return pack().icon(218, colors);
 }
 
 } // namespace outlined
@@ -3572,19 +3588,19 @@ adqt::icons::IconRef WindowUnderCursorAlwaysOnTop(const adqt::icons::IconColors&
 namespace twotone {
 
 adqt::icons::IconRef LiveWindowClosed(const adqt::icons::IconColors& colors) {
-    return pack().icon(218, colors);
-}
-
-adqt::icons::IconRef LiveWindowMinimized(const adqt::icons::IconColors& colors) {
     return pack().icon(219, colors);
 }
 
-adqt::icons::IconRef LiveWindowUnavailable(const adqt::icons::IconColors& colors) {
+adqt::icons::IconRef LiveWindowMinimized(const adqt::icons::IconColors& colors) {
     return pack().icon(220, colors);
 }
 
-adqt::icons::IconRef ScreenshotFeature(const adqt::icons::IconColors& colors) {
+adqt::icons::IconRef LiveWindowUnavailable(const adqt::icons::IconColors& colors) {
     return pack().icon(221, colors);
+}
+
+adqt::icons::IconRef ScreenshotFeature(const adqt::icons::IconColors& colors) {
+    return pack().icon(222, colors);
 }
 
 } // namespace twotone
