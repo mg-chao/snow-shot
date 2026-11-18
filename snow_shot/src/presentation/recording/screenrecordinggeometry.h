@@ -78,7 +78,8 @@ screenRecordingObservedGeometry(const QRect& physicalClientRect, qreal physicalS
                                 const QMargins& physicalInsets);
 
 [[nodiscard]] ScreenRecordingAreaFrameGeometry
-screenRecordingAreaFrameGeometry(const QRectF& logicalRegion, qreal physicalScale);
+screenRecordingAreaFrameGeometry(const QRectF& logicalRegion, qreal physicalScale,
+                                 qreal minimumWindowInset = 0.0);
 
 // Position-independent backing-store size for a moving, presentation-only border.
 [[nodiscard]] ScreenRecordingAreaFrameGeometry

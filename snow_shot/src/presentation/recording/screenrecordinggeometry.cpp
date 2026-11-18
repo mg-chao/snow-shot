@@ -178,14 +178,16 @@ ScreenRecordingObservedGeometry screenRecordingObservedGeometry(const QRect& phy
 }
 
 ScreenRecordingAreaFrameGeometry screenRecordingAreaFrameGeometry(const QRectF& logicalRegion,
-                                                                  qreal physicalScale) {
+                                                                  qreal physicalScale,
+                                                                  qreal minimumWindowInset) {
     if (!logicalRegion.isValid() || logicalRegion.isEmpty()) {
         return {};
     }
 
     const auto metrics = screenRecordingAreaFrameMetrics(physicalScale);
-    const QRectF frameGeometry = metrics.expandedRect(logicalRegion);
-    const QRect windowGeometry = frameGeometry.toAlignedRect();
+    const qreal inset = qMax(metrics.borderWidth + metrics.paddingWidth, minimumWindowInset);
+    const QRect windowGeometry =
+        logicalRegion.adjusted(-inset, -inset, inset, inset).toAlignedRect();
     const QRectF selectionRect = logicalRegion.translated(-windowGeometry.topLeft());
 
     return {windowGeometry, metrics.expandedRect(selectionRect), selectionRect, metrics.borderWidth,

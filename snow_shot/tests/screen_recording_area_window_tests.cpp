@@ -53,6 +53,7 @@
 #include <cstdlib>
 #include <atomic>
 #include <iostream>
+#include <utility>
 #ifdef SNOW_RECORDING_FOLLOW_BENCHMARK
 #include "screen_recording_follow_performance_benchmark.h"
 #endif
@@ -424,12 +425,12 @@ void recordingBorderInput(bool native) {
                                    QPoint(-1, -1), QPoint(1, -1), QPoint(-1, 1), QPoint(1, 1)}) {
         area.setRecordingRegion(initial);
         QCoreApplication::processEvents();
-        // Hit the painted outer border, where AppKit can intercept input before Qt.
-        const QPoint start(direction.x() < 0   ? initial.x() - 2
-                           : direction.x() > 0 ? initial.x() + initial.width() + 1
+        // Begin beyond the painted border, within the outer resize band.
+        const QPoint start(direction.x() < 0   ? initial.x() - 5
+                           : direction.x() > 0 ? initial.x() + initial.width() + 4
                                                : initial.center().x(),
-                           direction.y() < 0   ? initial.y() - 2
-                           : direction.y() > 0 ? initial.y() + initial.height() + 1
+                           direction.y() < 0   ? initial.y() - 5
+                           : direction.y() > 0 ? initial.y() + initial.height() + 4
                                                : initial.center().y());
         const auto send = [&](QEvent::Type type, QPoint global) {
             const QPoint local = area.mapFromGlobal(global);
@@ -1080,6 +1081,91 @@ void geometryEditingIsOneCapability() {
     }
 }
 
+void resizeHitTargetsStraddleTheSelection() {
+    ScreenRecordingAreaWindow area;
+    area.setRecordingRegion(testRecordingRegion());
+    area.show();
+    QCoreApplication::processEvents();
+    const QRect initial = area.recordingRegion();
+    const QRect passiveGeometry = area.geometry();
+    const QRectF desktopSelection = area.selectionRect().translated(area.pos());
+    area.setInputMode(ScreenRecordingAreaWindow::InputMode::RegionEditing);
+    QCoreApplication::processEvents();
+    const QRectF selection = area.selectionRect();
+    const QRect editingGeometry = area.geometry();
+    require(area.recordingRegion() == initial &&
+                selection.translated(area.pos()) == desktopSelection,
+            "opening the resize band must preserve the capture size and desktop position");
+    require(QRectF(editingGeometry).contains(desktopSelection.adjusted(-6, -6, 6, 6)),
+            "the recording window must cover the entire outer resize band");
+    const QPoint center = selection.center().toPoint();
+    const QRegion input = ScreenRecordingAreaWindowTestAccess::inputRegion(area);
+    const QImage surface = renderWidget(area);
+    const auto send = [&area](QWidget& target, QEvent::Type type, QPoint point,
+                              Qt::MouseButton button, Qt::MouseButtons buttons) {
+        const QPoint global = area.mapToGlobal(point);
+        QMouseEvent event(type, target.mapFromGlobal(global), global, button, buttons,
+                          Qt::NoModifier);
+        QCoreApplication::sendEvent(&target, &event);
+    };
+    for (const int inset : {5, -5}) {
+        const int left = qRound(selection.left()) + inset;
+        const int right = qRound(selection.right()) - inset;
+        const int top = qRound(selection.top()) + inset;
+        const int bottom = qRound(selection.bottom()) - inset;
+        const std::pair<QPoint, Qt::CursorShape> targets[] = {
+            {{left, center.y()}, Qt::SizeHorCursor}, {{right, center.y()}, Qt::SizeHorCursor},
+            {{center.x(), top}, Qt::SizeVerCursor},  {{center.x(), bottom}, Qt::SizeVerCursor},
+            {{left, top}, Qt::SizeFDiagCursor},      {{right, top}, Qt::SizeBDiagCursor},
+            {{left, bottom}, Qt::SizeBDiagCursor},   {{right, bottom}, Qt::SizeFDiagCursor},
+        };
+        for (const auto& [point, cursor] : targets) {
+            require(input.contains(point) && surface.pixelColor(point).alpha() == 2,
+                    "both resize bands must have input coverage with minimal opacity");
+            QWidget* target = inset > 0 ? static_cast<QWidget*>(area.canvas()) : &area;
+            require(area.childAt(point) == (inset > 0 ? area.canvas() : nullptr),
+                    "the resize bands must be clear of the move button");
+            send(*target, QEvent::MouseMove, point, Qt::NoButton, Qt::NoButton);
+            require(target->cursor().shape() == cursor,
+                    "both resize bands must show the matching resize cursor");
+            send(*target, QEvent::MouseButtonPress, point, Qt::LeftButton, Qt::LeftButton);
+            require(ScreenRecordingAreaWindowTestAccess::dragging(area) &&
+                        QWidget::mouseGrabber() == &area,
+                    "pressing in either band must start a controlled resize");
+            send(area, QEvent::MouseButtonRelease, point, Qt::LeftButton, Qt::NoButton);
+            require(!ScreenRecordingAreaWindowTestAccess::dragging(area) &&
+                        area.recordingRegion() == initial,
+                    "pressing and releasing in either band must preserve the capture region");
+        }
+    }
+    const QPoint interior(qCeil(selection.left()) + 7, center.y());
+    require(!input.contains(interior) && surface.pixelColor(interior).alpha() == 0,
+            "the selection interior just beyond the resize band must pass input through");
+    const QPoint exterior(qFloor(selection.left()) - 7, center.y());
+    require(!input.contains(exterior) &&
+                !ScreenRecordingAreaWindowTestAccess::edges(area, exterior),
+            "input outside the resize band must pass through");
+
+    area.setInputMode(ScreenRecordingAreaWindow::InputMode::Drawing);
+    require(area.geometry() == passiveGeometry && area.recordingRegion() == initial,
+            "drawing must restore the original window bounds and preserve the capture region");
+    area.setInputMode(ScreenRecordingAreaWindow::InputMode::RegionEditing);
+    area.setTrimming(true);
+    require(area.geometry() == passiveGeometry && area.recordingRegion() == initial,
+            "trimming must use the preview bounds and preserve the capture region");
+    area.setTrimming(false);
+    require(area.geometry() == editingGeometry && area.recordingRegion() == initial,
+            "leaving trimming must restore the resize bands at the same capture position");
+
+    area.setRecordingRegion(QRect(initial.topLeft(), QSize(32, initial.height())));
+    const QRectF narrow = area.selectionRect();
+    const QPoint bottomCorner(qFloor(narrow.right()) - 2, qFloor(narrow.bottom()) - 5);
+    require(ScreenRecordingAreaWindowTestAccess::edges(area, bottomCorner) ==
+                    (Qt::RightEdge | Qt::BottomEdge) &&
+                area.childAt(bottomCorner) == area.canvas(),
+            "narrow selections must keep the expanded bottom resize corner accessible");
+}
+
 void childDragHandleOwnsCaptureAndPreservesAnnotations() {
     ScreenRecordingAreaWindow area;
     area.setRecordingRegion(testRecordingRegion());
@@ -1116,9 +1202,8 @@ void childDragHandleOwnsCaptureAndPreservesAnnotations() {
     require(closeRequests == 1 && !close.isAccepted() && area.isVisible(),
             "closing the recording region must request closure through its controller");
     require(area.selectionRect().contains(QRectF(button->geometry())) &&
-                button->geometry().right() == area.selectionRect().toRect().right() - 8 &&
-                button->geometry().bottom() == area.selectionRect().toRect().bottom() - 8,
-            "the move button must sit inside the recording region's bottom-right corner");
+                !ScreenRecordingAreaWindowTestAccess::edges(area, button->geometry().bottomRight()),
+            "the move button must sit inward of the bottom and right resize bands");
     const auto requireInputRegion = [&] {
         const QRegion input = ScreenRecordingAreaWindowTestAccess::inputRegion(area);
         for (int y = 0; y < area.height(); ++y) {
@@ -2662,6 +2747,7 @@ int main(int argc, char** argv) {
     followGeometryNotificationsPreserveViewport();
     quickSelectionFollowsTheDrawingSetting();
     geometryEditingIsOneCapability();
+    resizeHitTargetsStraddleTheSelection();
     childDragHandleOwnsCaptureAndPreservesAnnotations();
     interactionBoundariesAreIdempotentAndCancelOnStateChanges();
     dragHandleUsesWidgetEventsAndCancelsOnInterruption();
