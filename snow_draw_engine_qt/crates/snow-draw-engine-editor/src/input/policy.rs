@@ -267,10 +267,18 @@ impl Editor {
                 kind == ElementKind::Rectangle
                     || (kind == ElementKind::Text && !document.shapes_for_text(id).is_empty())
             }
-            ToolSelectionScope::SerialNumberOnly => {
-                kind == ElementKind::SerialNumber
-                    || (kind == ElementKind::Text && document.is_text_bound_to_serial_number(id))
-            }
+            ToolSelectionScope::SerialNumberOnly => match kind {
+                ElementKind::SerialNumber => true,
+                ElementKind::Text => document.is_text_bound_to_serial_number(id),
+                ElementKind::Arrow => document.arrow(id).is_ok_and(|arrow| {
+                    arrow
+                        .start_binding
+                        .iter()
+                        .chain(&arrow.end_binding)
+                        .any(|binding| document.serial_number(binding.element_id).is_ok())
+                }),
+                _ => false,
+            },
             _ => Self::selection_scope_matches(scope, kind),
         }
     }

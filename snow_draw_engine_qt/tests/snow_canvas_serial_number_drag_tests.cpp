@@ -125,6 +125,28 @@ void shiftDragCreatesBoundArrow() {
                 "Shift-drag does not create or edit a text label");
         require(payload(runtime, QStringLiteral("SerialNumber")) == serial,
                 "bound-arrow creation leaves the badge unchanged");
+
+        const auto arrowId = records(runtime, QStringLiteral("Arrow"))
+                                 .first()
+                                 .toObject()
+                                 .value(QStringLiteral("id"));
+        const QPointF shaft = (start + finish) / 2.0;
+        for (const auto button : {Qt::LeftButton, Qt::RightButton}) {
+            require(canvas.hasQuickSelectionTargetAt(shaft, button),
+                    "sequence tool recognizes the bound arrow shaft as a selection target");
+            mouse(canvas, QEvent::MouseButtonPress, shaft, button, button);
+            mouse(canvas, QEvent::MouseButtonRelease, shaft, button, Qt::NoButton);
+            require(runtime.selectedElementIds() == QJsonArray{arrowId} &&
+                        canvas.canvasTool() == SnowCanvasTool::SerialNumber &&
+                        canvas.canvasStyleToolbarState().source ==
+                            SnowCanvasStyleToolbarSource::SelectedArrow,
+                    "click selects the arrow and exposes its controls in the sequence tool");
+            mouse(canvas, QEvent::MouseButtonPress, shaft, button, button, Qt::ShiftModifier);
+            mouse(canvas, QEvent::MouseButtonRelease, shaft, button, Qt::NoButton,
+                  Qt::ShiftModifier);
+            require(runtime.selectedElementIds().isEmpty(), "Shift-click deselects the arrow");
+        }
+
         require(runtime.undo() && records(runtime, QStringLiteral("Arrow")).isEmpty() &&
                     records(runtime, QStringLiteral("SerialNumber")).size() == 1,
                 "one undo removes only the arrow");

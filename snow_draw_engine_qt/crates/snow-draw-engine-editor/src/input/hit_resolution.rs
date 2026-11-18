@@ -276,7 +276,8 @@ mod tests {
         arrow::{ArrowEndpointEdge, ArrowType, StrokeStyle},
     };
     use snow_draw_engine_document::{
-        ArrowData, CanvasFilterType, ElementMeta, FillStyle, FilterData, PenFilterData, Transaction,
+        ArrowData, ArrowEndpointBinding, CanvasFilterType, ElementMeta, FillStyle, FilterData,
+        PenFilterData, SerialNumberData, Transaction,
     };
     use snow_draw_engine_interaction::{
         InputEvent, PointerButtons, PointerDevice, PointerEvent, PointerEventType,
@@ -760,6 +761,63 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn serial_number_tool_hits_arrows_bound_at_either_endpoint() {
+        let mut document = DocumentModel::new();
+        let serial_id = document.allocate_element_id();
+        let rectangle_id = document.allocate_element_id();
+        let mut transaction = Transaction::new("arrow binding targets");
+        transaction.insert_serial_number(
+            serial_id,
+            ElementMeta::default(),
+            SerialNumberData::default(),
+        );
+        transaction.insert_rectangle(
+            rectangle_id,
+            ElementMeta::default(),
+            test_rectangle(Point::new(120.0, 0.0)),
+        );
+        document.apply_transaction(transaction).unwrap();
+
+        let binding = |element_id| ArrowEndpointBinding {
+            element_id,
+            fixed_point: [0.5, 0.5],
+            mode: snow_draw_engine_core::arrow::BindMode::Orbit,
+        };
+        let mut editor = Editor::new(EngineConfig::default()).unwrap();
+        editor.set_active_tool(ActiveTool::SerialNumber).unwrap();
+        for (index, (start, end, eligible)) in [
+            (Some(serial_id), None, true),
+            (Some(rectangle_id), Some(serial_id), true),
+            (Some(rectangle_id), None, false),
+            (None, None, false),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let y = 120.0 + index as f64 * 40.0;
+            let mut arrow = test_arrow(&[Point::new(0.0, y), Point::new(120.0, y)]);
+            arrow.stroke = opaque_color();
+            arrow.start_binding = start.map(binding);
+            arrow.end_binding = end.map(binding);
+            let arrow_id = insert_arrow(&mut document, arrow);
+
+            assert_eq!(
+                editor.resolve_canvas_hit(
+                    &document,
+                    editor.tool_policy(),
+                    Point::new(60.0, y),
+                    false
+                ),
+                if eligible {
+                    CanvasHit::EligibleElement(arrow_id, ElementKind::Arrow)
+                } else {
+                    CanvasHit::Empty
+                }
+            );
+        }
     }
 
     #[test]
