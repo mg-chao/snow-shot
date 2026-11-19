@@ -51,6 +51,9 @@ class ImageStitchingPreviewCanvas final : public QWidget {
     void changeEvent(QEvent*) override;
 
   private:
+    friend class ImageStitchingEditorWidget;
+    bool swapImages(quint64 source, quint64 target);
+
     struct Impl;
     std::unique_ptr<Impl> m_impl;
 };

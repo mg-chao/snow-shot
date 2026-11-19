@@ -51,6 +51,7 @@
 #include <QPointer>
 #include <QRgba64>
 #include <QScrollBar>
+#include <QScopedValueRollback>
 #include <QSet>
 #include <QSignalBlocker>
 #include <QTimer>
@@ -67,6 +68,7 @@
 #include <cstring>
 #include <limits>
 #include <mutex>
+#include <optional>
 #include <vector>
 
 namespace snow_shot::presentation::components {
@@ -386,6 +388,7 @@ class ImageStitchingThumbnail final : public QWidget {
         retranslate();
     }
     std::function<void(quint64)> selected;
+    std::function<bool(quint64, quint64)> swapRequested;
     std::function<void(quint64)> replaceRequested;
     std::function<void()> editStarted;
     void setEditingEnabled(bool enabled, bool replacementAllowed) {
@@ -455,15 +458,25 @@ class ImageStitchingThumbnail final : public QWidget {
         if (event->button() == Qt::LeftButton) {
             m_press = event->position();
             setFocus(Qt::MouseFocusReason);
-            if (selected)
-                selected(m_id);
+            m_document->select(m_id);
             event->accept();
         }
     }
-    void mouseMoveEvent(QMouseEvent* event) override {
-        if (!(event->buttons() & Qt::LeftButton) || !m_editing ||
-            (event->position() - m_press).manhattanLength() < QApplication::startDragDistance())
+    void mouseReleaseEvent(QMouseEvent* event) override {
+        if (event->button() != Qt::LeftButton || !m_press) {
+            QWidget::mouseReleaseEvent(event);
             return;
+        }
+        m_press.reset();
+        if (selected && QRectF(rect()).contains(event->position()))
+            selected(m_id);
+        event->accept();
+    }
+    void mouseMoveEvent(QMouseEvent* event) override {
+        if (!m_press || !(event->buttons() & Qt::LeftButton) || !m_editing ||
+            (event->position() - *m_press).manhattanLength() < QApplication::startDragDistance())
+            return;
+        m_press.reset();
         auto* drag = new QDrag(this);
         auto* mime = new QMimeData;
         mime->setData(QString::fromLatin1(kDragType),
@@ -505,7 +518,7 @@ class ImageStitchingThumbnail final : public QWidget {
     void dropEvent(QDropEvent* event) override {
         const auto source = dragItem(event->mimeData(), m_document);
         m_target = false;
-        if (m_editing && source != 0 && m_document->swapItems(source, m_id))
+        if (m_editing && source != 0 && swapRequested && swapRequested(source, m_id))
             event->acceptProposedAction();
         update();
     }
@@ -517,7 +530,7 @@ class ImageStitchingThumbnail final : public QWidget {
     QImage m_preview;
     QTransform m_transform;
     QString m_label;
-    QPointF m_press;
+    std::optional<QPointF> m_press;
     int m_ordinal = 1;
     bool m_target = false;
     bool m_editing = true;
@@ -574,6 +587,7 @@ struct ImageStitchingPreviewCanvas::Impl {
     QRectF pendingImage;
     ImageStitchingStaticPlacement pendingPlacement;
     bool automaticFit = true;
+    bool swappingImages = false;
     bool editing = true;
     bool replacementAllowed = true;
     bool rendering = true;
@@ -948,12 +962,14 @@ struct ImageStitchingPreviewCanvas::Impl {
         }
         if (wasEmpty && !order.isEmpty())
             automaticFit = true;
-        if (automaticFit && layoutChanged && layout.isValid()) {
-            owner->fitToCanvas();
-            return;
-        } else if (!automaticFit && (layoutChanged || orderChanged) && anchored &&
-                   !itemRect(document->selectedId()).isEmpty()) {
-            offset += anchor - viewportRect(document->selectedId()).center();
+        if (!swappingImages) {
+            if (automaticFit && layoutChanged && layout.isValid()) {
+                owner->fitToCanvas();
+                return;
+            }
+            if (!automaticFit && (layoutChanged || orderChanged) && anchored &&
+                !itemRect(document->selectedId()).isEmpty())
+                offset += anchor - viewportRect(document->selectedId()).center();
         }
         if (document->items().isEmpty()) {
             automaticFit = true;
@@ -1096,6 +1112,10 @@ void ImageStitchingPreviewCanvas::centerImage(quint64 id) {
 }
 void ImageStitchingPreviewCanvas::preserveViewport() {
     m_impl->automaticFit = false;
+}
+bool ImageStitchingPreviewCanvas::swapImages(quint64 source, quint64 target) {
+    const QScopedValueRollback<bool> swapping(m_impl->swappingImages, true);
+    return m_impl->document->swapItems(source, target);
 }
 void ImageStitchingPreviewCanvas::setEditingEnabled(bool enabled, bool replacementAllowed) {
     if (m_impl->editing == enabled && m_impl->replacementAllowed == replacementAllowed)
@@ -1303,7 +1323,7 @@ void ImageStitchingPreviewCanvas::mouseReleaseEvent(QMouseEvent* event) {
         d.cancelGesture();
         if (commit) {
             if (target && target != id)
-                d.document->swapItems(id, target);
+                swapImages(id, target);
             else
                 d.document->setStaticPlacement(id, placement);
         }
@@ -1374,7 +1394,7 @@ void ImageStitchingPreviewCanvas::dropEvent(QDropEvent* event) {
     const auto target = m_impl->hit(event->position(), true);
     const auto source = dragItem(event->mimeData(), m_impl->document);
     m_impl->targetId = 0;
-    if (m_impl->editing && target && source && m_impl->document->swapItems(source, target))
+    if (m_impl->editing && target && source && swapImages(source, target))
         event->acceptProposedAction();
     update();
 }
@@ -1683,6 +1703,9 @@ struct ImageStitchingEditorWidget::Impl {
             if (!thumbnail) {
                 thumbnail = new ImageStitchingThumbnail(document, item.id, thumbnails);
                 thumbnail->selected = [this](quint64 id) { canvas->centerImage(id); };
+                thumbnail->swapRequested = [this](quint64 source, quint64 target) {
+                    return canvas->swapImages(source, target);
+                };
                 thumbnail->editStarted = [this] { canvas->preserveViewport(); };
                 thumbnail->replaceRequested = [this](quint64 id) {
                     emit owner->replaceImageRequested(id);

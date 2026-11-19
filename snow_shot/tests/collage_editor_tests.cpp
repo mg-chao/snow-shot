@@ -1147,15 +1147,22 @@ void fitPanZoomAndNavigation() {
 }
 void releaseOnlySwapAndCrossWindowIsolation() {
     ImageStitchingDocument document;
-    const auto first = document.append(image({120, 80}), QStringLiteral("A"));
-    const auto second = document.append(image({120, 80}), QStringLiteral("B"));
+    const auto first = document.append(image({360, 240}), QStringLiteral("A"));
+    const auto second = document.append(image({288, 360}), QStringLiteral("B"));
     ImageStitchingEditorWidget editor(&document);
     editor.resize(1000, 650);
     editor.show();
     pump();
     auto* canvas = editor.canvas();
-    auto a = canvas->imageViewportRect(first).center();
-    auto b = canvas->imageViewportRect(second).center();
+    wheel(canvas, canvas->rect().center(), 120);
+    mouse(canvas, QEvent::MouseButtonPress, {40, 40}, Qt::MiddleButton, Qt::MiddleButton);
+    mouse(canvas, QEvent::MouseMove, {63, 56}, Qt::NoButton, Qt::MiddleButton);
+    mouse(canvas, QEvent::MouseButtonRelease, {63, 56}, Qt::MiddleButton, Qt::NoButton);
+    const auto zoom = canvas->zoom();
+    const auto offset = canvas->offset();
+    const auto initialSize = document.layout().size;
+    const auto a = canvas->imageViewportRect(first).center();
+    const auto b = canvas->imageViewportRect(second).center();
     mouse(canvas, QEvent::MouseButtonPress, a, Qt::LeftButton, Qt::LeftButton);
     mouse(canvas, QEvent::MouseMove, b, Qt::NoButton, Qt::LeftButton);
     require(document.items()[0].id == first, "drag must not swap before release");
@@ -1165,8 +1172,13 @@ void releaseOnlySwapAndCrossWindowIsolation() {
     mouse(canvas, QEvent::MouseButtonPress, a, Qt::LeftButton, Qt::LeftButton);
     mouse(canvas, QEvent::MouseMove, b, Qt::NoButton, Qt::LeftButton);
     mouse(canvas, QEvent::MouseButtonRelease, b, Qt::LeftButton, Qt::NoButton);
-    require(document.items()[0].id == second && document.items()[1].id == first,
-            "release over valid target must swap images");
+    pump();
+    require(
+        document.items()[0].id == second && document.items()[1].id == first &&
+            document.selectedId() == first && document.layout().size != initialSize,
+        "release over a valid target swaps images, updating the layout and retaining selection");
+    require(canvas->zoom() == zoom && canvas->offset() == offset,
+            "canvas drag must retain zoom and pan across a swap that changes the layout size");
     auto* thumbnail = editor.findChild<QWidget*>(QStringLiteral("collageThumbnail_%1").arg(first));
     require(thumbnail != nullptr && thumbnail->property("collageItemId").toULongLong() == first,
             "thumbnail identity must follow canvas swaps");
@@ -1183,15 +1195,37 @@ void releaseOnlySwapAndCrossWindowIsolation() {
     local.setData(QStringLiteral("application/x-snow-shot-collage-item"),
                   QByteArray::number(reinterpret_cast<quintptr>(&document)) + ':' +
                       QByteArray::number(second));
-    auto* target = editor.findChild<QWidget*>(QStringLiteral("collageThumbnail_%1").arg(first));
+    canvas->fitToCanvas();
+    const auto fittedZoom = canvas->zoom();
+    const auto fittedOffset = canvas->offset();
+    auto* source = editor.findChild<QWidget*>(QStringLiteral("collageThumbnail_%1").arg(second));
+    require(source != nullptr, "drag source thumbnail must exist");
+    mouse(source, QEvent::MouseButtonPress, {20, 20}, Qt::LeftButton, Qt::LeftButton);
+    require(canvas->zoom() == fittedZoom && canvas->offset() == fittedOffset,
+            "pressing a thumbnail must leave the view in place until click or drag is resolved");
+    mouse(source, QEvent::MouseButtonRelease, {-2, -2}, Qt::LeftButton, Qt::NoButton);
     QDragEnterEvent localEnter(QPointF(20, 20), Qt::MoveAction, &local, Qt::LeftButton,
                                Qt::NoModifier);
-    QApplication::sendEvent(target, &localEnter);
+    QApplication::sendEvent(thumbnail, &localEnter);
     require(localEnter.isAccepted(), "same collage thumbnail drag must be accepted");
     QDropEvent drop({20, 20}, Qt::MoveAction, &local, Qt::LeftButton, Qt::NoModifier);
-    QApplication::sendEvent(target, &drop);
+    QApplication::sendEvent(thumbnail, &drop);
+    pump();
     require(drop.isAccepted() && document.items()[0].id == first,
             "thumbnail drop must swap document and preview order");
+    require(canvas->zoom() == fittedZoom && canvas->offset() == fittedOffset,
+            "thumbnail drop must retain the fitted viewport when the layout changes");
+
+    const auto canvasTarget = canvas->cellViewportRect(first).center();
+    QDragEnterEvent canvasEnter(canvasTarget, Qt::MoveAction, &local, Qt::LeftButton,
+                                Qt::NoModifier);
+    QApplication::sendEvent(canvas, &canvasEnter);
+    QDropEvent canvasDrop(canvasTarget, Qt::MoveAction, &local, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(canvas, &canvasDrop);
+    pump();
+    require(canvasDrop.isAccepted() && document.items()[0].id == second &&
+                canvas->zoom() == fittedZoom && canvas->offset() == fittedOffset,
+            "dropping a thumbnail onto the canvas must swap images without shifting the view");
 }
 void invalidLayoutKeepsSelectionAndTransformsUsable() {
     ImageStitchingDocument document;
