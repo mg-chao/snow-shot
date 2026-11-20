@@ -661,6 +661,23 @@ bool WindowShortcutManager::focusAcceptsTextInput(QWidget* focusWidget) {
     return false;
 }
 
+bool WindowShortcutManager::inputTargetsPopup(const ActivationContext& context) {
+    const auto isPopup = [](const QWidget* widget) {
+        for (auto* current = widget; current; current = current->parentWidget()) {
+            if (current->windowType() == Qt::Popup)
+                return true;
+            if (!current->property("adqt.interaction.surface").toBool())
+                continue;
+            // Standalone non-modal windows such as the Image Editor can host popups.
+            if (!(current->isWindow() && current->windowModality() == Qt::NonModal &&
+                  current->property("adqt.popup.container").toBool()))
+                return true;
+        }
+        return false;
+    };
+    return isPopup(qobject_cast<QWidget*>(context.receiver)) || isPopup(context.focusWidget);
+}
+
 bool WindowShortcutManager::eventFilter(QObject* watched, QEvent* event) {
     if (event == nullptr) {
         return QObject::eventFilter(watched, event);

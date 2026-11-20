@@ -1615,6 +1615,7 @@ ScreenshotToolPaletteShapeFamilyResult ScreenshotToolPaletteStyleControls::build
     auto*& container = spotlight ? m_spotlightShapeControlsContainer : m_shapeControlsContainer;
     auto*& group = spotlight ? m_spotlightShapeButtonGroup : m_shapeButtonGroup;
     ScreenshotToolPaletteRadioEditorConfig shapeConfig;
+    shapeConfig.cycleWithAnnotationShortcut = true;
     shapeConfig.objectName = spotlight ? QStringLiteral("screenshotSpotlightShapeButtonGroup")
                                        : QStringLiteral("screenshotShapeButtonGroup");
     shapeConfig.options = {
@@ -1777,6 +1778,7 @@ ScreenshotToolPaletteShapeFamilyResult ScreenshotToolPaletteStyleControls::build
             host.addGroupSeparator(layout);
         }
         ScreenshotToolPaletteRadioEditorConfig brushModeConfig;
+        brushModeConfig.cycleWithAnnotationShortcut = true;
         brushModeConfig.objectName = QStringLiteral("screenshotBrushModeButtonGroup");
         brushModeConfig.options = {
             {0, QStringLiteral("Regular brush"), custom_outlined_icons::BrushRegular()},
@@ -1815,6 +1817,7 @@ ScreenshotToolPaletteShapeFamilyResult ScreenshotToolPaletteStyleControls::build
         }
 
         ScreenshotToolPaletteRadioEditorConfig lineTypeConfig;
+        lineTypeConfig.cycleWithAnnotationShortcut = true;
         lineTypeConfig.objectName = QStringLiteral("screenshotLineTypeButtonGroup");
         lineTypeConfig.options = {
             {0, QStringLiteral("Straight line"), custom_outlined_icons::LineTypeStraight()},
@@ -2005,6 +2008,7 @@ QWidget* ScreenshotToolPaletteStyleControls::buildArrowFamily(
     }
 
     ScreenshotToolPaletteRadioEditorConfig arrowTypeConfig;
+    arrowTypeConfig.cycleWithAnnotationShortcut = true;
     arrowTypeConfig.objectName = QStringLiteral("screenshotArrowTypeButtonGroup");
     arrowTypeConfig.options = {
         {0, QStringLiteral("Straight arrow"), arrowTypeIcon(SnowCanvasArrowType::Straight)},
@@ -2316,6 +2320,7 @@ QWidget* ScreenshotToolPaletteStyleControls::buildMagnifierFamily(
     if (shapes == nullptr) {
         ScreenshotToolPaletteRadioEditorConfig config;
         config.objectName = QStringLiteral("screenshotMagnifierShapeButtonGroup");
+        config.cycleWithAnnotationShortcut = true;
         config.options = {
             {static_cast<int>(SnowCanvasRectangleShape::Rectangle), "Rectangle",
              custom_outlined_icons::ShapeRectangle()},
@@ -2790,6 +2795,7 @@ QWidget* ScreenshotToolPaletteStyleControls::buildAngleFamily(
     if (types == nullptr) {
         ScreenshotToolPaletteRadioEditorConfig config;
         config.objectName = QStringLiteral("screenshotAngleTypeButtonGroup");
+        config.cycleWithAnnotationShortcut = true;
         config.useButtonMetrics = true;
         config.options = {
             {static_cast<int>(SnowCanvasAngleType::Directed), "360° angle",
@@ -3687,6 +3693,7 @@ QWidget* ScreenshotToolPaletteStyleControls::buildSequenceNumberFamily(
     }
 
     ScreenshotToolPaletteRadioEditorConfig sequenceNumberTypeConfig;
+    sequenceNumberTypeConfig.cycleWithAnnotationShortcut = true;
     sequenceNumberTypeConfig.objectName = QStringLiteral("screenshotSerialNumberTypeButtonGroup");
     sequenceNumberTypeConfig.options = {
         {static_cast<int>(SnowCanvasSerialNumberType::OutlinedCircle),
@@ -5500,6 +5507,14 @@ void ScreenshotToolPaletteStyleControls::setAngleControlsActive(bool active) {
 
 void ScreenshotToolPaletteStyleControls::setBracketControlsActive(bool active) {
     m_state.bracketControlsActive = active;
+}
+
+bool ScreenshotToolPaletteStyleControls::canCycleDistanceUnit() const {
+    return m_distanceUnitEditor && m_distanceUnitEditor->canCycleUnit();
+}
+
+bool ScreenshotToolPaletteStyleControls::cycleDistanceUnit() {
+    return m_distanceUnitEditor && m_distanceUnitEditor->cycleUnit();
 }
 
 bool ScreenshotToolPaletteStyleControls::handleDistanceWheel(

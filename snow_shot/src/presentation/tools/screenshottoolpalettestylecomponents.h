@@ -13,6 +13,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 
 class QBoxLayout;
 class QObject;
@@ -475,11 +476,14 @@ class ScreenshotToolPaletteDistanceUnitEditor final
                const ScreenshotToolPaletteButtonMetrics& metrics);
     void rebind(const Commit& commit);
     void update(SnowCanvasDistanceUnit unit, bool mixed);
+    [[nodiscard]] bool canCycleUnit() const;
+    bool cycleUnit();
     void refreshMetrics(const ScreenshotToolPaletteButtonMetrics& metrics) override;
     void resetPopupMetrics(const ScreenshotToolPaletteButtonMetrics& metrics) override;
     void release() override;
 
   private:
+    [[nodiscard]] std::optional<SnowCanvasDistanceUnit> nextUnit() const;
     QWidget* createPopupContent(const ScreenshotToolPaletteButtonMetrics& metrics);
 
     adqt::widgets::AdRadioButtonGroup* m_group = nullptr;

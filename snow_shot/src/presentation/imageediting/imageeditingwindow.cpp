@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "snow_shot/presentation/imageeditingwindow.h"
+#include "snow_shot/shortcuts/annotationoptionshortcut.h"
 #include "snow_shot/presentation/screenshotpinnedrenderpreparation.h"
 #include "snow_shot/presentation/canvasdrawingpreferences.h"
 #include "imageeditingexportcontroller.h"
@@ -525,11 +526,16 @@ struct ImageEditingWindow::Impl {
                 binding.priority =
                     drawing ? WindowShortcutManager::StandardPriority::DrawingShortcut
                             : WindowShortcutManager::StandardPriority::ScreenshotShortcut;
-                binding.canActivate = [this](const auto& context) {
-                    return !document.image().isNull() && !loading && !cropBusy && !closing &&
-                           !(colorSampling && colorSampling->active()) &&
-                           !WindowShortcutManager::focusAcceptsTextInput(context.focusWidget) &&
-                           !canvas->hasActiveTextEditing();
+                binding.canActivate = [this, id = it.key()](const auto& context) {
+                    if (document.image().isNull() || loading || cropBusy || closing ||
+                        (colorSampling && colorSampling->active()) ||
+                        WindowShortcutManager::focusAcceptsTextInput(context.focusWidget) ||
+                        canvas->hasActiveTextEditing())
+                        return false;
+                    if (id != snow_shot::shortcuts::kCycleAnnotationToolOptions)
+                        return true;
+                    return !WindowShortcutManager::inputTargetsPopup(context) &&
+                           palette->canActivateDrawingShortcut(id);
                 };
                 binding.activate = [this, id = it.key(), drawing](const auto&) {
                     return drawing ? palette->activateDrawingShortcut(id)

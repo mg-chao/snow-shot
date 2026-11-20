@@ -1544,6 +1544,8 @@ createScreenshotToolPaletteRadioEditor(QWidget* parent,
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
     editor.group = new adqt::widgets::AdRadioButtonGroup(editor.container);
+    if (config.cycleWithAnnotationShortcut)
+        editor.group->setObjectName(QStringLiteral("screenshotAnnotationOptionGroup"));
     editor.group->setManagedLayout(layout);
     editor.group->setVariant(adqt::widgets::AdRadio::Variant::Button);
     editor.group->setControlSize(adqt::widgets::AdRadio::ControlSize::Small);
@@ -1561,6 +1563,22 @@ createScreenshotToolPaletteRadioEditor(QWidget* parent,
                                                         config.useButtonMetrics);
     editor.group->setCheckedId(config.initialId);
     return editor;
+}
+
+QList<QAbstractButton*>
+screenshotToolPaletteRadioOptions(const adqt::widgets::AdRadioButtonGroup* group) {
+    QList<QAbstractButton*> options;
+    const auto* container = group ? qobject_cast<QWidget*>(group->parent()) : nullptr;
+    const auto* layout = container ? container->layout() : nullptr;
+    if (layout == nullptr)
+        return options;
+
+    for (int index = 0; index < layout->count(); ++index) {
+        auto* button = qobject_cast<QAbstractButton*>(layout->itemAt(index)->widget());
+        if (button && group->id(button) != -1 && button->isEnabled() && !button->isHidden())
+            options.append(button);
+    }
+    return options;
 }
 
 adqt::widgets::AdPopover*

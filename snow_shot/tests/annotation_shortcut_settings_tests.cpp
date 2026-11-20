@@ -31,6 +31,16 @@ void annotationShortcutsPersistValidateAndReset(const QString& configurationPath
     const auto drawingDefaults = storage::DrawingShortcutSettings().allShortcuts();
     const auto undoDefault = backend.localShortcuts(screenshot, QStringLiteral("undo"));
     const auto redoDefault = backend.localShortcuts(screenshot, QStringLiteral("redo"));
+    const QString cycleId = QStringLiteral("cycle_annotation_tool_options");
+    const QString cycleKey = QStringLiteral("drawing_shortcuts/") + cycleId;
+    const shortcuts::ShortcutBindingList tab{QStringLiteral("Tab")};
+    const shortcuts::ShortcutBindingList customCycle{QStringLiteral("Alt+F9")};
+    require(
+        backend.localShortcuts(drawing, cycleId) == tab &&
+            !backend.validateLocalShortcut(drawing, QStringLiteral("line"), tab.first())
+                 .supported &&
+            backend.applyLocalShortcuts(drawing, cycleId, customCycle),
+        "Annotation cycling defaults to Tab, reserves it within Annotation, and can be remapped");
 
     for (const auto* id :
          {"line", "spotlight", "distance", "angle", "magnifier", "speech_bubble"}) {
@@ -56,8 +66,15 @@ void annotationShortcutsPersistValidateAndReset(const QString& configurationPath
                 reloaded.value(QStringLiteral("drawing_shortcuts/line")), false) == line &&
                 shortcuts::shortcutBindingsFromJson(
                     reloaded.value(QStringLiteral("drawing_shortcuts/spotlight")), false) ==
-                    spotlight,
+                    spotlight &&
+                shortcuts::shortcutBindingsFromJson(reloaded.value(cycleKey), false) == customCycle,
             "new annotation shortcut settings must survive configuration reload");
+    require(backend.applyLocalShortcuts(drawing, cycleId, {}) &&
+                storage::ApplicationStorage::instance().configuration().flushNow().success,
+            "the cycle binding can explicitly be cleared and saved");
+    storage::ConfigurationStore afterClearing(configurationPath, true, true, 60000);
+    require(afterClearing.value(cycleKey) == QJsonArray{},
+            "reloading preserves the explicit unassigned choice");
     require(backend.applyLocalShortcuts(drawing, QStringLiteral("line"), {}) &&
                 backend.localShortcuts(drawing, QStringLiteral("line")).isEmpty(),
             "configured annotation shortcuts must be clearable");

@@ -283,6 +283,8 @@ class ScreenshotToolPaletteStyleControls final {
     void setDistanceControlsActive(bool active);
     void setAngleControlsActive(bool active);
     void setBracketControlsActive(bool active);
+    [[nodiscard]] bool canCycleDistanceUnit() const;
+    bool cycleDistanceUnit();
     [[nodiscard]] bool handleDistanceWheel(const ScreenshotToolPaletteWheelPosition& position,
                                            int direction);
     [[nodiscard]] bool handleMagnifierWheel(const ScreenshotToolPaletteWheelPosition& position,

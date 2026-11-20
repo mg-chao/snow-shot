@@ -6,6 +6,7 @@
 #include "snow_shot/presentation/pinnedgeometry.h"
 #include "snow_shot/presentation/screenshotautofiltercontroller.h"
 #include "snow_shot/presentation/screenshotpinnededitcontroller.h"
+#include "snow_shot/shortcuts/annotationoptionshortcut.h"
 #include <utility>
 
 #include "snow_shot/presentation/screenshotcanvascolorsamplerwindow.h"
@@ -300,18 +301,20 @@ bool ScreenshotPinnedEditController::eventFilter(QObject* watched, QEvent* event
 }
 
 void ScreenshotPinnedEditController::registerDrawingShortcuts() {
+    using ShortcutManager = snow_shot::presentation::WindowShortcutManager;
     const auto shortcuts = snow_shot::storage::DrawingShortcutSettings().allShortcuts();
     for (auto tool = shortcuts.cbegin(); tool != shortcuts.cend(); ++tool) {
-        snow_shot::presentation::WindowShortcutManager::Binding binding;
+        ShortcutManager::Binding binding;
         binding.id = QStringLiteral("pinned.drawing.") + tool.key();
-        binding.priority =
-            snow_shot::presentation::WindowShortcutManager::StandardPriority::DrawingShortcut;
-        binding.canActivate = [this](const auto& context) {
-            return m_editMode &&
-                   !snow_shot::presentation::WindowShortcutManager::focusAcceptsTextInput(
-                       context.focusWidget) &&
-                   !m_canvas.hasActiveTextEditing() && m_toolbarWindow != nullptr &&
-                   m_toolbarWindow->palette() != nullptr;
+        binding.priority = ShortcutManager::StandardPriority::DrawingShortcut;
+        binding.canActivate = [this, toolId = tool.key()](const auto& context) {
+            if (!m_editMode || ShortcutManager::focusAcceptsTextInput(context.focusWidget) ||
+                m_canvas.hasActiveTextEditing() || !m_toolbarWindow || !m_toolbarWindow->palette())
+                return false;
+            if (toolId != snow_shot::shortcuts::kCycleAnnotationToolOptions)
+                return true;
+            return !canvasColorSamplingActive() && !ShortcutManager::inputTargetsPopup(context) &&
+                   m_toolbarWindow->palette()->canActivateDrawingShortcut(toolId);
         };
         binding.activate = [this, toolId = tool.key()](const auto&) {
             ScreenshotToolPalette* toolbar =

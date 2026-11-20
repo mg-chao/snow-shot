@@ -1100,6 +1100,49 @@ void hiddenRecordingToolsRetainShortcuts() {
             "hiding the recording window preserves shortcut scope restrictions");
 }
 
+void recordingAnnotationShortcutFollowsBothWindows() {
+    ScreenRecordingAreaWindow area;
+    ScreenRecordingToolbarWindow toolbar;
+    area.setRecordingRegion(
+        ScreenshotGeometryMapper::physicalRectForScreen(*QGuiApplication::primaryScreen())
+            .adjusted(20, 20, -20, -20));
+    ScreenRecordingShortcutController controller(area, toolbar);
+    auto* palette = toolbar.palette();
+    auto* canvas = area.canvas();
+    int shapes = 0;
+    QObject::connect(palette, &ScreenshotToolPalette::shapeRequested, &area, [&] {
+        ++shapes;
+        static_cast<void>(canvas->setCanvasTool(SnowCanvasTool::Shape));
+        area.setInputMode(ScreenRecordingAreaWindow::InputMode::Drawing);
+    });
+    area.show();
+    toolbar.show();
+    require(palette->activateToolShortcut(ScreenshotToolPalette::Tool::Shape) && shapes == 1,
+            "activate Shape on the recording canvas");
+
+    const snow_shot::storage::DrawingShortcutSettings drawing;
+    const QString cycleId = QStringLiteral("cycle_annotation_tool_options");
+    const auto savedCycle = drawing.shortcuts(cycleId);
+    const auto shape = [&] { return palette->creationStyleDefaults().rectangle.shape; };
+    const auto originalShape = shape();
+    press(*canvas, Qt::Key_Tab);
+    const auto cycledShape = shape();
+    require(cycledShape != originalShape && shapes == 1,
+            "Tab cycles recording Shape without reactivating the tool");
+    require(drawing.setShortcuts(cycleId, {QStringLiteral("F12")}),
+            "configure the annotation option shortcut");
+    press(*canvas, Qt::Key_Tab);
+    require(shape() == cycledShape, "remapping removes Tab immediately");
+    press(toolbar, Qt::Key_F12);
+    const auto remappedShape = shape();
+    require(remappedShape != cycledShape && shapes == 1,
+            "the new key cycles options from the recording toolbar");
+    area.setDrawingBlocked(true);
+    press(toolbar, Qt::Key_F12);
+    require(shape() == remappedShape, "blocked recording input cannot cycle options");
+    require(drawing.setShortcuts(cycleId, savedCycle), "restore the annotation option shortcut");
+}
+
 void recordingShortcutsFollowBothWindowsAndConfiguredKeys() {
     const snow_shot::storage::DrawingShortcutSettings drawing;
     const snow_shot::storage::ScreenshotShortcutSettings history;
@@ -1501,6 +1544,7 @@ int main(int argc, char* argv[]) {
     }
     if (app.arguments().contains(QStringLiteral("--selection-tools-only"))) {
         recordingSelectionEditsAnnotationsAndPreservesPassThrough();
+        recordingAnnotationShortcutFollowsBothWindows();
         storage.shutdown();
         return 0;
     }
@@ -1558,6 +1602,7 @@ int main(int argc, char* argv[]) {
     recordingToolbarTakesFocusWhenOpenedOrStarted();
     recordingToolbarKeepsFocusAfterEditingAndSurfaceRestoration();
     recordingSelectionEditsAnnotationsAndPreservesPassThrough();
+    recordingAnnotationShortcutFollowsBothWindows();
     recordingControlShortcutsFollowButtonsAndSettings();
     recordingModalsBlockSessionShortcuts();
     recordingOptionPopoversOwnKeyboardInput();

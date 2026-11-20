@@ -1,6 +1,7 @@
 #include "snow_shot/shortcuts/screenshotshortcutcontext.h"
 #include "snow_shot/shortcuts/pinnedshortcutcontext.h"
 #include "snow_shot/storage/settingsadapters.h"
+#include "snow_shot/shortcuts/annotationoptionshortcut.h"
 #include "snow_shot/storage/floatingtoolbarsettings.h"
 
 #include "snow_shot/app/editionfeatures.h"
@@ -60,15 +61,25 @@ bool setShortcutValue(const QString& key, const shortcuts::ShortcutBindingList& 
 
 const QStringList& drawingShortcutToolIds() {
     static const QStringList ids = {
-        QStringLiteral("select"),        QStringLiteral("shape"),
-        QStringLiteral("arrow"),         QStringLiteral("brush"),
-        QStringLiteral("highlight"),     QStringLiteral("text"),
-        QStringLiteral("serial_number"), QStringLiteral("filter"),
-        QStringLiteral("eraser"),        QStringLiteral("watermark"),
-        QStringLiteral("line"),          QStringLiteral("spotlight"),
-        QStringLiteral("distance"),      QStringLiteral("angle"),
-        QStringLiteral("bracket"),       QStringLiteral("magnifier"),
-        QStringLiteral("reset_canvas"),  QStringLiteral("speech_bubble"),
+        QStringLiteral("select"),
+        QStringLiteral("shape"),
+        QStringLiteral("arrow"),
+        QStringLiteral("brush"),
+        QStringLiteral("highlight"),
+        QStringLiteral("text"),
+        QStringLiteral("serial_number"),
+        QStringLiteral("filter"),
+        QStringLiteral("eraser"),
+        QStringLiteral("watermark"),
+        QStringLiteral("line"),
+        QStringLiteral("spotlight"),
+        QStringLiteral("distance"),
+        QStringLiteral("angle"),
+        QStringLiteral("bracket"),
+        QStringLiteral("magnifier"),
+        QStringLiteral("reset_canvas"),
+        QStringLiteral("speech_bubble"),
+        shortcuts::kCycleAnnotationToolOptions,
     };
     return ids;
 }
