@@ -23,6 +23,7 @@ struct ScreenshotAirDropService::Request {
     QPointer<QObject> receiver;
     QPointer<QWidget> owner;
     std::shared_ptr<QTemporaryDir> directory;
+    QString sharedPath;
     std::atomic_bool cancelled{false};
     Completion completion;
     QMetaObject::Connection ownerDestroyed;
@@ -65,6 +66,10 @@ void ScreenshotAirDropService::finish(const std::shared_ptr<Request>& request, R
     active->preparation.cancel();
     QObject::disconnect(active->ownerDestroyed);
     QObject::disconnect(active->receiverDestroyed);
+    if (result.status == Status::Shared) {
+        result.sharedPath = active->sharedPath;
+        result.fileLifetime = active->directory;
+    }
     m_request.reset();
     auto completion = std::move(active->completion);
     if (active->receiver && completion)
@@ -116,6 +121,7 @@ bool ScreenshotAirDropService::shareImage(QObject* receiver, QWidget* owner, QIm
             return;
         }
         request->directory = std::move(prepared->directory);
+        request->sharedPath = prepared->path;
         const QPointer<ScreenshotAirDropService> guard(this);
         const auto completed = [guard, request](Result result) {
             // Dispatch through the application so a worker callback never races

@@ -105,7 +105,17 @@ bool publishPngClipboard(QClipboard* clipboard, const QByteArray& png, const QBy
 constexpr int kMaximumCommitAttempts = 5;
 constexpr qint64 kMaximumCommitDurationMs = 300;
 constexpr std::array<int, kMaximumCommitAttempts - 1> kCommitRetryDelaysMs{10, 25, 60, 100};
+std::atomic<quint64> g_publicationSequence{0};
 std::atomic<quint64> g_latestPublicationId{0};
+
+bool claimPublication(ScreenshotClipboardService::PublicationId id) {
+    auto latest = g_latestPublicationId.load(std::memory_order_acquire);
+    while (id > latest) {
+        if (g_latestPublicationId.compare_exchange_weak(latest, id, std::memory_order_acq_rel))
+            return true;
+    }
+    return id != 0 && id == latest;
+}
 
 struct ClipboardPublishAttempt final {
     ScreenshotClipboardCommitFailure failure = ScreenshotClipboardCommitFailure::None;
@@ -886,7 +896,17 @@ ScreenshotClipboardService::commit(QClipboard* clipboard, QObject* receiver,
 }
 
 ScreenshotClipboardService::PublicationId ScreenshotClipboardService::reservePublication() {
-    return g_latestPublicationId.fetch_add(1, std::memory_order_acq_rel) + 1;
+    const auto id = deferPublication();
+    claimPublication(id);
+    return id;
+}
+
+ScreenshotClipboardService::PublicationId ScreenshotClipboardService::deferPublication() {
+    return g_publicationSequence.fetch_add(1, std::memory_order_relaxed) + 1;
+}
+
+bool ScreenshotClipboardService::publicationSuperseded(PublicationId id) {
+    return id < g_latestPublicationId.load(std::memory_order_acquire);
 }
 
 ScreenshotClipboardCommitHandle
@@ -904,7 +924,7 @@ ScreenshotClipboardService::commit(QClipboard* clipboard, QObject* receiver,
 #if defined(Q_OS_WIN) || defined(_WIN32)
     Q_UNUSED(clipboard);
     auto attempt = [sharedPayload, publicationId]() {
-        if (publicationId != g_latestPublicationId.load(std::memory_order_acquire)) {
+        if (!claimPublication(publicationId)) {
             return ClipboardPublishAttempt{ScreenshotClipboardCommitFailure::None, 0, true};
         }
         if (!sharedPayload->isValid())
@@ -917,7 +937,7 @@ ScreenshotClipboardService::commit(QClipboard* clipboard, QObject* receiver,
 #else
     const QPointer<QClipboard> guardedClipboard(clipboard);
     auto attempt = [guardedClipboard, sharedPayload, publicationId]() {
-        if (publicationId != g_latestPublicationId.load(std::memory_order_acquire)) {
+        if (!claimPublication(publicationId)) {
             return ClipboardPublishAttempt{ScreenshotClipboardCommitFailure::None, 0, true};
         }
         if (guardedClipboard.isNull()) {
@@ -990,7 +1010,7 @@ ScreenshotClipboardService::commitMimeData(QClipboard* clipboard, QObject* recei
     auto attempt = [guardedClipboard, holder, publicationId, fileUrls, placementFormat,
                     placementBytes, appearanceFormat, appearanceBytes,
                     nativeFilePublication = std::move(nativeFilePublication)]() {
-        if (publicationId != g_latestPublicationId.load(std::memory_order_acquire)) {
+        if (!claimPublication(publicationId)) {
             return ClipboardPublishAttempt{ScreenshotClipboardCommitFailure::None, 0, true};
         }
         if (guardedClipboard.isNull()) {

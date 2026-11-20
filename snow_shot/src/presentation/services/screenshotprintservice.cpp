@@ -252,6 +252,8 @@ void ScreenshotPrintService::startBackend(const std::shared_ptr<Request>& reques
                 guard->m_request.reset();
                 QObject::disconnect(request->ownerDestroyed);
                 QObject::disconnect(request->receiverDestroyed);
+                if (result.status == Status::Submitted)
+                    result.submittedImage = request->image;
                 if (request->receiver)
                     request->completion(std::move(result));
             },

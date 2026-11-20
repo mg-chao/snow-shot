@@ -2306,10 +2306,6 @@ Files:
             <translation>无法捕获窗口的当前内容</translation>
         </message>
         <message>
-            <source>The image could not be saved automatically: %1</source>
-            <translation>无法自动保存图像：%1</translation>
-        </message>
-        <message>
             <source>The new content could not be loaded</source>
             <translation>无法加载新内容</translation>
         </message>

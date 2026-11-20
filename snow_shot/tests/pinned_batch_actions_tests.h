@@ -361,12 +361,17 @@ void saving() {
     const auto oldName = settings.manualSaveFilenameFormat();
     const auto oldFormat = settings.lastManualSaveFormat();
     const auto oldDirectory = settings.lastManualSaveDirectory();
+    using snow_shot::storage::ExportTrigger;
+    const auto oldTasks = settings.exportTasks(ExportTrigger::PinnedSave);
     const auto restore = qScopeGuard([&] {
         settings.setManualSaveFilenameFormat(oldName);
         settings.setLastManualSaveFormat(oldFormat);
         settings.setLastManualSaveDirectory(oldDirectory);
+        settings.setExportTasks(ExportTrigger::PinnedSave, oldTasks);
     });
-    require(settings.setManualSaveFilenameFormat(QStringLiteral("Batch")) &&
+    require(settings.setExportTasks(ExportTrigger::PinnedSave,
+                                    snow_shot::storage::ExportTask::CopyFile) &&
+                settings.setManualSaveFilenameFormat(QStringLiteral("Batch")) &&
                 settings.setLastManualSaveFormat(QStringLiteral("png")),
             "set deterministic batch names");
     PinnedSelectionFixture fixture;
@@ -402,10 +407,13 @@ void saving() {
                 QDir(output.path()).entryList(QDir::Files).size() == 1,
             "menu and shortcut prompt for a folder; cancel writes nothing and releases the dialog");
     }
+    const auto clipboard = QStringLiteral("before batch save");
+    QApplication::clipboard()->setText(clipboard);
     Access::batchSave(first, output.path());
     require(Access::batchSaving(), "batch save holds the admission guard before yielding");
     Access::batchSave(second, output.path());
     waitForSave();
+    require(QApplication::clipboard()->text() == clipboard, "batch saves skip post-save tasks");
     require(read(output.filePath(QStringLiteral("Batch_1.png"))) == "existing" &&
                 !QImage(output.filePath(QStringLiteral("Batch_2.png"))).isNull() &&
                 !QImage(output.filePath(QStringLiteral("Batch_3.png"))).isNull() &&
@@ -567,17 +575,17 @@ void copying() {
 
 void newerBatchCopyCancelsSingleCopy() {
     const snow_shot::storage::ScreenshotSettings settings;
-    const auto oldActions = settings.autoSaveAfterExecutionActions();
+    const auto oldActions = settings.exportTasks(snow_shot::storage::ExportTrigger::PinnedCopy);
     const auto oldName = settings.autoSaveFilenameFormat();
     const auto oldFormat = settings.imageFormat();
     const auto oldCopyFiles = settings.copyImageFileToClipboard();
     const auto restore = qScopeGuard([&] {
-        settings.setAutoSaveAfterExecutionActions(oldActions);
+        settings.setExportTasks(snow_shot::storage::ExportTrigger::PinnedCopy, oldActions);
         settings.setAutoSaveFilenameFormat(oldName);
         settings.setImageFormat(oldFormat);
         settings.setCopyImageFileToClipboard(oldCopyFiles);
     });
-    require(settings.setAutoSaveAfterExecutionActions({}) &&
+    require(settings.setExportTasks(snow_shot::storage::ExportTrigger::PinnedCopy, {}) &&
                 settings.setAutoSaveFilenameFormat(QStringLiteral("SupersedingBatch")) &&
                 settings.setImageFormat(QStringLiteral("png")) &&
                 settings.setCopyImageFileToClipboard(true),

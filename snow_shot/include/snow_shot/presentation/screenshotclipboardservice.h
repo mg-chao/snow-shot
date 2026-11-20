@@ -115,6 +115,10 @@ class ScreenshotClipboardService final {
     // Reserve before asynchronous preparation and carry the ID through commit so request order
     // wins over completion order.
     [[nodiscard]] static PublicationId reservePublication();
+    // Order a clipboard follow-up at action time. It takes precedence over older requests
+    // only once it attempts to publish, so an unsuccessful primary action has no effect.
+    [[nodiscard]] static PublicationId deferPublication();
+    [[nodiscard]] static bool publicationSuperseded(PublicationId id);
 
     // Callers snapshot image export settings before scheduling asynchronous preparation.
     [[nodiscard]] static ScreenshotClipboardPayload

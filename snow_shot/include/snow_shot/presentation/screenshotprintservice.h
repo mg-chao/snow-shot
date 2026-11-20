@@ -18,6 +18,7 @@ class ScreenshotPrintService final : public QObject {
     struct Result {
         Status status = Status::Failed;
         QString error;
+        QImage submittedImage{};
     };
     using Completion = std::function<void(Result)>;
     using Backend = std::function<void(QWidget*, QImage, Completion)>;

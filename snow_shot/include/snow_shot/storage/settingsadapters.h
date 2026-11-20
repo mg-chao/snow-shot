@@ -1,6 +1,7 @@
 #ifndef SNOW_SHOT_STORAGE_SETTINGSADAPTERS_H
 #define SNOW_SHOT_STORAGE_SETTINGSADAPTERS_H
 
+#include "snow_shot/storage/exporttasks.h"
 #include "snow_shot/app/edition.h"
 #include "snow_shot/clouduploadconfiguration.h"
 #if SNOW_SHOT_ENABLE_API_CONFIGURATION
@@ -289,13 +290,10 @@ class ScreenshotSettings final {
     bool setHiDpiImageScaling(const QString& mode) const;
     [[nodiscard]] QString selectionResizeMode() const;
     bool setSelectionResizeMode(const QString& mode) const;
-    [[nodiscard]] QStringList autoSaveAfterExecutionActions() const;
-    bool setAutoSaveAfterExecutionActions(const QStringList& actions) const;
-    [[nodiscard]] bool autoSaveAfterExecution(const QString& action) const;
+    [[nodiscard]] ExportTasks exportTasks(ExportTrigger trigger) const;
+    bool setExportTasks(ExportTrigger trigger, ExportTasks tasks) const;
     [[nodiscard]] bool copyImageFileToClipboard() const;
     bool setCopyImageFileToClipboard(bool enabled) const;
-    [[nodiscard]] bool copyAfterPinningToScreen() const;
-    bool setCopyAfterPinningToScreen(bool enabled) const;
     [[nodiscard]] bool keepAnnotationsEditableAfterPinningToScreen() const;
     bool setKeepAnnotationsEditableAfterPinningToScreen(bool enabled) const;
     [[nodiscard]] QString imageSaveDirectory() const;

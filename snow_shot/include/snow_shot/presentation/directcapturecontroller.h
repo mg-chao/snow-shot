@@ -25,6 +25,7 @@ class DirectCaptureController final : public QObject {
     [[nodiscard]] bool blocksApplicationUpdate() const;
 
   signals:
+    void pinRequested(const QImage& image, const QRect& logicalBounds);
     void captureActivityChanged(const QString& source, bool active);
     void operationFailed(const QString& message, bool warning);
 

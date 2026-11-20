@@ -917,26 +917,29 @@ class NativePinnedClipboard final : public ScreenshotPinnedClipboard {
 };
 } // namespace
 
-struct ScreenshotPinnedWindow::CopyOutputOptions {
-    explicit CopyOutputOptions(const snow_shot::storage::ScreenshotSettings& settings)
-        : autoSave(settings.autoSaveAfterExecution(QStringLiteral("copy_pinned_image"))),
-          copyFile(settings.copyImageFileToClipboard()),
-          configuredSaveDirectory(settings.imageSaveDirectory()),
-          format(ScreenshotImageFileService::formatForKey(settings.imageFormat())),
-          filenameFormat(settings.autoSaveFilenameFormat()),
-          encoding(snow_shot::presentation::screenshotEncodingOptions(settings)),
-          pdf{screenshot_pdf::pageSizeForKey(settings.pdfPageSize())},
-          requestedAt(QDateTime::currentDateTime()) {}
+using ExportTrigger = snow_shot::storage::ExportTrigger;
+using ExportTask = snow_shot::storage::ExportTask;
 
-    bool autoSave;
-    bool copyFile;
-    QString configuredSaveDirectory;
-    ScreenshotImageFileFormat format;
-    QString filenameFormat;
-    ScreenshotImageEncodingOptions encoding;
-    ScreenshotPdfOptions pdf;
-    QDateTime requestedAt;
-};
+ScreenshotExportTasks ScreenshotPinnedWindow::tasksFor(ExportTrigger trigger) {
+    const auto excluded = isLiveWindow() ? ExportTask::Upload : snow_shot::storage::ExportTasks{};
+    auto tasks = ScreenshotExportTasks::capture(trigger, excluded);
+    if (tasks.selected)
+        tasks.reportError = [guard = QPointer<ScreenshotPinnedWindow>(this)](QString error) {
+            if (guard && !guard->m_closing)
+                showPinnedRecognitionMessage(guard, std::move(error), true);
+        };
+    return tasks;
+}
+
+void ScreenshotPinnedWindow::runTasks(const ScreenshotExportTasks& tasks,
+                                      std::shared_ptr<ScreenshotExportArtifact> image,
+                                      ScreenshotEncodedExport file, QImage printed) {
+    if (!tasks.selected || m_closing)
+        return;
+    if (!m_exportTaskOwner)
+        m_exportTaskOwner = std::make_unique<QObject>(this);
+    tasks.run(m_exportTaskOwner.get(), std::move(image), std::move(file), std::move(printed));
+}
 
 struct ScreenshotPinnedWindow::PinnedRenderCache final {
     struct Entry {
@@ -2343,6 +2346,7 @@ bool ScreenshotPinnedWindow::present(const Config& requestedConfig,
     m_imageLoader = config.imageLoader;
     m_printService = config.printService;
     m_airDropService = config.airDropService;
+    m_exportTaskOwner.reset();
     cancelCloudUpload();
     ++m_presentationGeneration;
     m_pinnedRenderCache.reset();
@@ -6493,9 +6497,7 @@ void ScreenshotPinnedWindow::copyEditToolbarContent() {
     if (mimeData->hasImage()) {
         const QImage image = qvariant_cast<QImage>(mimeData->imageData());
         if (!image.isNull()) {
-            CopyOutputOptions options{snow_shot::storage::ScreenshotSettings()};
-            options.autoSave = false;
-            options.copyFile = false;
+            auto options = tasksFor(ExportTrigger::PinnedCopy);
             copyRenderedImage(std::make_shared<ScreenshotExportArtifact>(
                                   ScreenshotExportSource::fromImage(image)),
                               options, publicationId);
@@ -6929,7 +6931,7 @@ void ScreenshotPinnedWindow::copyCurrentViewport() {
         copyEditToolbarContent();
         return;
     }
-    copyCurrentViewportWithOptions(CopyOutputOptions(snow_shot::storage::ScreenshotSettings()));
+    copyCurrentViewportWithOptions(tasksFor(ExportTrigger::PinnedCopy));
 }
 
 void ScreenshotPinnedWindow::copyCurrentViewportWithOptions(CopyOutputOptions output) {
@@ -6955,7 +6957,7 @@ void ScreenshotPinnedWindow::copyCurrentViewportWithOptions(CopyOutputOptions ou
 void ScreenshotPinnedWindow::copyRenderedImage(std::shared_ptr<ScreenshotExportArtifact> artifact) {
     if (m_closing || !artifact)
         return;
-    const CopyOutputOptions output{snow_shot::storage::ScreenshotSettings()};
+    const auto output = tasksFor(ExportTrigger::PinnedCopy);
     const auto publicationId = beginCopyRequest();
     copyRenderedImage(std::move(artifact), output, publicationId);
 }
@@ -6966,14 +6968,9 @@ void ScreenshotPinnedWindow::copyRenderedImage(
     if (m_closing || !artifact || m_copyPublicationId != publicationId)
         return;
     m_exportArtifact = artifact;
-    const bool copyFile = output.copyFile;
-    const bool autoSave = output.autoSave;
-    // Image publication and automatic saving finish independently. Keep the artifact
-    // cancellable until both complete, even when the clipboard wins the race.
-    const auto pending = std::make_shared<int>(autoSave ? 2 : 1);
     const auto current = [this, artifact] { return !m_closing && m_exportArtifact == artifact; };
-    const auto finish = [this, current, pending] {
-        if (current() && --*pending == 0)
+    const auto finish = [this, current] {
+        if (current())
             m_exportArtifact.reset();
     };
     const auto copyError = [this](const QString& error) {
@@ -6984,61 +6981,45 @@ void ScreenshotPinnedWindow::copyRenderedImage(
                 .arg(error),
             true);
     };
-    const auto committed = [current, finish, copyError](ScreenshotClipboardCommitResult result) {
+    const auto committed = [this, artifact, output, current, finish,
+                            copyError](ScreenshotClipboardCommitResult result,
+                                       ScreenshotEncodedExport file) {
         if (!current())
             return;
-        if (!result.succeeded() && result.failure != ScreenshotClipboardCommitFailure::Cancelled)
-            copyError(result.errorString());
         finish();
+        if (result.succeeded() && !result.superseded)
+            runTasks(output, artifact, std::move(file));
+        else if (!result.succeeded() &&
+                 result.failure != ScreenshotClipboardCommitFailure::Cancelled)
+            copyError(result.errorString());
     };
-    const auto format = output.format;
-    const QString filenameFormat = output.filenameFormat;
-    const auto encoding = output.encoding;
-    const auto pdf = output.pdf;
-    if (autoSave) {
-        const auto saved = [this, current, finish](ScreenshotExportTaskResult result) {
+    const auto& options = output.options;
+    const auto prepared =
+        [this, current, finish, copyError, committed, format = options.format,
+         reusePng = (output.selected.testFlag(ExportTask::AutoSave) || output.cloud) &&
+                    artifact->clipboardMatchesFileEncoding(options.format, options.encoding),
+         publicationId](ScreenshotExportClipboardResult result) {
             if (!current())
                 return;
-            if (!result.succeeded() &&
-                result.failureStage != ScreenshotExportFailureStage::Cancelled) {
-                showPinnedRecognitionMessage(
-                    this,
-                    QCoreApplication::translate("ScreenshotPinnedWindow",
-                                                "The image could not be saved automatically: %1")
-                        .arg(result.error),
-                    true);
+            if (!result.succeeded()) {
+                copyError(result.error);
+                finish();
+                return;
             }
-            finish();
+            const auto file = ScreenshotEncodedExport::fromClipboard(result, format, reusePng);
+            m_clipboardCommit = ScreenshotClipboardService::commit(
+                QApplication::clipboard(), this, std::move(result.payload), publicationId,
+                [committed, file](auto commit) { committed(commit, file); });
+            if (!m_clipboardCommit.isValid()) {
+                copyError(translatePinnedText("The pinned image copy could not be started"));
+                finish();
+            }
         };
-        if (!artifact->requestAutomaticSaveToConfiguredDirectory(
-                this, output.configuredSaveDirectory, format, filenameFormat, encoding, saved, pdf,
-                output.requestedAt)) {
-            saved(ScreenshotExportTaskResult::failure(
-                ScreenshotExportFailureStage::Queue,
-                QCoreApplication::translate("ScreenshotController",
-                                            "The screenshot export queue is full")));
-        }
-    }
-    const auto prepared = [this, current, finish, copyError, committed,
-                           publicationId](ScreenshotExportClipboardResult result) {
-        if (!current())
-            return;
-        if (!result.succeeded()) {
-            copyError(result.error);
-            finish();
-            return;
-        }
-        m_clipboardCommit = ScreenshotClipboardService::commit(
-            QApplication::clipboard(), this, std::move(result.payload), publicationId, committed);
-        if (!m_clipboardCommit.isValid()) {
-            copyError(translatePinnedText("The pinned image copy could not be started"));
-            finish();
-        }
-    };
-    const bool started =
-        copyFile ? artifact->requestClipboardFile(this, format, filenameFormat, encoding, prepared,
-                                                  pdf, output.requestedAt)
-                 : artifact->requestClipboard(this, prepared);
+    const bool started = output.clipboardFile
+                             ? artifact->requestClipboardFile(
+                                   this, options.format, options.filenameFormat, options.encoding,
+                                   prepared, options.pdf, output.requestedAt)
+                             : artifact->requestClipboard(this, prepared);
     if (!started) {
         copyError(translatePinnedText("The pinned image copy could not be started"));
         finish();
@@ -7238,20 +7219,29 @@ void ScreenshotPinnedWindow::quickSave() {
         return;
     }
 #endif
+    const auto tasks = tasksFor(ExportTrigger::PinnedSave);
     m_quickSavePending = true;
     if (m_originalImage.isNull()) {
-        requestMaterializedImage([this](bool succeeded) {
+        requestMaterializedImage([this, tasks](bool succeeded) {
+            if (succeeded) {
+                quickSavePreparedImage(tasks);
+                return;
+            }
             m_quickSavePending = false;
-            if (succeeded && !m_closing) {
-                quickSave();
-            } else if (!succeeded && !m_closing) {
+            if (!m_closing) {
                 showPinnedRecognitionMessage(
                     this, translatePinnedText("The pinned image could not be prepared"), true);
             }
         });
         return;
     }
-    if (m_transformedImage.isNull() || m_backgroundCanvasRect.isEmpty() ||
+    quickSavePreparedImage(tasks);
+}
+
+void ScreenshotPinnedWindow::quickSavePreparedImage(const ScreenshotExportTasks& tasks) {
+    if (m_closing || m_printPending || m_recognitionSavePending ||
+        property("saveDialogOpen").toBool() || m_transformedImage.isNull() ||
+        m_backgroundCanvasRect.isEmpty() ||
         (!animatedImage() && m_canvas && !m_canvas->resetEditingStatePreservingTool())) {
         m_quickSavePending = false;
         return;
@@ -7264,11 +7254,16 @@ void ScreenshotPinnedWindow::quickSave() {
         return;
     }
     m_quickSaveArtifact = artifact;
-    const auto complete = [this, artifact](ScreenshotExportTaskResult result) {
+    const auto complete = [this, artifact, tasks](ScreenshotExportTaskResult result) {
         if (m_closing || m_quickSaveArtifact != artifact)
             return;
         m_quickSaveArtifact.reset();
         m_quickSavePending = false;
+        if (result.succeeded())
+            runTasks(tasks, {},
+                     ScreenshotEncodedExport::fromSave(
+                         result, ScreenshotImageFileService::formatForPath(result.savedPath)
+                                     .value_or(tasks.options.format)));
         if (!result.succeeded() && result.failureStage != ScreenshotExportFailureStage::Cancelled) {
             showPinnedRecognitionMessage(
                 this,
@@ -7278,7 +7273,7 @@ void ScreenshotPinnedWindow::quickSave() {
                 true);
         }
     };
-    if (!artifact->requestQuickSave(this, complete)) {
+    if (!artifact->requestQuickSave(this, complete, {}, tasks.cloud.has_value())) {
         complete(ScreenshotExportTaskResult::failure(
             ScreenshotExportFailureStage::Queue,
             QCoreApplication::translate("ScreenshotController",
@@ -7351,6 +7346,7 @@ void ScreenshotPinnedWindow::saveRecognitionSnapshot(ScreenshotRecognitionFileSn
 #endif
 
 void ScreenshotPinnedWindow::cancelContentReplacement() {
+    m_exportTaskOwner.reset();
     cancelCloudUpload();
     ++m_contentReplacementGeneration;
     m_contentReplacementJob.cancel();
@@ -7770,6 +7766,7 @@ bool ScreenshotPinnedWindow::replaceContent(ScreenshotClipboardContent content,
         m_quickSaveArtifact.reset();
     }
     m_quickSavePending = false;
+    m_exportTaskOwner.reset();
     cancelCloudUpload();
     ++m_presentationGeneration;
     m_pinnedRenderCache.reset();
@@ -7873,13 +7870,17 @@ void ScreenshotPinnedWindow::printContent() {
     const QPointer<ScreenshotPinnedWindow> receiver(this);
     const QPointer<ScreenshotPrintService> printer(&service);
     const auto completed = std::make_shared<bool>(false);
+    const auto tasks = tasksFor(ExportTrigger::PinnedPrint);
+    const auto original =
+        tasks.selected.testFlag(ExportTask::CopyImage) ? std::make_shared<QImage>() : nullptr;
     const QPointer<QWidget> previousFocus(QApplication::focusWidget());
     const auto interactionGuard = std::make_shared<ScreenshotPrintInteractionGuard>(
         QList<QWidget*>{this, m_editController ? m_editController->toolbarWindow() : nullptr});
     // Printing blocks input without the move/resize lifecycle that hides and re-anchors the
     // toolbar.
     updateOriginalImagePreviewVisibility();
-    const auto finished = [receiver, previousFocus, suspension, generation, replacement, completed,
+    const auto finished = [receiver, tasks, original, previousFocus, suspension, generation,
+                           replacement, completed,
                            interactionGuard](ScreenshotPrintService::Result result) {
         if (std::exchange(*completed, true))
             return;
@@ -7895,9 +7896,16 @@ void ScreenshotPinnedWindow::printContent() {
         receiver->m_nativeExportArtifact.reset();
         receiver->m_shortcutManager->resumeInput(suspension);
         receiver->updateOriginalImagePreviewVisibility();
-        if (receiver->m_closing || !receiver->isVisible() ||
-            receiver->m_presentationGeneration != generation ||
+        if (receiver->m_closing || receiver->m_presentationGeneration != generation ||
             receiver->m_contentReplacementGeneration != replacement)
+            return;
+        if (result.status == ScreenshotPrintService::Status::Submitted) {
+            const auto source = original ? std::make_shared<ScreenshotExportArtifact>(
+                                               ScreenshotExportSource::fromImage(*original))
+                                         : nullptr;
+            receiver->runTasks(tasks, source, {}, std::move(result.submittedImage));
+        }
+        if (!receiver || !receiver->isVisible())
             return;
         receiver->activateWindow();
         if (previousFocus && previousFocus->isVisible())
@@ -7912,7 +7920,7 @@ void ScreenshotPinnedWindow::printContent() {
                     .arg(result.error),
                 true);
     };
-    const auto ready = [receiver, generation, replacement, printer, completed,
+    const auto ready = [receiver, generation, replacement, original, printer, completed,
                         finished](ScreenshotExportImageResult result) {
         if (*completed || !receiver)
             return;
@@ -7921,6 +7929,8 @@ void ScreenshotPinnedWindow::printContent() {
             finished({ScreenshotPrintService::Status::Cancelled, {}});
             return;
         }
+        if (original)
+            *original = result.image;
         const bool snapshotSucceeded = result.succeeded();
         if (!snapshotSucceeded || !printer ||
             !printer->printImage(receiver, receiver, std::move(result.image), finished)) {
@@ -7929,7 +7939,7 @@ void ScreenshotPinnedWindow::printContent() {
                 {{QStringLiteral("request_kind"), QStringLiteral("pinned")},
                  {QStringLiteral("operation"), QString::number(replacement)},
                  {QStringLiteral("stage"), !snapshotSucceeded ? QStringLiteral("export_image")
-                                           : !printer         ? QStringLiteral("service_destroyed")
+                                           : !printer ? QStringLiteral("service_destroyed")
                                                       : QStringLiteral("service_rejected")}},
                 QtWarningMsg);
             finished({ScreenshotPrintService::Status::Failed,
@@ -8020,9 +8030,14 @@ void ScreenshotPinnedWindow::airDropContent() {
     const auto interaction = std::make_shared<ScreenshotPrintInteractionGuard>(
         QList<QWidget*>{this, m_editController ? m_editController->toolbarWindow() : nullptr});
     const auto completed = std::make_shared<bool>(false);
+    const auto tasks = tasksFor(ExportTrigger::PinnedAirDrop);
+    const auto original = (tasks.selected.testFlag(ExportTask::CopyImage) ||
+                           tasks.selected.testFlag(ExportTask::AutoSave))
+                              ? std::make_shared<QImage>()
+                              : nullptr;
     updateOriginalImagePreviewVisibility();
-    const auto finished = [receiver, previousFocus, generation, replacement, suspension,
-                           interaction, completed](Service::Result result) {
+    const auto finished = [receiver, tasks, original, previousFocus, generation, replacement,
+                           suspension, interaction, completed](Service::Result result) {
         if (std::exchange(*completed, true))
             return;
         interaction->release();
@@ -8033,9 +8048,18 @@ void ScreenshotPinnedWindow::airDropContent() {
         receiver->setProperty("saveDialogOpen", false);
         receiver->m_shortcutManager->resumeInput(suspension);
         receiver->updateOriginalImagePreviewVisibility();
-        if (receiver->m_closing || !receiver->isVisible() ||
-            receiver->m_presentationGeneration != generation ||
+        if (receiver->m_closing || receiver->m_presentationGeneration != generation ||
             receiver->m_contentReplacementGeneration != replacement)
+            return;
+        if (result.status == Service::Status::Shared) {
+            const auto source = original ? std::make_shared<ScreenshotExportArtifact>(
+                                               ScreenshotExportSource::fromImage(*original))
+                                         : nullptr;
+            receiver->runTasks(
+                tasks, source,
+                {result.sharedPath, ScreenshotImageFileFormat::Png, {}, -1, result.fileLifetime});
+        }
+        if (!receiver || !receiver->isVisible())
             return;
         receiver->activateWindow();
         if (previousFocus && previousFocus->isVisible())
@@ -8051,7 +8075,7 @@ void ScreenshotPinnedWindow::airDropContent() {
                     .arg(result.error),
                 true);
     };
-    requestVisibleContentSnapshot([receiver, sharing, generation, replacement, finished,
+    requestVisibleContentSnapshot([receiver, original, sharing, generation, replacement, finished,
                                    completed](ScreenshotExportImageResult result) {
         if (*completed || !receiver)
             return;
@@ -8060,6 +8084,8 @@ void ScreenshotPinnedWindow::airDropContent() {
             finished({Service::Status::Cancelled, {}});
             return;
         }
+        if (original)
+            *original = result.image;
         const QString filename =
             ScreenshotImageFileService::suggestedBaseName(
                 snow_shot::storage::ScreenshotSettings().manualSaveFilenameFormat()) +
@@ -8100,6 +8126,7 @@ void ScreenshotPinnedWindow::uploadToCloud() {
     const auto options = ScreenshotCloudUploadService::currentOptions();
     const auto frozenAnimation = animatedImage() ? fileSaveArtifact() : nullptr;
     requestMaterializedImage([this, replacement, generation, config = *config, options,
+                              tasks = tasksFor(ExportTrigger::PinnedUpload),
                               frozenAnimation](bool succeeded) {
         if (m_closing || m_contentReplacementGeneration != replacement ||
             m_presentationGeneration != generation)
@@ -8121,7 +8148,7 @@ void ScreenshotPinnedWindow::uploadToCloud() {
                                                      tr("Uploading to cloud... %1%").arg(percent));
         });
         connect(m_cloudUploadJob, &ScreenshotCloudUploadJob::finished, this,
-                [this, replacement, generation](const ScreenshotCloudUploadResult& result) {
+                [this, replacement, generation, tasks](const ScreenshotCloudUploadResult& result) {
                     m_cloudUploadJob.clear();
                     if (m_closing || replacement != m_contentReplacementGeneration ||
                         generation != m_presentationGeneration)
@@ -8131,10 +8158,14 @@ void ScreenshotPinnedWindow::uploadToCloud() {
                         m_editController->toolbarWindow()->palette()->setCloudUploadBusy(false);
                     if (result.status == ScreenshotCloudUploadResult::Status::Succeeded) {
                         const QPointer<ScreenshotPinnedWindow> lifetime(this);
+                        static_cast<void>(ScreenshotClipboardService::reservePublication());
                         QApplication::clipboard()->setText(result.url.toString(QUrl::FullyEncoded));
                         if (!lifetime || m_closing ||
                             replacement != m_contentReplacementGeneration ||
                             generation != m_presentationGeneration)
+                            return;
+                        runTasks(tasks, {}, result.file);
+                        if (!lifetime)
                             return;
                         adqt::widgets::AdMessage::Request message;
                         message.key = QStringLiteral("cloud-upload");
@@ -8224,6 +8255,7 @@ void ScreenshotPinnedWindow::saveAsFile() {
         return;
     const snow_shot::storage::ScreenshotSettings outputSettings;
     const auto encoding = snow_shot::presentation::screenshotEncodingOptions(outputSettings);
+    auto tasks = tasksFor(ExportTrigger::PinnedSave);
     if (outputSettings.saveAsFileDialog() == QStringLiteral("snow_shot")) {
         setProperty("saveDialogOpen", true);
         if (!ScreenshotSaveAsFileDialog::open(
@@ -8235,7 +8267,18 @@ void ScreenshotPinnedWindow::saveAsFile() {
                         setFocus();
                     }
                 },
-                m_editController ? m_editController->toolbarWindow() : nullptr))
+                m_editController ? m_editController->toolbarWindow() : nullptr,
+                Qt::ApplicationModal,
+                [this, tasks] {
+                    auto writeTasks = tasks;
+                    writeTasks.deferClipboardPublication();
+                    return [this, tasks = std::move(writeTasks)](
+                               const ScreenshotImageFileSaveResult& saved,
+                               ScreenshotImageFileFormat format) {
+                        runTasks(tasks, {}, ScreenshotEncodedExport::fromSave(saved, format));
+                    };
+                },
+                tasks.cloud.has_value()))
             setProperty("saveDialogOpen", false);
         return;
     }
@@ -8255,6 +8298,7 @@ void ScreenshotPinnedWindow::saveAsFile() {
     if (selectedPath.isEmpty()) {
         return;
     }
+    tasks.deferClipboardPublication();
 
     const ScreenshotImageFileFormat format =
         ScreenshotImageFileService::formatForDialogSelection(selectedPath, selectedFilter);
@@ -8267,7 +8311,7 @@ void ScreenshotPinnedWindow::saveAsFile() {
     m_exportArtifact = artifact;
     if (!artifact->requestSaveToPath(
             this, outputPath, format, encoding,
-            [this, artifact](ScreenshotExportTaskResult result) {
+            [this, artifact, tasks, format](ScreenshotExportTaskResult result) {
                 if (m_closing || m_exportArtifact != artifact)
                     return;
                 m_exportArtifact.reset();
@@ -8275,6 +8319,7 @@ void ScreenshotPinnedWindow::saveAsFile() {
                     static_cast<void>(
                         snow_shot::storage::ScreenshotSettings().setLastManualSaveDirectory(
                             QFileInfo(result.savedPath).absolutePath()));
+                    runTasks(tasks, {}, ScreenshotEncodedExport::fromSave(result, format));
                 } else if (result.failureStage != ScreenshotExportFailureStage::Cancelled) {
                     showPinnedRecognitionMessage(
                         this,
@@ -8284,7 +8329,7 @@ void ScreenshotPinnedWindow::saveAsFile() {
                         true);
                 }
             },
-            pdf)) {
+            pdf, {}, tasks.cloud.has_value())) {
         if (m_exportArtifact == artifact) {
             m_exportArtifact.reset();
         }

@@ -2273,10 +2273,12 @@ void exportCompletionFailureCancellationAndHistoryIsolation(const QString& direc
     const QString automaticDirectory = QDir(directory).filePath(QStringLiteral("automatic"));
     require(QDir().mkpath(automaticDirectory), "create isolated automatic-save destination");
     const storage::ScreenshotSettings settings;
-    require(settings.setAutoSaveAfterExecutionActions({QStringLiteral("copy_screenshot")}) &&
+    require(settings.setExportTasks(snow_shot::storage::ExportTrigger::ScreenshotCopy,
+                                    snow_shot::storage::ExportTask::AutoSave) &&
                 settings.setCopyImageFileToClipboard(false) &&
                 settings.setImageSaveDirectory(automaticDirectory) &&
-                settings.autoSaveAfterExecution(QStringLiteral("copy_screenshot")),
+                settings.exportTasks(storage::ExportTrigger::ScreenshotCopy)
+                    .testFlag(storage::ExportTask::AutoSave),
             "enable the existing screenshot auto-save setting in isolated real configuration");
     Ports ports;
     auto services = ports.services();
@@ -2344,7 +2346,8 @@ void exportCompletionFailureCancellationAndHistoryIsolation(const QString& direc
                 repository.recordsSnapshot().records == before.records &&
                 QDir(automaticDirectory).entryList(QDir::Files).isEmpty() &&
                 ports.saves.size() == 2 &&
-                settings.autoSaveAfterExecution(QStringLiteral("copy_screenshot")),
+                settings.exportTasks(storage::ExportTrigger::ScreenshotCopy)
+                    .testFlag(storage::ExportTask::AutoSave),
             "collage exports never add history or trigger screenshot automatic saving");
 }
 

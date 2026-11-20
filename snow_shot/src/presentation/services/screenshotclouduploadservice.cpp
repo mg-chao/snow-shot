@@ -5,6 +5,7 @@
 #include "snow_shot/storage/settingsadapters.h"
 #include "snow_shot/storage/exportfilename.h"
 #include <QCoreApplication>
+#include <QBuffer>
 #include <QCryptographicHash>
 #include <QFile>
 #include <QFutureWatcher>
@@ -36,20 +37,9 @@ QNetworkAccessManager* sharedNetworkAccessManager() {
 }
 
 struct Payload {
-    QTemporaryDir directory;
-    QString path;
+    ScreenshotEncodedExport file;
+    std::shared_ptr<QIODevice> reader;
     std::atomic_bool cancelled = false;
-};
-class UploadFile final : public QFile {
-  public:
-    explicit UploadFile(std::shared_ptr<Payload> payload)
-        : QFile(payload->path), m_payload(std::move(payload)) {}
-    ~UploadFile() override {
-        close();
-    }
-
-  private:
-    std::shared_ptr<Payload> m_payload;
 };
 QByteArray contentType(ScreenshotImageFileFormat format) {
     switch (format) {
@@ -83,6 +73,7 @@ struct ScreenshotCloudUploadJob::Impl {
     QPointer<QNetworkReply> reply;
     QString key;
     bool terminal = false;
+    bool cancelSourceOnAbort = true;
 };
 ScreenshotCloudUploadJob::ScreenshotCloudUploadJob(
     std::shared_ptr<ScreenshotExportArtifact> artifact, snow_shot::CloudUploadConfiguration config,
@@ -96,19 +87,19 @@ ScreenshotCloudUploadJob::ScreenshotCloudUploadJob(
 ScreenshotCloudUploadJob::~ScreenshotCloudUploadJob() {
     m_impl->terminal = true;
     m_impl->payload->cancelled = true;
-    if (m_impl->artifact)
+    if (m_impl->artifact && m_impl->cancelSourceOnAbort)
         m_impl->artifact->cancel();
     if (m_impl->reply)
         m_impl->reply->abort();
 }
 QString ScreenshotCloudUploadJob::preparedPath() const {
-    return m_impl->payload->path;
+    return m_impl->payload->file.path;
 }
 void ScreenshotCloudUploadJob::cancel() {
     if (m_impl->terminal)
         return;
     m_impl->payload->cancelled = true;
-    if (m_impl->artifact)
+    if (m_impl->artifact && m_impl->cancelSourceOnAbort)
         m_impl->artifact->cancel();
     const auto reply = m_impl->reply;
     complete({ScreenshotCloudUploadResult::Status::Cancelled, {}, {}});
@@ -128,8 +119,8 @@ void ScreenshotCloudUploadJob::complete(ScreenshotCloudUploadResult result) {
 void ScreenshotCloudUploadJob::prepare() {
     if (m_impl->terminal)
         return;
-    if (!m_impl->artifact || !snow_shot::cloudUploadConfigurationUsable(m_impl->config) ||
-        !m_impl->payload->directory.isValid()) {
+    if ((!m_impl->artifact && !m_impl->payload->reader) ||
+        !snow_shot::cloudUploadConfigurationUsable(m_impl->config)) {
         complete({ScreenshotCloudUploadResult::Status::Failed,
                   {},
                   tr("The cloud upload configuration or image is unavailable")});
@@ -145,9 +136,19 @@ void ScreenshotCloudUploadJob::prepare() {
     while (prefix.endsWith(u'/'))
         prefix.chop(1);
     m_impl->key = prefix.isEmpty() ? filename : prefix + u'/' + filename;
-    m_impl->payload->path = m_impl->payload->directory.filePath(filename);
+    if (m_impl->payload->reader) {
+        readyToUpload();
+        return;
+    }
+    auto directory = std::make_shared<QTemporaryDir>();
+    if (!directory->isValid()) {
+        complete({ScreenshotCloudUploadResult::Status::Failed, {}, directory->errorString()});
+        return;
+    }
+    m_impl->payload->file = {
+        directory->filePath(filename), m_impl->options.format, {}, -1, directory};
     const bool started = m_impl->artifact->requestSaveToPath(
-        this, m_impl->payload->path, m_impl->options.format, m_impl->options.encoding,
+        this, m_impl->payload->file.path, m_impl->options.format, m_impl->options.encoding,
         [this](ScreenshotExportTaskResult result) {
             if (m_impl->terminal)
                 return;
@@ -157,44 +158,11 @@ void ScreenshotCloudUploadJob::prepare() {
             }
             // Encoding is complete. Only the temporary file is needed for hashing and upload.
             m_impl->artifact.reset();
-            const QPointer<ScreenshotCloudUploadJob> guard(this);
-            emit progress(0);
-            if (!guard || guard->m_impl->terminal)
-                return;
-            if (!result.encodedSha256.isEmpty()) {
-                upload(result.encodedSha256);
-                return;
-            }
-            auto* watcher = new QFutureWatcher<QByteArray>(this);
-            const auto payload = m_impl->payload;
-            connect(watcher, &QFutureWatcher<QByteArray>::finished, this, [this, watcher] {
-                const auto hash = watcher->result();
-                watcher->deleteLater();
-                if (m_impl->terminal)
-                    return;
-                if (hash.isEmpty()) {
-                    complete({ScreenshotCloudUploadResult::Status::Failed,
-                              {},
-                              tr("The image could not be prepared for upload")});
-                } else
-                    upload(hash);
-            });
-            watcher->setFuture(QtConcurrent::run(snow_shot::runtime::trackRuntimeWork([payload] {
-                QFile file(payload->path);
-                if (!file.open(QIODevice::ReadOnly))
-                    return QByteArray{};
-                QCryptographicHash hash(QCryptographicHash::Sha256);
-                QByteArray buffer(1024 * 1024, Qt::Uninitialized);
-                while (!file.atEnd()) {
-                    if (payload->cancelled)
-                        return QByteArray{};
-                    const auto bytesRead = file.read(buffer.data(), buffer.size());
-                    if (bytesRead <= 0)
-                        return QByteArray{};
-                    hash.addData(QByteArrayView(buffer.constData(), bytesRead));
-                }
-                return hash.result().toHex();
-            })));
+            auto& file = m_impl->payload->file;
+            file.sha256 = std::move(result.encodedSha256);
+            file.byteCount = result.encodedByteCount;
+            m_impl->payload->reader = ScreenshotImageFileService::openExportReader(file.path);
+            readyToUpload();
         },
         m_impl->options.pdf, m_impl->payload);
     if (!started)
@@ -202,6 +170,54 @@ void ScreenshotCloudUploadJob::prepare() {
                   {},
                   tr("The screenshot export queue is full")});
 }
+void ScreenshotCloudUploadJob::readyToUpload() {
+    const auto payload = m_impl->payload;
+    if (!payload->reader || !payload->reader->isOpen() || payload->reader->size() <= 0 ||
+        (payload->file.byteCount >= 0 && payload->file.byteCount != payload->reader->size())) {
+        complete({ScreenshotCloudUploadResult::Status::Failed,
+                  {},
+                  tr("The image could not be opened for upload")});
+        return;
+    }
+    const QPointer<ScreenshotCloudUploadJob> guard(this);
+    emit progress(0);
+    if (!guard || m_impl->terminal)
+        return;
+    if (!payload->file.sha256.isEmpty()) {
+        upload(payload->file.sha256);
+        return;
+    }
+    auto* watcher = new QFutureWatcher<QByteArray>(this);
+    connect(watcher, &QFutureWatcher<QByteArray>::finished, this, [this, watcher] {
+        const auto hash = watcher->result();
+        watcher->deleteLater();
+        if (m_impl->terminal)
+            return;
+        if (hash.isEmpty()) {
+            complete({ScreenshotCloudUploadResult::Status::Failed,
+                      {},
+                      tr("The image could not be prepared for upload")});
+            return;
+        }
+        m_impl->payload->file.sha256 = hash;
+        upload(hash);
+    });
+    watcher->setFuture(QtConcurrent::run(snow_shot::runtime::trackRuntimeWork([payload] {
+        auto& input = *payload->reader;
+        QCryptographicHash hash(QCryptographicHash::Sha256);
+        QByteArray buffer(1024 * 1024, Qt::Uninitialized);
+        while (!input.atEnd()) {
+            if (payload->cancelled)
+                return QByteArray{};
+            const auto count = input.read(buffer.data(), buffer.size());
+            if (count <= 0)
+                return QByteArray{};
+            hash.addData(QByteArrayView(buffer.constData(), count));
+        }
+        return input.seek(0) ? hash.result().toHex() : QByteArray{};
+    })));
+}
+
 void ScreenshotCloudUploadJob::upload(const QByteArray& hash) {
     auto* manager = sharedNetworkAccessManager();
     if (manager == nullptr) {
@@ -210,21 +226,15 @@ void ScreenshotCloudUploadJob::upload(const QByteArray& hash) {
                   tr("Cloud upload failed because of a network error or timeout")});
         return;
     }
-    auto* file = new UploadFile(m_impl->payload);
-    if (!file->open(QIODevice::ReadOnly)) {
-        delete file;
-        complete({ScreenshotCloudUploadResult::Status::Failed,
-                  {},
-                  tr("The image could not be opened for upload")});
-        return;
-    }
+    const auto file = m_impl->payload->reader;
     auto request = snow_shot::s3_upload::signedPut(m_impl->config, m_impl->key, hash,
                                                    contentType(m_impl->options.format),
                                                    QDateTime::currentDateTimeUtc());
     request.setHeader(QNetworkRequest::ContentLengthHeader, file->size());
     request.setTransferTimeout(m_impl->options.transferTimeoutMs);
-    auto* reply = manager->put(request, file);
-    file->setParent(reply);
+    auto* reply = manager->put(request, file.get());
+    // The network backend may still read during abort or source destruction.
+    connect(reply, &QObject::destroyed, [payload = m_impl->payload] {});
     m_impl->reply = reply;
     connect(reply, &QNetworkReply::finished, reply, &QObject::deleteLater);
     connect(reply, &QNetworkReply::uploadProgress, this, [this](qint64 sent, qint64 total) {
@@ -238,11 +248,12 @@ void ScreenshotCloudUploadJob::upload(const QByteArray& hash) {
         if (reply->error() == QNetworkReply::NoError && status >= 200 && status < 300) {
             complete({ScreenshotCloudUploadResult::Status::Succeeded,
                       snow_shot::s3_upload::objectUrl(m_impl->config, m_impl->key, true),
-                      {}});
+                      {},
+                      m_impl->payload->file});
         } else {
             // Only expose an S3 error code, never response messages, URLs or signed headers.
             QString code;
-            QXmlStreamReader xml(reply->read(64 * 1024));
+            QXmlStreamReader xml(reply->isReadable() ? reply->read(64 * 1024) : QByteArray{});
             while (!xml.atEnd()) {
                 xml.readNext();
                 if (xml.isStartElement() && xml.name() == QLatin1StringView("Code")) {
@@ -263,17 +274,42 @@ void ScreenshotCloudUploadJob::upload(const QByteArray& hash) {
         }
     });
 }
-ScreenshotCloudUploadJob* ScreenshotCloudUploadService::upload(
-    std::shared_ptr<ScreenshotExportArtifact> artifact, snow_shot::CloudUploadConfiguration config,
-    ScreenshotCloudUploadOptions options, QObject* receiver, Completion completion) {
+ScreenshotCloudUploadJob*
+ScreenshotCloudUploadService::upload(std::shared_ptr<ScreenshotExportArtifact> artifact,
+                                     snow_shot::CloudUploadConfiguration config,
+                                     ScreenshotCloudUploadOptions options, QObject* receiver,
+                                     Completion completion, bool cancelSourceOnAbort) {
     if (!receiver)
         return nullptr;
     auto* job = new ScreenshotCloudUploadJob(std::move(artifact), std::move(config),
                                              std::move(options), receiver);
+    job->m_impl->cancelSourceOnAbort = cancelSourceOnAbort;
     if (completion)
         QObject::connect(job, &ScreenshotCloudUploadJob::finished, receiver, std::move(completion));
     return job;
 }
+ScreenshotCloudUploadJob* ScreenshotCloudUploadService::uploadEncoded(
+    ScreenshotEncodedExport file, snow_shot::CloudUploadConfiguration config,
+    ScreenshotCloudUploadOptions options, QObject* receiver) {
+    if (!receiver || !file.available())
+        return nullptr;
+    options.format = file.format;
+    auto* job = new ScreenshotCloudUploadJob({}, std::move(config), std::move(options), receiver);
+    const auto payload = job->m_impl->payload;
+    payload->file = std::move(file);
+    if (payload->file.reader) {
+        payload->reader = std::move(payload->file.reader);
+    } else if (!payload->file.path.isEmpty()) {
+        payload->reader = ScreenshotImageFileService::openExportReader(payload->file.path);
+    } else {
+        auto buffer = std::make_shared<QBuffer>();
+        buffer->setData(payload->file.bytes);
+        buffer->open(QIODevice::ReadOnly);
+        payload->reader = std::move(buffer);
+    }
+    return job;
+}
+
 ScreenshotCloudUploadOptions ScreenshotCloudUploadService::currentOptions() {
     const snow_shot::storage::ScreenshotSettings settings;
     return {ScreenshotImageFileService::formatForKey(settings.imageFormat()),

@@ -65,15 +65,20 @@ void pngLifetimeAndTerminalOutcomes() {
         if (status == Service::Status::Shared)
             source.setColorSpace(QColorSpace::DisplayP3);
         const QImage expected = source;
-        require(service.shareImage(&owner, &owner, source, QStringLiteral("capture.png"),
-                                   [&](Service::Result result) {
-                                       require(result.status == status, "preserve native outcome");
-                                       require(!service.busy(),
-                                               "release busy state before completion");
-                                       require(QThread::currentThread() == qApp->thread(),
-                                               "completion returns to GUI thread");
-                                       ++completions;
-                                   }),
+        require(service.shareImage(
+                    &owner, &owner, source, QStringLiteral("capture.png"),
+                    [&](Service::Result result) {
+                        require(result.status == status, "preserve native outcome");
+                        require(status == Service::Status::Shared
+                                    ? result.sharedPath == path && result.fileLifetime &&
+                                          QFileInfo::exists(result.sharedPath)
+                                    : result.sharedPath.isEmpty() && !result.fileLifetime,
+                                "only confirmed sharing supplies the actual sent PNG");
+                        require(!service.busy(), "release busy state before completion");
+                        require(QThread::currentThread() == qApp->thread(),
+                                "completion returns to GUI thread");
+                        ++completions;
+                    }),
                 "accept image sharing");
         source.fill(Qt::green);
         require(completions == 0 && service.busy(), "sharing is asynchronous and busy immediately");
@@ -203,14 +208,14 @@ void screenshotCompletionPolicy() {
                 ++released;
                 return true;
             },
-            [&] { ++closed; }, [&](auto) { ++restored; });
+            [&](auto) { ++closed; }, [&](auto) { ++restored; });
         completion({status, {}});
         completion({status, {}});
         require(released == 1 && closed == (status == Service::Status::Shared ? 1 : 0) &&
                     restored == (status == Service::Status::Shared ? 0 : 1),
                 "only a successful share closes the screenshot, once");
         auto stale = screenshotAirDropCompletion(
-            std::make_shared<bool>(false), [] { return false; }, [&] { ++closed; },
+            std::make_shared<bool>(false), [] { return false; }, [&](auto) { ++closed; },
             [&](auto) { ++restored; });
         stale({Service::Status::Shared, {}});
         require(closed + restored == 1,

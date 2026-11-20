@@ -34,10 +34,6 @@
             <translation>請在「系統設定 &gt; 隱私權與安全性 &gt; 自動化」中允許 Snow Shot 存取 Finder，然後再試一次</translation>
         </message>
         <message>
-            <source>Automatic screenshot saving failed: %1</source>
-            <translation>自動儲存截圖失敗：%1</translation>
-        </message>
-        <message>
             <source>Cancel</source>
             <translation>取消</translation>
         </message>
@@ -176,10 +172,6 @@
         <message>
             <source>The screenshot export queue is full</source>
             <translation>截圖匯出佇列已滿</translation>
-        </message>
-        <message>
-            <source>The screenshot will be copied, but automatic saving could not be queued</source>
-            <translation>仍會複製截圖，但無法將自動儲存工作加入佇列</translation>
         </message>
         <message>
             <source>The scrolling screenshot could not be pinned</source>

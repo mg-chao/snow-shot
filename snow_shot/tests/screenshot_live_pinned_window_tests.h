@@ -559,15 +559,32 @@ void liveFramesReplacePixelsWithoutEditingSetup() {
 void deferredCopyRetainsItsActionTimeFrame() {
     const ClipboardRestorer restoreClipboard;
     const snow_shot::storage::ScreenshotSettings settings;
-    const auto previousActions = settings.autoSaveAfterExecutionActions();
+    QTemporaryDir directory;
+    cloud_upload_tests::S3Server server;
+    const snow_shot::storage::CloudUploadConfigurationSettings cloud;
+    const auto profile = cloud_upload_tests::configuration(server.url());
+    const auto previousCloud = cloud.settings();
+    const auto previousDirectory = settings.imageSaveDirectory();
+    const auto previousFormat = settings.imageFormat();
+    const auto previousActions =
+        settings.exportTasks(snow_shot::storage::ExportTrigger::PinnedCopy);
     const bool previousCopyFile = settings.copyImageFileToClipboard();
     const auto restoreSettings = qScopeGuard([&] {
-        static_cast<void>(settings.setAutoSaveAfterExecutionActions(previousActions));
+        static_cast<void>(settings.setExportTasks(snow_shot::storage::ExportTrigger::PinnedCopy,
+                                                  previousActions));
         static_cast<void>(settings.setCopyImageFileToClipboard(previousCopyFile));
+        settings.setImageSaveDirectory(previousDirectory);
+        settings.setImageFormat(previousFormat);
+        cloud.setSettings(previousCloud);
     });
-    require(settings.setAutoSaveAfterExecutionActions({}) &&
+    require(directory.isValid() && settings.setImageSaveDirectory(directory.path()) &&
+                settings.setImageFormat(QStringLiteral("png")) &&
+                cloud.setSettings({{profile}, profile.id}) &&
+                settings.setExportTasks(snow_shot::storage::ExportTrigger::PinnedCopy,
+                                        snow_shot::storage::ExportTask::AutoSave |
+                                            snow_shot::storage::ExportTask::Upload) &&
                 settings.setCopyImageFileToClipboard(false),
-            "configure an image-only clipboard publication");
+            "configure live viewport auto-save and an otherwise usable cloud destination");
     auto source = std::make_shared<FakeSource>();
     source->deferFrames = true;
     ScreenshotPinnedWindow window;
@@ -596,6 +613,13 @@ void deferredCopyRetainsItsActionTimeFrame() {
                 copied.pixelColor(0, 0) == QColor(Qt::red) && source->requests == 1 &&
                 window.isLiveWindow(),
             "actual Copy publishes the original frame and display dimensions exactly once");
+    const QDir output(directory.path());
+    wait([&] { return output.entryList(QDir::Files).size() == 1; },
+         "live viewport auto-save completes");
+    const QImage saved(output.filePath(output.entryList(QDir::Files).first()));
+    require(saved.size() == copied.size() && saved.pixelColor(0, 0) == QColor(Qt::red) &&
+                server.count == 0 && !window.findChild<ScreenshotCloudUploadJob*>(),
+            "live pins save their copied frame and skip the unsupported upload");
     window.closeLiveWindow();
 }
 
@@ -1071,7 +1095,9 @@ void contextMenuMatchesOrdinaryContent() {
     }
     const auto managementIcon = menu->actionIcon(management);
     const auto managementRows = menuAppearance(menu, management).children;
-    require(managementRows.size() == 3, "live management retains its supported appearance actions");
+    require(managementRows.size() == 4 && management->menu()->findChild<QMenu*>(QStringLiteral(
+                                              "screenshotPinnedTransparentLayerMenu")),
+            "live management retains its appearance actions and transparent-layer controls");
 
     const auto checkSeparators = [](auto&& self, QMenu* current) -> void {
         bool previousSeparator = true;
@@ -1111,7 +1137,7 @@ void contextMenuMatchesOrdinaryContent() {
     management = named(menu, "screenshotPinnedWindowManagementAction");
     const auto after = menuAppearance(menu, management);
     require(menu->actionIcon(management) == managementIcon &&
-                after.children.first(3) == managementRows,
+                after.children.first(managementRows.size()) == managementRows,
             "common management controls share the ordinary menu presentation");
     require(menu->findChild<QAction*>(QStringLiteral("screenshotPinnedDrawingAction")) &&
                 menu->findChild<QAction*>(QStringLiteral("screenshotPinnedDestroyAction")) &&
@@ -1566,7 +1592,8 @@ void nativePresentationPreservesShell() {
                                            snow_shot::storage::PinnedGeometryUnits::LogicalPixels
                                        ? window.devicePixelRatioF()
                                        : 1));
-        requireColorNear(raster.pixelColor(margin, raster.height() / 2),
+        // The border ring occupies the device pixel immediately outside the content.
+        requireColorNear(raster.pixelColor(margin - 1, raster.height() / 2),
                          border->property("borderColor").value<QColor>(), 0,
                          "native live content retains the shell's visible border");
         if (!native)

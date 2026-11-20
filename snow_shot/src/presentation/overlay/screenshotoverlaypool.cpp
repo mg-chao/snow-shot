@@ -92,6 +92,10 @@ ScreenshotOverlayPool::ensureOverlay(ScreenshotOverlayWindow* overlay) const {
     if (created) {
         auto* canvas = new ScreenshotOverlayCanvasWidget(m_canvasRuntime);
         overlay = new ScreenshotOverlayWindow(m_eventSink, canvas);
+        // Cocoa can refocus a retired top-level window before its DeferredDelete arrives.
+        // Release every remaining window while its event sink and canvas runtime are alive.
+        QObject::connect(&m_windowLifetime, &QObject::destroyed, overlay,
+                         [overlay] { delete overlay; });
         m_shortcutManager.addScopeWindow(overlay);
     }
 

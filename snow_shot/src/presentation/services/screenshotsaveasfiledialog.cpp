@@ -65,11 +65,12 @@ class SaveContent final : public ImageExportEditor {
     using ImageExportEditor::saving;
     SaveContent(AdModal* modal, std::shared_ptr<ScreenshotExportArtifact> artifact,
                 ScreenshotSaveAsFileDialog::Saved saved,
+                ScreenshotSaveAsFileDialog::BeforeWrite beforeWrite, bool retainFile,
                 const QDateTime& timestamp = QDateTime::currentDateTime())
         : ImageExportEditor(
               ScreenshotSaveDialogState::initial({}, timestamp, artifact->windowNames()), true),
-          m_modal(modal), m_saved(std::move(saved)), m_windowNames(artifact->windowNames()),
-          m_timestamp(timestamp) {
+          m_modal(modal), m_saved(std::move(saved)), m_beforeWrite(std::move(beforeWrite)),
+          m_retainFile(retainFile), m_windowNames(artifact->windowNames()), m_timestamp(timestamp) {
         m_artifact = std::move(artifact);
         setObjectName(QStringLiteral("saveDialogContent"));
         setMinimumHeight(240);
@@ -534,10 +535,13 @@ class SaveContent final : public ImageExportEditor {
         setPhase(Phase::Saving);
         m_renderTimer.stop();
         m_savePath = m_state.outputPath();
+        if (m_beforeWrite)
+            m_written = m_beforeWrite();
         cancelDecode();
         startRender();
     }
     void exportFailed(const QString& error) override {
+        m_written = {};
         setPhase(Phase::Editing);
         m_preview->setBusy(false);
         validateFields();
@@ -549,24 +553,28 @@ class SaveContent final : public ImageExportEditor {
             return;
         m_saveJob = ScreenshotExportCoordinator::shared().submit(
             this, ScreenshotExportCoordinator::Priority::Foreground,
-            [encoded = m_encoded,
-             path = m_savePath](const ScreenshotExportCancellation& cancellation) {
+            [encoded = m_encoded, path = m_savePath,
+             retainFile = m_retainFile](const ScreenshotExportCancellation& cancellation) {
                 ScreenshotExportTaskResult result;
                 const auto cancelled = [&cancellation] {
                     return cancellation.isCancellationRequested();
                 };
                 const auto saved =
-                    encoded->pdf ? ScreenshotImageFileService::writePdf(
-                                       *encoded->pdf, path,
-                                       ScreenshotPdfOptions{encoded->options.pdfPageSize,
-                                                            encoded->options.quality,
-                                                            {},
-                                                            QDateTime::currentDateTimeUtc()},
-                                       cancelled)
-                                 : ScreenshotImageFileService::writeEncodedFile(
-                                       encoded->path, path, encoded->options.format, cancelled);
+                    encoded->pdf
+                        ? ScreenshotImageFileService::writePdf(
+                              *encoded->pdf, path,
+                              ScreenshotPdfOptions{encoded->options.pdfPageSize,
+                                                   encoded->options.quality,
+                                                   {},
+                                                   QDateTime::currentDateTimeUtc()},
+                              cancelled, retainFile)
+                        : ScreenshotImageFileService::writeEncodedFile(
+                              encoded->path, path, encoded->options.format, cancelled, retainFile);
                 result.savedPath = saved.path;
                 result.error = saved.error;
+                result.encodedSha256 = saved.encodedSha256;
+                result.encodedByteCount = saved.encodedByteCount;
+                result.reader = saved.reader;
                 if (!saved.succeeded())
                     result.failureStage = ScreenshotExportFailureStage::File;
                 return result;
@@ -583,6 +591,17 @@ class SaveContent final : public ImageExportEditor {
                     snow_shot::storage::ScreenshotSettings().setLastManualSaveDirectory(
                         QFileInfo(result.savedPath).absolutePath()));
                 m_lastSavedPath = result.savedPath;
+                if (auto written = std::exchange(m_written, {})) {
+                    const QPointer<SaveContent> guard(this);
+                    written({result.savedPath,
+                             {},
+                             result.encodedSha256,
+                             result.encodedByteCount,
+                             result.reader},
+                            m_encoded->options.format);
+                    if (!guard || closed())
+                        return;
+                }
                 if (!m_showSaveResult) {
                     m_modal->accept();
                     return;
@@ -602,6 +621,9 @@ class SaveContent final : public ImageExportEditor {
 
     AdModal* m_modal;
     ScreenshotSaveAsFileDialog::Saved m_saved;
+    ScreenshotSaveAsFileDialog::BeforeWrite m_beforeWrite;
+    ScreenshotSaveAsFileDialog::Written m_written;
+    bool m_retainFile;
     const bool m_showSaveResult = snow_shot::storage::ScreenshotSettings().showSaveResult();
     QString m_lastSavedPath;
     ScreenshotSaveFooter* m_footer = nullptr;
@@ -725,7 +747,8 @@ QString ScreenshotSaveDialogState::outputPath() const {
 bool ScreenshotSaveAsFileDialog::open(QObject* lifetime, QWidget* owner,
                                       std::shared_ptr<ScreenshotExportArtifact> source, Saved saved,
                                       Finished finished, QWidget* stackingOwner,
-                                      Qt::WindowModality modality) {
+                                      Qt::WindowModality modality, BeforeWrite beforeWrite,
+                                      bool retainFile) {
     if (!lifetime || !owner || !source || !source->isValid())
         return false;
     const QPointer<QWidget> stackingWindow(
@@ -744,7 +767,8 @@ bool ScreenshotSaveAsFileDialog::open(QObject* lifetime, QWidget* owner,
     modal->setClosePolicy(AdModal::ClosePolicy::Manual);
     const QRect available = owner->screen()->availableGeometry();
     modal->setPreferredWidth(std::min(1080, available.width() - 40));
-    auto* content = new SaveContent(modal, std::move(source), std::move(saved));
+    auto* content = new SaveContent(modal, std::move(source), std::move(saved),
+                                    std::move(beforeWrite), retainFile);
     modal->setContentWidget(content);
     QObject::connect(modal, &AdModal::closeRequested, content,
                      [modal, content](AdModal::CloseReason reason) {
@@ -784,11 +808,13 @@ bool ScreenshotSaveAsFileDialog::open(QObject* lifetime, QWidget* owner,
 }
 bool ScreenshotSaveAsFileDialog::open(QObject* lifetime, QWidget* owner, const QImage& image,
                                       Saved saved, Finished finished, QWidget* stackingOwner,
-                                      Qt::WindowModality modality) {
+                                      Qt::WindowModality modality, BeforeWrite beforeWrite,
+                                      bool retainFile) {
     if (image.isNull())
         return false;
     return open(
         lifetime, owner,
         std::make_shared<ScreenshotExportArtifact>(ScreenshotExportSource::fromImage(image)),
-        std::move(saved), std::move(finished), stackingOwner, modality);
+        std::move(saved), std::move(finished), stackingOwner, modality, std::move(beforeWrite),
+        retainFile);
 }

@@ -12,11 +12,48 @@ struct ScreenshotCloudUploadOptions {
     QString filenameFormat;
     int transferTimeoutMs = 60000;
 };
+// A completed encoding. Temporary exports retain their directory through every reader.
+struct ScreenshotEncodedExport {
+    QString path;
+    ScreenshotImageFileFormat format = ScreenshotImageFileFormat::Png;
+    QByteArray sha256{};
+    qint64 byteCount = -1;
+    std::shared_ptr<void> lifetime{};
+    std::shared_ptr<QFile> reader{};
+    QByteArray bytes{};
+
+    [[nodiscard]] bool available() const {
+        return !path.isEmpty() || !bytes.isEmpty();
+    }
+    static ScreenshotEncodedExport fromSave(const ScreenshotImageFileSaveResult& result,
+                                            ScreenshotImageFileFormat format) {
+        return {result.path, format,       result.encodedSha256, result.encodedByteCount,
+                {},          result.reader};
+    }
+    static ScreenshotEncodedExport fromSave(const ScreenshotExportTaskResult& result,
+                                            ScreenshotImageFileFormat format) {
+        return {result.savedPath,        format, result.encodedSha256,
+                result.encodedByteCount, {},     result.reader};
+    }
+    static ScreenshotEncodedExport fromClipboard(const ScreenshotExportClipboardResult& result,
+                                                 ScreenshotImageFileFormat format, bool reusePng) {
+        return {result.payload.filePath(),
+                format,
+                result.fileSha256,
+                result.fileByteCount,
+                {},
+                {},
+                reusePng && result.payload.filePath().isEmpty() ? result.payload.pngBytes()
+                                                                : QByteArray{}};
+    }
+};
+
 struct ScreenshotCloudUploadResult {
     enum class Status { Succeeded, Failed, Cancelled };
     Status status = Status::Failed;
     QUrl url;
     QString error;
+    ScreenshotEncodedExport file{};
 };
 class ScreenshotCloudUploadJob final : public QObject {
     Q_OBJECT
@@ -34,6 +71,7 @@ class ScreenshotCloudUploadJob final : public QObject {
                              snow_shot::CloudUploadConfiguration config,
                              ScreenshotCloudUploadOptions options, QObject* parent);
     void prepare();
+    void readyToUpload();
     void upload(const QByteArray& hash);
     void complete(ScreenshotCloudUploadResult result);
     struct Impl;
@@ -46,7 +84,10 @@ class ScreenshotCloudUploadService final {
     [[nodiscard]] static ScreenshotCloudUploadJob*
     upload(std::shared_ptr<ScreenshotExportArtifact> artifact,
            snow_shot::CloudUploadConfiguration config, ScreenshotCloudUploadOptions options,
-           QObject* receiver, Completion completion = {});
+           QObject* receiver, Completion completion = {}, bool cancelSourceOnAbort = true);
+    [[nodiscard]] static ScreenshotCloudUploadJob*
+    uploadEncoded(ScreenshotEncodedExport file, snow_shot::CloudUploadConfiguration config,
+                  ScreenshotCloudUploadOptions options, QObject* receiver);
     [[nodiscard]] static ScreenshotCloudUploadOptions currentOptions();
     [[nodiscard]] static std::optional<snow_shot::CloudUploadConfiguration> configuration();
 };

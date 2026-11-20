@@ -14,16 +14,6 @@ QString queueError() {
 }
 } // namespace
 
-bool directCaptureAutoSaveEnabled(DirectCaptureTarget target, const QStringList& actions) {
-    switch (target) {
-    case DirectCaptureTarget::FocusedWindow:
-        return actions.contains(QStringLiteral("capture_focused_window"));
-    case DirectCaptureTarget::CurrentMonitor:
-        return actions.contains(QStringLiteral("capture_current_monitor"));
-    }
-    return false;
-}
-
 DirectCaptureWorkflow::DirectCaptureWorkflow(DirectCapturePorts ports, QObject* parent)
     : QObject(parent), m_ports(std::move(ports)) {}
 
@@ -58,7 +48,6 @@ void DirectCaptureWorkflow::startNext() {
     if (m_phase != Phase::Idle || m_queue.empty())
         return;
     m_phase = Phase::Acquiring;
-    m_copySucceeded = false;
     const quint64 generation = ++m_generation;
     const QPointer<DirectCaptureWorkflow> self(this);
     auto complete = [self, generation](DirectCaptureFrame frame) {
@@ -80,35 +69,11 @@ void DirectCaptureWorkflow::startNext() {
         complete(DirectCaptureFrame{{}, {}, {}, 0, queueError()});
 }
 
-void DirectCaptureWorkflow::save() {
-    if (m_phase != Phase::Acquiring && m_phase != Phase::Copying)
-        return;
-    if (!m_queue.front().autoSave) {
-        publishHistory();
-        return;
-    }
-    m_phase = Phase::Saving;
-    const quint64 generation = m_generation;
-    const QPointer<DirectCaptureWorkflow> self(this);
-    auto complete = [self, generation](QString path, QString error) {
-        if (!self || self->m_generation != generation || self->m_phase != Phase::Saving)
-            return;
-        if (path.isEmpty() || !error.isEmpty()) {
-            self->report(error.isEmpty() ? queueError() : error, true);
-            if (!self || self->m_phase != Phase::Saving)
-                return;
-        }
-        self->publishHistory();
-    };
-    if (!m_ports.save(m_queue.front(), m_frame, complete))
-        complete({}, queueError());
-}
-
 void DirectCaptureWorkflow::copy() {
     m_phase = Phase::Copying;
     const quint64 generation = m_generation;
     const QPointer<DirectCaptureWorkflow> self(this);
-    auto complete = [self, generation](QString error) {
+    auto complete = [self, generation](bool published, QString error) {
         if (!self || self->m_generation != generation || self->m_phase != Phase::Copying)
             return;
         if (!error.isEmpty()) {
@@ -116,15 +81,22 @@ void DirectCaptureWorkflow::copy() {
             if (!self || self->m_generation != generation || self->m_phase != Phase::Copying)
                 return;
         }
-        self->m_copySucceeded = error.isEmpty();
-        self->save();
+        if (!published) {
+            self->finish();
+            return;
+        }
+        // Move the callback before invoking user-facing output, which may shut down the host.
+        if (auto tasks = std::move(self->m_queue.front().afterCopy))
+            tasks(self->m_frame);
+        if (self && self->m_generation == generation && self->m_phase == Phase::Copying)
+            self->publishHistory();
     };
     if (!m_ports.copy(m_queue.front(), m_frame, complete))
-        complete(queueError());
+        complete(false, queueError());
 }
 
 void DirectCaptureWorkflow::publishHistory() {
-    if (!m_copySucceeded || !m_queue.front().historyEnabled) {
+    if (!m_queue.front().historyEnabled) {
         finish();
         return;
     }

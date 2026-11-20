@@ -468,17 +468,37 @@ ScreenshotExportService::prepareClipboardPlacement(const QRect& selection,
 bool ScreenshotExportService::schedulePinnedSelection(ScreenshotPinnedSelectionRequest request,
                                                       QObject* receiver,
                                                       PinRequestCallback callback) {
-    if (!request.isPrepared() || receiver == nullptr || !callback || m_worker == nullptr ||
-        m_thread == nullptr || !m_thread->isRunning() || m_completionContext == nullptr) {
+    if (!receiver || !callback)
+        return false;
+    const QPointer<QObject> guardedReceiver(receiver);
+    const auto render = freezePinnedSelection(request);
+    if (!render)
+        return false;
+    auto result = render();
+    if (!result.isValid())
+        return false;
+
+    SNOW_SHOT_PIN_PERF_MILESTONE("export.dispatch_started");
+    SNOW_SHOT_PIN_PERF_COUNTER("export.pin_dispatch_count", 1);
+    if (guardedReceiver.isNull()) {
+        result.cancel();
         return false;
     }
 
-    const QPointer<QObject> guardedReceiver(receiver);
+    SNOW_SHOT_PIN_PERF_SCOPE("export.pin_callback");
+    callback(std::move(request), std::move(result));
+    return true;
+}
+
+ScreenshotExportService::PinnedSelectionRender ScreenshotExportService::freezePinnedSelection(
+    const ScreenshotPinnedSelectionRequest& request) const {
+    if (!request.isPrepared() || !m_worker || !m_thread || !m_thread->isRunning() ||
+        !m_completionContext)
+        return {};
     QList<CanvasExportSource> sources =
         exportSourcesForSelection(m_context.displaySession, request.selection);
-    if (sources.isEmpty()) {
-        return false;
-    }
+    if (sources.isEmpty())
+        return {};
 
     const bool renderAnnotations = request.canvasSession.isEmpty();
     auto smartErase =
@@ -489,53 +509,46 @@ bool ScreenshotExportService::schedulePinnedSelection(ScreenshotPinnedSelectionR
         if (renderAnnotations) {
             documentSession = m_context.runtime.serializeDocumentSession();
             if (documentSession.isEmpty())
-                return false;
+                return {};
         }
     }
 
-    auto* worker = static_cast<ScreenshotExportWorker*>(m_worker);
     const auto renderSpec =
         screenshotSelectionRenderSpec(m_context.displaySession, request.selection);
     const auto plan = exportLayoutPlan(request.resultStyle, renderSpec, request.layoutCompaction);
     if (!validExportSize(request.resultStyle, renderSpec, plan))
-        return false;
-    const auto resultState = std::make_shared<ScreenshotPinnedSelectionResultHandle::State>();
-    const QPointer<ScreenshotExportWorker> guardedWorker(worker);
-    const bool scheduled = QMetaObject::invokeMethod(
-        worker,
-        snow_shot::runtime::trackRuntimeWork(
-            [guardedWorker, resultState, documentSession = std::move(documentSession), smartErase,
-             sources = std::move(sources), selection = request.selection,
-             style = request.resultStyle, plan, renderSpec, renderAnnotations]() mutable {
-                SNOW_SHOT_PIN_PERF_SCOPE("export.worker_callback");
-                if (guardedWorker.isNull() || resultState->isCancelled()) {
-                    return;
-                }
-                SNOW_SHOT_PIN_PERF_MILESTONE("export.render_started");
-                QImage image =
-                    guardedWorker->renderSelection(documentSession, smartErase, selection, style,
-                                                   sources, renderSpec, plan, renderAnnotations);
-                smartErase = {};
-                documentSession.clear();
-                sources.clear();
-                SNOW_SHOT_PIN_PERF_MILESTONE("export.render_finished");
-                SNOW_SHOT_PIN_PERF_MILESTONE("export.result_published");
-                const bool succeeded = !image.isNull();
-                resultState->publish(succeeded, std::move(image));
-            }),
-        Qt::QueuedConnection);
-    if (!scheduled) {
-        return false;
-    }
-
-    SNOW_SHOT_PIN_PERF_MILESTONE("export.dispatch_started");
-    SNOW_SHOT_PIN_PERF_COUNTER("export.pin_dispatch_count", 1);
-    if (guardedReceiver.isNull()) {
-        resultState->cancel();
-        return false;
-    }
-
-    SNOW_SHOT_PIN_PERF_SCOPE("export.pin_callback");
-    callback(std::move(request), ScreenshotPinnedSelectionResultHandle(resultState));
-    return true;
+        return {};
+    const QPointer<ScreenshotExportWorker> worker(static_cast<ScreenshotExportWorker*>(m_worker));
+    return [worker, documentSession = std::move(documentSession),
+            smartErase = std::move(smartErase), sources = std::move(sources),
+            selection = request.selection, style = request.resultStyle, plan, renderSpec,
+            renderAnnotations]() mutable {
+        if (!worker || sources.isEmpty())
+            return ScreenshotPinnedSelectionResultHandle{};
+        const auto resultState = std::make_shared<ScreenshotPinnedSelectionResultHandle::State>();
+        const bool scheduled = QMetaObject::invokeMethod(
+            worker,
+            snow_shot::runtime::trackRuntimeWork(
+                [worker, resultState, documentSession = std::move(documentSession),
+                 smartErase = std::move(smartErase), sources = std::move(sources), selection, style,
+                 plan, renderSpec, renderAnnotations]() mutable {
+                    SNOW_SHOT_PIN_PERF_SCOPE("export.worker_callback");
+                    if (!worker || resultState->isCancelled())
+                        return;
+                    SNOW_SHOT_PIN_PERF_MILESTONE("export.render_started");
+                    QImage image =
+                        worker->renderSelection(documentSession, smartErase, selection, style,
+                                                sources, renderSpec, plan, renderAnnotations);
+                    smartErase = {};
+                    documentSession.clear();
+                    sources.clear();
+                    SNOW_SHOT_PIN_PERF_MILESTONE("export.render_finished");
+                    SNOW_SHOT_PIN_PERF_MILESTONE("export.result_published");
+                    const bool succeeded = !image.isNull();
+                    resultState->publish(succeeded, std::move(image));
+                }),
+            Qt::QueuedConnection);
+        return scheduled ? ScreenshotPinnedSelectionResultHandle(resultState)
+                         : ScreenshotPinnedSelectionResultHandle{};
+    };
 }

@@ -18,6 +18,8 @@ class ScreenshotAirDropService final : public QObject {
     struct Result {
         Status status = Status::Failed;
         QString error;
+        QString sharedPath{};
+        std::shared_ptr<void> fileLifetime{};
     };
     using Completion = std::function<void(Result)>;
     // The backend retains completion until native sharing ends. That retention also

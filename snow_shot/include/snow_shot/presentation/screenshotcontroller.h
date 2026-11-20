@@ -144,6 +144,7 @@ class ScreenshotController : public QObject {
     void startOrStopScreenRecordingAndCopy();
     void openScreenRecordingFolder();
     void editHistoryRecord(const QString& recordId);
+    void pinDirectCapture(const QImage& image, const QRect& logicalBounds);
     void pinHistoryRecord(const QString& recordId);
     void pinClipboardContentToScreen();
     void pinSelectedFilesToScreen();
@@ -162,6 +163,7 @@ class ScreenshotController : public QObject {
     void imageCompressionRequested(const ScreenshotPinnedImageSnapshot& snapshot);
     void pinnedImageEditingRequested(const QString& recordId);
     void recordingExportNotificationRequested(const QString& path);
+    void exportTaskFailed(const QString& message);
     void captureActivityChanged(const QString& source, bool active);
     void selectedFilePinFailed(const QString& message);
     void showMainWindowRequested();

@@ -172,6 +172,10 @@
     <context>
         <name>ScreenshotExportArtifact</name>
         <message>
+            <source>Automatic screenshot saving failed: %1</source>
+            <translation>自动保存截图失败：%1</translation>
+        </message>
+        <message>
             <source>Image source unavailable</source>
             <translation>图像源不可用</translation>
         </message>
@@ -207,6 +211,10 @@
             <translation>JPEG 图像 (*.jpg *.jpeg)</translation>
         </message>
         <message>
+            <source>No automatic screenshot folder is available</source>
+            <translation>没有可用于自动保存截图的文件夹</translation>
+        </message>
+        <message>
             <source>No output file was selected</source>
             <translation>未选择输出文件</translation>
         </message>
@@ -227,6 +235,10 @@
             <translation>编码后的图像为空</translation>
         </message>
         <message>
+            <source>The image could not be encoded</source>
+            <translation>无法编码图像</translation>
+        </message>
+        <message>
             <source>The output directory could not be created</source>
             <translation>无法创建输出目录</translation>
         </message>
@@ -237,6 +249,18 @@
         <message>
             <source>The screenshot filename format is invalid</source>
             <translation>截图文件名格式无效</translation>
+        </message>
+        <message>
+            <source>The screenshot folder could not be created: %1</source>
+            <translation>无法创建截图文件夹：%1</translation>
+        </message>
+        <message>
+            <source>The screenshot image is empty</source>
+            <translation>截图图像为空</translation>
+        </message>
+        <message>
+            <source>The screenshot image source is empty</source>
+            <translation>截图图像来源为空</translation>
         </message>
         <message>
             <source>WebP image (*.webp)</source>

@@ -419,68 +419,29 @@ void persistence(const QTemporaryDir& temp) {
     snow_shot::presentation::GlobalShortcutManager shortcuts;
     settings::BuiltInSettingsBackend backend(shortcuts);
     constexpr auto pinCopyBinding =
-        settings::SettingsSwitchBinding::ScreenshotCopyAfterPinningToScreen;
-    const QString pinCopyKey = QStringLiteral("screenshot/copy_after_pinning_to_screen");
-    const auto* pinCopyField = settings::builtInSettingsRegistry().fieldForSwitch(pinCopyBinding);
-    require(pinCopyField && pinCopyField->pageId == QStringLiteral("screenshots") &&
-                pinCopyField->sectionId == QStringLiteral("screenshot-settings") &&
-                pinCopyField->configurationKey == pinCopyKey &&
-                pinCopyField->reset == settings::SettingsSectionReset::ScreenshotSettings,
-            "copy after pinning belongs to screenshot interaction settings");
-    require(!storage::ConfigurationSchema::defaultValue(pinCopyKey).toBool() &&
-                !adapter.copyAfterPinningToScreen() && !backend.switchValue(pinCopyBinding) &&
-                backend.switchEnabled(pinCopyBinding),
-            "copy after pinning defaults off and is available");
-    require(!storage::ConfigurationSchema::normalize(pinCopyKey, QStringLiteral("true")).valid,
-            "copy after pinning rejects non-boolean configuration values");
-    settings::SettingsRuntimeSession pinCopySession(settings::builtInSettingsRegistry(), backend);
-    require(pinCopySession.applySwitchValue(pinCopyBinding, true) &&
-                adapter.copyAfterPinningToScreen() && backend.switchValue(pinCopyBinding) &&
+        settings::exportTaskBinding(storage::ExportTrigger::ScreenshotPin);
+    const auto* field = settings::builtInSettingsRegistry().fieldForMultiSelect(pinCopyBinding);
+    require(field && field->sectionId == QStringLiteral("export-tasks") &&
+                field->reset == settings::SettingsSectionReset::ExportTasks,
+            "pin follow-ups belong to export tasks");
+    settings::SettingsRuntimeSession session(settings::builtInSettingsRegistry(), backend);
+    const QVariantList selected{QStringLiteral("copy_to_clipboard"), QStringLiteral("auto_save")};
+    require(session.applyMultiSelectValue(pinCopyBinding, selected) &&
+                backend.multiSelectValue(pinCopyBinding) == selected &&
+                adapter.exportTasks(storage::ExportTrigger::ScreenshotPin) ==
+                    (storage::ExportTask::CopyImage | storage::ExportTask::AutoSave) &&
                 storage::ApplicationStorage::instance().configuration().flushNow().success,
-            "copy after pinning round-trips through the runtime settings session");
-    {
-        storage::ConfigurationStore reloaded(
-            QDir(storage::ApplicationStorage::instance().configurationDirectory())
-                .filePath(QStringLiteral("config.json")),
-            true, true, 60000);
-        require(reloaded.value(pinCopyKey).toBool(), "copy after pinning survives a reload");
-    }
-    require(backend.selectValue(settings::SettingsSelectBinding::ScreenshotSaveAsFileDialog) ==
-                QStringLiteral("snow_shot"),
-            "settings backend failed to read dialog selection");
-    require(backend.resetSection(settings::SettingsSectionReset::ScreenshotOutput) &&
-                adapter.saveAsFileDialog() == QStringLiteral("system"),
-            "screenshot output reset must restore the system dialog");
-    require(backend.applySelectValue(settings::SettingsSelectBinding::ScreenshotSaveAsFileDialog,
-                                     QStringLiteral("snow_shot")),
-            "settings backend failed to write dialog selection");
-    constexpr auto autoSaveBinding =
-        settings::SettingsMultiSelectBinding::ScreenshotAutoSaveAfterExecution;
-    const QStringList executionActions{
-        QStringLiteral("copy_screenshot"),         QStringLiteral("copy_scrolling_screenshot"),
-        QStringLiteral("copy_pinned_image"),       QStringLiteral("capture_focused_window"),
-        QStringLiteral("capture_current_monitor"), QStringLiteral("pin_to_screen")};
-    for (const QString& action : executionActions) {
-        require(backend.applyMultiSelectValue(autoSaveBinding, {action}) &&
-                    adapter.autoSaveAfterExecutionActions() == QStringList{action} &&
-                    backend.multiSelectValue(autoSaveBinding) == QVariantList{action},
-                "each automatic save scenario must round-trip through the settings backend");
-    }
-    const QStringList autoSaveActions{QStringLiteral("copy_screenshot"),
-                                      QStringLiteral("pin_to_screen")};
-    require(adapter.setAutoSaveAfterExecutionActions(autoSaveActions) &&
-                adapter.setCopyImageFileToClipboard(true) &&
-                backend.resetSection(settings::SettingsSectionReset::ScreenshotSettings) &&
-                !adapter.copyAfterPinningToScreen() && !backend.switchValue(pinCopyBinding) &&
-                adapter.autoSaveAfterExecutionActions() == autoSaveActions &&
-                adapter.copyImageFileToClipboard() &&
-                adapter.saveAsFileDialog() == QStringLiteral("snow_shot"),
-            "function reset must preserve screenshot output settings");
-    require(backend.resetSection(settings::SettingsSectionReset::ScreenshotOutput) &&
-                adapter.autoSaveAfterExecutionActions().isEmpty() &&
-                !adapter.copyImageFileToClipboard() &&
-                adapter.saveAsFileDialog() == QStringLiteral("system"),
-            "output reset must restore all moved screenshot settings");
+            "multiple pin tasks round-trip through the session and adapter");
+    require(backend.resetSection(settings::SettingsSectionReset::ScreenshotSettings) &&
+                backend.resetSection(settings::SettingsSectionReset::ScreenshotOutput) &&
+                adapter.saveAsFileDialog() == QStringLiteral("system") &&
+                backend.multiSelectValue(pinCopyBinding) == selected,
+            "screenshot interaction and image export resets preserve export tasks");
+    require(adapter.setCopyImageFileToClipboard(true) &&
+                backend.resetSection(settings::SettingsSectionReset::ExportTasks) &&
+                backend.multiSelectValue(pinCopyBinding).isEmpty() &&
+                adapter.copyImageFileToClipboard(),
+            "the task reset leaves image export preferences intact");
 
     const QString pathKey = QStringLiteral("screenshot/save_path_shortcuts");
     const auto malformed =

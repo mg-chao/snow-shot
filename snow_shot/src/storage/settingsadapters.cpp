@@ -1178,18 +1178,25 @@ bool ScreenshotSettings::setSelectionResizeMode(const QString& mode) const {
     return cache().setValue(QStringLiteral("screenshot/selection_resize_mode"), mode);
 }
 
-QStringList ScreenshotSettings::autoSaveAfterExecutionActions() const {
-    return stringList(
-        cache().value(QStringLiteral("screenshot/auto_save_after_execution_actions")));
+ExportTasks ScreenshotSettings::exportTasks(ExportTrigger trigger) const {
+    const auto& row = exportTaskRow(trigger);
+    const auto values = cache().value(row.key.toString()).toArray();
+    ExportTasks tasks;
+    for (const auto& value : values) {
+        const auto id = value.toString();
+        for (const auto& option : exportTaskOptions) {
+            if (option.id == id) {
+                tasks |= option.task;
+                break;
+            }
+        }
+    }
+    return tasks & row.allowed;
 }
 
-bool ScreenshotSettings::setAutoSaveAfterExecutionActions(const QStringList& actions) const {
-    return cache().setValue(QStringLiteral("screenshot/auto_save_after_execution_actions"),
-                            stringArray(actions));
-}
-
-bool ScreenshotSettings::autoSaveAfterExecution(const QString& action) const {
-    return autoSaveAfterExecutionActions().contains(action);
+bool ScreenshotSettings::setExportTasks(ExportTrigger trigger, ExportTasks tasks) const {
+    const auto& row = exportTaskRow(trigger);
+    return cache().setValue(row.key.toString(), stringArray(exportTaskIds(tasks & row.allowed)));
 }
 
 bool ScreenshotSettings::copyImageFileToClipboard() const {
@@ -1198,14 +1205,6 @@ bool ScreenshotSettings::copyImageFileToClipboard() const {
 
 bool ScreenshotSettings::setCopyImageFileToClipboard(bool enabled) const {
     return cache().setValue(QStringLiteral("screenshot/copy_image_file_to_clipboard"), enabled);
-}
-
-bool ScreenshotSettings::copyAfterPinningToScreen() const {
-    return cache().value(QStringLiteral("screenshot/copy_after_pinning_to_screen")).toBool();
-}
-
-bool ScreenshotSettings::setCopyAfterPinningToScreen(bool enabled) const {
-    return cache().setValue(QStringLiteral("screenshot/copy_after_pinning_to_screen"), enabled);
 }
 
 bool ScreenshotSettings::keepAnnotationsEditableAfterPinningToScreen() const {

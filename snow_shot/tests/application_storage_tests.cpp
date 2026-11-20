@@ -495,121 +495,75 @@ storage::ApplicationStorage& initialize(const QString& executableDirectory,
 void autoSaveAfterExecutionSettingsMigrateAndPersist() {
     QTemporaryDir temporary;
     require(temporary.isValid(), "auto-save settings require isolated storage");
-    const QString key = QStringLiteral("screenshot/auto_save_after_execution_actions");
-    const QString legacyKey = QStringLiteral("screenshot/auto_save_after_copy");
-    const QStringList actions{
-        QStringLiteral("copy_screenshot"),         QStringLiteral("copy_scrolling_screenshot"),
-        QStringLiteral("copy_pinned_image"),       QStringLiteral("capture_focused_window"),
-        QStringLiteral("capture_current_monitor"), QStringLiteral("pin_to_screen")};
-    const QStringList legacyActions = actions.mid(0, 5);
-    const QJsonArray legacyArray = QJsonArray::fromStringList(legacyActions);
-    const auto* entry = storage::ConfigurationSchema::entry(key);
-    require(entry != nullptr && entry->valueKind == storage::ConfigurationValueKind::StringList &&
-                entry->defaultValue == QJsonArray{} && entry->allowedStringValues == actions &&
-                !storage::ConfigurationSchema::contains(legacyKey),
-            "auto-save schema must expose all six scenarios with an empty default");
-    const auto normalized = storage::ConfigurationSchema::normalize(
-        key, QJsonArray{QStringLiteral(" COPY_SCREENSHOT "), QStringLiteral("copy_screenshot"),
-                        QStringLiteral("pin_to_screen"), QStringLiteral("unsupported"), 1});
-    require(normalized.valid && normalized.changed &&
-                normalized.value == QJsonArray{QStringLiteral("copy_screenshot"),
-                                               QStringLiteral("pin_to_screen")} &&
-                !storage::ConfigurationSchema::normalize(key, true).valid,
-            "auto-save choices must use the existing allowed-list normalization");
-
-    for (int version = 1; version <= 3; ++version) {
-        for (const bool enabled : {false, true}) {
-            const QString path =
-                temporary.filePath(QStringLiteral("legacy-%1-%2.json").arg(version).arg(enabled));
-            writeBytes(path, QJsonDocument(
-                                 QJsonObject{
-                                     {QStringLiteral("storage"),
-                                      QJsonObject{{QStringLiteral("schema_version"), version}}},
-                                     {QStringLiteral("screenshot"),
-                                      QJsonObject{{QStringLiteral("auto_save_after_copy"), enabled},
-                                                  {QStringLiteral("extension"), 42}}},
-                                 })
-                                 .toJson());
-            const QJsonArray expected = enabled ? legacyArray : QJsonArray{};
-            {
-                storage::ConfigurationStore store(path, true, true, 60000);
-                require(store.value(key) == expected && !store.snapshot().contains(legacyKey) &&
-                            store.value(QStringLiteral("storage/schema_version")).toInt() ==
-                                storage::ConfigurationSchema::currentVersion() &&
-                            store.flushNow().success,
-                        "legacy booleans must retain their original five auto-save scenarios");
-                const QJsonObject screenshot =
-                    readObject(path).value(QStringLiteral("screenshot")).toObject();
-                require(
-                    !screenshot.contains(QStringLiteral("auto_save_after_copy")) &&
-                        screenshot.value(QStringLiteral("auto_save_after_execution_actions")) ==
-                            expected &&
-                        screenshot.value(QStringLiteral("extension")).toInt() == 42,
-                    "writable migration must replace the old key and preserve unrelated fields");
-            }
-            storage::ConfigurationStore reloaded(path, true, true, 60000);
-            require(reloaded.value(key) == expected && !reloaded.isDirty(),
-                    "auto-save migration must survive reload without repeating");
+    using storage::ExportTask;
+    using storage::ExportTrigger;
+    const auto copy = storage::exportTaskRow(ExportTrigger::ScreenshotCopy).key.toString();
+    const auto pinned = storage::exportTaskRow(ExportTrigger::PinnedCopy).key.toString();
+    const auto pin = storage::exportTaskRow(ExportTrigger::ScreenshotPin).key.toString();
+    const QJsonArray save{QStringLiteral("auto_save")};
+    const QStringList legacyCopies{
+        QStringLiteral("copy_screenshot"), QStringLiteral("copy_scrolling_screenshot"),
+        QStringLiteral("capture_current_monitor"), QStringLiteral("capture_focused_window")};
+    for (int scenario = 0; scenario < 8; ++scenario) {
+        QJsonObject screenshot{{QStringLiteral("extension"), 42}};
+        if (scenario < 4)
+            screenshot.insert(QStringLiteral("auto_save_after_execution_actions"),
+                              QJsonArray{legacyCopies.at(scenario)});
+        else if (scenario == 4)
+            screenshot.insert(QStringLiteral("auto_save_after_execution_actions"),
+                              QJsonArray{QStringLiteral("copy_pinned_image")});
+        else if (scenario == 5) {
+            screenshot.insert(QStringLiteral("auto_save_after_execution_actions"),
+                              QJsonArray{QStringLiteral("pin_to_screen")});
+            screenshot.insert(QStringLiteral("copy_after_pinning_to_screen"), true);
+        } else {
+            screenshot.insert(QStringLiteral("auto_save_after_copy"), true);
         }
+        QJsonObject document{
+            {QStringLiteral("storage"), QJsonObject{{QStringLiteral("schema_version"), 7}}},
+            {QStringLiteral("screenshot"), screenshot}};
+        if (scenario == 7)
+            document.insert(QStringLiteral("export_tasks"),
+                            QJsonObject{{QStringLiteral("screenshot_copy"), QJsonArray{}}});
+        const QString path =
+            temporary.filePath(QString::number(scenario) + QStringLiteral(".json"));
+        writeBytes(path, QJsonDocument(document).toJson());
+        {
+            storage::ConfigurationStore store(path, true, true, 60000);
+            require(store.value(copy) == (scenario < 4 || scenario == 6 ? save : QJsonArray{}) &&
+                        store.value(pinned) ==
+                            (scenario == 4 || scenario >= 6 ? save : QJsonArray{}) &&
+                        store.value(pin) == (scenario == 5
+                                                 ? QJsonArray{QStringLiteral("copy_to_clipboard"),
+                                                              QStringLiteral("auto_save")}
+                                                 : QJsonArray{}) &&
+                        store.flushNow().success,
+                    "legacy scenarios merge onto independent rows and explicit rows win");
+        }
+        storage::ConfigurationStore reloaded(path, true, true, 60000);
+        const auto disk = readObject(path).value(QStringLiteral("screenshot")).toObject();
+        require(!reloaded.isDirty() && disk.value(QStringLiteral("extension")).toInt() == 42 &&
+                    !disk.contains(QStringLiteral("auto_save_after_copy")) &&
+                    !disk.contains(QStringLiteral("auto_save_after_execution_actions")) &&
+                    !disk.contains(QStringLiteral("copy_after_pinning_to_screen")),
+                "migration is durable, removes retired keys and preserves unknown fields");
     }
-    for (const QJsonValue& current :
-         {QJsonValue(QJsonArray{}), QJsonValue(QJsonArray{QStringLiteral("pin_to_screen")}),
-          QJsonValue(true)}) {
-        const QString path = temporary.filePath(QStringLiteral("precedence.json"));
-        writeBytes(
-            path,
-            QJsonDocument(
-                QJsonObject{
-                    {QStringLiteral("storage"), QJsonObject{{QStringLiteral("schema_version"), 3}}},
-                    {QStringLiteral("screenshot"),
-                     QJsonObject{{QStringLiteral("auto_save_after_copy"), true},
-                                 {QStringLiteral("auto_save_after_execution_actions"), current}}},
-                })
-                .toJson());
-        storage::ConfigurationStore store(path, true, true, 60000);
-        require(store.value(key) == (current.isArray() ? current : QJsonValue(QJsonArray{})),
-                "a present action list must override legacy true even when empty or invalid");
-    }
-    const QString futurePath = temporary.filePath(QStringLiteral("future.json"));
-    const QByteArray futureBytes =
-        QJsonDocument(
-            QJsonObject{{QStringLiteral("storage"),
-                         QJsonObject{{QStringLiteral("schema_version"),
-                                      storage::ConfigurationSchema::currentVersion() + 1}}},
-                        {QStringLiteral("screenshot"),
-                         QJsonObject{{QStringLiteral("auto_save_after_copy"), true}}}})
-            .toJson();
-    writeBytes(futurePath, futureBytes);
-    storage::ConfigurationStore future(futurePath, true, true, 60000);
-    require(!future.isWritable() && !future.isDirty() && future.value(key) == QJsonArray{} &&
-                future.flushNow().success && readBytes(futurePath) == futureBytes,
-            "future-version documents must remain read-only without legacy migration");
-
     const QString executable = temporary.filePath(QStringLiteral("bin"));
     auto& appStorage = initialize(executable, temporary.filePath(QStringLiteral("data")));
     const storage::ScreenshotSettings settings;
-    require(settings.autoSaveAfterExecutionActions().isEmpty() &&
-                !settings.autoSaveAfterExecution(QStringLiteral("copy_screenshot")),
-            "fresh auto-save preferences must disable every scenario");
-    for (const QString& action : actions) {
-        require(settings.setAutoSaveAfterExecutionActions({action}) &&
-                    settings.autoSaveAfterExecutionActions() == QStringList{action},
-                "each execution scenario must be selectable independently");
-        for (const QString& candidate : actions) {
-            require(settings.autoSaveAfterExecution(candidate) == (candidate == action),
-                    "one selected scenario must not enable any other scenario");
-        }
+    for (const auto& row : storage::exportTaskRows) {
+        require(!settings.exportTasks(row.trigger) &&
+                    settings.setExportTasks(row.trigger, row.allowed) &&
+                    settings.exportTasks(row.trigger) == row.allowed,
+                "each action has an independent empty default");
     }
-    require(!settings.autoSaveAfterExecution(QStringLiteral("unsupported")) &&
-                settings.setCopyImageFileToClipboard(true) && appStorage.flushNow().success,
-            "auto-save actions must remain independent from copying image files");
+    require(appStorage.flushNow().success, "flush export tasks");
     appStorage.shutdown();
     static_cast<void>(initialize(executable, temporary.filePath(QStringLiteral("data"))));
-    require(
-        settings.autoSaveAfterExecutionActions() == QStringList{QStringLiteral("pin_to_screen")} &&
-            settings.copyImageFileToClipboard() && settings.setAutoSaveAfterExecutionActions({}) &&
-            settings.autoSaveAfterExecutionActions().isEmpty(),
-        "chosen scenarios must persist and reset to an empty list");
+    for (const auto& row : storage::exportTaskRows)
+        require(settings.exportTasks(row.trigger) == row.allowed &&
+                    settings.setExportTasks(row.trigger, {}),
+                "task selections survive reload and can be cleared");
     appStorage.shutdown();
 }
 
@@ -1051,7 +1005,7 @@ void settingsSchemaDefaultsAndValidationAreComplete() {
                 structuredShortcuts(QJsonArray{QStringLiteral("Ctrl+Shift+S")}) &&
             defaultValue("screenshot_shortcuts/save_as_file").toArray() ==
                 structuredShortcuts(QJsonArray{QStringLiteral("Ctrl+S")}) &&
-            defaultValue("screenshot/auto_save_after_execution_actions").toArray().isEmpty() &&
+            defaultValue("export_tasks/screenshot_copy").toArray().isEmpty() &&
             !defaultValue("screenshot/copy_image_file_to_clipboard").toBool() &&
             defaultValue("screenshot/image_save_directory").toString() ==
                 systemSaveDirectory(QStandardPaths::PicturesLocation) &&
@@ -2880,7 +2834,8 @@ void settingsAdaptersRoundTripAndRejectInvalidValues() {
     require(screenshot.autoExecuteAfterTextRecognition() == QStringLiteral("no_action") &&
                 screenshot.doubleClickAction() == QStringLiteral("copy") &&
                 screenshot.middleMouseButtonAction() == QStringLiteral("pin") &&
-                !screenshot.showCursor() && screenshot.autoSaveAfterExecutionActions().isEmpty() &&
+                !screenshot.showCursor() &&
+                !screenshot.exportTasks(storage::ExportTrigger::ScreenshotCopy) &&
                 !screenshot.copyImageFileToClipboard() &&
                 screenshot.imageFormat() == QStringLiteral("png") &&
                 screenshot.compressionLevel() == QStringLiteral("medium") &&
@@ -2898,7 +2853,8 @@ void settingsAdaptersRoundTripAndRejectInvalidValues() {
                 QStringLiteral("quick_copy_text_and_end_screenshot")) &&
                 screenshot.setDoubleClickAction(QStringLiteral("save")) &&
                 screenshot.setMiddleMouseButtonAction(QStringLiteral("none")) &&
-                screenshot.setAutoSaveAfterExecutionActions({QStringLiteral("copy_screenshot")}) &&
+                screenshot.setExportTasks(storage::ExportTrigger::ScreenshotCopy,
+                                          storage::ExportTask::AutoSave) &&
                 screenshot.setCopyImageFileToClipboard(true) &&
                 screenshot.setImageSaveDirectory(QStringLiteral("D:/Captures")) &&
                 screenshot.setLastManualSaveDirectory(QStringLiteral("D:/Exports")) &&
@@ -2915,7 +2871,8 @@ void settingsAdaptersRoundTripAndRejectInvalidValues() {
                     QStringLiteral("quick_copy_text_and_end_screenshot") &&
                 screenshot.doubleClickAction() == QStringLiteral("save") &&
                 screenshot.middleMouseButtonAction() == QStringLiteral("none") &&
-                screenshot.autoSaveAfterExecution(QStringLiteral("copy_screenshot")) &&
+                screenshot.exportTasks(storage::ExportTrigger::ScreenshotCopy)
+                    .testFlag(storage::ExportTask::AutoSave) &&
                 screenshot.copyImageFileToClipboard() &&
                 screenshot.imageSaveDirectory() == QStringLiteral("D:/Captures") &&
                 screenshot.lastManualSaveDirectory() == QStringLiteral("D:/Exports") &&

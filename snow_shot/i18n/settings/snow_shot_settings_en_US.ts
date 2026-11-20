@@ -1618,10 +1618,6 @@
             <translation>Allow resizing the selection from its borders while non-move tools are active</translation>
         </message>
         <message>
-            <source>Also copy the screenshot to the clipboard when pinning it to screen</source>
-            <translation>Also copy the screenshot to the clipboard when pinning it to screen</translation>
-        </message>
-        <message>
             <source>Always</source>
             <translation>Always</translation>
         </message>
@@ -1726,6 +1722,18 @@
             <translation>Applies to all three skins. Overlay fills each surface and crops the edges. Contain shows the whole image</translation>
         </message>
         <message>
+            <source>Applies to pins created from the screenshot window</source>
+            <translation>Applies to pins created from the screenshot window</translation>
+        </message>
+        <message>
+            <source>Applies to standard, scrolling, monitor, and focused-window captures</source>
+            <translation>Applies to standard, scrolling, monitor, and focused-window captures</translation>
+        </message>
+        <message>
+            <source>Applies when Copy current view copies an image</source>
+            <translation>Applies when Copy current view copies an image</translation>
+        </message>
+        <message>
             <source>Apply to recognized text when editing or copying</source>
             <translation>Apply to recognized text when editing or copying</translation>
         </message>
@@ -1774,8 +1782,8 @@
             <translation>Auto-recognize QR code</translation>
         </message>
         <message>
-            <source>Auto-save after execution</source>
-            <translation>Auto-save after execution</translation>
+            <source>Auto-save</source>
+            <translation>Auto-save</translation>
         </message>
         <message>
             <source>Auto-save image filename format</source>
@@ -2198,16 +2206,16 @@
             <translation>Choose where recording output files are written</translation>
         </message>
         <message>
-            <source>Choose which actions also save an image in the selected image format and save directory</source>
-            <translation>Choose which actions also save an image in the selected image format and save directory</translation>
-        </message>
-        <message>
             <source>Choose which fullscreen windows trigger automatic disabling</source>
             <translation>Choose which fullscreen windows trigger automatic disabling</translation>
         </message>
         <message>
             <source>Choose which inputs to disable</source>
             <translation>Choose which inputs to disable</translation>
+        </message>
+        <message>
+            <source>Choose which tasks run after a successful image export</source>
+            <translation>Choose which tasks run after a successful image export</translation>
         </message>
         <message>
             <source>Clear</source>
@@ -2342,10 +2350,6 @@
             <translation>Copy</translation>
         </message>
         <message>
-            <source>Copy after pinning to screen</source>
-            <translation>Copy after pinning to screen</translation>
-        </message>
-        <message>
             <source>Copy after text recognition</source>
             <translation>Copy after text recognition</translation>
         </message>
@@ -2366,12 +2370,8 @@
             <translation>Copy color</translation>
         </message>
         <message>
-            <source>Copy current monitor</source>
-            <translation>Copy current monitor</translation>
-        </message>
-        <message>
-            <source>Copy focused window</source>
-            <translation>Copy focused window</translation>
+            <source>Copy file</source>
+            <translation>Copy file</translation>
         </message>
         <message>
             <source>Copy image file to clipboard</source>
@@ -2382,20 +2382,12 @@
             <translation>Copy original content</translation>
         </message>
         <message>
-            <source>Copy pinned window</source>
-            <translation>Copy pinned window</translation>
-        </message>
-        <message>
             <source>Copy recording</source>
             <translation>Copy recording</translation>
         </message>
         <message>
             <source>Copy screenshot</source>
             <translation>Copy screenshot</translation>
-        </message>
-        <message>
-            <source>Copy scrolling screenshot</source>
-            <translation>Copy scrolling screenshot</translation>
         </message>
         <message>
             <source>Copy text</source>
@@ -2852,6 +2844,10 @@
         <message>
             <source>Export settings</source>
             <translation>Export settings</translation>
+        </message>
+        <message>
+            <source>Export tasks</source>
+            <translation>Export tasks</translation>
         </message>
         <message>
             <source>Extended features settings</source>
@@ -3726,10 +3722,6 @@
             <translation>Pin images, supported files, formatted text, or HTML from the clipboard to the screen</translation>
         </message>
         <message>
-            <source>Pin screenshot to screen</source>
-            <translation>Pin screenshot to screen</translation>
-        </message>
-        <message>
             <source>Pin selected files to screen</source>
             <translation>Pin selected files to screen</translation>
         </message>
@@ -4154,6 +4146,70 @@
             <translation>Run after %1 seconds</translation>
         </message>
         <message>
+            <source>Run after copying a pinned window</source>
+            <translation>Run after copying a pinned window</translation>
+        </message>
+        <message>
+            <source>Run after copying a screenshot</source>
+            <translation>Run after copying a screenshot</translation>
+        </message>
+        <message>
+            <source>Run after pinning a screenshot to the screen</source>
+            <translation>Run after pinning a screenshot to the screen</translation>
+        </message>
+        <message>
+            <source>Run after printing a pinned window</source>
+            <translation>Run after printing a pinned window</translation>
+        </message>
+        <message>
+            <source>Run after printing a screenshot</source>
+            <translation>Run after printing a screenshot</translation>
+        </message>
+        <message>
+            <source>Run after saving a pinned window</source>
+            <translation>Run after saving a pinned window</translation>
+        </message>
+        <message>
+            <source>Run after saving a screenshot</source>
+            <translation>Run after saving a screenshot</translation>
+        </message>
+        <message>
+            <source>Run after sharing a pinned window via AirDrop</source>
+            <translation>Run after sharing a pinned window via AirDrop</translation>
+        </message>
+        <message>
+            <source>Run after sharing a screenshot via AirDrop</source>
+            <translation>Run after sharing a screenshot via AirDrop</translation>
+        </message>
+        <message>
+            <source>Run after uploading a pinned window</source>
+            <translation>Run after uploading a pinned window</translation>
+        </message>
+        <message>
+            <source>Run after uploading a screenshot</source>
+            <translation>Run after uploading a screenshot</translation>
+        </message>
+        <message>
+            <source>Runs after a successful manual cloud upload</source>
+            <translation>Runs after a successful manual cloud upload</translation>
+        </message>
+        <message>
+            <source>Runs after each successful Quick save or Save as file</source>
+            <translation>Runs after each successful Quick save or Save as file</translation>
+        </message>
+        <message>
+            <source>Runs after each successful individual save</source>
+            <translation>Runs after each successful individual save</translation>
+        </message>
+        <message>
+            <source>Runs after the print job is submitted</source>
+            <translation>Runs after the print job is submitted</translation>
+        </message>
+        <message>
+            <source>Runs when AirDrop confirms sharing</source>
+            <translation>Runs when AirDrop confirms sharing</translation>
+        </message>
+        <message>
             <source>Save as file</source>
             <translation>Save as file</translation>
         </message>
@@ -4382,12 +4438,12 @@
             <translation>Select image save directory</translation>
         </message>
         <message>
-            <source>Select scenarios</source>
-            <translation>Select scenarios</translation>
-        </message>
-        <message>
             <source>Select skin image</source>
             <translation>Select skin image</translation>
+        </message>
+        <message>
+            <source>Select tasks</source>
+            <translation>Select tasks</translation>
         </message>
         <message>
             <source>Select the language used throughout the application</source>
