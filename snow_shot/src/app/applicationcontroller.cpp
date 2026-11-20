@@ -1374,6 +1374,9 @@ class ApplicationController::Impl {
                              &ScreenshotController::recordingExportNotificationRequested,
                              &systemTray,
                              &presentation::SystemTrayController::showRecordingExportMessage);
+            QObject::connect(
+                screenshotController.get(), &ScreenshotController::exportTaskFailed, &systemTray,
+                [this](const QString& message) { systemTray.showCaptureMessage(message, true); });
             QObject::connect(screenshotController.get(),
                              &ScreenshotController::captureActivityChanged, &floatingToolbar,
                              &presentation::FloatingToolbarController::setCaptureActive);
@@ -2025,6 +2028,11 @@ class ApplicationController::Impl {
     presentation::DirectCaptureController& ensureDirectCaptureController() {
         if (!directCaptureController) {
             directCaptureController = std::make_unique<presentation::DirectCaptureController>(&q);
+            QObject::connect(directCaptureController.get(),
+                             &presentation::DirectCaptureController::pinRequested, &q,
+                             [this](const QImage& image, const QRect& bounds) {
+                                 ensureScreenshotController()->pinDirectCapture(image, bounds);
+                             });
             QObject::connect(directCaptureController.get(),
                              &presentation::DirectCaptureController::captureActivityChanged,
                              &floatingToolbar,

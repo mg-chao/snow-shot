@@ -172,6 +172,10 @@
     <context>
         <name>ScreenshotExportArtifact</name>
         <message>
+            <source>Automatic screenshot saving failed: %1</source>
+            <translation>Automatic screenshot saving failed: %1</translation>
+        </message>
+        <message>
             <source>Image source unavailable</source>
             <translation>Image source unavailable</translation>
         </message>
@@ -207,6 +211,10 @@
             <translation>JPEG image (*.jpg *.jpeg)</translation>
         </message>
         <message>
+            <source>No automatic screenshot folder is available</source>
+            <translation>No automatic screenshot folder is available</translation>
+        </message>
+        <message>
             <source>No output file was selected</source>
             <translation>No output file was selected</translation>
         </message>
@@ -227,6 +235,10 @@
             <translation>The encoded image is empty</translation>
         </message>
         <message>
+            <source>The image could not be encoded</source>
+            <translation>The image could not be encoded</translation>
+        </message>
+        <message>
             <source>The output directory could not be created</source>
             <translation>The output directory could not be created</translation>
         </message>
@@ -237,6 +249,18 @@
         <message>
             <source>The screenshot filename format is invalid</source>
             <translation>The screenshot filename format is invalid</translation>
+        </message>
+        <message>
+            <source>The screenshot folder could not be created: %1</source>
+            <translation>The screenshot folder could not be created: %1</translation>
+        </message>
+        <message>
+            <source>The screenshot image is empty</source>
+            <translation>The screenshot image is empty</translation>
+        </message>
+        <message>
+            <source>The screenshot image source is empty</source>
+            <translation>The screenshot image source is empty</translation>
         </message>
         <message>
             <source>WebP image (*.webp)</source>

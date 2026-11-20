@@ -1618,10 +1618,6 @@
             <translation>啟用非移動工具時，允許從選取範圍邊緣調整大小</translation>
         </message>
         <message>
-            <source>Also copy the screenshot to the clipboard when pinning it to screen</source>
-            <translation>將截圖固定到螢幕時，同時複製到剪貼簿</translation>
-        </message>
-        <message>
             <source>Always</source>
             <translation>一律</translation>
         </message>
@@ -1726,6 +1722,18 @@
             <translation>適用於三種佈景。覆蓋模式填滿各個介面並裁剪邊緣，適應模式顯示完整影像</translation>
         </message>
         <message>
+            <source>Applies to pins created from the screenshot window</source>
+            <translation>適用於從螢幕截圖視窗固定到螢幕的截圖</translation>
+        </message>
+        <message>
+            <source>Applies to standard, scrolling, monitor, and focused-window captures</source>
+            <translation>適用於一般截圖、捲動截圖、目前顯示器截圖和焦點視窗截圖</translation>
+        </message>
+        <message>
+            <source>Applies when Copy current view copies an image</source>
+            <translation>在「複製目前檢視」複製影像時執行</translation>
+        </message>
+        <message>
             <source>Apply to recognized text when editing or copying</source>
             <translation>編輯或複製辨識文字時套用</translation>
         </message>
@@ -1774,8 +1782,8 @@
             <translation>自動辨識 QR 碼</translation>
         </message>
         <message>
-            <source>Auto-save after execution</source>
-            <translation>執行後自動儲存</translation>
+            <source>Auto-save</source>
+            <translation>自動儲存</translation>
         </message>
         <message>
             <source>Auto-save image filename format</source>
@@ -2198,16 +2206,16 @@
             <translation>選擇錄製輸出檔案的儲存位置</translation>
         </message>
         <message>
-            <source>Choose which actions also save an image in the selected image format and save directory</source>
-            <translation>選擇執行哪些操作時，同時以所選影像格式儲存至指定目錄</translation>
-        </message>
-        <message>
             <source>Choose which fullscreen windows trigger automatic disabling</source>
             <translation>選擇哪些全螢幕視窗會觸發自動停用</translation>
         </message>
         <message>
             <source>Choose which inputs to disable</source>
             <translation>選擇要停用的輸入功能</translation>
+        </message>
+        <message>
+            <source>Choose which tasks run after a successful image export</source>
+            <translation>選擇影像匯出成功後執行的工作</translation>
         </message>
         <message>
             <source>Clear</source>
@@ -2342,10 +2350,6 @@
             <translation>複製</translation>
         </message>
         <message>
-            <source>Copy after pinning to screen</source>
-            <translation>固定到螢幕後複製</translation>
-        </message>
-        <message>
             <source>Copy after text recognition</source>
             <translation>文字辨識後複製</translation>
         </message>
@@ -2366,12 +2370,8 @@
             <translation>複製顏色</translation>
         </message>
         <message>
-            <source>Copy current monitor</source>
-            <translation>複製目前顯示器</translation>
-        </message>
-        <message>
-            <source>Copy focused window</source>
-            <translation>複製焦點視窗</translation>
+            <source>Copy file</source>
+            <translation>複製檔案</translation>
         </message>
         <message>
             <source>Copy image file to clipboard</source>
@@ -2382,20 +2382,12 @@
             <translation>複製原始內容</translation>
         </message>
         <message>
-            <source>Copy pinned window</source>
-            <translation>複製固定到螢幕視窗</translation>
-        </message>
-        <message>
             <source>Copy recording</source>
             <translation>複製錄製內容</translation>
         </message>
         <message>
             <source>Copy screenshot</source>
             <translation>複製截圖</translation>
-        </message>
-        <message>
-            <source>Copy scrolling screenshot</source>
-            <translation>複製捲動截圖</translation>
         </message>
         <message>
             <source>Copy text</source>
@@ -2848,6 +2840,10 @@
         <message>
             <source>Export settings</source>
             <translation>匯出設定</translation>
+        </message>
+        <message>
+            <source>Export tasks</source>
+            <translation>匯出工作</translation>
         </message>
         <message>
             <source>Extended features settings</source>
@@ -3722,10 +3718,6 @@
             <translation>將剪貼簿中的影像、支援的檔案、格式化文字或 HTML 固定到螢幕</translation>
         </message>
         <message>
-            <source>Pin screenshot to screen</source>
-            <translation>將截圖固定到螢幕</translation>
-        </message>
-        <message>
             <source>Pin selected files to screen</source>
             <translation>將選取的檔案固定到螢幕</translation>
         </message>
@@ -4150,6 +4142,70 @@
             <translation>延遲 %1 秒執行</translation>
         </message>
         <message>
+            <source>Run after copying a pinned window</source>
+            <translation>固定到螢幕視窗複製後執行</translation>
+        </message>
+        <message>
+            <source>Run after copying a screenshot</source>
+            <translation>截圖複製後執行</translation>
+        </message>
+        <message>
+            <source>Run after pinning a screenshot to the screen</source>
+            <translation>截圖固定到螢幕後執行</translation>
+        </message>
+        <message>
+            <source>Run after printing a pinned window</source>
+            <translation>固定到螢幕視窗列印後執行</translation>
+        </message>
+        <message>
+            <source>Run after printing a screenshot</source>
+            <translation>截圖列印後執行</translation>
+        </message>
+        <message>
+            <source>Run after saving a pinned window</source>
+            <translation>固定到螢幕視窗儲存後執行</translation>
+        </message>
+        <message>
+            <source>Run after saving a screenshot</source>
+            <translation>截圖儲存後執行</translation>
+        </message>
+        <message>
+            <source>Run after sharing a pinned window via AirDrop</source>
+            <translation>固定到螢幕視窗透過 AirDrop 分享後執行</translation>
+        </message>
+        <message>
+            <source>Run after sharing a screenshot via AirDrop</source>
+            <translation>截圖透過 AirDrop 分享後執行</translation>
+        </message>
+        <message>
+            <source>Run after uploading a pinned window</source>
+            <translation>固定到螢幕視窗上傳後執行</translation>
+        </message>
+        <message>
+            <source>Run after uploading a screenshot</source>
+            <translation>截圖上傳後執行</translation>
+        </message>
+        <message>
+            <source>Runs after a successful manual cloud upload</source>
+            <translation>手動上傳至雲端成功後執行</translation>
+        </message>
+        <message>
+            <source>Runs after each successful Quick save or Save as file</source>
+            <translation>每次快速儲存或儲存為檔案成功後執行</translation>
+        </message>
+        <message>
+            <source>Runs after each successful individual save</source>
+            <translation>每次個別儲存成功後執行</translation>
+        </message>
+        <message>
+            <source>Runs after the print job is submitted</source>
+            <translation>列印工作提交後執行</translation>
+        </message>
+        <message>
+            <source>Runs when AirDrop confirms sharing</source>
+            <translation>在 AirDrop 確認分享成功後執行</translation>
+        </message>
+        <message>
             <source>Save as file</source>
             <translation>儲存為檔案</translation>
         </message>
@@ -4378,12 +4434,12 @@
             <translation>選擇影像儲存目錄</translation>
         </message>
         <message>
-            <source>Select scenarios</source>
-            <translation>選擇場景</translation>
-        </message>
-        <message>
             <source>Select skin image</source>
             <translation>選擇佈景影像</translation>
+        </message>
+        <message>
+            <source>Select tasks</source>
+            <translation>選擇工作</translation>
         </message>
         <message>
             <source>Select the language used throughout the application</source>

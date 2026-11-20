@@ -23,6 +23,11 @@
 #include "widgets/input_line_edit.h"
 #include "widgets/combo_box.h"
 #include <QApplication>
+#include <QCryptographicHash>
+#include <QClipboard>
+#include <QMimeData>
+#include <QBuffer>
+#include "snow_shot/presentation/screenshotexporttasks.h"
 #include <QFileInfo>
 #include <QFontDatabase>
 #include <QLabel>
@@ -360,6 +365,10 @@ void uploadContracts() {
                     "upload prepared image pixels");
         if (format == ScreenshotImageFileFormat::Pdf)
             require(server.body.startsWith("%PDF"), "upload encoded PDF");
+        require(result.file.path == path && result.file.format == format &&
+                    result.file.byteCount == server.body.size(),
+                "foreground success identifies the uploaded file");
+        result.file = {};
         flushEvents();
         require(!path.isEmpty() && !QFileInfo::exists(path),
                 "remove temporary file after successful upload");
@@ -445,6 +454,135 @@ void uploadContracts() {
         flushEvents();
         require(cancelled && !job, "cancel before preparation starts");
     }
+}
+void followUpUploads() {
+    using Trigger = storage::ExportTrigger;
+    using Task = storage::ExportTask;
+    QTemporaryDir directory;
+    QObject receiver;
+    S3Server first, second;
+    ScreenshotExportTasks tasks;
+    tasks.trigger = Trigger::ScreenshotSave;
+    tasks.selected = Task::Upload;
+    tasks.options.filenameFormat = QStringLiteral("view");
+    tasks.reportError = [](const QString&) {
+        require(false, "background transfer failures must be silent");
+    };
+    const auto path = directory.filePath(QStringLiteral("shared.jpg"));
+    const auto writeVersion = [&](const QColor& color) {
+        QImage small(7, 5, QImage::Format_RGB32);
+        small.fill(color);
+        QByteArray bytes;
+        QBuffer output(&bytes);
+        require(output.open(QIODevice::WriteOnly) && small.save(&output, "JPEG", 29),
+                "encode resized manual JPEG");
+        const auto written = ScreenshotImageFileService::writeEncodedBytes(
+            bytes, path, ScreenshotImageFileFormat::Jpeg, {}, true);
+        require(written.succeeded() && written.reader, "retain committed version");
+        return std::pair{bytes, ScreenshotEncodedExport{written.path,
+                                                        ScreenshotImageFileFormat::Jpeg,
+                                                        written.encodedSha256,
+                                                        written.encodedByteCount,
+                                                        {},
+                                                        written.reader}};
+    };
+    const auto old = writeVersion(Qt::red);
+    const auto latest = writeVersion(Qt::blue);
+    QApplication::clipboard()->setText(QStringLiteral("original clipboard"));
+    tasks.cloud = configuration(first.url());
+    tasks.run(&receiver, {}, old.second);
+    tasks.cloud = configuration(second.url());
+    second.status = 403;
+    tasks.run(&receiver, {}, latest.second);
+    waitUntil(
+        [&] {
+            return first.count == 1 && second.count == 1 &&
+                   !receiver.findChild<ScreenshotCloudUploadJob*>();
+        },
+        "same-path writes upload independently");
+    require(first.body == old.first && second.body == latest.first &&
+                first.headers.toLower().contains("content-type: image/jpeg") &&
+                QApplication::clipboard()->text() == QStringLiteral("original clipboard"),
+            "concurrent completion callbacks stream the correct committed version and preserve "
+            "clipboard state");
+
+    QImage transparent(13, 11, QImage::Format_ARGB32);
+    transparent.fill(Qt::transparent);
+    auto original =
+        std::make_shared<ScreenshotExportArtifact>(ScreenshotExportSource::fromImage(transparent));
+    QImage submitted(transparent.size(), QImage::Format_RGB32);
+    submitted.fill(Qt::white);
+    S3Server printed;
+    tasks.trigger = Trigger::PinnedPrint;
+    tasks.cloud = configuration(printed.url());
+    tasks.options.format = ScreenshotImageFileFormat::Bmp;
+    tasks.run(&receiver, original, {}, submitted);
+    waitUntil([&] { return printed.count == 1; }, "print upload finishes");
+    require(printed.body.startsWith("BM") &&
+                QImage::fromData(printed.body).pixelColor(0, 0) == QColor(Qt::white),
+            "print upload uses submitted pixels and the configured file format");
+
+    const QString pngPath = directory.filePath(QStringLiteral("airdrop.png"));
+    require(transparent.save(pngPath, "PNG"), "stage exact AirDrop PNG");
+    QFile png(pngPath);
+    require(png.open(QIODevice::ReadOnly), "open shared PNG");
+    const auto bytes = png.readAll();
+    S3Server shared;
+    tasks.trigger = Trigger::PinnedAirDrop;
+    tasks.selected = Task::Upload | Task::AutoSave;
+    tasks.cloud = configuration(shared.url());
+    tasks.directory = directory.path();
+    tasks.run(&receiver, original, {pngPath, ScreenshotImageFileFormat::Png});
+    const auto saved = directory.filePath(QStringLiteral("view.bmp"));
+    waitUntil([&] { return shared.count == 1 && QFileInfo::exists(saved); },
+              "AirDrop tasks complete");
+    require(shared.body == bytes && QImage(saved).size() == transparent.size(),
+            "AirDrop uploads the sent PNG while auto-save uses the configured format");
+
+    S3Server independent;
+    tasks.trigger = Trigger::ScreenshotPin;
+    tasks.cloud = configuration(independent.url());
+    tasks.options.filenameFormat = QStringLiteral("{'}");
+    int saveFailures = 0;
+    tasks.reportError = [&](const QString&) { ++saveFailures; };
+    tasks.run(&receiver, original);
+    waitUntil([&] { return saveFailures == 1 && independent.count == 1; },
+              "a failed auto-save leaves the independent upload eligible");
+    require(independent.body.startsWith("BM") &&
+                QApplication::clipboard()->text() == QStringLiteral("original clipboard"),
+            "the background fallback uploads the original image without changing the clipboard");
+
+    tasks.trigger = Trigger::ScreenshotUpload;
+    tasks.selected = Task::AutoSave;
+    tasks.cloud.reset();
+    tasks.options.filenameFormat = QStringLiteral("uploaded");
+    tasks.run(&receiver, {},
+              {pngPath, ScreenshotImageFileFormat::Png,
+               QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex(), bytes.size()});
+    QFile exact(directory.filePath(QStringLiteral("uploaded.png")));
+    waitUntil([&] { return exact.exists(); }, "post-upload exact save finishes");
+    require(exact.open(QIODevice::ReadOnly) && exact.readAll() == bytes,
+            "post-upload auto-save preserves file format and every uploaded byte");
+    exact.close();
+    require(exact.open(QIODevice::WriteOnly) && exact.write("edited") == 6, "edit the saved copy");
+    exact.close();
+    require(png.seek(0) && png.readAll() == bytes,
+            "editing an automatic save preserves the uploaded file");
+
+    S3Server copied;
+    tasks.trigger = Trigger::ScreenshotCopy;
+    tasks.selected = Task::AutoSave | Task::Upload;
+    tasks.cloud = configuration(copied.url());
+    tasks.options.filenameFormat = QStringLiteral("copied");
+    ScreenshotEncodedExport encoded;
+    encoded.bytes = bytes;
+    tasks.run(&receiver, {}, std::move(encoded));
+    QFile copiedFile(directory.filePath(QStringLiteral("copied.png")));
+    waitUntil([&] { return copied.count == 1 && copiedFile.exists(); },
+              "clipboard PNG feeds both follow-ups without rendering an image");
+    require(copied.body == bytes && copiedFile.open(QIODevice::ReadOnly) &&
+                copiedFile.readAll() == bytes,
+            "clipboard PNG is reused byte for byte");
 }
 void widgetContracts(QApplication& app) {
     QTemporaryDir directory;
@@ -537,7 +675,7 @@ void widgetContracts(QApplication& app) {
                 "default upload description retranslates in place");
         require(title->text() == (language == QStringLiteral("zh_CN")
                                       ? QString::fromUtf8("上传配置")
-                                      : QString::fromUtf8("上傳配置")),
+                                      : QString::fromUtf8("上傳設定")),
                 "cloud settings subtitle translates on language change");
         require(widget.findChild<QLabel*>(QStringLiteral("cloudUploadConfigurationsEmpty"))
                         ->font()
@@ -815,6 +953,7 @@ int main(int argc, char** argv) {
     if (!app.arguments().contains(QStringLiteral("--settings-only"))) {
         settingsContracts();
         signingContracts();
+        followUpUploads();
         uploadContracts();
         preparedSourcesAndCancellation();
     }

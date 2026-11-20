@@ -250,10 +250,10 @@
       "allowedStringValues": [],
       "defaultJsonType": 2,
       "defaultStringIsNull": false,
-      "defaultValue": 7,
+      "defaultValue": 8,
       "integerRange": [
-        7,
-        7,
+        8,
+        8,
         1
       ],
       "key": "storage/schema_version",
@@ -5251,39 +5251,12 @@
       "valueKind": "String"
     },
     {
-      "allowedStringValues": [
-        "copy_screenshot",
-        "copy_scrolling_screenshot",
-        "copy_pinned_image",
-        "capture_focused_window",
-        "capture_current_monitor",
-        "pin_to_screen"
-      ],
-      "defaultJsonType": 4,
-      "defaultStringIsNull": false,
-      "defaultValue": [],
-      "integerRange": null,
-      "key": "screenshot/auto_save_after_execution_actions",
-      "maximumListItems": -1,
-      "valueKind": "StringList"
-    },
-    {
       "allowedStringValues": [],
       "defaultJsonType": 1,
       "defaultStringIsNull": false,
       "defaultValue": false,
       "integerRange": null,
       "key": "screenshot/copy_image_file_to_clipboard",
-      "maximumListItems": -1,
-      "valueKind": "Boolean"
-    },
-    {
-      "allowedStringValues": [],
-      "defaultJsonType": 1,
-      "defaultStringIsNull": false,
-      "defaultValue": false,
-      "integerRange": null,
-      "key": "screenshot/copy_after_pinning_to_screen",
       "maximumListItems": -1,
       "valueKind": "Boolean"
     },
@@ -5914,6 +5887,155 @@
       "key": "pinned_history/max_disk_mib",
       "maximumListItems": -1,
       "valueKind": "Integer"
+    },
+    {
+      "allowedStringValues": [
+        "auto_save",
+        "pin_to_screen",
+        "upload_to_cloud"
+      ],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "export_tasks/screenshot_copy",
+      "maximumListItems": -1,
+      "valueKind": "StringList"
+    },
+    {
+      "allowedStringValues": [
+        "copy_file",
+        "pin_to_screen",
+        "upload_to_cloud"
+      ],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "export_tasks/screenshot_save",
+      "maximumListItems": -1,
+      "valueKind": "StringList"
+    },
+    {
+      "allowedStringValues": [
+        "copy_to_clipboard",
+        "auto_save",
+        "upload_to_cloud"
+      ],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "export_tasks/screenshot_pin",
+      "maximumListItems": -1,
+      "valueKind": "StringList"
+    },
+    {
+      "allowedStringValues": [
+        "copy_to_clipboard",
+        "pin_to_screen",
+        "upload_to_cloud"
+      ],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "export_tasks/screenshot_print",
+      "maximumListItems": -1,
+      "valueKind": "StringList"
+    },
+    {
+      "allowedStringValues": [
+        "copy_to_clipboard",
+        "auto_save",
+        "pin_to_screen",
+        "upload_to_cloud"
+      ],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "export_tasks/screenshot_airdrop",
+      "maximumListItems": -1,
+      "valueKind": "StringList"
+    },
+    {
+      "allowedStringValues": [
+        "auto_save",
+        "pin_to_screen"
+      ],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "export_tasks/screenshot_upload",
+      "maximumListItems": -1,
+      "valueKind": "StringList"
+    },
+    {
+      "allowedStringValues": [
+        "auto_save",
+        "upload_to_cloud"
+      ],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "export_tasks/pinned_copy",
+      "maximumListItems": -1,
+      "valueKind": "StringList"
+    },
+    {
+      "allowedStringValues": [
+        "copy_file",
+        "upload_to_cloud"
+      ],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "export_tasks/pinned_save",
+      "maximumListItems": -1,
+      "valueKind": "StringList"
+    },
+    {
+      "allowedStringValues": [
+        "copy_to_clipboard",
+        "upload_to_cloud"
+      ],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "export_tasks/pinned_print",
+      "maximumListItems": -1,
+      "valueKind": "StringList"
+    },
+    {
+      "allowedStringValues": [
+        "copy_to_clipboard",
+        "auto_save",
+        "upload_to_cloud"
+      ],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "export_tasks/pinned_airdrop",
+      "maximumListItems": -1,
+      "valueKind": "StringList"
+    },
+    {
+      "allowedStringValues": [
+        "auto_save"
+      ],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "export_tasks/pinned_upload",
+      "maximumListItems": -1,
+      "valueKind": "StringList"
     }
   ]
 }

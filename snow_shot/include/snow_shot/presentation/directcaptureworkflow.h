@@ -18,8 +18,7 @@
 namespace snow_shot::presentation {
 enum class DirectCaptureTarget { FocusedWindow, CurrentMonitor };
 
-[[nodiscard]] bool directCaptureAutoSaveEnabled(DirectCaptureTarget target,
-                                                const QStringList& actions);
+struct DirectCaptureFrame;
 
 struct DirectCaptureDisplay {
     QImage image;
@@ -35,10 +34,9 @@ struct DirectCaptureRequest {
     quintptr window = 0;
     QString monitorName;
     QDateTime requestedAt;
-    bool autoSave = false;
+    std::function<void(const DirectCaptureFrame&)> afterCopy;
     bool copyFile = false;
     bool historyEnabled = false;
-    QString configuredSaveDirectory;
     QString imageFormat;
     ScreenshotImageEncodingOptions encoding;
     ScreenshotCompressionLevel historyDisplayCompressionLevel = ScreenshotCompressionLevel::Medium;
@@ -79,10 +77,9 @@ struct DirectCapturePorts {
     using Completion = std::function<void(QString)>;
     std::function<bool(const DirectCaptureRequest&, std::function<void(DirectCaptureFrame)>)>
         acquire;
-    std::function<bool(const DirectCaptureRequest&, const DirectCaptureFrame&,
-                       std::function<void(QString, QString)>)>
-        save;
-    std::function<bool(const DirectCaptureRequest&, const DirectCaptureFrame&, Completion)> copy;
+    using CopyCompletion = std::function<void(bool published, QString error)>;
+    std::function<bool(const DirectCaptureRequest&, const DirectCaptureFrame&, CopyCompletion)>
+        copy;
     std::function<bool(const DirectCaptureRequest&, const DirectCaptureFrame&, Completion)> history;
     std::function<void(const QString&, bool)> report;
     std::function<void()> captureRequested;
@@ -97,9 +94,8 @@ class DirectCaptureWorkflow final : public QObject {
     [[nodiscard]] qsizetype pendingCount() const;
 
   private:
-    enum class Phase { Idle, Acquiring, Saving, Copying, History, Stopped };
+    enum class Phase { Idle, Acquiring, Copying, History, Stopped };
     void startNext();
-    void save();
     void copy();
     void publishHistory();
     void finish();
@@ -108,7 +104,6 @@ class DirectCaptureWorkflow final : public QObject {
     DirectCapturePorts m_ports;
     std::deque<DirectCaptureRequest> m_queue;
     DirectCaptureFrame m_frame;
-    bool m_copySucceeded = false;
     Phase m_phase = Phase::Idle;
     quint64 m_generation = 0;
 };

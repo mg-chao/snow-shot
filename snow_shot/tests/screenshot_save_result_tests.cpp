@@ -140,6 +140,9 @@ struct Dialog {
     QWidget owner;
     QPointer<AdModal> modal;
     QStringList events;
+    QStringList writes;
+    QList<int> committedWriteAttempts;
+    int writeAttempts = 0;
     QString savedPath;
     bool succeeded = false;
     QImage image{160, 100, QImage::Format_RGBA8888};
@@ -156,17 +159,32 @@ struct Dialog {
         image.fill(QColor(13, 180, 71, 160));
         owner.resize(1200, 800);
         owner.show();
-        require(ScreenshotSaveAsFileDialog::open(
-                    &owner, &owner, image,
-                    [this](const QString& path) {
-                        events << QStringLiteral("saved");
-                        savedPath = path;
-                    },
-                    [this](bool success) {
-                        events << QStringLiteral("finished");
-                        succeeded = success;
-                    }),
-                "open result fixture");
+        require(
+            ScreenshotSaveAsFileDialog::open(
+                &owner, &owner, image,
+                [this](const QString& path) {
+                    events << QStringLiteral("saved");
+                    savedPath = path;
+                },
+                [this](bool success) {
+                    events << QStringLiteral("finished");
+                    succeeded = success;
+                },
+                nullptr, Qt::ApplicationModal,
+                [this] {
+                    return [this,
+                            attempt = ++writeAttempts](const ScreenshotImageFileSaveResult& saved,
+                                                       ScreenshotImageFileFormat format) {
+                        require(saved.succeeded() &&
+                                    saved.encodedByteCount == QFileInfo(saved.path).size() &&
+                                    !saved.encodedSha256.isEmpty() &&
+                                    ScreenshotImageFileService::formatForPath(saved.path) == format,
+                                "each write reports the committed format, digest and size");
+                        writes << saved.path;
+                        committedWriteAttempts << attempt;
+                    };
+                }),
+            "open result fixture");
         modal = child<AdModal>(&owner, "screenshotSaveAsFileModal");
         await([&] {
             return modal->contentWidget()->property("previewGeneration").toULongLong() > 0;
@@ -365,7 +383,7 @@ void resultLifecycle(const QString& directory) {
     auto* overwrite = child<AdModal>(dialog.content(), "saveOverwriteModal");
     overwrite->reject();
     flush();
-    require(dialog.events.isEmpty() && dialog.modal->isOpen(),
+    require(dialog.events.isEmpty() && dialog.modal->isOpen() && dialog.writeAttempts == 1,
             "declining overwrite preserves saved result session");
     child<AdLineEdit>(dialog.content(), "saveDirectoryInput")
         ->setText(firstPath + QStringLiteral("/child"));
@@ -381,8 +399,10 @@ void resultLifecycle(const QString& directory) {
     flush();
     geometry.verify();
     const QString secondPath = QDir::fromNativeSeparators(dialog.result()->subTitle());
-    require(secondPath != firstPath && QFileInfo::exists(secondPath),
-            "Continue editing supports another save");
+    require(secondPath != firstPath && QFileInfo::exists(secondPath) &&
+                dialog.writes == QStringList{firstPath, secondPath} &&
+                dialog.committedWriteAttempts == QList<int>{1, 3},
+            "repeated saves capture fresh state and report only successful writes");
     dialog.button("saveContinueEditingButton")->click();
     dialog.modal->rejectButton()->click();
     dialog.complete();

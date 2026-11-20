@@ -93,6 +93,8 @@ struct ScreenshotExportEncodingResult final {
 struct ScreenshotExportClipboardResult final {
     ScreenshotClipboardPayload payload;
     QString error;
+    QByteArray fileSha256{};
+    qint64 fileByteCount = -1;
 
     [[nodiscard]] bool succeeded() const {
         return payload.isValid() && error.isEmpty();
@@ -236,6 +238,8 @@ class ScreenshotExportArtifact final : public QObject {
                                   EncodingCallback callback);
     [[nodiscard]] bool requestClipboard(QObject* receiver, ClipboardCallback callback);
     // Prepare image data and a temporary exported file for one clipboard publication.
+    [[nodiscard]] bool clipboardMatchesFileEncoding(ScreenshotImageFileFormat format,
+                                                    ScreenshotImageEncodingOptions encoding) const;
     [[nodiscard]] bool requestClipboardFile(QObject* receiver, ScreenshotImageFileFormat format,
                                             QString filenameFormat,
                                             ScreenshotImageEncodingOptions encoding,
@@ -250,24 +254,25 @@ class ScreenshotExportArtifact final : public QObject {
                                          ScreenshotImageEncodingOptions encoding,
                                          ScreenshotExportCoordinator::Completion callback,
                                          ScreenshotPdfOptions pdf = {},
-                                         std::shared_ptr<void> keepAlive = {});
+                                         std::shared_ptr<void> keepAlive = {},
+                                         bool retainFile = false);
     [[nodiscard]] bool requestAutomaticSave(QObject* receiver, QStringList directories,
                                             ScreenshotImageFileFormat format,
                                             QString filenameFormat,
                                             ScreenshotImageEncodingOptions encoding,
                                             ScreenshotExportCoordinator::Completion callback,
                                             ScreenshotPdfOptions pdf = {},
-                                            QDateTime requestedAt = {});
+                                            QDateTime requestedAt = {}, bool retainFile = false);
     // Capture the configured path without filesystem access; resolve existing-directory
     // preference and platform fallbacks on the export worker when saving.
     [[nodiscard]] bool requestAutomaticSaveToConfiguredDirectory(
         QObject* receiver, QString configuredDirectory, ScreenshotImageFileFormat format,
         QString filenameFormat, ScreenshotImageEncodingOptions encoding,
         ScreenshotExportCoordinator::Completion callback, ScreenshotPdfOptions pdf = {},
-        QDateTime requestedAt = {});
+        QDateTime requestedAt = {}, bool retainFile = false);
     [[nodiscard]] bool requestQuickSave(QObject* receiver,
                                         ScreenshotExportCoordinator::Completion callback,
-                                        QDateTime requestedAt = {});
+                                        QDateTime requestedAt = {}, bool retainFile = false);
     // Retire pending and queued deliveries on every receiver thread. Callbacks that
     // have already started may finish; cancellation never waits for consumer code.
     void cancel();
@@ -295,13 +300,15 @@ class ScreenshotExportArtifact final : public QObject {
                                        ScreenshotImageEncodingOptions encoding,
                                        ScreenshotExportCoordinator::Completion callback,
                                        ScreenshotPdfOptions pdf, QDateTime requestedAt,
-                                       ScreenshotExportCoordinator::Priority priority);
+                                       ScreenshotExportCoordinator::Priority priority,
+                                       bool retainFile = false);
     // Freeze naming context before asynchronous preparation; all sources use the same writer.
     [[nodiscard]] FileSourceCallback
     makeFileSaveCallback(QObject* receiver, FileSaveDestination destination,
                          ScreenshotImageFileFormat format, QString filenameFormat,
                          ScreenshotExportCoordinator::Completion callback, ScreenshotPdfOptions pdf,
-                         QDateTime requestedAt, ScreenshotExportCoordinator::Priority priority);
+                         QDateTime requestedAt, ScreenshotExportCoordinator::Priority priority,
+                         bool retainFile = false);
     struct Impl;
     std::unique_ptr<Impl> m_impl;
     void assertOwnerThread() const;

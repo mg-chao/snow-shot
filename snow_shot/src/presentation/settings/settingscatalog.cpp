@@ -1570,33 +1570,98 @@ SettingsItemDefinition screenshotSaveAsFileDialogItem() {
           settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Snow Shot"))}});
 }
 
-SettingsItemDefinition screenshotAutoSaveAfterExecutionItem() {
-    SettingsMultiSelectDefinition payload;
-    payload.binding = SettingsMultiSelectBinding::ScreenshotAutoSaveAfterExecution;
-    payload.placeholder = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Select scenarios"));
-    payload.options = {
-        {QStringLiteral("copy_screenshot"),
-         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Copy screenshot"))},
-        {QStringLiteral("copy_scrolling_screenshot"),
-         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Copy scrolling screenshot"))},
-        {QStringLiteral("copy_pinned_image"),
-         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Copy pinned window"))},
-        {QStringLiteral("capture_current_monitor"),
-         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Copy current monitor"))},
-        {QStringLiteral("capture_focused_window"),
-         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Copy focused window"))},
-        {QStringLiteral("pin_to_screen"),
-         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Pin screenshot to screen"))},
+QVector<SettingsItemDefinition> exportTaskItems() {
+    using storage::ExportTask;
+    using storage::ExportTrigger;
+    const auto item = [](ExportTrigger trigger, TranslatableText title,
+                         TranslatableText description) {
+        const auto& row = storage::exportTaskRow(trigger);
+        SettingsMultiSelectDefinition payload;
+        payload.binding = exportTaskBinding(trigger);
+        payload.placeholder = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Select tasks"));
+        for (const auto& option : storage::exportTaskOptions) {
+            if (!row.allowed.testFlag(option.task))
+                continue;
+            TranslatableText label;
+            switch (option.task) {
+            case ExportTask::CopyImage:
+                label = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Copy to clipboard"));
+                break;
+            case ExportTask::CopyFile:
+                label = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Copy file"));
+                break;
+            case ExportTask::AutoSave:
+                label = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Auto-save"));
+                break;
+            case ExportTask::Pin:
+                label = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Pin to screen"));
+                break;
+            case ExportTask::Upload:
+                label = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Upload to cloud"));
+                break;
+            }
+            payload.options.push_back({option.id.toString(), label});
+        }
+        const QString key = row.key.toString();
+        return SettingsItemDefinition{
+            QString(key).replace(u'/', u'.'), title, description, {}, key, std::move(payload)};
     };
     return {
-        QStringLiteral("screenshot.auto-save-after-execution"),
-        settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Auto-save after execution")),
-        settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
-                                       "Choose which actions also save an image in the "
-                                       "selected image format and save directory")),
-        {},
-        QStringLiteral("screenshot/auto_save_after_execution_actions"),
-        std::move(payload),
+        item(ExportTrigger::ScreenshotCopy,
+             settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Run after copying a screenshot")),
+             settingsText(QT_TRANSLATE_NOOP(
+                 "SettingsCatalog",
+                 "Applies to standard, scrolling, monitor, and focused-window captures"))),
+        item(ExportTrigger::ScreenshotSave,
+             settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Run after saving a screenshot")),
+             settingsText(QT_TRANSLATE_NOOP(
+                 "SettingsCatalog", "Runs after each successful Quick save or Save as file"))),
+        item(ExportTrigger::ScreenshotPin,
+             settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
+                                            "Run after pinning a screenshot to the screen")),
+             settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
+                                            "Applies to pins created from the screenshot window"))),
+        item(ExportTrigger::ScreenshotPrint,
+             settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Run after printing a screenshot")),
+             settingsText(
+                 QT_TRANSLATE_NOOP("SettingsCatalog", "Runs after the print job is submitted"))),
+#ifdef Q_OS_MACOS
+        item(ExportTrigger::ScreenshotAirDrop,
+             settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
+                                            "Run after sharing a screenshot via AirDrop")),
+             settingsText(
+                 QT_TRANSLATE_NOOP("SettingsCatalog", "Runs when AirDrop confirms sharing"))),
+#endif
+        item(ExportTrigger::ScreenshotUpload,
+             settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Run after uploading a screenshot")),
+             settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
+                                            "Runs after a successful manual cloud upload"))),
+        item(
+            ExportTrigger::PinnedCopy,
+            settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Run after copying a pinned window")),
+            settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
+                                           "Applies when Copy current view copies an image"))),
+        item(ExportTrigger::PinnedSave,
+             settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Run after saving a pinned window")),
+             settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
+                                            "Runs after each successful individual save"))),
+        item(ExportTrigger::PinnedPrint,
+             settingsText(
+                 QT_TRANSLATE_NOOP("SettingsCatalog", "Run after printing a pinned window")),
+             settingsText(
+                 QT_TRANSLATE_NOOP("SettingsCatalog", "Runs after the print job is submitted"))),
+#ifdef Q_OS_MACOS
+        item(ExportTrigger::PinnedAirDrop,
+             settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
+                                            "Run after sharing a pinned window via AirDrop")),
+             settingsText(
+                 QT_TRANSLATE_NOOP("SettingsCatalog", "Runs when AirDrop confirms sharing"))),
+#endif
+        item(ExportTrigger::PinnedUpload,
+             settingsText(
+                 QT_TRANSLATE_NOOP("SettingsCatalog", "Run after uploading a pinned window")),
+             settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
+                                            "Runs after a successful manual cloud upload"))),
     };
 }
 
@@ -1612,7 +1677,6 @@ SettingsItemDefinition screenshotCopyFileItem() {
 
 QVector<SettingsItemDefinition> screenshotOutputItems() {
     return {
-        screenshotAutoSaveAfterExecutionItem(),
         screenshotCopyFileItem(),
         screenshotSaveAsFileDialogItem(),
         switchItem(QStringLiteral("screenshot.show-save-result"),
@@ -3563,16 +3627,6 @@ constexpr CatalogInlineItem catalogItemSystemAnnotationModeWhenOpeningForEditing
 };
 
 #endif
-constexpr CatalogInlineItem catalogItemScreenshotCopyAfterPinningToScreen{
-    .kind = CatalogItemKind::Switch,
-    .id = u"screenshot.copy-after-pinning-to-screen",
-    .title = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Copy after pinning to screen")),
-    .description = settingsText(QT_TRANSLATE_NOOP(
-        "SettingsCatalog", "Also copy the screenshot to the clipboard when pinning it to screen")),
-    .key = u"screenshot/copy_after_pinning_to_screen",
-    .binding = int(SettingsSwitchBinding ::ScreenshotCopyAfterPinningToScreen),
-};
-
 constexpr CatalogInlineItem catalogItemScreenshotKeepAnnotationsEditableAfterPinningToScreen{
     .kind = CatalogItemKind::Switch,
     .id = u"screenshot.keep-annotations-editable-after-pinning-to-screen",
@@ -4292,7 +4346,6 @@ constexpr CatalogItemFactory catalogPageScreenshotsSectionScreenshotSettingsItem
     {screenshotMiddleClickActionItem},
     {quickSelectionModificationItem},
     {hiDpiImageScalingItem},
-    {nullptr, &catalogItemScreenshotCopyAfterPinningToScreen},
     {nullptr, &catalogItemScreenshotKeepAnnotationsEditableAfterPinningToScreen},
     {screenshotShutterSoundNotificationItem},
     {screenshotSoundNotificationItem},
@@ -4972,9 +5025,20 @@ constexpr CatalogSectionRecord catalogPageFilesHistorySections[] = {
         .description = settingsText(QT_TRANSLATE_NOOP(
             "SettingsCatalog",
             "Shared image export settings for screenshot and pin-to-screen windows")),
-        .reset = SettingsSectionReset ::ScreenshotOutput,
+        .reset = SettingsSectionReset::ScreenshotOutput,
         .items = {},
         .factory = screenshotOutputItems,
+        .layout = SettingsSectionItemLayout::VerticalList,
+        .collapsed = false,
+    },
+    {
+        .id = u"export-tasks",
+        .title = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Export tasks")),
+        .description = settingsText(QT_TRANSLATE_NOOP(
+            "SettingsCatalog", "Choose which tasks run after a successful image export")),
+        .reset = SettingsSectionReset::ExportTasks,
+        .items = {},
+        .factory = exportTaskItems,
         .layout = SettingsSectionItemLayout::VerticalList,
         .collapsed = false,
     },
@@ -4983,7 +5047,7 @@ constexpr CatalogSectionRecord catalogPageFilesHistorySections[] = {
         .title = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Video export")),
         .description = settingsText(QT_TRANSLATE_NOOP(
             "SettingsCatalog", "Recording output location and filename settings")),
-        .reset = SettingsSectionReset ::ScreenRecordingOutput,
+        .reset = SettingsSectionReset::ScreenRecordingOutput,
         .items = {},
         .factory = videoOutputItems,
         .layout = SettingsSectionItemLayout::VerticalList,
@@ -4994,7 +5058,7 @@ constexpr CatalogSectionRecord catalogPageFilesHistorySections[] = {
         .title = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Screenshot history")),
         .description = settingsText(QT_TRANSLATE_NOOP(
             "SettingsCatalog", "Screenshot history retention and cleanup settings")),
-        .reset = SettingsSectionReset ::HistoryPolicy,
+        .reset = SettingsSectionReset::HistoryPolicy,
         .items = catalogPageFilesHistorySectionHistoryItems,
         .factory = nullptr,
         .layout = SettingsSectionItemLayout::VerticalList,
@@ -5006,7 +5070,7 @@ constexpr CatalogSectionRecord catalogPageFilesHistorySections[] = {
         .description = settingsText(
             QT_TRANSLATE_NOOP("SettingsCatalog", "Retention limits apply only to closed windows; "
                                                  "retained windows are always protected")),
-        .reset = SettingsSectionReset ::PinnedHistoryPolicy,
+        .reset = SettingsSectionReset::PinnedHistoryPolicy,
         .items = catalogPageFilesHistorySectionPinnedHistoryItems,
         .factory = nullptr,
         .layout = SettingsSectionItemLayout::VerticalList,
@@ -5017,7 +5081,7 @@ constexpr CatalogSectionRecord catalogPageFilesHistorySections[] = {
         .title = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Data storage")),
         .description = settingsText(QT_TRANSLATE_NOOP(
             "SettingsCatalog", "App-wide storage usage, location, mode, errors, and cleanup")),
-        .reset = SettingsSectionReset ::None,
+        .reset = SettingsSectionReset::None,
         .items = catalogPageFilesHistorySectionStorageStatusItems,
         .factory = nullptr,
         .layout = SettingsSectionItemLayout::VerticalList,
@@ -6550,9 +6614,6 @@ QStringList SettingsCatalog::validationErrors() const {
                     case SettingsSwitchBinding::ScreenshotCopyImageFileToClipboard:
                         expectedKey = QStringLiteral("screenshot/copy_image_file_to_clipboard");
                         break;
-                    case SettingsSwitchBinding::ScreenshotCopyAfterPinningToScreen:
-                        expectedKey = QStringLiteral("screenshot/copy_after_pinning_to_screen");
-                        break;
                     case SettingsSwitchBinding::
                         ScreenshotKeepAnnotationsEditableAfterPinningToScreen:
                         expectedKey = QStringLiteral(
@@ -6705,9 +6766,9 @@ QStringList SettingsCatalog::validationErrors() const {
                     case SettingsMultiSelectBinding::TrayMenuOptions:
                         expectedKey = QStringLiteral("tray/menu_options");
                         break;
-                    case SettingsMultiSelectBinding::ScreenshotAutoSaveAfterExecution:
-                        expectedKey =
-                            QStringLiteral("screenshot/auto_save_after_execution_actions");
+                    default:
+                        if (const auto trigger = exportTriggerForBinding(multi->binding))
+                            expectedKey = storage::exportTaskRow(*trigger).key.toString();
                         break;
                     case SettingsMultiSelectBinding::FullscreenDisableScope:
                         expectedKey = QStringLiteral("global_shortcuts/fullscreen_disable_scope");

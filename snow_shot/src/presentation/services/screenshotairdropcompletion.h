@@ -14,7 +14,7 @@ auto screenshotAirDropCompletion(std::shared_ptr<bool> completed, Finish finish,
             if (std::exchange(*completed, true) || !finish())
                 return;
             if (result.status == ScreenshotAirDropService::Status::Shared)
-                shared();
+                shared(std::move(result));
             else
                 restore(std::move(result));
         };

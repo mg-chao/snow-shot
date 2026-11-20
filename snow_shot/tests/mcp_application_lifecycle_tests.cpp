@@ -200,7 +200,7 @@ int runMcpApplicationLifecycleTests(int argc, char** argv) try {
                 {{QStringLiteral("mcp/enabled"), true},
                  {QStringLiteral("tray/enabled"), false},
                  {QStringLiteral("pin_to_screen/automatic_text_recognition"), false},
-                 {QStringLiteral("screenshot/copy_after_pinning_to_screen"), false}}),
+                 {QStringLiteral("export_tasks/screenshot_pin"), QJsonArray{}}}),
             "enable MCP without a tray");
     presentation::LanguageManager::instance().initialize();
     require(presentation::LanguageManager::instance().setLanguage(QStringLiteral("en_US")),

@@ -6,6 +6,7 @@
 #include "snow_shot/presentation/globalmousetypes.h"
 #include "snow_shot/presentation/translatabletext.h"
 
+#include "snow_shot/storage/exporttasks.h"
 #include <QMetaType>
 #include <QHash>
 #include <QString>
@@ -155,7 +156,6 @@ enum class SettingsSwitchBinding {
     ScreenshotAutoRecognizeQrCode,
     ScreenshotRestoreOriginalScreenColors,
     ScreenshotCopyImageFileToClipboard,
-    ScreenshotCopyAfterPinningToScreen,
     ScreenshotKeepAnnotationsEditableAfterPinningToScreen,
     ScreenshotShowSaveResult,
     SaveRecognitionResultAsImage,
@@ -217,9 +217,24 @@ enum class SettingsMultiSelectBinding {
     DrawingAutomaticSelectionExcludedTools,
     DrawingQuickSelectionDisabledTools,
     TrayMenuOptions,
-    ScreenshotAutoSaveAfterExecution,
     FullscreenDisableScope,
+    FirstExportTask,
+    LastExportTask = static_cast<int>(FirstExportTask) +
+        static_cast<int>(storage::exportTaskRows.size()) - 1,
 };
+
+constexpr SettingsMultiSelectBinding exportTaskBinding(storage::ExportTrigger trigger) {
+    return static_cast<SettingsMultiSelectBinding>(
+        int(SettingsMultiSelectBinding::FirstExportTask) + int(trigger));
+}
+
+constexpr std::optional<storage::ExportTrigger>
+exportTriggerForBinding(SettingsMultiSelectBinding binding) {
+    const int index = int(binding) - int(SettingsMultiSelectBinding::FirstExportTask);
+    if (index < 0 || index >= int(storage::exportTaskRows.size()))
+        return std::nullopt;
+    return static_cast<storage::ExportTrigger>(index);
+}
 
 struct SettingsMultiSelectDefinition {
     SettingsMultiSelectBinding binding =
@@ -511,6 +526,7 @@ enum class SettingsSectionReset {
     PinnedHistoryPolicy,
     ScreenshotSettings,
     ScreenshotOutput,
+    ExportTasks,
     ScreenshotInterfaceSettings,
     TextRecognitionInterfaceSettings,
     TextRecognitionBehavior,

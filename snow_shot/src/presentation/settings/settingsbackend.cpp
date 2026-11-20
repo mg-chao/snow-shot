@@ -1063,8 +1063,6 @@ bool BuiltInSettingsBackend::switchValue(SettingsSwitchBinding binding) const {
         return storage::ScreenshotSettings().restoreOriginalScreenColors();
     case SettingsSwitchBinding::ScreenshotCopyImageFileToClipboard:
         return storage::ScreenshotSettings().copyImageFileToClipboard();
-    case SettingsSwitchBinding::ScreenshotCopyAfterPinningToScreen:
-        return storage::ScreenshotSettings().copyAfterPinningToScreen();
     case SettingsSwitchBinding::ScreenshotKeepAnnotationsEditableAfterPinningToScreen:
         return storage::ScreenshotSettings().keepAnnotationsEditableAfterPinningToScreen();
     case SettingsSwitchBinding::ScreenshotShowSaveResult:
@@ -1410,9 +1408,6 @@ bool BuiltInSettingsBackend::applySwitchValue(SettingsSwitchBinding binding, boo
     if (binding == SettingsSwitchBinding::ScreenshotCopyImageFileToClipboard) {
         return storage::ScreenshotSettings().setCopyImageFileToClipboard(value);
     }
-    if (binding == SettingsSwitchBinding::ScreenshotCopyAfterPinningToScreen) {
-        return storage::ScreenshotSettings().setCopyAfterPinningToScreen(value);
-    }
     if (binding == SettingsSwitchBinding::ScreenshotKeepAnnotationsEditableAfterPinningToScreen) {
         return storage::ScreenshotSettings().setKeepAnnotationsEditableAfterPinningToScreen(value);
     }
@@ -1599,7 +1594,6 @@ bool BuiltInSettingsBackend::applySwitchValue(SettingsSwitchBinding binding, boo
     case SettingsSwitchBinding::ScreenshotRestoreOriginalScreenColors:
     case SettingsSwitchBinding::ScreenshotCopyImageFileToClipboard:
     case SettingsSwitchBinding::ScreenshotShowSaveResult:
-    case SettingsSwitchBinding::ScreenshotCopyAfterPinningToScreen:
     case SettingsSwitchBinding::ScreenshotKeepAnnotationsEditableAfterPinningToScreen:
     case SettingsSwitchBinding::SaveRecognitionResultAsImage:
     case SettingsSwitchBinding::ShowOriginalImagePreview:
@@ -1762,10 +1756,10 @@ QVariantList BuiltInSettingsBackend::multiSelectValue(SettingsMultiSelectBinding
         for (const QString& value : storage::TraySettings().menuOptions()) {
             values.push_back(value);
         }
-    } else if (binding == SettingsMultiSelectBinding::ScreenshotAutoSaveAfterExecution) {
-        for (const QString& value : storage::ScreenshotSettings().autoSaveAfterExecutionActions()) {
+    } else if (const auto trigger = exportTriggerForBinding(binding)) {
+        for (const auto& value :
+             storage::exportTaskIds(storage::ScreenshotSettings().exportTasks(*trigger)))
             values.push_back(value);
-        }
     } else if (binding == SettingsMultiSelectBinding::FullscreenDisableScope) {
         for (const QString& value : storage::GlobalShortcutSettings().fullscreenDisableScope()) {
             values.push_back(value);
@@ -1790,9 +1784,9 @@ bool BuiltInSettingsBackend::applyMultiSelectValue(SettingsMultiSelectBinding bi
     if (binding == SettingsMultiSelectBinding::TrayMenuOptions) {
         return storage::TraySettings().setMenuOptions(tools);
     }
-    if (binding == SettingsMultiSelectBinding::ScreenshotAutoSaveAfterExecution) {
-        return storage::ScreenshotSettings().setAutoSaveAfterExecutionActions(tools);
-    }
+    if (const auto trigger = exportTriggerForBinding(binding))
+        return storage::ApplicationStorage::instance().configuration().setValue(
+            storage::exportTaskRow(*trigger).key.toString(), QJsonArray::fromStringList(tools));
     if (binding == SettingsMultiSelectBinding::FullscreenDisableScope) {
         return storage::GlobalShortcutSettings().setFullscreenDisableScope(tools);
     }
@@ -2733,6 +2727,7 @@ SettingsResetResult BuiltInSettingsBackend::resetSectionWithResults(SettingsSect
         return applyContextMenuSettings(
             storage::ApplicationStorage::instance().configuration().value(kContextMenuModeKey),
             storage::ConfigurationSchema::defaultValue(kContextMenuShortcutKey));
+    case SettingsSectionReset::ExportTasks:
     case SettingsSectionReset::ScreenshotOutput:
     case SettingsSectionReset::Translation:
     case SettingsSectionReset::Tray:
@@ -2938,9 +2933,6 @@ SettingsResetResult BuiltInSettingsBackend::resetSectionWithResults(SettingsSect
                    {QStringLiteral("screenshot/keep_annotations_editable_after_pinning_to_screen"),
                     storage::ConfigurationSchema::defaultValue(QStringLiteral(
                         "screenshot/keep_annotations_editable_after_pinning_to_screen"))},
-                   {QStringLiteral("screenshot/copy_after_pinning_to_screen"),
-                    storage::ConfigurationSchema::defaultValue(
-                        QStringLiteral("screenshot/copy_after_pinning_to_screen"))},
                    {QStringLiteral("screenshot/shutter_sound_notification"),
                     storage::ConfigurationSchema::defaultValue(
                         QStringLiteral("screenshot/shutter_sound_notification"))},

@@ -34,10 +34,6 @@
             <translation>Allow Snow Shot to access Finder in System Settings &gt; Privacy &amp; Security &gt; Automation, then try again</translation>
         </message>
         <message>
-            <source>Automatic screenshot saving failed: %1</source>
-            <translation>Automatic screenshot saving failed: %1</translation>
-        </message>
-        <message>
             <source>Cancel</source>
             <translation>Cancel</translation>
         </message>
@@ -176,10 +172,6 @@
         <message>
             <source>The screenshot export queue is full</source>
             <translation>The screenshot export queue is full</translation>
-        </message>
-        <message>
-            <source>The screenshot will be copied, but automatic saving could not be queued</source>
-            <translation>The screenshot will be copied, but automatic saving could not be queued</translation>
         </message>
         <message>
             <source>The scrolling screenshot could not be pinned</source>

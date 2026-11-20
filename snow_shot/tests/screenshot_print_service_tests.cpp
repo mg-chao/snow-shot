@@ -203,14 +203,16 @@ void immutableWhiteSnapshotAndDuplicateCompletion() {
     QWidget owner;
     QImage source = image();
     int completions = 0;
-    require(service.printImage(&owner, &owner, source,
-                               [&](Service::Result result) {
-                                   require(result.status == Service::Status::Submitted,
-                                           "submission status must be preserved");
-                                   require(QThread::currentThread() == qApp->thread(),
-                                           "completion must return to GUI thread");
-                                   ++completions;
-                               }),
+    require(service.printImage(
+                &owner, &owner, source,
+                [&](Service::Result result) {
+                    require(result.status == Service::Status::Submitted &&
+                                result.submittedImage.constBits() == received.constBits(),
+                            "submitted follow-ups receive the exact white-backed printer image");
+                    require(QThread::currentThread() == qApp->thread(),
+                            "completion must return to GUI thread");
+                    ++completions;
+                }),
             "first print must be accepted");
     source.fill(Qt::black);
     require(!service.printImage(&owner, &owner, source, [](auto) {}),
@@ -392,7 +394,7 @@ void screenshotSubmissionAndStaleCapturePolicy() {
                     ++released;
                     return current;
                 },
-                [&] { ++closed; },
+                [&](auto) { ++closed; },
                 [&](auto result) {
                     require(result.status == status, "restore must receive the native outcome");
                     ++restored;

@@ -493,13 +493,15 @@ void run() {
             "native live pin shell integration requires the Windows platform");
     const live_pinned_tests::ClipboardRestorer restoreClipboard;
     const snow_shot::storage::ScreenshotSettings settings;
-    const auto previousAutoSave = settings.autoSaveAfterExecutionActions();
+    const auto previousAutoSave =
+        settings.exportTasks(snow_shot::storage::ExportTrigger::PinnedCopy);
     const bool previousCopyFile = settings.copyImageFileToClipboard();
     const auto restoreSettings = qScopeGuard([&] {
-        static_cast<void>(settings.setAutoSaveAfterExecutionActions(previousAutoSave));
+        static_cast<void>(settings.setExportTasks(snow_shot::storage::ExportTrigger::PinnedCopy,
+                                                  previousAutoSave));
         static_cast<void>(settings.setCopyImageFileToClipboard(previousCopyFile));
     });
-    require(settings.setAutoSaveAfterExecutionActions({}) &&
+    require(settings.setExportTasks(snow_shot::storage::ExportTrigger::PinnedCopy, {}) &&
                 settings.setCopyImageFileToClipboard(false),
             "native shell fixture copies image pixels without automatic file saving");
 

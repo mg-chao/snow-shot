@@ -87,6 +87,8 @@ QMap<QString, QJsonValue> overlayFromDocument(const QJsonObject& document) {
         }
     }
     for (const QString& legacyKey : {QStringLiteral("screenshot/auto_save_after_copy"),
+                                     QStringLiteral("screenshot/auto_save_after_execution_actions"),
+                                     QStringLiteral("screenshot/copy_after_pinning_to_screen"),
                                      QStringLiteral("interface/app_font_size_percentage"),
                                      QStringLiteral("screenshot_selection/selection_target")}) {
         bool present = false;
@@ -179,10 +181,14 @@ MaterializedConfiguration materializeConfiguration(const QMap<QString, QJsonValu
             result.dirty = !replaceAll;
         }
         QJsonObject screenshot = result.document.value(QStringLiteral("screenshot")).toObject();
-        if (screenshot.contains(QStringLiteral("auto_save_after_copy"))) {
-            screenshot.remove(QStringLiteral("auto_save_after_copy"));
-            result.document.insert(QStringLiteral("screenshot"), screenshot);
-            result.dirty = !replaceAll;
+        for (const auto& key : {QStringLiteral("auto_save_after_copy"),
+                                QStringLiteral("auto_save_after_execution_actions"),
+                                QStringLiteral("copy_after_pinning_to_screen")}) {
+            if (screenshot.contains(key)) {
+                screenshot.remove(key);
+                result.document.insert(QStringLiteral("screenshot"), screenshot);
+                result.dirty = !replaceAll;
+            }
         }
         QJsonObject screenshotSelection =
             result.document.value(QStringLiteral("screenshot_selection")).toObject();

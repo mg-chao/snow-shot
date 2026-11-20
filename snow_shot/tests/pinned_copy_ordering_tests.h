@@ -148,8 +148,8 @@ void renderingCopiesYieldToNewRequests() {
             auto& second = fixture.add({230, 160}, {90, 70});
             QTemporaryDir output;
             require(output.isValid() && settings.setImageSaveDirectory(output.path()) &&
-                        settings.setAutoSaveAfterExecutionActions(
-                            {QStringLiteral("copy_pinned_image")}),
+                        settings.setExportTasks(snow_shot::storage::ExportTrigger::PinnedCopy,
+                                                snow_shot::storage::ExportTask::AutoSave),
                     "the older copy also owns an independent automatic save");
             std::function<void(QImage)> deliver;
             auto source = ScreenshotExportSource::fromImageLoader(
@@ -159,7 +159,7 @@ void renderingCopiesYieldToNewRequests() {
                 });
             Access::copyRenderedImage(
                 first, std::make_shared<ScreenshotExportArtifact>(std::move(source)));
-            require(settings.setAutoSaveAfterExecutionActions({}),
+            require(settings.setExportTasks(snow_shot::storage::ExportTrigger::PinnedCopy, {}),
                     "later copies do not request automatic saving");
             translation_tests::waitUntil([&] { return bool(deliver); },
                                          "the older copy waits for rendered pixels");
@@ -201,8 +201,8 @@ void renderingCopiesYieldToNewRequests() {
             require(exportedClipboardUrls() == urls && exportedClipboardImage() == image &&
                         QApplication::clipboard()->text() == text,
                     "late image and file encoders cannot replace a newer batch, image or text");
-            requirePinnedExportPixels(QImage(output.filePath(QStringLiteral("OrderedCopy.png"))),
-                                      older, "clipboard supersession preserves automatic saving");
+            require(QDir(output.path()).entryList(QDir::Files).isEmpty(),
+                    "a superseded clipboard write must skip follow-up tasks");
         }
     }
 }
@@ -226,21 +226,63 @@ void pendingBatchYieldsToRecognitionCopy() {
             "a pending batch cannot replace a later recognized-text copy");
 }
 
+void deferredSaveYieldsToNewCopy() {
+    using snow_shot::storage::ExportTask;
+    using snow_shot::storage::ExportTrigger;
+    const snow_shot::storage::ScreenshotSettings settings;
+    QTemporaryDir directory;
+    const auto oldTasks = settings.exportTasks(ExportTrigger::PinnedSave);
+    const auto restore =
+        qScopeGuard([&] { settings.setExportTasks(ExportTrigger::PinnedSave, oldTasks); });
+    require(directory.isValid() && settings.setImageSaveDirectory(directory.path()) &&
+                settings.setExportTasks(ExportTrigger::PinnedSave, ExportTask::CopyFile),
+            "configure a pinned save with a clipboard follow-up");
+    auto config = cachedOcrPinConfig(nullptr);
+    config.recognitionResults = {};
+    config.recognitionVisible = false;
+    config.enableEditing = false;
+    ScreenshotImageLoadCallback deliver;
+    config.imageLoader = [&deliver](QObject*, ScreenshotImageLoadCallback ready) {
+        deliver = std::move(ready);
+    };
+    ScreenshotPinnedWindow window;
+    window.setAttribute(Qt::WA_DeleteOnClose, false);
+    const auto close = qScopeGuard([&] { window.close(); });
+    require(window.present(config), "present a pin with pending image materialization");
+    translation_tests::waitUntil([&] { return bool(deliver); }, "the pin is waiting for pixels");
+    Access::quickSave(window);
+    QImage newerCopy(5, 3, QImage::Format_RGBA8888);
+    newerCopy.fill(Qt::green);
+    newerCopy.setColorSpace(QColorSpace::SRgb);
+    require(ScreenshotClipboardService::publishImage(QApplication::clipboard(), newerCopy),
+            "publish a newer copy before the pin is ready to save");
+    deliver(config.imageSource.materializedImage);
+    translation_tests::waitUntil(
+        [&] {
+            return QFileInfo::exists(directory.filePath(QStringLiteral("OrderedCopy.png"))) &&
+                   snow_shot::runtime::RuntimeActivityTracker::shared().snapshot().activeCount == 0;
+        },
+        "the earlier pinned save and its follow-up settle");
+    requirePinnedExportPixels(exportedClipboardImage(), newerCopy,
+                              "the late pinned save preserves the newer clipboard image");
+    require(exportedClipboardUrls().isEmpty(), "the older saved file must not reach the clipboard");
+}
+
 void run() {
     const snow_shot::storage::ScreenshotSettings settings;
-    const auto oldActions = settings.autoSaveAfterExecutionActions();
+    const auto oldActions = settings.exportTasks(snow_shot::storage::ExportTrigger::PinnedCopy);
     const auto oldName = settings.autoSaveFilenameFormat();
     const auto oldFormat = settings.imageFormat();
     const auto oldDirectory = settings.imageSaveDirectory();
     const auto oldCopyFiles = settings.copyImageFileToClipboard();
     const auto restore = qScopeGuard([&] {
-        settings.setAutoSaveAfterExecutionActions(oldActions);
+        settings.setExportTasks(snow_shot::storage::ExportTrigger::PinnedCopy, oldActions);
         settings.setAutoSaveFilenameFormat(oldName);
         settings.setImageFormat(oldFormat);
         settings.setImageSaveDirectory(oldDirectory);
         settings.setCopyImageFileToClipboard(oldCopyFiles);
     });
-    require(settings.setAutoSaveAfterExecutionActions({}) &&
+    require(settings.setExportTasks(snow_shot::storage::ExportTrigger::PinnedCopy, {}) &&
                 settings.setAutoSaveFilenameFormat(QStringLiteral("OrderedCopy")) &&
                 settings.setImageFormat(QStringLiteral("png")),
             "configure deterministic clipboard exports without automatic saving");
@@ -250,5 +292,6 @@ void run() {
     latestDeferredCopyCompletes();
     renderingCopiesYieldToNewRequests();
     pendingBatchYieldsToRecognitionCopy();
+    deferredSaveYieldsToNewCopy();
 }
 } // namespace pinned_copy_ordering_tests

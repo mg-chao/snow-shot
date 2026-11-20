@@ -14,6 +14,8 @@
 #include <functional>
 #include <memory>
 
+class QFile;
+
 enum class ScreenshotExportFailureStage {
     None,
     Queue,
@@ -33,6 +35,7 @@ struct ScreenshotExportTaskResult final {
     std::shared_ptr<ScreenshotClipboardPayload> clipboardPayload;
     QByteArray encodedSha256;
     qint64 encodedByteCount = -1;
+    std::shared_ptr<QFile> reader{};
 
     [[nodiscard]] bool succeeded() const {
         return failureStage == ScreenshotExportFailureStage::None && error.isEmpty();

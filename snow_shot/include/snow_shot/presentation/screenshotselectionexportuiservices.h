@@ -30,18 +30,6 @@ class QTextDocument;
 struct ScreenshotPinnedRecognitionProviders;
 struct ScreenshotHistoryEntry;
 
-struct ScreenshotAutomaticSaveRequest final {
-    QPointer<QObject> receiver;
-    QString configuredSaveDirectory;
-    ScreenshotImageFileFormat format = ScreenshotImageFileFormat::Png;
-    QString filenameFormat;
-    ScreenshotImageEncodingOptions encoding;
-    ScreenshotPdfOptions pdf;
-    QDateTime requestedAt;
-    ScreenshotExportCoordinator::Completion completion;
-    snow_shot::storage::ScreenshotWindowNames windowNames{};
-};
-
 namespace snow_shot::presentation {
 class LiveWindowSource;
 class PinnedWindowGroupManager;
@@ -118,16 +106,13 @@ class ScreenshotSelectionExportUiServices final : public ScreenshotSelectionExpo
                                              PinnedCompletion completion);
     using PinnedArtifactCompletion =
         std::function<void(bool, std::shared_ptr<ScreenshotExportArtifact>)>;
-    [[nodiscard]] bool
-    presentPinnedArtifact(const ScreenshotPinnedSelectionRequest& request,
-                          std::shared_ptr<ScreenshotExportArtifact> artifact,
-                          PinnedArtifactCompletion completion = {},
-                          std::optional<ScreenshotAutomaticSaveRequest> automaticSave = {});
+    [[nodiscard]] bool presentPinnedArtifact(const ScreenshotPinnedSelectionRequest& request,
+                                             std::shared_ptr<ScreenshotExportArtifact> artifact,
+                                             PinnedArtifactCompletion completion = {});
     [[nodiscard]] bool
     presentPinnedImageArtifact(std::shared_ptr<ScreenshotExportArtifact> artifact, QScreen* screen,
                                const QRect& nativeGeometry, const QSize& initialWindowSize,
-                               PinnedCompletion completion = {},
-                               std::optional<ScreenshotAutomaticSaveRequest> automaticSave = {});
+                               PinnedCompletion completion = {});
     void restorePersistedWindows();
     // Accepted restoration owns its load and native presentation until settlement. A pause
     // admission check must observe it even after the worker has posted its GUI completion.

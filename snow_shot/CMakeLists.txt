@@ -1229,7 +1229,8 @@ endif()
 find_package(Qt6 REQUIRED COMPONENTS Concurrent)
 add_library(snow_shot_cloud_upload STATIC
     include/snow_shot/presentation/screenshotclouduploadservice.h
-    src/presentation/services/screenshotclouduploadservice.cpp)
+    src/presentation/services/screenshotclouduploadservice.cpp
+    src/presentation/services/screenshotexporttasks.cpp)
 target_include_directories(snow_shot_cloud_upload PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(snow_shot_cloud_upload PUBLIC snow_shot_storage Qt6::Network Qt6::Concurrent)
 
@@ -12122,6 +12123,8 @@ if(SNOW_SHOT_BUILD_TESTS)
     snow_shot_offscreen_qpa_environment(_snow_controller_clipboard_qpa_environment)
     add_test(NAME snow-shot-screenshot-controller-clipboard-tests
         COMMAND snow_shot --clipboard-pin-tests -platform offscreen)
+    add_test(NAME snow-shot-screenshot-export-tasks-tests
+        COMMAND snow_shot --clipboard-pin-tests --export-tasks -platform offscreen)
     add_test(NAME snow-shot-clipboard-pin-selection-priority-tests
         COMMAND snow_shot --clipboard-pin-tests --selection-priority-only -platform offscreen)
     add_test(NAME snow-shot-system-notification-window-tests
@@ -12142,7 +12145,7 @@ if(SNOW_SHOT_BUILD_TESTS)
         COMMAND snow_shot --clipboard-pin-tests --mcp-scrolling-admission-tests -platform offscreen)
     add_test(NAME snow-shot-mcp-selection-admission-tests
         COMMAND snow_shot --clipboard-pin-tests --mcp-selection-admission-tests -platform offscreen)
-    set_tests_properties(snow-shot-screenshot-controller-clipboard-tests
+    set_tests_properties(snow-shot-screenshot-controller-clipboard-tests snow-shot-screenshot-export-tasks-tests
         snow-shot-clipboard-pin-selection-priority-tests
         snow-shot-clipboard-formula-pin-tests snow-shot-history-pin-admission-tests
         snow-shot-mcp-scrolling-admission-tests snow-shot-mcp-selection-admission-tests PROPERTIES
@@ -14308,6 +14311,10 @@ if(SNOW_SHOT_BUILD_TESTS)
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     endif()
     if(TARGET snow-shot-pinned-window-tests)
+        add_test(NAME snow-shot-live-window-export-tasks-tests
+            COMMAND snow-shot-pinned-window-tests --live-window-export-tasks-only -platform offscreen)
+        set_tests_properties(snow-shot-live-window-export-tasks-tests PROPERTIES LABELS unit TIMEOUT 30
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen" RESOURCE_LOCK snow-shot-system-clipboard)
         add_test(NAME snow-shot-live-window-pin-tests
             COMMAND snow-shot-pinned-window-tests --live-window-pin-only -platform offscreen)
         set_tests_properties(snow-shot-live-window-pin-tests PROPERTIES LABELS unit TIMEOUT 120

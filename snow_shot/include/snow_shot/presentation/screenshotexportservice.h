@@ -7,6 +7,7 @@
 #include <QImage>
 #include <QRect>
 
+#include <functional>
 #include <memory>
 
 class ScreenshotDisplaySession;
@@ -22,6 +23,8 @@ struct ScreenshotExportServiceContext {
 
 class ScreenshotExportService final : public ScreenshotSelectionImageComposerPort {
   public:
+    using PinnedSelectionRender = std::function<ScreenshotPinnedSelectionResultHandle()>;
+
     explicit ScreenshotExportService(ScreenshotExportServiceContext context);
     ~ScreenshotExportService() override;
 
@@ -45,6 +48,9 @@ class ScreenshotExportService final : public ScreenshotSelectionImageComposerPor
     [[nodiscard]] std::optional<ScreenshotPinnedSelectionRequest>
     prepareEditablePinnedSelection(const QRect& selection,
                                    const ScreenshotResultStyle& style) const;
+    // Freeze render input while the capture is available. The callable schedules it once.
+    [[nodiscard]] PinnedSelectionRender
+    freezePinnedSelection(const ScreenshotPinnedSelectionRequest& request) const;
     [[nodiscard]] std::optional<ScreenshotClipboardPlacement>
     prepareClipboardPlacement(const QRect& selection, const ScreenshotResultStyle& style,
                               ScreenshotLayoutCompaction compaction = {}) const;

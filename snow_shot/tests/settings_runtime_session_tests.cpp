@@ -155,17 +155,19 @@ class FakeSettingsBackend final : public settings::SettingsBackend {
         if (binding == settings::SettingsMultiSelectBinding::TrayMenuOptions) {
             return m_trayOptions;
         }
-        if (binding == settings::SettingsMultiSelectBinding::ScreenshotAutoSaveAfterExecution) {
-            return m_autoSaveActions;
+        if (binding ==
+            settings::exportTaskBinding(snow_shot::storage::ExportTrigger::ScreenshotCopy)) {
+            return m_exportTasks;
         }
         return {};
     }
 
     bool applyMultiSelectValue(settings::SettingsMultiSelectBinding binding,
                                const QVariantList& value) override {
-        if (binding == settings::SettingsMultiSelectBinding::ScreenshotAutoSaveAfterExecution) {
-            return applyField(QStringLiteral("screenshot.auto-save-after-execution"), value,
-                              [this](const QVariant& next) { m_autoSaveActions = next.toList(); });
+        if (binding ==
+            settings::exportTaskBinding(snow_shot::storage::ExportTrigger::ScreenshotCopy)) {
+            return applyField(QStringLiteral("export_tasks.screenshot_copy"), value,
+                              [this](const QVariant& next) { m_exportTasks = next.toList(); });
         }
         if (binding != settings::SettingsMultiSelectBinding::TrayMenuOptions) {
             return false;
@@ -542,8 +544,8 @@ class FakeSettingsBackend final : public settings::SettingsBackend {
             m_delay = value.toInt();
         } else if (fieldId == QStringLiteral("tray-options")) {
             m_trayOptions = value.toList();
-        } else if (fieldId == QStringLiteral("screenshot.auto-save-after-execution")) {
-            m_autoSaveActions = value.toList();
+        } else if (fieldId == QStringLiteral("export_tasks.screenshot_copy")) {
+            m_exportTasks = value.toList();
         } else if (fieldId == QStringLiteral("toolbar")) {
             m_drawingToolbar = value.value<storage::ScreenshotToolbarLayout>();
         } else if (fieldId == QStringLiteral("pinned-toolbar")) {
@@ -602,7 +604,7 @@ class FakeSettingsBackend final : public settings::SettingsBackend {
     bool m_translationPageEnabled = false;
     int m_delay = 3;
     QVariantList m_trayOptions{QStringLiteral("quick.screenshot")};
-    QVariantList m_autoSaveActions;
+    QVariantList m_exportTasks;
     storage::ScreenshotToolbarLayout m_drawingToolbar{{{QStringLiteral("select")}},
                                                       {QStringLiteral("eraser")}};
     storage::ScreenshotToolbarLayout m_pinnedToolbar;
@@ -770,15 +772,16 @@ void fontOptionsLoadOnlyWhenRequested() {
             "font options are reused across requests and refreshes");
 }
 
-void autoSaveActionsUseMultiSelectRuntimeState() {
+void exportTasksUseMultiSelectRuntimeState() {
     const auto registry = settings::buildBuiltInSettingsRegistry();
     FakeSettingsBackend backend;
     settings::SettingsRuntimeSession session(registry, backend);
-    const QString fieldId = QStringLiteral("screenshot.auto-save-after-execution");
-    constexpr auto binding = settings::SettingsMultiSelectBinding::ScreenshotAutoSaveAfterExecution;
+    const QString fieldId = QStringLiteral("export_tasks.screenshot_copy");
+    constexpr auto binding =
+        settings::exportTaskBinding(snow_shot::storage::ExportTrigger::ScreenshotCopy);
     require(session.multiSelectValue(binding).isEmpty() &&
                 session.state(fieldId).acceptedValue.toList().isEmpty() &&
-                session.options(fieldId).values.size() == 6,
+                session.options(fieldId).values.size() == 3,
             "automatic image saving must start empty with all execution options available");
 
     for (const auto& option : session.options(fieldId).values) {
@@ -788,15 +791,14 @@ void autoSaveActionsUseMultiSelectRuntimeState() {
                     backend.multiSelectValue(binding) == selection && !session.state(fieldId).dirty,
                 "each automatic image saving action must be independently selectable");
     }
-    const QVariantList mixed{QStringLiteral("copy_screenshot"),
-                             QStringLiteral("capture_current_monitor"),
+    const QVariantList mixed{QStringLiteral("auto_save"), QStringLiteral("upload_to_cloud"),
                              QStringLiteral("pin_to_screen")};
     require(session.applyMultiSelectValue(binding, mixed) &&
                 session.state(fieldId).acceptedValue.toList() == mixed,
             "multiple execution scenarios must share one persisted multi-select value");
 
     backend.setMode(fieldId, WriteMode::Pending);
-    const QVariantList pending{QStringLiteral("copy_pinned_image")};
+    const QVariantList pending{QStringLiteral("auto_save")};
     require(session.applyMultiSelectValue(binding, pending) &&
                 session.multiSelectValue(binding) == pending &&
                 session.state(fieldId).acceptedValue.toList() == mixed &&
@@ -1849,7 +1851,7 @@ int main(int argc, char** argv) {
         return 0;
     }
     fontOptionsLoadOnlyWhenRequested();
-    autoSaveActionsUseMultiSelectRuntimeState();
+    exportTasksUseMultiSelectRuntimeState();
     customModelsPreserveAcceptedStateOnRejectedWrites();
     notificationBurstsAreCoalesced();
     categoryResetFailuresRetainAcceptedValues();

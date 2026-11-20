@@ -12,6 +12,18 @@
 #include <QFile>
 #include <QMimeData>
 #include <QSaveFile>
+#include <QReadWriteLock>
+#include <QMutex>
+#include <QScopeGuard>
+#include <QSet>
+#ifdef Q_OS_MACOS
+#include <sys/clonefile.h>
+#endif
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#include <fcntl.h>
+#include <io.h>
+#endif
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QUrl>
@@ -41,18 +53,6 @@ QString filterForFormat(ScreenshotImageFileFormat format) {
                                            "TIFF image (*.tif *.tiff)");
     }
     return {};
-}
-
-QString collisionSafePath(const QString& directory, const QString& baseName,
-                          const QString& extension) {
-    const QDir target(directory);
-    QString candidate = target.filePath(
-        snow_shot::storage::composeExportFileName(baseName, QStringLiteral(".%1").arg(extension)));
-    for (int suffix = 1; QFileInfo::exists(candidate); ++suffix) {
-        candidate = target.filePath(snow_shot::storage::composeExportFileName(
-            baseName, QStringLiteral("_%1.%2").arg(suffix).arg(extension)));
-    }
-    return candidate;
 }
 
 // Finalized image and PDF bytes pass sequentially to the atomic file. TIFF encoders
@@ -96,8 +96,11 @@ class HashedOutput final : public QIODevice {
     qint64 m_count = 0;
 };
 
+QReadWriteLock commitLock;
+
 template <typename Encoder>
-ScreenshotImageFileSaveResult writeAtomically(const QString& outputPath, Encoder&& encoder) {
+ScreenshotImageFileSaveResult writeAtomically(const QString& outputPath, bool retainFile,
+                                              Encoder&& encoder) {
     QSaveFile file(outputPath);
     if (!file.open(QIODevice::WriteOnly)) {
         return {{}, file.errorString()};
@@ -107,13 +110,44 @@ ScreenshotImageFileSaveResult writeAtomically(const QString& outputPath, Encoder
     if (!encoder(&output, &encodeError)) {
         file.cancelWriting();
         return {{},
-                encodeError.isEmpty() ? QStringLiteral("The image could not be encoded")
-                                      : encodeError};
+                encodeError.isEmpty()
+                    ? QCoreApplication::translate("ScreenshotImageFileService",
+                                                  "The image could not be encoded")
+                    : encodeError};
     }
+    // Readers for overlapping saves must bind to their own atomic replacement. Ordinary
+    // writers can commit concurrently. Encoding and network I/O never take this lock.
+    if (retainFile)
+        commitLock.lockForWrite();
+    else
+        commitLock.lockForRead();
+    const auto unlock = qScopeGuard([] { commitLock.unlock(); });
     if (!file.commit()) {
         return {{}, file.errorString()};
     }
-    return {outputPath, {}, output.sha256(), output.byteCount()};
+    return {outputPath,
+            {},
+            output.sha256(),
+            output.byteCount(),
+            retainFile ? ScreenshotImageFileService::openExportReader(outputPath) : nullptr};
+}
+
+// Reserve names across concurrent background exports without exposing an empty file.
+QMutex automaticPathsMutex;
+QSet<QString> automaticPaths;
+QString reserveAutomaticPath(const QString& directory, const QString& base,
+                             const QString& extension) {
+    QMutexLocker lock(&automaticPathsMutex);
+    const QDir target(directory);
+    for (quint64 n = 0;; ++n) {
+        const auto suffix = n ? QStringLiteral("_%1.%2").arg(n).arg(extension) : u'.' + extension;
+        const auto path =
+            target.absoluteFilePath(snow_shot::storage::composeExportFileName(base, suffix));
+        if (!automaticPaths.contains(path) && !QFileInfo::exists(path)) {
+            automaticPaths.insert(path);
+            return path;
+        }
+    }
 }
 
 template <typename Writer>
@@ -126,21 +160,33 @@ savePreparedAutomatically(const QStringList& directories, ScreenshotImageFileFor
         ScreenshotImageFileService::suggestedBaseName(filenameFormat, timestamp, names);
     if (baseName.isEmpty() || baseName.contains(QLatin1Char('/')) ||
         baseName.contains(QLatin1Char('\\')))
-        return {{}, QStringLiteral("The screenshot filename format is invalid")};
-    QString lastError = QStringLiteral("No automatic screenshot folder is available");
+        return {{},
+                QCoreApplication::translate("ScreenshotImageFileService",
+                                            "The screenshot filename format is invalid")};
+    QString lastError = QCoreApplication::translate("ScreenshotImageFileService",
+                                                    "No automatic screenshot folder is available");
     for (const QString& candidate : directories) {
         if (cancelled && cancelled())
-            return {{}, QStringLiteral("The screenshot save was cancelled")};
+            return {{},
+                    QCoreApplication::translate("ScreenshotImageFileService",
+                                                "The save was cancelled")};
         const QString directory = QDir::cleanPath(candidate.trimmed());
         if (candidate.trimmed().isEmpty())
             continue;
         if (!QDir().mkpath(directory)) {
             lastError =
-                QStringLiteral("The screenshot folder could not be created: %1").arg(directory);
+                QCoreApplication::translate("ScreenshotImageFileService",
+                                            "The screenshot folder could not be created: %1")
+                    .arg(directory);
             continue;
         }
-        auto result = writer(
-            collisionSafePath(directory, baseName, ScreenshotImageFileService::extension(format)));
+        const QString path = reserveAutomaticPath(directory, baseName,
+                                                  ScreenshotImageFileService::extension(format));
+        const auto release = qScopeGuard([&] {
+            QMutexLocker lock(&automaticPathsMutex);
+            automaticPaths.remove(path);
+        });
+        auto result = writer(path);
         if (result.succeeded())
             return result;
         lastError = result.error;
@@ -149,20 +195,66 @@ savePreparedAutomatically(const QStringList& directories, ScreenshotImageFileFor
 }
 } // namespace
 
+std::shared_ptr<QFile> ScreenshotImageFileService::openExportReader(const QString& path) {
+    auto file = std::make_shared<QFile>(path);
+#ifdef Q_OS_WIN
+    // The file may be replaced while a network reply is streaming its previous contents.
+    auto nativePath = QDir::toNativeSeparators(QFileInfo(path).absoluteFilePath());
+    if (!nativePath.startsWith(u"\\\\?\\") && !nativePath.startsWith(u"\\\\.\\")) {
+        if (nativePath.startsWith(u"\\\\"))
+            nativePath.replace(0, 2, QStringLiteral("\\\\?\\UNC\\"));
+        else
+            nativePath.prepend(QStringLiteral("\\\\?\\"));
+    }
+    HANDLE handle = CreateFileW(reinterpret_cast<LPCWSTR>(nativePath.utf16()), GENERIC_READ,
+                                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                                OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (handle == INVALID_HANDLE_VALUE)
+        return {};
+    const int fd = _open_osfhandle(reinterpret_cast<intptr_t>(handle), _O_RDONLY | _O_BINARY);
+    if (fd == -1) {
+        CloseHandle(handle);
+        return {};
+    }
+    if (!file->open(fd, QIODevice::ReadOnly, QFileDevice::AutoCloseHandle)) {
+        _close(fd);
+        return {};
+    }
+#else
+    if (!file->open(QIODevice::ReadOnly))
+        return {};
+#endif
+    if (auto* app = QCoreApplication::instance(); app && file->thread() != app->thread())
+        file->moveToThread(app->thread());
+    return file;
+}
+
 ScreenshotImageFileSaveResult ScreenshotImageFileService::saveEncodedAutomatically(
     const QString& encodedFile, const QStringList& directories, ScreenshotImageFileFormat format,
     const QString& filenameFormat, const QDateTime& timestamp, std::function<bool()> cancelled,
-    const snow_shot::storage::ScreenshotWindowNames& names) {
+    const snow_shot::storage::ScreenshotWindowNames& names, bool retainFile,
+    QByteArray sourceSha256) {
     return savePreparedAutomatically(
         directories, format, filenameFormat, timestamp, cancelled, names, [&](const QString& path) {
-            return writeEncodedFile(encodedFile, path, format, cancelled);
+#ifdef Q_OS_MACOS
+            // A completed private export can be cloned atomically on APFS. The two files
+            // can be edited independently. Cross-volume and other filesystems use streaming.
+            if (!sourceSha256.isEmpty() && !retainFile && (!cancelled || !cancelled()) &&
+                ::clonefile(QFile::encodeName(encodedFile).constData(),
+                            QFile::encodeName(path).constData(), 0) == 0)
+                return ScreenshotImageFileSaveResult{
+                    path, {}, sourceSha256, QFileInfo(path).size()};
+#else
+            Q_UNUSED(sourceSha256)
+#endif
+            return writeEncodedFile(encodedFile, path, format, cancelled, retainFile);
         });
 }
 
 ScreenshotImageFileSaveResult
 ScreenshotImageFileService::writeEncodedBytes(const QByteArray& bytes, const QString& path,
                                               ScreenshotImageFileFormat format,
-                                              std::function<bool()> cancelled) {
+                                              std::function<bool()> cancelled, bool retainFile) {
     const QString outputPath = normalizedPath(path, format);
     if (bytes.isEmpty())
         return {{},
@@ -180,7 +272,7 @@ ScreenshotImageFileService::writeEncodedBytes(const QByteArray& bytes, const QSt
         return {{},
                 QCoreApplication::translate("ScreenshotImageFileService",
                                             "The output directory could not be created")};
-    return writeAtomically(outputPath, [&](QIODevice* device, QString* error) {
+    return writeAtomically(outputPath, retainFile, [&](QIODevice* device, QString* error) {
         for (qsizetype offset = 0; offset < bytes.size(); offset += 1024 * 1024) {
             if (cancelled && cancelled()) {
                 *error = QCoreApplication::translate("ScreenshotImageFileService",
@@ -205,19 +297,23 @@ ScreenshotImageFileService::writeEncodedBytes(const QByteArray& bytes, const QSt
 ScreenshotImageFileSaveResult ScreenshotImageFileService::saveEncodedBytesAutomatically(
     const QByteArray& bytes, const QStringList& directories, ScreenshotImageFileFormat format,
     const QString& filenameFormat, const QDateTime& timestamp, std::function<bool()> cancelled,
-    const snow_shot::storage::ScreenshotWindowNames& names) {
+    const snow_shot::storage::ScreenshotWindowNames& names, bool retainFile) {
     return savePreparedAutomatically(
-        directories, format, filenameFormat, timestamp, cancelled, names,
-        [&](const QString& path) { return writeEncodedBytes(bytes, path, format, cancelled); });
+        directories, format, filenameFormat, timestamp, cancelled, names, [&](const QString& path) {
+            return writeEncodedBytes(bytes, path, format, cancelled, retainFile);
+        });
 }
 
 ScreenshotImageFileSaveResult ScreenshotImageFileService::savePdfAutomatically(
     const screenshot_pdf::Payload& payload, const QStringList& directories,
     const QString& filenameFormat, const QDateTime& timestamp, ScreenshotPdfOptions options,
-    std::function<bool()> cancelled, const snow_shot::storage::ScreenshotWindowNames& names) {
-    return savePreparedAutomatically(
-        directories, ScreenshotImageFileFormat::Pdf, filenameFormat, timestamp, cancelled, names,
-        [&](const QString& path) { return writePdf(payload, path, options, cancelled); });
+    std::function<bool()> cancelled, const snow_shot::storage::ScreenshotWindowNames& names,
+    bool retainFile) {
+    return savePreparedAutomatically(directories, ScreenshotImageFileFormat::Pdf, filenameFormat,
+                                     timestamp, cancelled, names, [&](const QString& path) {
+                                         return writePdf(payload, path, options, cancelled,
+                                                         retainFile);
+                                     });
 }
 
 QString ScreenshotImageFileService::suggestedBaseName(const QDateTime& timestamp) {
@@ -420,7 +516,7 @@ ScreenshotImageFileService::formatForDialogSelection(const QString& path,
 ScreenshotImageFileSaveResult
 ScreenshotImageFileService::writeEncodedFile(const QString& encodedFile, const QString& path,
                                              ScreenshotImageFileFormat format,
-                                             std::function<bool()> cancelled) {
+                                             std::function<bool()> cancelled, bool retainFile) {
     const QString outputPath = normalizedPath(path, format);
     if (outputPath.isEmpty())
         return {{},
@@ -434,7 +530,7 @@ ScreenshotImageFileService::writeEncodedFile(const QString& encodedFile, const Q
         return {{},
                 QCoreApplication::translate("ScreenshotImageFileService",
                                             "The output directory could not be created")};
-    return writeAtomically(outputPath, [&](QIODevice* device, QString* error) {
+    return writeAtomically(outputPath, retainFile, [&](QIODevice* device, QString* error) {
         QFile input(encodedFile);
         if (!input.open(QIODevice::ReadOnly)) {
             *error = input.errorString();
@@ -467,8 +563,8 @@ ScreenshotImageFileService::writeEncodedFile(const QString& encodedFile, const Q
 
 ScreenshotImageFileSaveResult
 ScreenshotImageFileService::writePdf(const screenshot_pdf::Payload& payload, const QString& path,
-                                     ScreenshotPdfOptions options,
-                                     std::function<bool()> cancelled) {
+                                     ScreenshotPdfOptions options, std::function<bool()> cancelled,
+                                     bool retainFile) {
     const QString outputPath = normalizedPath(path, ScreenshotImageFileFormat::Pdf);
     if (outputPath.isEmpty())
         return {{},
@@ -485,7 +581,7 @@ ScreenshotImageFileService::writePdf(const screenshot_pdf::Payload& payload, con
     options.title = QFileInfo(outputPath).completeBaseName();
     if (!options.creationTime.isValid())
         options.creationTime = QDateTime::currentDateTimeUtc();
-    return writeAtomically(outputPath, [&](QIODevice* device, QString* error) {
+    return writeAtomically(outputPath, retainFile, [&](QIODevice* device, QString* error) {
         return screenshot_pdf::write(payload, device, options, error, cancelled);
     });
 }
@@ -494,23 +590,27 @@ ScreenshotImageFileSaveResult
 ScreenshotImageFileService::write(const QImage& image, const QString& path,
                                   ScreenshotImageFileFormat format, ScreenshotPdfOptions pdf,
                                   std::function<bool()> cancelled,
-                                  ScreenshotImageEncodingOptions encoding) {
+                                  ScreenshotImageEncodingOptions encoding, bool retainFile) {
     if (format == ScreenshotImageFileFormat::Pdf || format == ScreenshotImageFileFormat::Tiff ||
         cancelled) {
         auto source = snow_shot::image_codec::srgbRowSource(image);
         source.cancellationRequested = std::move(cancelled);
-        return write(source, path, format, std::move(pdf), encoding);
+        return write(source, path, format, std::move(pdf), encoding, retainFile);
     }
     if (image.isNull()) {
-        return {{}, QStringLiteral("The screenshot image is empty")};
+        return {{},
+                QCoreApplication::translate("ScreenshotImageFileService",
+                                            "The screenshot image is empty")};
     }
     const QString outputPath = normalizedPath(path, format);
     if (outputPath.isEmpty()) {
-        return {{}, QStringLiteral("No output file was selected")};
+        return {{},
+                QCoreApplication::translate("ScreenshotImageFileService",
+                                            "No output file was selected")};
     }
 
     return writeAtomically(
-        outputPath, [image, format, encoding](QIODevice* device, QString* error) {
+        outputPath, retainFile, [image, format, encoding](QIODevice* device, QString* error) {
             return snow_shot::image_codec::encodeToDevice(image, device, snowImageFormat(format),
                                                           encodeOptions(format, encoding), error);
         });
@@ -518,10 +618,13 @@ ScreenshotImageFileService::write(const QImage& image, const QString& path,
 
 ScreenshotImageFileSaveResult
 ScreenshotImageFileService::write(const snow_shot::storage::PreparedPngImage& png,
-                                  const QString& path, std::function<bool()> cancelled) {
+                                  const QString& path, std::function<bool()> cancelled,
+                                  bool retainFile) {
     const QString outputPath = normalizedPath(path, ScreenshotImageFileFormat::Png);
     if (!png.isValid())
-        return {{}, QStringLiteral("The screenshot image is empty")};
+        return {{},
+                QCoreApplication::translate("ScreenshotImageFileService",
+                                            "The screenshot image is empty")};
     if (outputPath.isEmpty())
         return {{},
                 QCoreApplication::translate("ScreenshotImageFileService",
@@ -535,7 +638,8 @@ ScreenshotImageFileService::write(const snow_shot::storage::PreparedPngImage& pn
                 QCoreApplication::translate("ScreenshotImageFileService",
                                             "The output directory could not be created")};
     return writeAtomically(
-        outputPath, [&png, &cancelled, &cancelledMessage](QIODevice* device, QString* error) {
+        outputPath, retainFile,
+        [&png, &cancelled, &cancelledMessage](QIODevice* device, QString* error) {
             if (cancelled && cancelled()) {
                 *error = cancelledMessage;
                 return false;
@@ -556,21 +660,25 @@ ScreenshotImageFileService::write(const snow_shot::storage::PreparedPngImage& pn
 ScreenshotImageFileSaveResult
 ScreenshotImageFileService::write(const ScreenshotImageRowSource& source, const QString& path,
                                   ScreenshotImageFileFormat format, ScreenshotPdfOptions pdf,
-                                  ScreenshotImageEncodingOptions encoding) {
+                                  ScreenshotImageEncodingOptions encoding, bool retainFile) {
     if (!source.isValid()) {
-        return {{}, QStringLiteral("The screenshot image source is empty")};
+        return {{},
+                QCoreApplication::translate("ScreenshotImageFileService",
+                                            "The screenshot image source is empty")};
     }
     const QString outputPath = normalizedPath(path, format);
     if (outputPath.isEmpty()) {
-        return {{}, QStringLiteral("No output file was selected")};
+        return {{},
+                QCoreApplication::translate("ScreenshotImageFileService",
+                                            "No output file was selected")};
     }
     if (format == ScreenshotImageFileFormat::Pdf) {
         QString error;
         pdf.quality = qBound(0, encoding.quality, 100);
         auto payload = screenshot_pdf::prepare(source, pdf.quality, &error);
-        return payload
-                   ? writePdf(*payload, outputPath, std::move(pdf), source.cancellationRequested)
-                   : ScreenshotImageFileSaveResult{{}, error};
+        return payload ? writePdf(*payload, outputPath, std::move(pdf),
+                                  source.cancellationRequested, retainFile)
+                       : ScreenshotImageFileSaveResult{{}, error};
     }
     if (format == ScreenshotImageFileFormat::Tiff) {
         if (source.cancellationRequested && source.cancellationRequested())
@@ -591,10 +699,11 @@ ScreenshotImageFileService::write(const ScreenshotImageRowSource& source, const 
         if (!staged.flush())
             return {{}, staged.errorString()};
         staged.close();
-        return writeEncodedFile(stagedPath, outputPath, format, source.cancellationRequested);
+        return writeEncodedFile(stagedPath, outputPath, format, source.cancellationRequested,
+                                retainFile);
     }
     return writeAtomically(
-        outputPath, [&source, format, encoding](QIODevice* device, QString* error) {
+        outputPath, retainFile, [&source, format, encoding](QIODevice* device, QString* error) {
             return snow_shot::image_codec::encodeToDevice(source, device, snowImageFormat(format),
                                                           encodeOptions(format, encoding), error);
         });
@@ -609,93 +718,52 @@ ScreenshotImageFileSaveResult ScreenshotImageFileService::saveAutomatically(
 ScreenshotImageFileSaveResult ScreenshotImageFileService::saveAutomatically(
     const QImage& image, const QStringList& candidateDirectories, ScreenshotImageFileFormat format,
     const QString& filenameFormat, const QDateTime& timestamp, ScreenshotPdfOptions pdf,
-    ScreenshotImageEncodingOptions encoding,
-    const snow_shot::storage::ScreenshotWindowNames& names) {
+    ScreenshotImageEncodingOptions encoding, const snow_shot::storage::ScreenshotWindowNames& names,
+    bool retainFile) {
     if (image.isNull()) {
-        return {{}, QStringLiteral("The screenshot image is empty")};
+        return {{},
+                QCoreApplication::translate("ScreenshotImageFileService",
+                                            "The screenshot image is empty")};
     }
 
     pdf.quality = qBound(0, encoding.quality, 100);
-    const QString baseName = suggestedBaseName(filenameFormat, timestamp, names);
-    if (baseName.isEmpty() || baseName.contains(QLatin1Char('/')) ||
-        baseName.contains(QLatin1Char('\\'))) {
-        return {{}, QStringLiteral("The screenshot filename format is invalid")};
-    }
-
-    QString lastError = QStringLiteral("No automatic screenshot folder is available");
-    for (const QString& candidate : candidateDirectories) {
-        const QString trimmedCandidate = candidate.trimmed();
-        if (trimmedCandidate.isEmpty()) {
-            continue;
-        }
-        const QString directory = QDir::cleanPath(trimmedCandidate);
-        if (!QDir().mkpath(directory)) {
-            lastError =
-                QStringLiteral("The screenshot folder could not be created: %1").arg(directory);
-            continue;
-        }
-
-        const QString path = collisionSafePath(directory, baseName, extension(format));
-        const ScreenshotImageFileSaveResult result = write(image, path, format, pdf, {}, encoding);
-        if (result.succeeded()) {
-            return result;
-        }
-        lastError = result.error;
-    }
-    return {{}, lastError};
+    return savePreparedAutomatically(candidateDirectories, format, filenameFormat, timestamp, {},
+                                     names, [&](const QString& path) {
+                                         return write(image, path, format, pdf, {}, encoding,
+                                                      retainFile);
+                                     });
 }
 
 ScreenshotImageFileSaveResult ScreenshotImageFileService::saveAutomatically(
     const ScreenshotImageRowSource& source, const QStringList& candidateDirectories,
     ScreenshotImageFileFormat format, const QString& filenameFormat, const QDateTime& timestamp,
     ScreenshotPdfOptions pdf, ScreenshotImageEncodingOptions encoding,
-    const snow_shot::storage::ScreenshotWindowNames& names) {
+    const snow_shot::storage::ScreenshotWindowNames& names, bool retainFile) {
     if (!source.isValid()) {
-        return {{}, QStringLiteral("The screenshot image source is empty")};
+        return {{},
+                QCoreApplication::translate("ScreenshotImageFileService",
+                                            "The screenshot image source is empty")};
     }
 
     pdf.quality = qBound(0, encoding.quality, 100);
-    const QString baseName = suggestedBaseName(filenameFormat, timestamp, names);
-    if (baseName.isEmpty() || baseName.contains(QLatin1Char('/')) ||
-        baseName.contains(QLatin1Char('\\'))) {
-        return {{}, QStringLiteral("The screenshot filename format is invalid")};
-    }
-
-    QString lastError = QStringLiteral("No automatic screenshot folder is available");
-    for (const QString& candidate : candidateDirectories) {
-        const QString trimmedCandidate = candidate.trimmed();
-        if (trimmedCandidate.isEmpty()) {
-            continue;
-        }
-        const QString directory = QDir::cleanPath(trimmedCandidate);
-        if (!QDir().mkpath(directory)) {
-            lastError =
-                QStringLiteral("The screenshot folder could not be created: %1").arg(directory);
-            continue;
-        }
-
-        const QString path = collisionSafePath(directory, baseName, extension(format));
-        const ScreenshotImageFileSaveResult result = write(source, path, format, pdf, encoding);
-        if (result.succeeded()) {
-            return result;
-        }
-        lastError = result.error;
-        if (source.cancellationRequested && source.cancellationRequested()) {
-            break;
-        }
-    }
-    return {{}, lastError};
+    return savePreparedAutomatically(candidateDirectories, format, filenameFormat, timestamp,
+                                     source.cancellationRequested, names, [&](const QString& path) {
+                                         return write(source, path, format, pdf, encoding,
+                                                      retainFile);
+                                     });
 }
 
 ScreenshotImageFileSaveResult ScreenshotImageFileService::saveAutomatically(
     const snow_shot::storage::PreparedPngImage& png, const QStringList& candidateDirectories,
     const QString& filenameFormat, const QDateTime& timestamp, std::function<bool()> cancelled,
-    const snow_shot::storage::ScreenshotWindowNames& names) {
+    const snow_shot::storage::ScreenshotWindowNames& names, bool retainFile) {
     if (!png.isValid())
-        return {{}, QStringLiteral("The screenshot image is empty")};
+        return {{},
+                QCoreApplication::translate("ScreenshotImageFileService",
+                                            "The screenshot image is empty")};
     return savePreparedAutomatically(
         candidateDirectories, ScreenshotImageFileFormat::Png, filenameFormat, timestamp, cancelled,
-        names, [&](const QString& path) { return write(png, path, cancelled); });
+        names, [&](const QString& path) { return write(png, path, cancelled, retainFile); });
 }
 
 bool ScreenshotImageFileService::publishFileToClipboard(QClipboard* clipboard,

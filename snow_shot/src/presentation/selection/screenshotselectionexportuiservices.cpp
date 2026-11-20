@@ -44,31 +44,6 @@
 #include <optional>
 
 namespace {
-void startAutomaticPinSave(std::shared_ptr<ScreenshotExportArtifact> artifact,
-                           std::optional<ScreenshotAutomaticSaveRequest> request) {
-    if (!request.has_value() || request->receiver.isNull()) {
-        return;
-    }
-    auto completion =
-        [artifact, receiver = request->receiver,
-         callback = std::move(request->completion)](ScreenshotExportTaskResult result) mutable {
-            Q_UNUSED(artifact);
-            if (!receiver.isNull() && callback) {
-                callback(std::move(result));
-            }
-        };
-    artifact->setWindowNames(request->windowNames);
-    if (!artifact->requestAutomaticSaveToConfiguredDirectory(
-            request->receiver, std::move(request->configuredSaveDirectory), request->format,
-            std::move(request->filenameFormat), request->encoding, completion, request->pdf,
-            request->requestedAt)) {
-        completion(ScreenshotExportTaskResult::failure(
-            ScreenshotExportFailureStage::Queue,
-            QCoreApplication::translate("ScreenshotController",
-                                        "The screenshot export queue is full")));
-    }
-}
-
 void applyPinRuntimeSettings(ScreenshotPinnedWindow::Config* config) {
     if (config == nullptr) {
         return;
@@ -763,8 +738,7 @@ bool ScreenshotSelectionExportUiServices::presentPinnedSelection(
 
 bool ScreenshotSelectionExportUiServices::presentPinnedArtifact(
     const ScreenshotPinnedSelectionRequest& request,
-    std::shared_ptr<ScreenshotExportArtifact> artifact, PinnedArtifactCompletion completion,
-    std::optional<ScreenshotAutomaticSaveRequest> automaticSave) {
+    std::shared_ptr<ScreenshotExportArtifact> artifact, PinnedArtifactCompletion completion) {
     SNOW_SHOT_PIN_PERF_SCOPE("ui.present_pinned_artifact");
     if (!request.isPrepared() || artifact == nullptr || !artifact->isValid() ||
         (!request.canvasSession.isEmpty() && request.layoutCompaction.enabled)) {
@@ -836,7 +810,6 @@ bool ScreenshotSelectionExportUiServices::presentPinnedArtifact(
     auto synchronizedCompletion = [coordinator, persistenceId, operation = artifact->diagnosticId(),
                                    window = QPointer<ScreenshotPinnedWindow>(pinnedWindow),
                                    editable = !request.canvasSession.isEmpty(), artifact,
-                                   automaticSave = std::move(automaticSave),
                                    completion = std::move(completion)](bool success,
                                                                        QImage) mutable {
         snow_shot::diagnostics::logEvent(
@@ -856,8 +829,6 @@ bool ScreenshotSelectionExportUiServices::presentPinnedArtifact(
         if (success && editable)
             output = window ? window->fileSaveArtifact() : nullptr;
         success = success && output != nullptr;
-        if (success)
-            startAutomaticPinSave(output, std::move(automaticSave));
         if (completion)
             completion(success, std::move(output));
     };
@@ -884,8 +855,7 @@ bool ScreenshotSelectionExportUiServices::presentPinnedArtifact(
 
 bool ScreenshotSelectionExportUiServices::presentPinnedImageArtifact(
     std::shared_ptr<ScreenshotExportArtifact> artifact, QScreen* screen,
-    const QRect& nativeGeometry, const QSize& initialWindowSize, PinnedCompletion completion,
-    std::optional<ScreenshotAutomaticSaveRequest> automaticSave) {
+    const QRect& nativeGeometry, const QSize& initialWindowSize, PinnedCompletion completion) {
     SNOW_SHOT_PIN_PERF_SCOPE("ui.present_pinned_image_artifact");
     if (artifact == nullptr || !artifact->isValid() || screen == nullptr ||
         nativeGeometry.isEmpty() || initialWindowSize.isEmpty()) {
@@ -941,7 +911,6 @@ bool ScreenshotSelectionExportUiServices::presentPinnedImageArtifact(
     const QString persistenceId = config.persistenceId;
     auto synchronizedCompletion =
         [coordinator, persistenceId, operation = artifact->diagnosticId(), artifact,
-         automaticSave = std::move(automaticSave),
          completion = std::move(completion)](bool success, QImage completedImage) mutable {
             snow_shot::diagnostics::logEvent(
                 QStringLiteral("snow_shot.export"), QStringLiteral("pin.finished"),
@@ -952,9 +921,6 @@ bool ScreenshotSelectionExportUiServices::presentPinnedImageArtifact(
                 success ? QtInfoMsg : QtWarningMsg);
             if (!coordinator.isNull()) {
                 coordinator->completeFirstFrame(persistenceId, success);
-            }
-            if (success) {
-                startAutomaticPinSave(artifact, std::move(automaticSave));
             }
             if (completion) {
                 completion(success, completedImage);
