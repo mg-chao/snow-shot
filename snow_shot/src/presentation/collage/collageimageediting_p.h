@@ -8,6 +8,30 @@
 #include <cmath>
 
 namespace snow_shot::presentation::image_stitching_detail {
+inline bool showsImageOverflow(const QRectF& image, const QRectF& cell, bool selected) {
+    // Keep fully clipped images visible so they can be selected again from the canvas.
+    return selected || !image.intersects(cell);
+}
+
+template <typename PaintImage>
+void paintImageOverflow(QPainter& painter, const QRectF& viewport, const QRectF& image,
+                        const QRectF& cell, bool selected, PaintImage paintImage) {
+    if (!showsImageOverflow(image, cell, selected) || !image.intersects(viewport))
+        return;
+
+    painter.save();
+    if (image.intersects(cell)) {
+        QPainterPath outside;
+        outside.addRect(viewport);
+        QPainterPath inside;
+        inside.addRect(cell);
+        painter.setClipPath(outside.subtracted(inside));
+    }
+    painter.setOpacity(.25);
+    paintImage();
+    painter.restore();
+}
+
 inline void paintPreviewBorder(QPainter& painter, const QRectF& bounds, const QColor& color) {
     // Quantize the one-logical-pixel guide and its edges in device space, including
     // backing-store translations, so every side covers the same whole pixel count.

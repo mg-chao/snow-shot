@@ -532,11 +532,21 @@ struct ImageStitchingPdfTemplateCanvas::Impl {
         return 0;
     }
     quint64 hitImage(const QPointF& position) const {
-        for (const auto& cell : page.cells)
-            if (cell.itemId && mapped(cell.clipMillimeters).contains(position) &&
-                mapped(cell.imageMillimeters).contains(position))
+        const auto selectedId = document->selectedId();
+        quint64 overflow = 0;
+        for (const auto& cell : page.cells) {
+            if (!cell.itemId)
+                continue;
+            const auto bounds = mapped(cell.imageMillimeters);
+            if (!bounds.contains(position))
+                continue;
+            const auto clip = mapped(cell.clipMillimeters);
+            if (clip.contains(position))
                 return cell.itemId;
-        return 0;
+            if (image_stitching_detail::showsImageOverflow(bounds, clip, cell.itemId == selectedId))
+                overflow = cell.itemId;
+        }
+        return overflow;
     }
     void cancelGesture() {
         if (panning) {
@@ -851,18 +861,15 @@ void ImageStitchingPdfTemplateCanvas::paintEvent(QPaintEvent*) {
     }
     painter.fillRect(d.paper, Qt::white);
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
-    if (const auto* selected = d.cellFor(d.document->selectedId())) {
-        QPainterPath outside;
-        outside.addRect(QRectF(rect()));
-        QPainterPath inside;
-        inside.addRect(d.mapped(selected->clipMillimeters));
-        painter.save();
-        painter.setClipPath(outside.subtracted(inside));
-        painter.setOpacity(.25);
-        paintImage(painter, d.mapped(selected->imageMillimeters),
-                   d.document->items()[selected->itemIndex],
-                   d.detailFor(d.document->items()[selected->itemIndex]));
-        painter.restore();
+    const auto selectedId = d.document->selectedId();
+    for (const auto& cell : d.page.cells) {
+        if (!cell.itemId)
+            continue;
+        const auto bounds = d.mapped(cell.imageMillimeters);
+        const auto& item = d.document->items()[cell.itemIndex];
+        image_stitching_detail::paintImageOverflow(
+            painter, rect(), bounds, d.mapped(cell.clipMillimeters), cell.itemId == selectedId,
+            [&] { paintImage(painter, bounds, item, d.detailFor(item)); });
     }
     for (const auto& cell : d.page.cells) {
         const auto bounds = d.mapped(cell.clipMillimeters);
@@ -884,7 +891,7 @@ void ImageStitchingPdfTemplateCanvas::paintEvent(QPaintEvent*) {
         if (const auto* target = d.cellFor(d.targetId))
             snowCanvasPaintSelectionMarquee(painter, d.mapped(target->clipMillimeters));
     }
-    if (const auto* selected = d.cellFor(d.document->selectedId()))
+    if (const auto* selected = d.cellFor(selectedId))
         snowCanvasPaintImageSelection(painter, d.mapped(selected->imageMillimeters));
 }
 void ImageStitchingPdfTemplateCanvas::resizeEvent(QResizeEvent*) {

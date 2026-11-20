@@ -380,7 +380,65 @@ void staticPlacementOverflowAndDetailAlpha() {
         require(canvas.grab().save(fixturePath), "save static editing visual fixture");
     document.select(0);
     require(renderCanvas(canvas).pixelColor(outside) == Qt::white,
-            "unselected overflow is clipped completely");
+            "unselected overflow is clipped while some of the image remains in its slot");
+}
+
+void reselectStaticImageOutsideItsSlot() {
+    ImageStitchingDocument document;
+    const auto first = document.append(image({120, 80}), QStringLiteral("first"));
+    const auto second = document.append(image({120, 80}, Qt::blue), QStringLiteral("second"));
+    auto settings = document.settings();
+    settings.border = 160;
+    document.setSettings(settings);
+    ImageStitchingPreviewCanvas canvas(&document);
+    canvas.resize(650, 540);
+    canvas.show();
+    pump();
+
+    const auto press = [&](QPointF point) {
+        mouse(&canvas, QEvent::MouseButtonPress, point, Qt::LeftButton, Qt::LeftButton);
+    };
+    const auto release = [&](QPointF point) {
+        mouse(&canvas, QEvent::MouseButtonRelease, point, Qt::LeftButton, Qt::NoButton);
+    };
+    const auto drag = [&](QPointF from, QPointF to) {
+        press(from);
+        mouse(&canvas, QEvent::MouseMove, to, Qt::NoButton, Qt::LeftButton);
+        release(to);
+    };
+
+    const auto slot = canvas.cellViewportRect(first);
+    const auto initial = canvas.imageViewportRect(first);
+    const QPointF partial(slot.left() - 16, initial.center().y());
+    const QPointF outside(slot.left() - initial.width() / 2 - 24, initial.center().y());
+    drag(initial.center(), partial);
+    require(canvas.imageViewportRect(first).intersects(slot),
+            "partial overflow must leave some of the image inside its slot");
+    drag(partial, outside);
+    require(document.selectedId() == first && !canvas.imageViewportRect(first).intersects(slot),
+            "dragging the selected overflow can move the entire image outside its slot");
+
+    const auto secondCenter = canvas.imageViewportRect(second).center();
+    press(secondCenter);
+    release(secondCenter);
+    require(document.selectedId() == second, "another image can deselect the displaced image");
+    const auto ghost = renderCanvas(canvas).pixelColor(outside.toPoint());
+    require(ghost.red() == 255 && std::abs(ghost.green() - 191) <= 2,
+            "a fully clipped image remains visible at quarter opacity after deselection");
+
+    press(outside);
+    release(outside);
+    require(document.selectedId() == first, "clicking the displaced image selects it again");
+    drag(outside, initial.center());
+    require((canvas.imageViewportRect(first).center() - initial.center()).manhattanLength() <=
+                canvas.zoom(),
+            "the displaced image can be dragged back into its slot");
+
+    require(document.setStaticPlacement(first, {(secondCenter - slot.center()) / canvas.zoom(), 1}),
+            "overlap fixture moves the first image over the second");
+    press(secondCenter);
+    release(secondCenter);
+    require(document.selectedId() == second, "an in-slot image takes precedence over overflow");
 }
 
 void centeredStaticResizeMoveAndCancellation() {
@@ -2456,6 +2514,7 @@ int main(int argc, char** argv) {
         if (arguments.contains(QStringLiteral("--static-editing-only"))) {
             centeredStaticResizeMoveAndCancellation();
             staticPlacementOverflowAndDetailAlpha();
+            reselectStaticImageOutsideItsSlot();
             ScreenshotExportCoordinator::shared().shutdown();
             std::cout << "Static stitching editing tests passed\n";
             return 0;
@@ -2522,6 +2581,7 @@ int main(int argc, char** argv) {
         selectionOutlineMatchesPdfHandles();
         centeredStaticResizeMoveAndCancellation();
         staticPlacementOverflowAndDetailAlpha();
+        reselectStaticImageOutsideItsSlot();
         externalImageDrops();
         replacementHighlightMatchesDrawEngineMarquee();
         thumbnailScrollBarOverlaysTheList();
