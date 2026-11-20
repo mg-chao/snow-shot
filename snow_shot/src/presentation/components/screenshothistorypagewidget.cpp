@@ -895,7 +895,6 @@ class HistoryEntryWidget final : public HistoryEntryCard {
         connect(m_imageEditingAction, &QAction::triggered, this, [this] {
             if (m_imageEditingRequested)
                 m_imageEditingRequested();
-            m_imageCompressionRequested();
         });
         m_imageCompressionAction = menu->addItem(HistoryEntryWidget::tr("Image compression"),
                                                  custom_outlined_icons::ImageCompression());
@@ -905,7 +904,6 @@ class HistoryEntryWidget final : public HistoryEntryCard {
         connect(m_imageCompressionAction, &QAction::triggered, this, [this] {
             if (m_imageCompressionRequested)
                 m_imageCompressionRequested();
-            m_imageCompressionRequested();
         });
         m_copyImagePathAction = menu->addItem(QString(), outlined_icons::Copy());
         m_copyImagePathAction->setObjectName(QStringLiteral("screenshotHistoryEntryCopyImagePath"));

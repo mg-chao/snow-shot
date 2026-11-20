@@ -1540,9 +1540,13 @@ void moreMenuOffersPinStitchAndDelete() {
     require(pinnedId == QStringLiteral("record-0") && !menu,
             "Pin to screen must request that history entry and close the menu");
 
-    storage::CaptureHistoryRecord editorRecord;
+    QVector<storage::CaptureHistoryRecord> editingRequests;
+    QVector<storage::CaptureHistoryRecord> compressionRequests;
+    const QVector<storage::CaptureHistoryRecord> expectedRequests{records[0]};
     QObject::connect(&page, &ScreenshotHistoryPageWidget::imageEditingRequested, &page,
-                     [&](const auto& record) { editorRecord = record; });
+                     [&](const auto& record) { editingRequests.append(record); });
+    QObject::connect(&page, &ScreenshotHistoryPageWidget::imageCompressionRequested, &page,
+                     [&](const auto& record) { compressionRequests.append(record); });
     more->click();
     flushEvents();
     auto* editorMenu = visibleMenu(pinnableEntry);
@@ -1550,12 +1554,10 @@ void moreMenuOffersPinStitchAndDelete() {
     activateMenuAction(editorMenu, editorMenu->findChild<QAction*>(
                                        QStringLiteral("screenshotHistoryEntryImageEditing")));
     flushEvents();
-    require(editorRecord == records[0] && dataSource.removedIds.isEmpty(),
-            "Image Editing dispatches the source record without altering history");
+    require(editingRequests == expectedRequests && compressionRequests.isEmpty() &&
+                dataSource.removedIds.isEmpty(),
+            "Image editing dispatches only one editing request for the source record");
 
-    storage::CaptureHistoryRecord compressionRecord;
-    QObject::connect(&page, &ScreenshotHistoryPageWidget::imageCompressionRequested, &page,
-                     [&](const auto& record) { compressionRecord = record; });
     more->click();
     flushEvents();
     auto* compressionMenu = visibleMenu(pinnableEntry);
@@ -1563,8 +1565,9 @@ void moreMenuOffersPinStitchAndDelete() {
     activateMenuAction(compressionMenu, compressionMenu->findChild<QAction*>(QStringLiteral(
                                             "screenshotHistoryEntryImageCompression")));
     flushEvents();
-    require(compressionRecord == records[0] && dataSource.removedIds.isEmpty(),
-            "Image compression dispatches the source record without altering history");
+    require(compressionRequests == expectedRequests && editingRequests == expectedRequests &&
+                dataSource.removedIds.isEmpty(),
+            "Image compression dispatches only one compression request for the source record");
 
     more->click();
     flushEvents();
