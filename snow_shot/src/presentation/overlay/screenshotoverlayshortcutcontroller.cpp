@@ -1,5 +1,6 @@
 #include "snow_shot/presentation/canvashistoryshortcuts.h"
 #include "snow_shot/presentation/cursormovementshortcuts.h"
+#include "snow_shot/shortcuts/annotationoptionshortcut.h"
 #include "snow_shot/shortcuts/shortcutbinding.h"
 #include "snow_shot/presentation/screenshotoverlayshortcutcontroller.h"
 
@@ -506,7 +507,15 @@ struct ScreenshotOverlayShortcutController::Impl {
             ShortcutManager::Binding binding;
             binding.id = QStringLiteral("drawing.configured.") + tool.key();
             binding.priority = ShortcutManager::StandardPriority::DrawingShortcut;
-            binding.canActivate = [this](const auto&) { return canActivateToolbarShortcut(); };
+            binding.canActivate = [this, toolId = tool.key()](const auto& context) {
+                if (!canActivateToolbarShortcut())
+                    return false;
+                if (toolId != snow_shot::shortcuts::kCycleAnnotationToolOptions)
+                    return true;
+                return interaction.editing() && !inputHandler.canvasColorSamplingActive() &&
+                       !ShortcutManager::inputTargetsPopup(context) &&
+                       actions.canActivateDrawingShortcut(toolId);
+            };
             binding.activate = [this, toolId = tool.key()](const auto&) {
                 return activateToolbarShortcut(toolId, true);
             };

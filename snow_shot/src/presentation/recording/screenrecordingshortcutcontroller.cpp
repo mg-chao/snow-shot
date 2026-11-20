@@ -1,5 +1,6 @@
 #include "snow_shot/presentation/canvashistoryshortcuts.h"
 #include "snow_shot/presentation/screenrecordingshortcutcontroller.h"
+#include "snow_shot/shortcuts/annotationoptionshortcut.h"
 #include "recordingaudiogainpopover.h"
 #include "widgets/popover.h"
 #include "widgets/select.h"
@@ -30,6 +31,8 @@ ScreenRecordingShortcutController::ScreenRecordingShortcutController(
         binding.priority = ShortcutManager::StandardPriority::DrawingShortcut;
         binding.canActivate = [this, toolId = tool.key()](const auto& context) {
             return canActivate(context) && !m_area->drawingBlocked() &&
+                   (toolId != snow_shot::shortcuts::kCycleAnnotationToolOptions ||
+                    !ShortcutManager::inputTargetsPopup(context)) &&
                    m_toolbar->palette()->canActivateDrawingShortcut(toolId);
         };
         binding.activate = [this, toolId = tool.key()](const auto&) {

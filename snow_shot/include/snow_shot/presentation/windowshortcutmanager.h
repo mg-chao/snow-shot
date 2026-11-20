@@ -102,6 +102,7 @@ class WindowShortcutManager final : public QObject {
     // Returns whether keyboard focus belongs to an editable text control.
     // Read-only text surfaces remain eligible for window command shortcuts.
     [[nodiscard]] static bool focusAcceptsTextInput(QWidget* focusWidget);
+    [[nodiscard]] static bool inputTargetsPopup(const ActivationContext& context);
 
   protected:
     bool eventFilter(QObject* watched, QEvent* event) override;

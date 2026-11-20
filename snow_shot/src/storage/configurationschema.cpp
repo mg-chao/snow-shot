@@ -1319,6 +1319,8 @@ constexpr SchemaEntryDescriptor kEntryDescriptors[] = {
      ConfigurationValueKind::StringList, nullptr, nullptr, 2},
     {u"drawing_shortcuts/watermark", stringsDefault(kSchemaStrings47),
      ConfigurationValueKind::StringList, nullptr, nullptr, 2},
+    {u"drawing_shortcuts/cycle_annotation_tool_options", stringsDefault(kSchemaStrings56),
+     ConfigurationValueKind::StringList, nullptr, nullptr, 2},
     {u"screenshot_shortcuts/move_tool", stringsDefault(kSchemaStrings48),
      ConfigurationValueKind::StringList, nullptr, nullptr, 2},
     {u"screenshot_shortcuts/move_cursor_up", stringsDefault(kSchemaStrings49),

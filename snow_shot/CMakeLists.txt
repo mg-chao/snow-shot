@@ -7079,6 +7079,11 @@ if(SNOW_SHOT_BUILD_TESTS)
     target_sources(snow-shot-screenshot-tool-palette-tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/../test-support/fonts/recording_test_fonts.qrc")
     snow_shot_add_translations(snow-shot-screenshot-tool-palette-tests)
+    add_test(NAME snow-shot-annotation-option-cycle-tests
+        COMMAND snow-shot-screenshot-tool-palette-tests --annotation-option-cycle-only -platform offscreen)
+    set_tests_properties(snow-shot-annotation-option-cycle-tests PROPERTIES
+        LABELS "unit" TIMEOUT 60
+        ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}")
     add_test(NAME snow-shot-custom-color-presets-toolbar-tests
         COMMAND snow-shot-screenshot-tool-palette-tests --custom-color-presets-only -platform offscreen)
     set_tests_properties(snow-shot-custom-color-presets-toolbar-tests PROPERTIES

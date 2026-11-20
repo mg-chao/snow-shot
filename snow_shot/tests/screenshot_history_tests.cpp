@@ -3778,6 +3778,7 @@ void configuredSelectionShortcutsRouteTabHistoryAndColorActions(bool targetSwitc
     int coordinateCancelCalls = 0;
     int printCalls = 0;
     int brushCalls = 0;
+    int annotationOptionCycles = 0;
     bool coordinateInputAllowed = true;
     int selectorHitTestRequests = 0;
     bool previousSelectionAvailable = true;
@@ -3816,6 +3817,10 @@ void configuredSelectionShortcutsRouteTabHistoryAndColorActions(bool targetSwitc
         return false;
     };
     actions.activateDrawingShortcut = [&](const QString& id) {
+        if (id == QStringLiteral("cycle_annotation_tool_options")) {
+            ++annotationOptionCycles;
+            return true;
+        }
         if (id == QStringLiteral("brush")) {
             ++brushCalls;
             return true;
@@ -3945,6 +3950,25 @@ void configuredSelectionShortcutsRouteTabHistoryAndColorActions(bool targetSwitc
             "C did not copy the color-picker color in Move mode");
 
     interaction.setCanvasTool(ScreenshotActiveTool::Shape);
+    require(annotationOptionCycles == 0 && dispatchShortcut(shortcutWindow, Qt::Key_Tab) &&
+                annotationOptionCycles == 1,
+            "Tab must cycle the annotation only after entering capture editing");
+    static_cast<void>(dispatchShortcut(shortcutWindow, Qt::Key_Tab, Qt::NoModifier, true));
+    require(annotationOptionCycles == 1 &&
+                !dispatchShortcut(shortcutWindow, Qt::Key_Backtab, Qt::ShiftModifier),
+            "annotation cycling must ignore auto-repeat and Shift+Tab");
+    const snow_shot::storage::DrawingShortcutSettings drawingShortcuts;
+    const QString cycleId = QStringLiteral("cycle_annotation_tool_options");
+    const auto originalPrint = shortcutSettings.shortcuts(QStringLiteral("print"));
+    const auto originalCycle = drawingShortcuts.shortcuts(cycleId);
+    require(shortcutSettings.setShortcuts(QStringLiteral("print"), {QStringLiteral("F6")}) &&
+                drawingShortcuts.setShortcuts(cycleId, {QStringLiteral("F6")}) &&
+                dispatchShortcut(shortcutWindow, Qt::Key_F6) && printCalls == 2 &&
+                annotationOptionCycles == 1,
+            "the applicable Screenshot binding must outrank annotation cycling");
+    require(shortcutSettings.setShortcuts(QStringLiteral("print"), originalPrint) &&
+                drawingShortcuts.setShortcuts(cycleId, originalCycle),
+            "restore the shortcuts after testing priority");
     require(!dispatchShortcut(shortcutWindow, Qt::Key_P, Qt::ShiftModifier) &&
                 coordinateToggles == 1,
             "coordinate toggle must be inactive in drawing modes");

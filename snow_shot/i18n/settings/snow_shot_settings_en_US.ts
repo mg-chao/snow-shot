@@ -2514,6 +2514,10 @@
             <translation>Customize the screenshot action toolbar</translation>
         </message>
         <message>
+            <source>Cycle annotation tool options</source>
+            <translation>Cycle annotation tool options</translation>
+        </message>
+        <message>
             <source>DXGI</source>
             <translation>DXGI</translation>
         </message>

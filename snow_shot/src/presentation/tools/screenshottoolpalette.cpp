@@ -1,4 +1,5 @@
 #include "snow_shot/shortcuts/shortcutbinding.h"
+#include "snow_shot/shortcuts/annotationoptionshortcut.h"
 #include "snow_shot/presentation/screenshottoolpalette.h"
 #include "snow_shot/presentation/components/pointerhoverevents.h"
 #include "snow_shot/ocrtextoptions.h"
@@ -7061,7 +7062,28 @@ ScreenshotToolPalette::drawingShortcutTool(const QString& toolId) const {
     return tool;
 }
 
+bool ScreenshotToolPalette::annotationOptionsActive() const {
+    return m_activeTool && m_activeTool == m_activeStyleTool && m_styleToolbarTargetVisible &&
+           m_activeStyleControlsWidget && !m_recordTrimPanel && !m_recordingFollowMouseEnabled;
+}
+
+QAbstractButton* ScreenshotToolPalette::nextAnnotationOptionButton() const {
+    const auto* group = m_activeStyleControlsWidget->findChild<adqt::widgets::AdRadioButtonGroup*>(
+        QStringLiteral("screenshotAnnotationOptionGroup"));
+    const auto options = screenshotToolPaletteRadioOptions(group);
+    if (options.size() < 2)
+        return nullptr;
+
+    const qsizetype current = options.indexOf(group->checkedButton());
+    return options.at((current + 1) % options.size());
+}
+
 bool ScreenshotToolPalette::canActivateDrawingShortcut(const QString& toolId) const {
+    if (toolId == snow_shot::shortcuts::kCycleAnnotationToolOptions) {
+        return annotationOptionsActive() &&
+               (m_activeTool == Tool::Distance ? m_styleControls->canCycleDistanceUnit()
+                                               : nextAnnotationOptionButton() != nullptr);
+    }
     if (toolId == QStringLiteral("reset_canvas")) {
         return canActivateToolShortcut(Tool::Eraser);
     }
@@ -7070,6 +7092,17 @@ bool ScreenshotToolPalette::canActivateDrawingShortcut(const QString& toolId) co
 }
 
 bool ScreenshotToolPalette::activateDrawingShortcut(const QString& toolId) {
+    if (toolId == snow_shot::shortcuts::kCycleAnnotationToolOptions) {
+        if (!annotationOptionsActive())
+            return false;
+        if (m_activeTool == Tool::Distance)
+            return m_styleControls->cycleDistanceUnit();
+        if (auto* option = nextAnnotationOptionButton()) {
+            option->click();
+            return true;
+        }
+        return false;
+    }
     if (toolId == QStringLiteral("reset_canvas")) {
         if (!canActivateDrawingShortcut(toolId)) {
             return false;
@@ -7384,6 +7417,7 @@ QWidget* ScreenshotToolPalette::createStyleModeSelector(
     ScreenshotToolPaletteRadioEditorConfig config;
     config.objectName = objectName;
     config.initialId = static_cast<int>(initialTool);
+    config.cycleWithAnnotationShortcut = true;
     for (const StyleModeOption& option : options) {
         config.options.push_back({
             static_cast<int>(option.tool),

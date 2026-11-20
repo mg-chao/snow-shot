@@ -7,6 +7,7 @@
 
 #include <QColor>
 #include <QFont>
+#include <QList>
 #include <QString>
 #include <QStringList>
 #include <QtGlobal>
@@ -14,6 +15,7 @@
 
 #include <functional>
 
+class QAbstractButton;
 class QPaintEvent;
 class QPainter;
 class QBoxLayout;
@@ -105,7 +107,11 @@ struct ScreenshotToolPaletteRadioEditorConfig {
     QVector<ScreenshotToolPaletteRadioOption> options;
     int initialId = -1;
     bool useButtonMetrics = false;
+    bool cycleWithAnnotationShortcut = false;
 };
+
+[[nodiscard]] QList<QAbstractButton*>
+screenshotToolPaletteRadioOptions(const adqt::widgets::AdRadioButtonGroup* group);
 
 struct ScreenshotToolPaletteOptionPopoverOption {
     int value = -1;

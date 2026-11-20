@@ -1,6 +1,7 @@
 #include <QVBoxLayout>
 #include "snow_shot/presentation/screenshotcanvastools.h"
 #include "palette_style_edit_test_support.h"
+#include "snow_shot/shortcuts/annotationoptionshortcut.h"
 #include "physical_key_test_support.h"
 #include "cloud_upload_test_support.h"
 #include "snow_shot/presentation/screenshotregiontypecontrol.h"
@@ -9358,6 +9359,115 @@ void lineToolIsDiscoverableSelectableAndUsesLinearStyleControls() {
             "the canvas should accept the distinct Line tool identity");
     require(canvas.canvasTool() == SnowCanvasTool::Line,
             "the canvas should retain Line while using shared linear geometry");
+}
+
+void annotationShortcutCyclesPrimaryOptions() {
+    using Tool = ScreenshotToolPalette::Tool;
+    using Group = adqt::widgets::AdRadioButtonGroup;
+    const auto& shortcut = snow_shot::shortcuts::kCycleAnnotationToolOptions;
+    ScreenshotToolPalette palette(ScreenshotToolPalette::Options{});
+    const auto buttonWithLabel = [&](const char* label) -> QAbstractButton* {
+        const auto groups =
+            palette.findChildren<Group*>(QStringLiteral("screenshotAnnotationOptionGroup"));
+        for (const auto* group : groups) {
+            for (auto* button : group->buttons()) {
+                if (tooltipMatches(button->toolTip(), QString::fromUtf8(label)))
+                    return button;
+            }
+        }
+        return nullptr;
+    };
+    std::optional<SnowCanvasTool> requested;
+    snow_shot::presentation::bindScreenshotCanvasToolRequests(
+        palette, palette, [&](SnowCanvasTool tool) { requested = tool; });
+    struct OptionCycle {
+        Tool tool;
+        QList<const char*> labels;
+        QList<SnowCanvasTool> canvasTools;
+    };
+    const OptionCycle cycles[] = {
+        {Tool::Shape, {"Rectangle", "Ellipse", "Diamond"}, {}},
+        {Tool::Arrow, {"Straight arrow", "Curved arrow", "Elbow arrow"}, {}},
+        {Tool::Line, {"Straight line", "Curved line"}, {}},
+        {Tool::Angle, {"360° angle", "180° angle"}, {}},
+        {Tool::Brush, {"Regular brush", "Pressure-sensitive brush"}, {}},
+        {Tool::BrushHighlight,
+         {"Brush highlight", "Rectangle highlight"},
+         {SnowCanvasTool::PenHighlight, SnowCanvasTool::RectangleHighlight}},
+        {Tool::Spotlight, {"Rectangle", "Ellipse", "Diamond"}, {}},
+        {Tool::Magnifier, {"Rectangle", "Ellipse", "Diamond"}, {}},
+        {Tool::SequenceNumber,
+         {"Outlined circle", "Solid circle", "Outlined square", "Solid square", "Circle"},
+         {}},
+        {Tool::SpeechBubble, {"Rectangle", "Ellipse", "Diamond", "Thought bubble"}, {}},
+        {Tool::BrushFilter,
+         {"Brush filter", "Rectangle filter", "Auto filter"},
+         {SnowCanvasTool::PenFilter, SnowCanvasTool::RectangleFilter, SnowCanvasTool::AutoFilter}},
+        {Tool::Eraser,
+         {"Element eraser", "Rectangle eraser", "Brush eraser"},
+         {SnowCanvasTool::Eraser, SnowCanvasTool::RectangleEraser, SnowCanvasTool::BrushEraser}},
+    };
+    for (const auto& cycle : cycles) {
+        palette.setActiveTool(cycle.tool);
+        auto* first = buttonWithLabel(cycle.labels.first());
+        require(first != nullptr, cycle.labels.first());
+        first->click();
+        for (qsizetype step = 1; step <= cycle.labels.size(); ++step) {
+            requested.reset();
+            require(palette.canActivateDrawingShortcut(shortcut) &&
+                        palette.activateDrawingShortcut(shortcut),
+                    cycle.labels.first());
+            const qsizetype index = step % cycle.labels.size();
+            auto* selected = buttonWithLabel(cycle.labels.at(index));
+            require(selected && selected->isChecked(), cycle.labels.at(index));
+            require(cycle.canvasTools.isEmpty() ? !requested
+                                                : requested == cycle.canvasTools.at(index),
+                    "option cycling must dispatch the same canvas command as clicking");
+        }
+    }
+
+    palette.setActiveTool(Tool::Shape);
+    auto* ellipse = buttonWithLabel("Ellipse");
+    require(ellipse != nullptr, "Shape must expose the Ellipse option");
+    ellipse->setEnabled(false);
+    require(palette.activateDrawingShortcut(shortcut) &&
+                palette.creationStyleDefaults().rectangle.shape ==
+                    SnowCanvasRectangleShape::Diamond,
+            "cycling Shape must skip a disabled option and update its creation style");
+
+    palette.setActiveTool(Tool::Distance);
+    using Unit = SnowCanvasDistanceUnit;
+    auto* unitsRow =
+        palette.findChild<QWidget*>(QStringLiteral("screenshotDistanceUnitButtonGroup"));
+    auto* units = unitsRow ? unitsRow->findChild<Group*>() : nullptr;
+    require(units && units->button(static_cast<int>(Unit::Mm)), "distance units are available");
+    units->button(static_cast<int>(Unit::Mm))->click();
+    for (const auto unit : {Unit::Cm, Unit::M, Unit::Km, Unit::Px, Unit::Pt, Unit::In, Unit::Ft,
+                            Unit::Um, Unit::Mm}) {
+        require(palette.activateDrawingShortcut(shortcut) &&
+                    palette.creationStyleDefaults().distance.unit == unit,
+                "distance cycling must include every real unit and wrap");
+    }
+    require(!units->button(static_cast<int>(Unit::Mm))->isHidden() &&
+                units->checkedId() == static_cast<int>(Unit::Mm),
+            "distance cycling synchronizes the visible unit selector");
+
+    palette.setActiveTool(Tool::Brush);
+    SnowCanvasStyleToolbarState mixed;
+    mixed.source = SnowCanvasStyleToolbarSource::SelectedFreeDraw;
+    mixed.shapeStyleMixed = SnowCanvasShapeStyleMixedBrushMode;
+    palette.setStyleToolbarState(mixed);
+    require(palette.activateDrawingShortcut(shortcut) &&
+                buttonWithLabel("Regular brush")->isChecked(),
+            "cycling a mixed selection must begin at the first option");
+    palette.setStyleToolbarVisible(false);
+    require(!palette.canActivateDrawingShortcut(shortcut) &&
+                !palette.activateDrawingShortcut(shortcut),
+            "cycling is inapplicable when the style toolbar is hidden");
+    palette.setActiveTool(Tool::Text);
+    require(!palette.canActivateDrawingShortcut(shortcut) &&
+                !palette.activateDrawingShortcut(shortcut),
+            "unsupported tools must leave the shortcut unhandled");
 }
 
 void pressureBrushToolbarPreservesStylesAndMixedSelection() {
@@ -21085,6 +21195,10 @@ int main(int argc, char** argv) {
 #endif
     if (application.arguments().contains(QStringLiteral("--quick-text-annotation-only"))) {
         runScreenshotQuickTextAnnotationToolbarTests();
+        return 0;
+    }
+    if (application.arguments().contains(QStringLiteral("--annotation-option-cycle-only"))) {
+        annotationShortcutCyclesPrimaryOptions();
         return 0;
     }
     if (application.arguments().contains(QStringLiteral("--custom-color-presets-only"))) {

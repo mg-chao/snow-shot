@@ -15566,6 +15566,13 @@ void pinnedDrawingShortcutsToggleActiveTool(bool hiddenTools = false) {
         require(canvas->canvasTool() == tool,
                 "the third shortcut press should reactivate the pinned canvas tool");
     }
+    const auto shapeBeforeTab = canvas->canvasStyleToolbarState().shapeStyle.shape;
+    pressKey(Qt::Key_Tab);
+    require(canvas->canvasTool() == SnowCanvasTool::Shape &&
+                canvas->canvasStyleToolbarState().shapeStyle.shape != shapeBeforeTab &&
+                canvas->canvasStyleToolbarState().shapeStyle.shape ==
+                    palette->creationStyleDefaults().rectangle.shape,
+            "Tab advances the active shape on the pinned canvas and its toolbar");
     if (hiddenTools) {
         require(toolbarSettings.layout(kind) == savedLayout && palette->stylePanel()->isVisible(),
                 "hidden pinned tools retain settings without changing the saved layout");

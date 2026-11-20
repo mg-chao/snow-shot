@@ -2553,6 +2553,19 @@ void localShortcutDefaultsPreserveConfiguredBindings() {
                 store.value(nextKey) == QJsonArray{} && store.value(quickSaveKey) == nextDefault,
             "repairing an invalid shortcut must not introduce a conflicting default");
     const QString copyKey = QStringLiteral("screenshot_shortcuts/copy_to_clipboard");
+    const QString cycleKey = QStringLiteral("drawing_shortcuts/cycle_annotation_tool_options");
+    const QString shapeKey = QStringLiteral("drawing_shortcuts/shape");
+    const QString smartSelectionKey = QStringLiteral(
+        "screenshot_shortcuts/switch_selection_between_window_and_window_sub_element");
+    const QJsonArray tab{shortcutObject(QStringLiteral("Tab"))};
+    require(store.applySnapshot({{smartSelectionKey, tab}}) && store.value(cycleKey) == tab,
+            "a Screenshot Tab binding must not suppress the Annotation default");
+    require(store.applySnapshot({{shapeKey, tab}}) && store.value(shapeKey) == tab &&
+                store.value(cycleKey) == QJsonArray{} && store.flushNow().success,
+            "an existing Annotation Tab binding must suppress the cycle default");
+    storage::ConfigurationStore cycleReloaded(variantsPath, true, true, 60000);
+    require(cycleReloaded.value(shapeKey) == tab && cycleReloaded.value(cycleKey) == QJsonArray{},
+            "the occupied Tab and unassigned annotation cycle must survive reload");
     const QJsonArray copyDefault{shortcutObject(QStringLiteral("Ctrl+C")),
                                  shortcutObject(QStringLiteral("Enter"))};
     require(storage::ConfigurationSchema::defaultValue(copyKey) == copyDefault &&

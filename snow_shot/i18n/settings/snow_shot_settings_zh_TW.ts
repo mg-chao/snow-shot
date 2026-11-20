@@ -2514,6 +2514,10 @@
             <translation>自訂截圖操作工具列</translation>
         </message>
         <message>
+            <source>Cycle annotation tool options</source>
+            <translation>循環切換標註工具選項</translation>
+        </message>
+        <message>
             <source>DXGI</source>
             <translation>DXGI</translation>
         </message>

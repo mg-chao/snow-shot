@@ -13,6 +13,7 @@
 #include "antd_icons.h"
 #include "snow_shot/presentation/components/icons/snowshoticons.h"
 
+#include <QAbstractButton>
 #include <QBoxLayout>
 #include <QCoreApplication>
 #include <QFont>
@@ -1878,6 +1879,40 @@ void ScreenshotToolPaletteDistanceUnitEditor::build(
 
 void ScreenshotToolPaletteDistanceUnitEditor::rebind(const Commit& commit) {
     m_commit = commit;
+}
+
+std::optional<SnowCanvasDistanceUnit> ScreenshotToolPaletteDistanceUnitEditor::nextUnit() const {
+    if (!m_group || !m_commit)
+        return std::nullopt;
+
+    QList<int> units;
+    for (auto* button : screenshotToolPaletteRadioOptions(m_group)) {
+        const int id = m_group->id(button);
+        if (id != kDistanceMoreId) {
+            units.append(id);
+        } else {
+            for (const auto& option : m_options)
+                units.append(option.value);
+        }
+    }
+    if (units.size() < 2)
+        return std::nullopt;
+
+    const qsizetype current = m_mixed ? -1 : units.indexOf(static_cast<int>(m_unit));
+    return static_cast<SnowCanvasDistanceUnit>(units.at((current + 1) % units.size()));
+}
+
+bool ScreenshotToolPaletteDistanceUnitEditor::canCycleUnit() const {
+    return nextUnit().has_value();
+}
+
+bool ScreenshotToolPaletteDistanceUnitEditor::cycleUnit() {
+    const auto unit = nextUnit();
+    if (!unit)
+        return false;
+    const auto commit = m_commit;
+    commit(*unit);
+    return true;
 }
 
 QWidget* ScreenshotToolPaletteDistanceUnitEditor::createPopupContent(
