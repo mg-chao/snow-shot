@@ -2,7 +2,11 @@
 #include "snow_shot/presentation/screenshotsavepreviewcanvas.h"
 #include "screenshotexportmemory_p.h"
 #include "snow_shot/presentation/canvasstatusreadout.h"
+#include "snow_shot/presentation/components/canvasactiontoolbar.h"
+#include "snow_shot/presentation/components/canvascheckerboard.h"
+#include "snow_shot/presentation/components/icons/snowshoticons.h"
 #include "snow_shot/presentation/screenshotwheelinput.h"
+#include "antd_icons.h"
 #include "theme/theme_manager.h"
 
 #include <QKeyEvent>
@@ -11,6 +15,7 @@
 #include <QPolygonF>
 #include <QResizeEvent>
 #include <QTimer>
+#include <QVBoxLayout>
 #include <QWheelEvent>
 
 #include <algorithm>
@@ -32,11 +37,24 @@ ScreenshotSavePreviewCanvas::ScreenshotSavePreviewCanvas(QWidget* parent) : QWid
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);
-    m_checkerboard = QPixmap(24, 24);
-    m_checkerboard.fill(Qt::white);
-    QPainter tilePainter(&m_checkerboard);
-    tilePainter.fillRect(0, 0, 12, 12, QColor(0, 0, 0, 28));
-    tilePainter.fillRect(12, 12, 12, 12, QColor(0, 0, 0, 28));
+    auto* toolbar = new snow_shot::presentation::components::CanvasActionToolbar(this);
+    toolbar->setObjectName(QStringLiteral("savePreviewCanvasToolbar"));
+    m_fitButton = toolbar->addAction(adqt::icons::antd::outlined::Fullscreen(), "savePreviewFit");
+    m_actualSizeButton = toolbar->addAction(
+        snow_shot::presentation::icons::custom::outlined::ActualSize(), "savePreviewActualSize");
+    m_fitButton->setEnabled(false);
+    m_actualSizeButton->setEnabled(false);
+    connect(m_fitButton, &QAbstractButton::clicked, this, [this] { fitImage(true); });
+    connect(m_actualSizeButton, &QAbstractButton::clicked, this, [this] {
+        m_fit = false;
+        zoomAt(1.0, QRectF(rect()).center());
+    });
+    auto* overlay = new QVBoxLayout(this);
+    overlay->setContentsMargins(16, 16, 16, 16);
+    overlay->addStretch(1);
+    overlay->addWidget(toolbar, 0, Qt::AlignHCenter);
+    connect(&adqt::theme::ThemeManager::instance(), &adqt::theme::ThemeManager::themeChanged, this,
+            [this] { update(); });
     m_readout = new CanvasStatusReadout(this);
     m_readout->setObjectName(QStringLiteral("savePreviewZoom"));
     m_readout->dismissalTimer()->setObjectName(QStringLiteral("savePreviewZoomTimer"));
@@ -46,6 +64,7 @@ ScreenshotSavePreviewCanvas::ScreenshotSavePreviewCanvas(QWidget* parent) : QWid
     m_detailTimer.setSingleShot(true);
     m_detailTimer.setInterval(60);
     connect(&m_detailTimer, &QTimer::timeout, this, [this] { requestDetails(); });
+    retranslate();
     updateReadout();
 }
 ScreenshotSavePreviewCanvas::~ScreenshotSavePreviewCanvas() {
@@ -60,8 +79,12 @@ void ScreenshotSavePreviewCanvas::setSource(QImage image, QSize pixels, DetailRe
     m_sourceDetail = {};
     m_outputDetail = {};
     m_outputPixels = {};
+    const bool hasImage = !m_sourcePixels.isEmpty() && !m_original.isNull();
+    m_fitButton->setEnabled(hasImage);
+    m_actualSizeButton->setEnabled(hasImage);
     m_readout->dismiss();
     fitImage();
+    update();
 }
 void ScreenshotSavePreviewCanvas::setPdfLayout(screenshot_pdf::Layout layout) {
     if (layout.pagePoints == m_pdfLayout.pagePoints &&
@@ -179,26 +202,19 @@ void ScreenshotSavePreviewCanvas::setSplitRatio(double value) {
 void ScreenshotSavePreviewCanvas::fitImage(bool showZoomReadout) {
     if (m_sourcePixels.isEmpty())
         return;
-    const double previousZoom = m_zoom;
     m_fit = true;
     m_pan = {};
     m_zoom = std::min({1.0, double(std::max(1, width() - 40)) / m_sourcePixels.width(),
                        double(std::max(1, height() - 40)) / m_sourcePixels.height()});
-    updateReadout();
-    if (showZoomReadout && !qFuzzyCompare(previousZoom, m_zoom))
-        showReadout();
+    updateReadout(showZoomReadout);
     scheduleDetails();
     update();
 }
-void ScreenshotSavePreviewCanvas::updateReadout() {
-    m_readout->setMessage(CanvasStatusReadout::Message::Scale, m_zoom * 100, m_zoom < 0.1 ? 1 : 0);
+void ScreenshotSavePreviewCanvas::updateReadout(bool showOnChange) {
     m_readout->layoutIn(rect());
+    m_readout->setScale(m_zoom, showOnChange);
     m_busy->layoutIn(rect(), CanvasStatusReadout::Corner::TopLeft);
-    setAccessibleName(tr("Export comparison preview"));
     setProperty("zoom", m_zoom);
-}
-void ScreenshotSavePreviewCanvas::showReadout() {
-    m_readout->showTransient();
 }
 void ScreenshotSavePreviewCanvas::setBusy(bool busy) {
     m_rendering = busy;
@@ -210,7 +226,8 @@ void ScreenshotSavePreviewCanvas::setBusy(bool busy) {
 }
 void ScreenshotSavePreviewCanvas::paintEvent(QPaintEvent*) {
     QPainter painter(this);
-    const QBrush checkerboard(m_checkerboard);
+    const auto theme = adqt::theme::ThemeManager::instance().resolveTheme(this);
+    const auto checkerboard = snow_shot::presentation::components::canvasCheckerboard(theme);
     const auto drawBacking = [&](QRectF area, QRectF paper = {}) {
         painter.save();
         // Preserve the same crisp checker pixels when restoring detail at any device scale.
@@ -260,7 +277,6 @@ void ScreenshotSavePreviewCanvas::paintEvent(QPaintEvent*) {
     drawDetail(m_outputDetail, m_outputPixels, pageBounds);
     painter.restore();
 
-    const auto theme = adqt::theme::ThemeManager::instance().resolveTheme(this);
     painter.setRenderHint(QPainter::Antialiasing);
     painter.setPen(Qt::NoPen);
     painter.setBrush(QColor(7, 9, 12, 158));
@@ -356,8 +372,7 @@ void ScreenshotSavePreviewCanvas::zoomAt(double value, QPointF position) {
     m_pan = offset - (offset - m_pan) * (zoom / m_zoom);
     m_zoom = zoom;
     m_fit = false;
-    updateReadout();
-    showReadout();
+    updateReadout(true);
     scheduleDetails();
     update();
 }
@@ -392,6 +407,13 @@ void ScreenshotSavePreviewCanvas::keyPressEvent(QKeyEvent* event) {
 }
 void ScreenshotSavePreviewCanvas::changeEvent(QEvent* event) {
     if (event->type() == QEvent::LanguageChange)
-        setAccessibleName(tr("Export comparison preview"));
+        retranslate();
     QWidget::changeEvent(event);
+}
+void ScreenshotSavePreviewCanvas::retranslate() {
+    setAccessibleName(tr("Export comparison preview"));
+    m_fitButton->setToolTip(tr("Fit image to window"));
+    m_fitButton->setAccessibleName(m_fitButton->toolTip());
+    m_actualSizeButton->setToolTip(tr("View at actual size (100%)"));
+    m_actualSizeButton->setAccessibleName(m_actualSizeButton->toolTip());
 }

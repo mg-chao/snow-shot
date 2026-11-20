@@ -63,6 +63,10 @@
             <translation>焦點視窗</translation>
         </message>
         <message>
+            <source>Image compression</source>
+            <translation>影像壓縮</translation>
+        </message>
+        <message>
             <source>Image editing</source>
             <translation>影像編輯</translation>
         </message>
@@ -1634,6 +1638,10 @@ Files:
             <translation>已隱藏</translation>
         </message>
         <message>
+            <source>Image compression</source>
+            <translation>影像壓縮</translation>
+        </message>
+        <message>
             <source>Image editing</source>
             <translation>影像編輯</translation>
         </message>
@@ -2098,6 +2106,10 @@ Files:
         <message>
             <source>Hide other windows</source>
             <translation>隱藏其他視窗</translation>
+        </message>
+        <message>
+            <source>Image compression</source>
+            <translation>影像壓縮</translation>
         </message>
         <message>
             <source>Image editing</source>

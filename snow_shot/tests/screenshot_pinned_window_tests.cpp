@@ -24633,14 +24633,25 @@ void pinnedImageSplittingSnapshots() {
         window.findChild<QAction*>(QStringLiteral("screenshotPinnedImageEditingAction"));
     auto* reset =
         window.findChild<QAction*>(QStringLiteral("screenshotPinnedResetTransformAction"));
-    require(menu && split && editing && reset && menu->actions().last() == editing &&
-                menu->actions().at(menu->actions().size() - 3)->isSeparator() &&
-                menu->actions().indexOf(reset) == menu->actions().size() - 4 &&
+    auto* compression =
+        window.findChild<QAction*>(QStringLiteral("screenshotPinnedImageCompressionAction"));
+    require(menu && split && editing && reset && compression &&
+                menu->actions().last() == compression &&
+                menu->actions().indexOf(compression) == menu->actions().indexOf(editing) + 1 &&
+                menu->actions().at(menu->actions().size() - 4)->isSeparator() &&
+                menu->actions().indexOf(reset) == menu->actions().size() - 5 &&
                 menu->actions().indexOf(editing) == menu->actions().indexOf(split) + 1 &&
                 editing->isEnabled() && editing->text() == QStringLiteral("Image editing") &&
                 !editing->icon().isNull() && split->isEnabled() &&
                 split->text() == QStringLiteral("Image splitting") && !split->icon().isNull(),
-            "Process image ends with Image Splitting followed by Image Editing");
+            "Process image ends with splitting, editing and compression");
+    bool compressed = false;
+    QObject::connect(&window, &ScreenshotPinnedWindow::imageCompressionRequested, &window,
+                     [&](const ScreenshotPinnedImageSnapshot& snapshot) {
+                         compressed = snapshot.source.isValid();
+                     });
+    compression->trigger();
+    require(compressed, "compression captures an independent full-resolution pin source");
     int editingRequests = 0;
     snow_shot::presentation::ImageEditingWindowCoordinator editors({{}, &fixture.groups, nullptr});
     QObject::connect(&window, &ScreenshotPinnedWindow::imageEditingRequested, &window,

@@ -486,7 +486,6 @@ enum class TrackEndpoint : std::uint8_t {
 struct AdMultiSlider::LayoutInfo {
   detail::SliderVisualStyle baseStyle;
   detail::SliderVisualStyle style;
-  QRectF contentRect;
   QRectF railRect;
   QList<QRectF> handleRects;
   QList<QRectF> handleAnchorRects;
@@ -1177,11 +1176,16 @@ QSize AdMultiSlider::sizeHint() const {
   const int sliderLength = style()->pixelMetric(QStyle::PM_SliderLength, &option, this);
   const int sliderThickness = style()->pixelMetric(QStyle::PM_SliderThickness, &option, this);
   if (orientation_ == Qt::Horizontal) {
-    const int height =
-        std::max(std::max(34, sliderThickness),
-                 layout.style.metrics.controlSize + layout.style.metrics.marginCross * 2 +
-                     (markLabelHeight > 0 ? layout.style.metrics.markGap + markLabelHeight : 0));
-    return scaled(QSize(std::max(260, sliderLength * 6), height));
+    const auto& metrics = layout.style.metrics;
+    const int railHeight =
+        std::max({34, sliderThickness, metrics.controlSize + metrics.marginCross * 2});
+    QSize hint = scaled(QSize(std::max(260, sliderLength * 6), railHeight));
+    if (markLabelHeight > 0) {
+      // The label starts at an offset from the rail center and uses space below it.
+      const int railCenter = std::max((hint.height() + 1) / 2, metrics.marginCross + 1);
+      hint.setHeight(std::max(hint.height(), railCenter + metrics.markGap + markLabelHeight));
+    }
+    return hint;
   }
   const int width =
       std::max(std::max(52, sliderThickness),
@@ -1972,9 +1976,8 @@ AdMultiSlider::LayoutInfo AdMultiSlider::buildLayout() const {
     const qreal maximumInset = std::max<qreal>(0.0, (mainExtent - 1.0) / 2.0);
     const qreal handleInset = std::min<qreal>(layout.style.metrics.marginMain, maximumInset);
     const qreal top = layout.style.metrics.marginCross;
-    const qreal bottom = height() - layout.style.metrics.marginCross - markSpan;
-    layout.contentRect = QRectF(0.0, top, mainExtent, std::max<qreal>(1.0, bottom - top));
-    layout.crossCenter = layout.contentRect.center().y();
+    const qreal center = top + std::max<qreal>(1.0, height() - 2.0 * top) / 2.0;
+    layout.crossCenter = std::clamp<qreal>(height() - markSpan, top + 0.5, center);
     layout.axis.setMainExtents(mainExtent, handleInset, minimumThumbRadius);
     layout.railRect =
         QRectF(layout.axis.visualStart, layout.crossCenter - layout.style.metrics.railSize / 2.0,
@@ -1985,8 +1988,7 @@ AdMultiSlider::LayoutInfo AdMultiSlider::buildLayout() const {
     const qreal mainExtent = std::max<qreal>(1.0, height());
     const qreal maximumInset = std::max<qreal>(0.0, (mainExtent - 1.0) / 2.0);
     const qreal handleInset = std::min<qreal>(layout.style.metrics.marginMain, maximumInset);
-    layout.contentRect = QRectF(left, 0.0, std::max<qreal>(1.0, right - left), mainExtent);
-    layout.crossCenter = layout.contentRect.center().x();
+    layout.crossCenter = left + std::max<qreal>(1.0, right - left) / 2.0;
     layout.axis.setMainExtents(mainExtent, handleInset, minimumThumbRadius);
     layout.railRect =
         QRectF(layout.crossCenter - layout.style.metrics.railSize / 2.0, layout.axis.visualStart,

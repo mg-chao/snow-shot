@@ -42,6 +42,7 @@ void shortcutFamiliesAreComplete() {
         {GlobalShortcutAction::StitchSelectedImages, std::nullopt},
         {GlobalShortcutAction::SplitSelectedImages, std::nullopt},
         {GlobalShortcutAction::EditSelectedImages, std::nullopt},
+        {GlobalShortcutAction::CompressSelectedImages, std::nullopt},
         {GlobalShortcutAction::OpenSettings, std::nullopt},
         {GlobalShortcutAction::PinClipboardContent, FeatureFamily::PinToScreen},
         {GlobalShortcutAction::TranslateSelectedText, std::nullopt},

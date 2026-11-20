@@ -2274,6 +2274,10 @@
             <translation>颜色拾取器显示模式</translation>
         </message>
         <message>
+            <source>Compress selected images</source>
+            <translation>压缩选中的图像</translation>
+        </message>
+        <message>
             <source>Compression level</source>
             <translation>压缩级别</translation>
         </message>
@@ -3592,6 +3596,10 @@
         <message>
             <source>Open at login</source>
             <translation>登录时打开</translation>
+        </message>
+        <message>
+            <source>Open image compression for each selected image file, or an empty window if no images are selected</source>
+            <translation>为每个选中的图像文件打开图像压缩窗口；未选中图像时打开空窗口</translation>
         </message>
         <message>
             <source>Open image editing for each selected image file, or an empty window if no images are selected</source>

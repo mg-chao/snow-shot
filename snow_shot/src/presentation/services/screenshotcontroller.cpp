@@ -1626,6 +1626,12 @@ bool ScreenshotController::Impl::ensureExportFeature() {
         [this] { m_deferredPresentation.requestRestore(); });
     exportUiServices->setPresentationSuspended(m_captureWorkflow &&
                                                m_captureWorkflow->captureSuspended());
+    exportUiServices->setImageCompressionHandler(
+        [controller = QPointer<ScreenshotController>(&owner)](
+            const ScreenshotPinnedImageSnapshot& snapshot) {
+            if (controller)
+                emit controller->imageCompressionRequested(snapshot);
+        });
     exportUiServices->setLiveImageEditingHandler(
         [controller =
              QPointer<ScreenshotController>(&owner)](const ScreenshotExportSource& source) {
@@ -7008,6 +7014,11 @@ bool ScreenshotController::captureForAction(CaptureAction action) {
 
 bool ScreenshotController::handleActiveScreenshotShortcut(
     snow_shot::presentation::GlobalShortcutAction action) {
+    return handleActiveScreenshotShortcut(action, false);
+}
+
+bool ScreenshotController::handleActiveScreenshotShortcut(
+    snow_shot::presentation::GlobalShortcutAction action, bool requireActivation) {
     const auto state = m_impl->m_captureState.sessionState;
     if (state == ScreenshotSessionState::IdleCold || state == ScreenshotSessionState::IdlePrepared)
         return false;
@@ -7026,7 +7037,8 @@ bool ScreenshotController::handleActiveScreenshotShortcut(
     if (m_impl->m_activatingOcrCopy)
         action = snow_shot::presentation::GlobalShortcutAction::ScreenshotOcr;
     return m_impl->m_overlayShortcutController != nullptr &&
-           m_impl->m_overlayShortcutController->handleGlobalScreenshotShortcut(action, ready);
+           m_impl->m_overlayShortcutController->handleGlobalScreenshotShortcut(action, ready,
+                                                                               requireActivation);
 }
 
 void ScreenshotController::pinFilesToScreen(QStringList paths,
@@ -7221,7 +7233,10 @@ void ScreenshotController::pinHistoryRecord(const QString& recordId) {
 }
 
 void ScreenshotController::pinClipboardContentToScreen() {
-    m_impl->pinClipboardContentToScreen();
+    if (!handleActiveScreenshotShortcut(
+            snow_shot::presentation::GlobalShortcutAction::ScreenshotPinToScreen,
+            /*requireActivation=*/true))
+        m_impl->pinClipboardContentToScreen();
 }
 
 void ScreenshotController::pinSelectedFilesToScreen() {

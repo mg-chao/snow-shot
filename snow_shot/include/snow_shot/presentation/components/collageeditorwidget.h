@@ -23,7 +23,7 @@ class ImageStitchingPreviewCanvas final : public QWidget {
     [[nodiscard]] bool canFitToCanvas() const;
     [[nodiscard]] QRectF imageViewportRect(quint64 id) const;
     [[nodiscard]] QRectF cellViewportRect(quint64 id) const;
-    void fitToCanvas();
+    void fitToCanvas(bool showZoomReadout = false);
     void centerImage(quint64 id);
     void preserveViewport();
     void setEditingEnabled(bool enabled, bool replacementAllowed = true);

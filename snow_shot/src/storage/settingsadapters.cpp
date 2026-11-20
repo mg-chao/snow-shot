@@ -845,6 +845,14 @@ shortcuts::ShortcutBindingList ShortcutSettings::editSelectedImages() const {
 bool ShortcutSettings::setEditSelectedImages(const shortcuts::ShortcutBindingList& bindings) const {
     return setShortcutValue(QStringLiteral("global_shortcuts/edit_selected_images"), bindings);
 }
+shortcuts::ShortcutBindingList ShortcutSettings::compressSelectedImages() const {
+    return shortcutValue(QStringLiteral("global_shortcuts/compress_selected_images"));
+}
+
+bool ShortcutSettings::setCompressSelectedImages(
+    const shortcuts::ShortcutBindingList& bindings) const {
+    return setShortcutValue(QStringLiteral("global_shortcuts/compress_selected_images"), bindings);
+}
 
 shortcuts::ShortcutBindingList ShortcutSettings::openPinToScreenManagement() const {
     return shortcutValue(QStringLiteral("global_shortcuts/open_pin_to_screen_management"));

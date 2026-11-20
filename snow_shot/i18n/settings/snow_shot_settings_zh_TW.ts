@@ -2274,6 +2274,10 @@
             <translation>顏色選擇器顯示模式</translation>
         </message>
         <message>
+            <source>Compress selected images</source>
+            <translation>壓縮選取的影像</translation>
+        </message>
+        <message>
             <source>Compression level</source>
             <translation>壓縮等級</translation>
         </message>
@@ -3592,6 +3596,10 @@
         <message>
             <source>Open at login</source>
             <translation>登入時打開</translation>
+        </message>
+        <message>
+            <source>Open image compression for each selected image file, or an empty window if no images are selected</source>
+            <translation>為每個選取的影像檔案開啟影像壓縮視窗；未選取影像時開啟空白視窗</translation>
         </message>
         <message>
             <source>Open image editing for each selected image file, or an empty window if no images are selected</source>

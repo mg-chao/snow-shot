@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "snow_shot/presentation/components/collageeditorwidget.h"
+#include "snow_shot/presentation/canvasstatusreadout.h"
 #include "snow_shot/presentation/components/overlaycontrolbutton.h"
 #include "snow_shot/presentation/screenshotexportcoordinator.h"
 #include "snow_shot/storage/applicationstorage.h"
@@ -31,6 +32,7 @@
 #include <QFileInfo>
 #include <QThread>
 #include <QTemporaryDir>
+#include <QTimer>
 #include <QTranslator>
 #include <QWheelEvent>
 #include <QUrl>
@@ -958,6 +960,8 @@ void floatingFitToCanvasFollowsViewport() {
     ImageStitchingEditorWidget editor(&document);
     auto* canvas = editor.canvas();
     auto* fit = button(&editor, "collageFitToCanvas");
+    auto* hint = canvas->findChild<CanvasStatusReadout*>(QStringLiteral("collagePreviewZoom"));
+    require(hint && hint->isHidden(), "the empty canvas must not show a zoom readout");
     require(!fit->isEnabled(),
             "the empty preview must initialize its fit action before the editor is shown");
     editor.resize(1000, 700);
@@ -987,13 +991,22 @@ void floatingFitToCanvasFollowsViewport() {
     const auto second = document.append(image({400, 800}, Qt::blue), QStringLiteral("second"));
     pump();
     require(fit->isEnabled(), "adding images must enable the floating fit action");
+    require(hint->isHidden(), "automatic fitting must not show the zoom readout");
     verifyToolbar();
     const auto fittedZoom = canvas->zoom();
     const auto fittedOffset = canvas->offset();
     wheel(canvas, {120, 100}, 240);
+    require(hint->isVisible() && hint->x() == 8 &&
+                canvas->height() - hint->geometry().bottom() - 1 == 8 &&
+                hint->text() == QStringLiteral("Scale: %1%").arg(canvas->zoom() * 100, 0, 'f', 0) &&
+                hint->dismissalTimer()->isActive() && hint->dismissalTimer()->interval() == 1000,
+            "collage wheel zoom must show a transient readout in the bottom left corner");
+    const int timerId = hint->dismissalTimer()->timerId();
     mouse(canvas, QEvent::MouseButtonPress, {50, 50}, Qt::MiddleButton, Qt::MiddleButton);
     mouse(canvas, QEvent::MouseMove, {140, 125}, Qt::NoButton, Qt::MiddleButton);
     mouse(canvas, QEvent::MouseButtonRelease, {140, 125}, Qt::MiddleButton, Qt::NoButton);
+    require(hint->dismissalTimer()->timerId() == timerId,
+            "panning must not extend the collage zoom readout");
     verifyToolbar();
     const auto selection = document.selectedId();
     click(fit);
@@ -1003,6 +1016,13 @@ void floatingFitToCanvasFollowsViewport() {
                 QRectF(canvas->rect()).contains(canvas->imageViewportRect(first)) &&
                 QRectF(canvas->rect()).contains(canvas->imageViewportRect(second)),
             "clicking fit must restore the full preview without changing selection");
+    require(hint->isVisible() &&
+                hint->text() == QStringLiteral("Scale: %1%").arg(fittedZoom * 100, 0, 'f', 0),
+            "manually fitting the collage reports the fitted zoom percentage");
+    hint->dismissalTimer()->stop();
+    require(QMetaObject::invokeMethod(hint->dismissalTimer(), "timeout", Qt::DirectConnection) &&
+                hint->isHidden(),
+            "the shared timeout hides the collage zoom readout");
     editor.resize(850, 550);
     pump();
     verifyToolbar();
@@ -1022,6 +1042,8 @@ void floatingFitToCanvasFollowsViewport() {
     pump();
     require(fit->isVisible() && !fit->isEnabled(),
             "clearing the result disables fit in the empty collection toolbar");
+    require(hint->isHidden() && !hint->dismissalTimer()->isActive(),
+            "clearing the result dismisses an active zoom readout");
 }
 void arrangementChangesFitToCanvas() {
     ImageStitchingDocument document;

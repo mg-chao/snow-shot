@@ -138,6 +138,7 @@ BrushPressureSensitive(const adqt::icons::IconColors& colors = {});
 [[nodiscard]] adqt::icons::IconRef FullScreenCanvas(const adqt::icons::IconColors& colors = {});
 [[nodiscard]] adqt::icons::IconRef Group(const adqt::icons::IconColors& colors = {});
 [[nodiscard]] adqt::icons::IconRef Html(const adqt::icons::IconColors& colors = {});
+[[nodiscard]] adqt::icons::IconRef ImageCompression(const adqt::icons::IconColors& colors = {});
 [[nodiscard]] adqt::icons::IconRef ImageEditing(const adqt::icons::IconColors& colors = {});
 [[nodiscard]] adqt::icons::IconRef ImageSplitting(const adqt::icons::IconColors& colors = {});
 [[nodiscard]] adqt::icons::IconRef ImageStitching(const adqt::icons::IconColors& colors = {});

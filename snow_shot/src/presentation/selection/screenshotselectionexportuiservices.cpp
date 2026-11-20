@@ -562,6 +562,7 @@ bool presentPinnedWindowAndSynchronize(
     const std::function<void()>& showMainWindowRequested,
     const std::function<void(const ScreenshotPinnedImageSnapshot&)>& imageSplittingRequested,
     const std::function<void(const QString&)>& imageEditingRequested,
+    const std::function<void(const ScreenshotPinnedImageSnapshot&)>& imageCompressionRequested,
     std::function<void(bool, QImage)> completion = {}) {
     ScreenshotPinnedWindow::Config config = requestedConfig;
     // Runtime preferences also apply when saved pins are recreated by a group switch or restore.
@@ -582,6 +583,11 @@ bool presentPinnedWindowAndSynchronize(
         QObject::connect(window, &ScreenshotPinnedWindow::splitRequested, window,
                          imageSplittingRequested);
     }
+    QObject::disconnect(window, &ScreenshotPinnedWindow::imageCompressionRequested, window,
+                        nullptr);
+    if (imageCompressionRequested)
+        QObject::connect(window, &ScreenshotPinnedWindow::imageCompressionRequested, window,
+                         imageCompressionRequested);
     QObject::disconnect(window, &ScreenshotPinnedWindow::imageEditingRequested, window, nullptr);
     if (imageEditingRequested) {
         QObject::connect(window, &ScreenshotPinnedWindow::imageEditingRequested, window,
@@ -858,7 +864,8 @@ bool ScreenshotSelectionExportUiServices::presentPinnedArtifact(
     trackSourceWindow(pinnedWindow, config.sourceIdentity);
     const bool presented = presentPinnedWindowAndSynchronize(
         m_windowPool.get(), pinnedWindow, config, m_showMainWindowRequested,
-        m_imageSplittingRequested, m_imageEditingRequested, std::move(synchronizedCompletion));
+        m_imageSplittingRequested, m_imageEditingRequested, m_imageCompressionRequested,
+        std::move(synchronizedCompletion));
     if (!presented) {
         artifact->cancel();
         m_pendingPinCoordinator->cancel(config.persistenceId);
@@ -956,7 +963,8 @@ bool ScreenshotSelectionExportUiServices::presentPinnedImageArtifact(
     trackSourceWindow(pinnedWindow, config.sourceIdentity);
     const bool presented = presentPinnedWindowAndSynchronize(
         m_windowPool.get(), pinnedWindow, config, m_showMainWindowRequested,
-        m_imageSplittingRequested, m_imageEditingRequested, std::move(synchronizedCompletion));
+        m_imageSplittingRequested, m_imageEditingRequested, m_imageCompressionRequested,
+        std::move(synchronizedCompletion));
     if (!presented) {
         artifact->cancel();
         m_pendingPinCoordinator->cancel(config.persistenceId);
@@ -1177,7 +1185,8 @@ bool ScreenshotSelectionExportUiServices::presentPinnedImageOnCanvas(
     trackSourceWindow(pinnedWindow, config.sourceIdentity);
     const bool presented = presentPinnedWindowAndSynchronize(
         m_windowPool.get(), pinnedWindow, config, m_showMainWindowRequested,
-        m_imageSplittingRequested, m_imageEditingRequested, std::move(synchronizedCompletion));
+        m_imageSplittingRequested, m_imageEditingRequested, m_imageCompressionRequested,
+        std::move(synchronizedCompletion));
     if (!presented) {
         artifact->cancel();
         m_pendingPinCoordinator->cancel(config.persistenceId);
@@ -1243,9 +1252,9 @@ bool ScreenshotSelectionExportUiServices::presentLiveWindow(
                              handler(ScreenshotExportSource::fromImage(snapshot.image));
                          });
     }
-    return presentPinnedWindowAndSynchronize(m_windowPool.get(), window, config,
-                                             m_showMainWindowRequested, m_imageSplittingRequested,
-                                             m_imageEditingRequested, std::move(completion));
+    return presentPinnedWindowAndSynchronize(
+        m_windowPool.get(), window, config, m_showMainWindowRequested, m_imageSplittingRequested,
+        m_imageEditingRequested, m_imageCompressionRequested, std::move(completion));
 }
 
 void ScreenshotSelectionExportUiServices::configureVisibility(
@@ -1815,7 +1824,7 @@ bool ScreenshotSelectionExportUiServices::presentRestoredRecord(
     trackSourceWindow(window, config.sourceIdentity);
     const bool presented = presentPinnedWindowAndSynchronize(
         m_windowPool.get(), window, config, m_showMainWindowRequested, m_imageSplittingRequested,
-        m_imageEditingRequested,
+        m_imageEditingRequested, m_imageCompressionRequested,
         [this, lifetime, id = record.id, generation, windowGuard, repositoryGuard](bool success,
                                                                                    QImage) {
             if (lifetime.isNull())

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "canvas_automatic_selection_test_support.h"
 #include "physical_key_test_support.h"
+#include "snow_shot/presentation/canvasstatusreadout.h"
 #include "snow_shot/presentation/imageeditingdocument.h"
 #include "snow_shot/presentation/imageeditingwindow.h"
 #include "snow_shot/presentation/imageeditingcanvas.h"
@@ -810,6 +811,9 @@ void verifyCanvasToolbar(snow_shot::presentation::ImageEditingSource original) {
     auto* toolbar = canvas->findChild<QWidget*>(QStringLiteral("imageEditingCanvasToolbar"));
     auto* fit = canvas->findChild<AdButton*>(QStringLiteral("imageEditingFit"));
     auto* actual = canvas->findChild<AdButton*>(QStringLiteral("imageEditingActualSize"));
+    auto* hint = canvas->findChild<CanvasStatusReadout*>(QStringLiteral("imageEditingZoom"));
+    require(hint && hint->isHidden() && !hint->dismissalTimer()->isActive(),
+            "opening an image must fit it without flashing a scale readout");
     require(toolbar && toolbar->parentWidget() == canvas && !toolbar->isWindow() &&
                 toolbar->isVisible() && fit && actual && fit->parentWidget() == toolbar &&
                 actual->parentWidget() == toolbar,
@@ -855,16 +859,29 @@ void verifyCanvasToolbar(snow_shot::presentation::ImageEditingSource original) {
         QWheelEvent zoom(anchor, canvas->mapToGlobal(anchor.toPoint()), {}, QPoint(0, 120),
                          Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
         QApplication::sendEvent(canvas, &zoom);
+        require(hint->isVisible() && hint->text() == QStringLiteral("Scale: 115%") &&
+                    hint->x() == 8 && canvas->height() - hint->geometry().bottom() - 1 == 8 &&
+                    hint->dismissalTimer()->isActive() &&
+                    hint->dismissalTimer()->interval() == 1000,
+                "wheel zoom displays a transient scale relative to actual size at every DPI");
+        const int timerId = hint->dismissalTimer()->timerId();
         mouse(canvas, QEvent::MouseButtonPress, anchor, Qt::MiddleButton, Qt::MiddleButton);
         mouse(canvas, QEvent::MouseMove, anchor + QPointF(20, 10), Qt::NoButton, Qt::MiddleButton);
         mouse(canvas, QEvent::MouseButtonRelease, anchor + QPointF(20, 10), Qt::MiddleButton,
               Qt::NoButton);
         require(toolbar->geometry() == geometry,
                 "image zooming and panning preserve the floating toolbar geometry");
+        require(hint->dismissalTimer()->timerId() == timerId,
+                "panning must not restart the zoom readout timer");
         fit->click();
         require(qFuzzyCompare(canvas->zoom(), fittedZoom) && canvas->center() == fittedCenter &&
                     window.document()->checkpoint() == checkpoint && !window.dirty(),
                 "floating fit action restores the camera without changing image content");
+        hint->dismissalTimer()->stop();
+        require(
+            QMetaObject::invokeMethod(hint->dismissalTimer(), "timeout", Qt::DirectConnection) &&
+                hint->isHidden(),
+            "the editing scale readout must disappear after the shared timeout");
         mouse(toolbar, QEvent::MouseButtonPress, {1, 1}, Qt::MiddleButton, Qt::MiddleButton);
         mouse(toolbar, QEvent::MouseMove, {6, 1}, Qt::NoButton, Qt::MiddleButton);
         mouse(toolbar, QEvent::MouseButtonRelease, {6, 1}, Qt::MiddleButton, Qt::NoButton);

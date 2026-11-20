@@ -26,11 +26,10 @@ class ScreenshotOverlayShortcutController final : public QObject {
     ~ScreenshotOverlayShortcutController() override;
 
     void reloadConfiguredShortcuts();
-    // Returns true for mapped actions even when capture readiness or local eligibility rejects
-    // them.
+    // Mapped actions are consumed by default. Callers with a fallback can require activation.
     [[nodiscard]] bool
     handleGlobalScreenshotShortcut(snow_shot::presentation::GlobalShortcutAction action,
-                                   bool captureReady);
+                                   bool captureReady, bool requireActivation = false);
 
   private:
     struct Impl;

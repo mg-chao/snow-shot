@@ -1,6 +1,7 @@
 #include <QApplication>
 #include <QDynamicPropertyChangeEvent>
 #include <QFocusEvent>
+#include <QFontMetrics>
 #include <QImage>
 #include <QPointer>
 #include <QTest>
@@ -11,6 +12,7 @@
 #include <functional>
 #include <limits>
 
+#include "widgets/form.h"
 #include "widgets/slider.h"
 #include "widgets/tooltip.h"
 
@@ -120,6 +122,7 @@ class SliderTest final : public QObject {
 
  private slots:
   void horizontalRailIsVisualAndMovementIsLogical();
+  void markedSliderFitsItsLabelsInVerticalForm();
   void verticalRailIsVisualAndMovementIsLogical();
   void reversedMaximumFillsVisualRail();
   void rangeTrackUsesExplicitVisualCaps();
@@ -1146,6 +1149,44 @@ void SliderTest::horizontalRailIsVisualAndMovementIsLogical() {
   QTest::mouseClick(&slider, Qt::LeftButton, Qt::NoModifier,
                     QPoint(railStart, slider.height() / 2));
   QCOMPARE(slider.value(), slider.minimum());
+}
+
+void SliderTest::markedSliderFitsItsLabelsInVerticalForm() {
+  adqt::widgets::AdForm form;
+  form.setFormLayout(adqt::widgets::AdForm::FormLayout::Vertical);
+  auto* slider = new AdSlider(&form);
+  applyTestStyle(slider);
+  constexpr int markGap = 24;
+  auto tokens = slider->componentTokens();
+  tokens.markGap = markGap;
+  slider->setComponentTokens(tokens);
+  form.addField(QStringLiteral("Quality"), slider);
+
+  const int railHeight = slider->sizeHint().height();
+  AdSlider::Mark mark;
+  mark.label = QStringLiteral("100%");
+  QFont markFont = slider->font();
+  markFont.setPixelSize(24);
+  mark.font = markFont;
+  mark.color = QColor(Qt::magenta);
+  slider->setMarks({{slider->maximum(), mark}});
+
+  form.show();
+  form.adjustSize();
+  const QImage image = renderSlider(slider);
+  const int markTop = qCeil(railHeight / 2.0) + markGap;
+  QCOMPARE(slider->height(), markTop + QFontMetrics(markFont).height());
+  const qreal dpr = image.devicePixelRatio();
+  QVERIFY(isRailPixel(image.pixelColor(image.width() / 2, qFloor(railHeight / 2.0 * dpr))));
+
+  bool labelPainted = false;
+  for (int y = qFloor(markTop * dpr); y < image.height(); ++y) {
+    for (int x = image.width() / 2; x < image.width(); ++x) {
+      const QColor pixel = image.pixelColor(x, y);
+      labelPainted |= pixel.red() > 180 && pixel.green() < 100 && pixel.blue() > 180;
+    }
+  }
+  QVERIFY(labelPainted);
 }
 
 void SliderTest::verticalRailIsVisualAndMovementIsLogical() {

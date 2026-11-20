@@ -12,9 +12,12 @@
 #include "snow_shot/presentation/screenshotexportcoordinator.h"
 #include "snow_shot/presentation/screenshotclipboardcontent.h"
 #include "snow_shot/presentation/components/overlaycontrolbutton.h"
+#include "snow_shot/presentation/canvasstatusreadout.h"
 #include "snow_shot/presentation/components/canvasactiontoolbar.h"
+#include "snow_shot/presentation/components/canvascheckerboard.h"
 #include "snow_shot/presentation/components/imagedropsurface.h"
 #include "snow_shot/presentation/components/icons/snowshoticons.h"
+#include "snow_shot/presentation/styles/outputdescriptionstyle.h"
 #include "snow_shot/presentation/styles/thememanager.h"
 #include "antd_icons.h"
 #include "icon_renderer.h"
@@ -299,16 +302,6 @@ QStringList droppedImageFiles(const QMimeData* mime) {
     return paths;
 }
 
-QPixmap checkerboard(const QWidget* widget) {
-    const auto theme = adqt::theme::ThemeManager::instance().resolveTheme(widget);
-    QPixmap tile(20, 20);
-    tile.fill(theme.colorBgContainer);
-    QPainter painter(&tile);
-    painter.fillRect(0, 0, 10, 10, theme.colorFillSecondary);
-    painter.fillRect(10, 10, 10, 10, theme.colorFillSecondary);
-    return tile;
-}
-
 void drawTransformedPreview(QPainter& painter, const QRectF& target, const QImage& image,
                             const QTransform& transform) {
     if (image.isNull() || target.isEmpty())
@@ -427,7 +420,7 @@ class ImageStitchingThumbnail final : public QWidget {
             QPen(m_target ? theme.colorPrimary : theme.colorBorderSecondary, m_target ? 2 : 1));
         painter.drawRoundedRect(outer, theme.borderRadiusSM, theme.borderRadiusSM);
         const QRectF imageArea = outer.adjusted(5, 5, -5, -20);
-        painter.fillRect(imageArea, QBrush(checkerboard(this)));
+        painter.fillRect(imageArea, canvasCheckerboard(theme));
         if (!m_preview.isNull()) {
             const auto size = m_transform.mapRect(QRectF(QPointF{}, m_preview.size()))
                                   .size()
@@ -573,7 +566,6 @@ struct ImageStitchingPreviewCanvas::Impl {
     QTimer* detailTimer = nullptr;
     quint64 nextDetailTicket = 0;
     quint64 detailClock = 0;
-    QPixmap checker;
     qreal zoom = 1;
     QPointF offset;
     QPointF last;
@@ -592,6 +584,7 @@ struct ImageStitchingPreviewCanvas::Impl {
     bool replacementAllowed = true;
     bool rendering = true;
     CanvasActionToolbar* toolbar = nullptr;
+    CanvasStatusReadout* zoomReadout = nullptr;
     std::array<AdButton*, 8> actions{};
 
     void cancelDetails() {
@@ -848,7 +841,7 @@ struct ImageStitchingPreviewCanvas::Impl {
                                    previewTransforms.value(id));
         }
     }
-    void geometryChanged() {
+    void geometryChanged(bool showZoomReadout = false) {
         owner->setProperty("zoom", zoom);
         owner->setProperty("viewportOffset", offset);
         previewStatisticsChanged();
@@ -885,6 +878,7 @@ struct ImageStitchingPreviewCanvas::Impl {
             toolbar->move(x, y);
             toolbar->raise();
         }
+        zoomReadout->setScale(zoom, showZoomReadout);
         owner->update();
         detailTimer->start();
     }
@@ -975,6 +969,7 @@ struct ImageStitchingPreviewCanvas::Impl {
             automaticFit = true;
             offset = {};
             zoom = 1;
+            zoomReadout->dismiss();
         }
         // Even an empty initial layout must project its state into newly created controls.
         if (firstRefresh || layoutChanged || orderChanged || placementChanged)
@@ -999,13 +994,15 @@ ImageStitchingPreviewCanvas::ImageStitchingPreviewCanvas(ImageStitchingDocument*
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
     setAcceptDrops(true);
-    d.checker = checkerboard(this);
     d.detailTimer = new QTimer(this);
     d.detailTimer->setSingleShot(true);
     d.detailTimer->setInterval(70);
     connect(d.detailTimer, &QTimer::timeout, this, [this] { m_impl->requestDetails(); });
     d.toolbar = new CanvasActionToolbar(this);
     d.toolbar->setObjectName(QStringLiteral("collageImageToolbar"));
+    d.zoomReadout = new CanvasStatusReadout(this);
+    d.zoomReadout->setObjectName(QStringLiteral("collagePreviewZoom"));
+    d.zoomReadout->layoutIn(rect());
     const std::array<adqt::icons::IconRef, 8> refs{
         icons::RotateRight(),
         icons::RotateLeft(),
@@ -1056,10 +1053,7 @@ ImageStitchingPreviewCanvas::ImageStitchingPreviewCanvas(ImageStitchingDocument*
         m_impl->geometryChanged();
     });
     connect(&adqt::theme::ThemeManager::instance(), &adqt::theme::ThemeManager::themeChanged, this,
-            [this] {
-                m_impl->checker = checkerboard(this);
-                update();
-            });
+            [this] { update(); });
     retranslateUi();
     d.refresh();
 }
@@ -1082,7 +1076,7 @@ QRectF ImageStitchingPreviewCanvas::imageViewportRect(quint64 id) const {
 QRectF ImageStitchingPreviewCanvas::cellViewportRect(quint64 id) const {
     return m_impl->clipViewportRect(id);
 }
-void ImageStitchingPreviewCanvas::fitToCanvas() {
+void ImageStitchingPreviewCanvas::fitToCanvas(bool showZoomReadout) {
     auto& d = *m_impl;
     d.cancelGesture();
     if (!d.layout.isValid())
@@ -1093,7 +1087,7 @@ void ImageStitchingPreviewCanvas::fitToCanvas() {
     d.offset = (QPointF(width(), height()) -
                 QPointF(d.layout.size.width(), d.layout.size.height()) * d.zoom) /
                2;
-    d.geometryChanged();
+    d.geometryChanged(showZoomReadout);
 }
 void ImageStitchingPreviewCanvas::centerImage(quint64 id) {
     auto& d = *m_impl;
@@ -1108,7 +1102,7 @@ void ImageStitchingPreviewCanvas::centerImage(quint64 id) {
     d.zoom = std::min({d.zoom, qreal(std::max(1, width() - 48)) / bounds.width(),
                        qreal(std::max(1, height() - 48)) / bounds.height()});
     d.offset = QPointF(width() / 2.0, height() / 2.0) - bounds.center() * d.zoom;
-    d.geometryChanged();
+    d.geometryChanged(true);
 }
 void ImageStitchingPreviewCanvas::preserveViewport() {
     m_impl->automaticFit = false;
@@ -1161,7 +1155,7 @@ void ImageStitchingPreviewCanvas::paintEvent(QPaintEvent*) {
     const auto& d = *m_impl;
     const auto theme = adqt::theme::ThemeManager::instance().resolveTheme(this);
     QPainter painter(this);
-    painter.fillRect(rect(), QBrush(d.checker));
+    painter.fillRect(rect(), canvasCheckerboard(theme));
     if (d.document->items().isEmpty()) {
         return;
     }
@@ -1202,6 +1196,7 @@ void ImageStitchingPreviewCanvas::paintEvent(QPaintEvent*) {
 }
 void ImageStitchingPreviewCanvas::resizeEvent(QResizeEvent*) {
     m_impl->cancelGesture();
+    m_impl->zoomReadout->layoutIn(rect());
     if (m_impl->automaticFit)
         fitToCanvas();
     m_impl->geometryChanged();
@@ -1210,6 +1205,7 @@ void ImageStitchingPreviewCanvas::hideEvent(QHideEvent* event) {
     // Hiding also occurs while the owning window destroys its document.
     // Retire transient UI work without reading model state here.
     m_impl->cancelGesture();
+    m_impl->zoomReadout->dismiss();
     m_impl->detailTimer->stop();
     m_impl->cancelDetails();
     QWidget::hideEvent(event);
@@ -1345,14 +1341,14 @@ void ImageStitchingPreviewCanvas::wheelEvent(QWheelEvent* event) {
         d.offset = event->position() - (event->position() - d.offset) * (next / d.zoom);
         d.zoom = next;
         d.automaticFit = false;
-        d.geometryChanged();
+        d.geometryChanged(true);
     }
     event->accept();
 }
 void ImageStitchingPreviewCanvas::keyPressEvent(QKeyEvent* event) {
     auto& d = *m_impl;
     if (event->key() == Qt::Key_F || event->key() == Qt::Key_Home) {
-        fitToCanvas();
+        fitToCanvas(true);
     } else if ((event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace) && d.editing) {
         d.document->remove(d.document->selectedId());
     } else if (event->key() == Qt::Key_Escape) {
@@ -1760,19 +1756,12 @@ struct ImageStitchingEditorWidget::Impl {
             palette.setColor(QPalette::Disabled, QPalette::WindowText, theme.colorTextDisabled);
             label->setPalette(palette);
         }
-        auto labelPalette = owner->palette();
-        labelPalette.setColor(QPalette::WindowText, theme.colorTextSecondary);
-        dimensions->setPalette(labelPalette);
-        total->setPalette(labelPalette);
+        for (auto* label : {dimensions, total})
+            styles::applyOutputDescriptionStyle(*label, form->font(), theme);
         emptyState->refreshTheme();
         dropHint->refreshTheme();
         const auto metric = styles::ThemeManager::instance().themeColorScheme().metricAlias;
         outputDescription->layout()->setSpacing(metric.marginSM);
-        for (auto* label : {dimensions, total}) {
-            QFont font = owner->font();
-            font.setPixelSize(metric.fontSizeSM);
-            label->setFont(font);
-        }
         owner->update();
         for (auto* thumbnail : thumbnailById)
             thumbnail->update();
@@ -2038,7 +2027,7 @@ ImageStitchingEditorWidget::ImageStitchingEditorWidget(ImageStitchingDocument* d
     d.canvasToolbar->addSeparator();
     d.fit = d.canvasToolbar->addAction(icons::Fullscreen(), "collageFitToCanvas");
     d.fit->setEnabled(d.canvas->canFitToCanvas());
-    connect(d.fit, &QAbstractButton::clicked, this, [this] { m_impl->canvas->fitToCanvas(); });
+    connect(d.fit, &QAbstractButton::clicked, this, [this] { m_impl->canvas->fitToCanvas(true); });
     d.clear = d.canvasToolbar->addAction(icons::IconDelete(), "collageClearAll");
     d.clear->setAccentRole(AdButton::AccentRole::Danger);
     d.canvas->installEventFilter(this);

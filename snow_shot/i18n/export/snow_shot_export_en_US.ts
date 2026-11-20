@@ -2,6 +2,93 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="en_US" sourcelanguage="en_US">
     <context>
+        <name>ImageCompressionWindow</name>
+        <message>
+            <source>Add an image to start image compression</source>
+            <translation>Add an image to start image compression</translation>
+        </message>
+        <message>
+            <source>Add image</source>
+            <translation>Add image</translation>
+        </message>
+        <message>
+            <source>Allow Snow Shot to access Finder in System Settings &gt; Privacy &amp; Security &gt; Automation, then try again</source>
+            <translation>Allow Snow Shot to access Finder in System Settings &gt; Privacy &amp; Security &gt; Automation, then try again</translation>
+        </message>
+        <message>
+            <source>Cancel</source>
+            <translation>Cancel</translation>
+        </message>
+        <message>
+            <source>Copy</source>
+            <translation>Copy</translation>
+        </message>
+        <message>
+            <source>Could not read the selected image files. Please try again</source>
+            <translation>Could not read the selected image files. Please try again</translation>
+        </message>
+        <message>
+            <source>Drag an image file here, or choose Add image</source>
+            <translation>Drag an image file here, or choose Add image</translation>
+        </message>
+        <message>
+            <source>Drop an image to compress</source>
+            <translation>Drop an image to compress</translation>
+        </message>
+        <message>
+            <source>Drop one image file at a time</source>
+            <translation>Drop one image file at a time</translation>
+        </message>
+        <message>
+            <source>Drop one image to replace the current image</source>
+            <translation>Drop one image to replace the current image</translation>
+        </message>
+        <message>
+            <source>Export completed</source>
+            <translation>Export completed</translation>
+        </message>
+        <message>
+            <source>Image compression</source>
+            <translation>Image compression</translation>
+        </message>
+        <message>
+            <source>Images</source>
+            <translation>Images</translation>
+        </message>
+        <message>
+            <source>Loading image…</source>
+            <translation>Loading image…</translation>
+        </message>
+        <message>
+            <source>Replace</source>
+            <translation>Replace</translation>
+        </message>
+        <message>
+            <source>Replace file</source>
+            <translation>Replace file</translation>
+        </message>
+        <message>
+            <source>Replace the existing file "%1"?</source>
+            <translation>Replace the existing file "%1"?</translation>
+        </message>
+        <message>
+            <source>Save</source>
+            <translation>Save</translation>
+        </message>
+        <message>
+            <source>The image could not be copied</source>
+            <translation>The image could not be copied</translation>
+        </message>
+        <message>
+            <source>The image could not be loaded</source>
+            <translation>The image could not be loaded</translation>
+        </message>
+        <message>
+            <source>The screenshot export queue is full</source>
+            <translation>The screenshot export queue is full</translation>
+        </message>
+    </context>
+    <context>
         <name>ScreenshotAirDropService</name>
         <message>
             <source>AirDrop is unavailable on this Mac</source>
@@ -626,6 +713,14 @@
         <message>
             <source>Export comparison preview</source>
             <translation>Export comparison preview</translation>
+        </message>
+        <message>
+            <source>Fit image to window</source>
+            <translation>Fit image to window</translation>
+        </message>
+        <message>
+            <source>View at actual size (100%)</source>
+            <translation>View at actual size (100%)</translation>
         </message>
     </context>
 </TS>

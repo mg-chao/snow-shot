@@ -348,6 +348,7 @@ class ScreenshotPinnedWindow final : public QWidget {
     void showMainWindowRequested();
     void splitRequested(const ScreenshotPinnedImageSnapshot& snapshot);
     void imageEditingRequested(const QString& recordId);
+    void imageCompressionRequested(const ScreenshotPinnedImageSnapshot& snapshot);
     void imageEditingSnapshotRequested(const snow_shot::presentation::ImageEditingSource& source);
     void closingForPersistence(const snow_shot::storage::PinnedWindowRecord& snapshot,
                                snow_shot::storage::PinnedWindowCloseIntent intent);
@@ -830,6 +831,7 @@ class ScreenshotPinnedWindow final : public QWidget {
     QPointer<QAction> m_loadContentAction;
     QPointer<QAction> m_splitImageAction;
     QPointer<QAction> m_imageEditingAction;
+    QPointer<QAction> m_imageCompressionAction;
     QPointer<QActionGroup> m_opacityActions;
     QPointer<QActionGroup> m_scaleActions;
     QPointer<QAction> m_scaleMenuAction;

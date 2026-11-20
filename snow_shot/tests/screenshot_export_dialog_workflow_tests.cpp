@@ -1,9 +1,11 @@
+#include "export_dialog_test_support.h"
 #include "physical_key_test_support.h"
 #include "snow_shot/presentation/screenshotsaveasfiledialog.h"
 #include "snow_shot/presentation/screenshotsavepreviewcanvas.h"
 #include "snow_shot/presentation/canvasstatusreadout.h"
 #include "snow_shot/presentation/screenshotexportartifact.h"
 #include "snow_shot/presentation/components/aspectratiolockbutton.h"
+#include "snow_shot/presentation/components/canvasactiontoolbar.h"
 #include "snow_shot/presentation/components/pathinput.h"
 #include "snow_shot/presentation/components/settingspagewidget.h"
 #include "snow_shot/presentation/globalshortcutmanager.h"
@@ -182,7 +184,8 @@ void reusablePathInputsAndSettings() {
                 "file settings must use FileAddOutlined");
     }
 }
-void snapshot(AdModal* modal, const QString& name) {
+} // namespace
+void captureExportTestWindow(adqt::widgets::AdModal* modal, const QString& name) {
     const QString directory = qEnvironmentVariable("SNOW_EXPORT_TEST_SCREENSHOT_DIR");
     if (directory.isEmpty())
         return;
@@ -192,6 +195,7 @@ void snapshot(AdModal* modal, const QString& name) {
                 QDir(directory).filePath(name + QStringLiteral(".png"))),
             "dialog snapshot could not be written");
 }
+namespace {
 AdModal* openDialog(QWidget& owner, const QImage& image,
                     ScreenshotSaveAsFileDialog::Saved saved = {},
                     ScreenshotSaveAsFileDialog::Finished finished = {},
@@ -639,7 +643,7 @@ void pdfDialogAndSettings(QWidget& owner, const QTemporaryDir& temp) {
     processUntil([&] { return child<QLabel>(content, "savePreviewStatus")->isHidden(); });
     require(canvas->outputImage().size() == QSize(320, 200),
             "stale preview results must not replace the final PDF image");
-    snapshot(modal, QStringLiteral("export-pdf-landscape"));
+    captureExportTestWindow(modal, QStringLiteral("export-pdf-landscape"));
     modal->acceptButton()->click();
     processUntil([&] { return !savedPath.isEmpty(); });
     require(savedPath.endsWith(QStringLiteral("pdf-preview-final.pdf")),
@@ -994,7 +998,7 @@ void canvasInteraction() {
     require(screenshot.pixelColor(qRound(200 * dpr), qRound(170 * dpr)) == QColor(Qt::red) &&
                 screenshot.pixelColor(qRound(400 * dpr), qRound(170 * dpr)) == QColor(Qt::green),
             "split canvas must render original on left and output on right");
-    require(pixel(295, 20) == QColor(Qt::white) && pixel(296, 20) != QColor(Qt::white) &&
+    require(pixel(295, 25) == pixel(294, 25) && pixel(296, 25) != pixel(295, 25) &&
                 pixel(303, 20) != pixel(304, 20),
             "comparison divider must use the viewer-style eight-pixel dark track");
     require(pixel(280, 200) == QColor(Qt::black) && pixel(292, 200).red() > 220 &&
@@ -1270,12 +1274,69 @@ void canvasWheelZoom() {
     require(canvas.zoom() == beforeHorizontal, "horizontal mouse scrolling must not zoom");
 }
 
+void canvasCheckerboardFollowsTheme() {
+    using namespace adqt::theme;
+    auto& manager = ThemeManager::instance();
+    const auto saved = manager.config();
+    const auto restoreTheme = qScopeGuard([&] { manager.setConfig(saved); });
+    ScreenshotSavePreviewCanvas canvas;
+    canvas.show();
+    for (const auto scheme : {ThemeScheme::Light, ThemeScheme::Dark}) {
+        manager.setColorScheme(scheme);
+        flush();
+        const auto theme = manager.resolveTheme(&canvas);
+        QImage swatch(1, 1, QImage::Format_ARGB32_Premultiplied);
+        swatch.fill(theme.colorBgContainer);
+        {
+            QPainter painter(&swatch);
+            painter.fillRect(swatch.rect(), theme.colorFillSecondary);
+        }
+        const auto base = theme.colorBgContainer;
+        const auto alternate = swatch.pixelColor(0, 0);
+        const auto frame = canvas.grab().toImage();
+        const auto pixel = [&](int x, int y) {
+            return frame.pixelColor(qRound(x * frame.devicePixelRatio()),
+                                    qRound(y * frame.devicePixelRatio()));
+        };
+        require(base != alternate && pixel(5, 5) == alternate && pixel(15, 15) == alternate &&
+                    pixel(15, 5) == base && pixel(5, 15) == base && pixel(25, 5) == alternate,
+                "export uses the collage theme colors, ten-pixel cells, and checker origin");
+    }
+}
+
 void canvasZoomHint() {
+    using snow_shot::presentation::components::CanvasActionToolbar;
     ScreenshotSavePreviewCanvas canvas;
     canvas.resize(600, 400);
-    canvas.setSource(fixture(), QSize(160, 100));
     canvas.show();
     flush();
+    auto* fit = child<AdButton>(&canvas, "savePreviewFit");
+    auto* actual = child<AdButton>(&canvas, "savePreviewActualSize");
+    auto* toolbar = static_cast<CanvasActionToolbar*>(fit->parentWidget());
+    require(toolbar->objectName() == QStringLiteral("savePreviewCanvasToolbar") &&
+                toolbar->parentWidget() == &canvas && actual->parentWidget() == toolbar &&
+                toolbar->isVisible() && !fit->isEnabled() && !actual->isEnabled(),
+            "the empty export preview has a floating toolbar with disabled zoom actions");
+    const auto requireToolbar = [&] {
+        require(canvas.rect().contains(toolbar->geometry()) &&
+                    std::abs(QRectF(toolbar->geometry()).center().x() -
+                             QRectF(canvas.rect()).center().x()) <= .5 &&
+                    canvas.height() - toolbar->geometry().bottom() - 1 == 16,
+                "the export toolbar shares the image editor bottom inset and centering");
+        for (auto* action : {fit, actual}) {
+            require(action->text().isEmpty() && action->iconRef().isValid() &&
+                        action->size() == QSize(26, 26) && action->isEnabled() &&
+                        action->focusPolicy() == Qt::StrongFocus &&
+                        action->accessibleName() == action->toolTip() &&
+                        canvas.childAt(action->mapTo(&canvas, action->rect().center())) == action,
+                    "both export zoom actions must be accessible above the comparison canvas");
+        }
+    };
+    canvas.setSource(fixture(), QSize(160, 100));
+    requireToolbar();
+    require(fit->toolTip() == QStringLiteral("Fit image to window") &&
+                actual->toolTip() == QStringLiteral("View at actual size (100%)"),
+            "export zoom actions must use the image editor tooltips");
     auto* hint = child<CanvasStatusReadout>(&canvas, "savePreviewZoom");
     auto* busy = child<CanvasStatusReadout>(&canvas, "savePreviewStatus");
     require(child<QLabel>(&canvas, "savePreviewZoom") == hint &&
@@ -1352,6 +1413,23 @@ void canvasZoomHint() {
                 hint->accessibleName() == hint->toolTip(),
             "transient export zoom must retain decimal precision and complete accessible text");
     expire();
+    requireToolbar();
+    canvas.setSplitRatio(0.37);
+    actual->click();
+    require(canvas.zoom() == 1 && canvas.splitRatio() == 0.37 && hint->isVisible() &&
+                hint->text() == QStringLiteral("Scale: 100%"),
+            "the actual-size action zooms the source to 100% and preserves the divider");
+    fit->click();
+    require(qAbs(canvas.zoom() - 0.05) < 0.000001 && canvas.pan().isNull() &&
+                canvas.splitRatio() == 0.37 && hint->isVisible(),
+            "the fit action recenters the preview without moving the divider");
+    expire();
+    canvas.setSource(fixture(), QSize(560, 360));
+    require(canvas.zoom() == 1, "the source fits initially without scaling");
+    actual->click();
+    canvas.resize(400, 300);
+    require(canvas.zoom() == 1 && hint->isHidden(),
+            "explicit actual size survives shrinking a window that already showed 100%");
     class HintTranslator final : public QTranslator {
       public:
         bool isEmpty() const override {
@@ -1359,7 +1437,8 @@ void canvasZoomHint() {
         }
         QString translate(const char* context, const char* source, const char*,
                           int) const override {
-            if (QByteArray(context) == "CanvasStatusReadout")
+            if (QByteArray(context) == "CanvasStatusReadout" ||
+                QByteArray(context) == "ScreenshotSavePreviewCanvas")
                 return QStringLiteral("Translated ") + QString::fromUtf8(source);
             return {};
         }
@@ -1368,11 +1447,15 @@ void canvasZoomHint() {
     QEvent languageChange(QEvent::LanguageChange);
     QApplication::sendEvent(hint, &languageChange);
     QApplication::sendEvent(busy, &languageChange);
+    QApplication::sendEvent(&canvas, &languageChange);
     require(hint->isHidden() && !timer->isActive() &&
                 hint->text().startsWith(QStringLiteral("Translated Scale: ")) &&
                 busy->isVisible() &&
                 busy->toolTip() == QStringLiteral("Translated Rendering preview"),
             "shared language updates must preserve hidden zoom and persistent rendering status");
+    require(fit->toolTip() == QStringLiteral("Translated Fit image to window") &&
+                actual->toolTip() == QStringLiteral("Translated View at actual size (100%)"),
+            "the floating toolbar must retranslate its actions on language changes");
     QApplication::removeTranslator(&translator);
     canvas.setBusy(false);
     require(busy->isHidden() && !busy->dismissalTimer()->isActive(),
@@ -1435,13 +1518,13 @@ void unchangedPreviewEdits(QWidget& owner) {
     auto* format = child<AdSelect>(content, "saveFormatSelect");
     processUntil([&] { return content->property("previewGeneration").toULongLong() > 0; });
     const quint64 generation = content->property("previewGeneration").toULongLong();
-    snapshot(modal, QStringLiteral("export-preview-idle"));
+    captureExportTestWindow(modal, QStringLiteral("export-preview-idle"));
     auto* canvas = child<ScreenshotSavePreviewCanvas>(content, "savePreviewCanvas");
     const QPoint cursor = canvas->rect().center();
     QWheelEvent wheel(cursor, canvas->mapToGlobal(cursor), {}, QPoint(0, 120), Qt::NoButton,
                       Qt::NoModifier, Qt::NoScrollPhase, false);
     QApplication::sendEvent(canvas, &wheel);
-    snapshot(modal, QStringLiteral("export-preview-zoom"));
+    captureExportTestWindow(modal, QStringLiteral("export-preview-zoom"));
     lock->click();
     lock->click();
     require(busy->isHidden(), "relocking unchanged dimensions must not schedule preview rendering");
@@ -1827,7 +1910,7 @@ void shortcutsAndCancellation(QWidget& owner, const QTemporaryDir& temp) {
     require(child<AdLineEdit>(content, "saveDirectoryInput")->text() ==
                 storage::ScreenshotSettings().imageSaveDirectory(),
             "App directory must select the configured directory");
-    snapshot(modal, QStringLiteral("export-before-shortcuts"));
+    captureExportTestWindow(modal, QStringLiteral("export-before-shortcuts"));
     require(child<AdButton>(content, "savePathAddButton")->isEnabled(),
             "Add save path must be enabled after loading");
     child<AdButton>(content, "savePathAddButton")->click();
@@ -1836,7 +1919,7 @@ void shortcutsAndCancellation(QWidget& owner, const QTemporaryDir& temp) {
     editor->acceptButton()->click();
     require(editor->isOpen() && storage::ScreenshotSettings().savePathShortcuts().isEmpty(),
             "empty shortcut must be rejected");
-    snapshot(modal, QStringLiteral("shortcut-validation"));
+    captureExportTestWindow(modal, QStringLiteral("shortcut-validation"));
     child<AdLineEdit>(editor->contentWidget(), "savePathNameInput")
         ->setText(QStringLiteral("Projects"));
     child<AdLineEdit>(editor->contentWidget(), "savePathValueInput")->setText(temp.path());
@@ -1974,16 +2057,16 @@ void previewAndSave(QWidget& owner, const QTemporaryDir& temp) {
             "quality must preserve the complete 0-100 range and endpoint labels");
     require(content->findChild<QWidget*>(QStringLiteral("saveLosslessBadge")) == nullptr,
             "quality must not retain the separate lossless badge");
-    snapshot(modal, QStringLiteral("export-light"));
+    captureExportTestWindow(modal, QStringLiteral("export-light"));
     if (!qEnvironmentVariable("SNOW_EXPORT_TEST_SCREENSHOT_DIR").isEmpty()) {
         adqt::theme::ThemeManager::instance().setColorScheme(adqt::theme::ThemeScheme::Dark);
-        snapshot(modal, QStringLiteral("export-dark"));
+        captureExportTestWindow(modal, QStringLiteral("export-dark"));
         adqt::theme::ThemeManager::instance().setColorScheme(adqt::theme::ThemeScheme::Light);
         modal->setPreferredWidth(680);
         content->setFixedHeight(360);
         static_cast<void>(modal->takeContentWidget());
         modal->setContentWidget(content);
-        snapshot(modal, QStringLiteral("export-compact"));
+        captureExportTestWindow(modal, QStringLiteral("export-compact"));
         modal->setPreferredWidth(1080);
         content->setFixedHeight(540);
         static_cast<void>(modal->takeContentWidget());
@@ -2015,7 +2098,7 @@ void previewAndSave(QWidget& owner, const QTemporaryDir& temp) {
                     quality->marks().value(quality->maximum()).label == QStringLiteral("Lossless"),
                 "lossless formats must show both controls and label quality 100 as Lossless");
         if (key == QStringLiteral("webp"))
-            snapshot(modal, QStringLiteral("export-lossless"));
+            captureExportTestWindow(modal, QStringLiteral("export-lossless"));
         quality->setValue(99);
     }
     format->setCurrentValue(QStringLiteral("jpeg"));
@@ -2188,6 +2271,12 @@ void sizeUnits(QWidget& owner, const QTemporaryDir& temp) {
     const QRect acceptGeometry = globalGeometry(accept);
     const QRegularExpression descriptionPattern(
         QStringLiteral("^160x100\\(100%\\) · \\d+(?:B|KB|MB|GB)$"));
+    const auto theme = adqt::theme::ThemeManager::instance().resolveTheme(content);
+    require(description->font().pixelSize() == qMax(10, qRound(theme.fontSizeSM)) &&
+                description->font().weight() == QFont::Normal &&
+                description->height() == description->fontMetrics().height() &&
+                description->palette().color(QPalette::WindowText) == theme.colorTextSecondary,
+            "save dialog footer uses small single-line secondary text");
     require(descriptionPattern.match(description->text()).hasMatch() &&
                 std::abs(descriptionGeometry.center().y() - acceptGeometry.center().y()) <= 1 &&
                 descriptionGeometry.right() < rejectGeometry.left() &&
@@ -2320,7 +2409,7 @@ void sizeUnits(QWidget& owner, const QTemporaryDir& temp) {
     QApplication::removeTranslator(&translator);
     flush();
     processUntil([&] { return child<QLabel>(content, "savePreviewStatus")->isHidden(); });
-    snapshot(modal, QStringLiteral("export-percentage"));
+    captureExportTestWindow(modal, QStringLiteral("export-percentage"));
     const auto translationDir = qEnvironmentVariable("SNOW_EXPORT_TEST_TRANSLATION_DIR");
     if (!translationDir.isEmpty()) {
         for (const auto& language : {QStringLiteral("zh_CN"), QStringLiteral("zh_TW")}) {
@@ -2338,7 +2427,7 @@ void sizeUnits(QWidget& owner, const QTemporaryDir& temp) {
                         dimensions->rect().contains(unit->geometry()) &&
                         unit->width() >= unit->minimumSizeHint().width(),
                     "translated size header must fit without clipping");
-            snapshot(modal, QStringLiteral("export-percentage-%1").arg(language));
+            captureExportTestWindow(modal, QStringLiteral("export-percentage-%1").arg(language));
             QApplication::removeTranslator(&catalog);
             flush();
         }
@@ -2385,7 +2474,7 @@ void shortcutWrappingAndLanguageChange(QWidget& owner, const QTemporaryDir& temp
     }
     for (auto* input : content->findChildren<AdLineEdit*>())
         require(input->width() > 100, "form inputs must retain usable width");
-    snapshot(modal, QStringLiteral("export-wrapped-shortcuts"));
+    captureExportTestWindow(modal, QStringLiteral("export-wrapped-shortcuts"));
     child<AdButton>(content, "savePathAddButton")->click();
     auto* editor = child<AdModal>(content, "savePathEditorModal");
     editor->acceptButton()->click();
@@ -2450,7 +2539,7 @@ void duplicateFilenameWarning(QWidget& owner, const QTemporaryDir& temp) {
     require(item->errorMessages().isEmpty() && modal->acceptButton()->isEnabled() &&
                 !content->findChild<AdModal*>(QStringLiteral("saveOverwriteModal")),
             "duplicate filename warning must not block Save or open a confirmation while typing");
-    snapshot(modal, QStringLiteral("duplicate-filename-warning"));
+    captureExportTestWindow(modal, QStringLiteral("duplicate-filename-warning"));
     ExportTestTranslator translator;
     require(QApplication::installTranslator(&translator), "test translator unavailable");
     flush();
@@ -3609,6 +3698,8 @@ void rejectedCalculationRetries(QWidget& owner, const QTemporaryDir& temp) {
 
 void runScreenshotSaveResultTests();
 
+void runImageCompressionTests();
+
 int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
     QApplication::setQuitOnLastWindowClosed(false);
@@ -3640,6 +3731,7 @@ int main(int argc, char* argv[]) {
         }
         if (app.arguments().contains(QStringLiteral("--canvas"))) {
             canvasInteraction();
+            canvasCheckerboardFollowsTheme();
             canvasNativeDetailPreservesTransparency();
             canvasZoomHint();
             canvasOriginalSizeBaseline();
@@ -3689,6 +3781,12 @@ int main(int argc, char* argv[]) {
             ScreenshotExportCoordinator::shared().shutdown();
             storage::ApplicationStorage::instance().shutdown();
             std::cout << "PDF dialog tests passed\n";
+            return 0;
+        }
+        if (app.arguments().contains(QStringLiteral("--image-compression"))) {
+            runImageCompressionTests();
+            ScreenshotExportCoordinator::shared().shutdown();
+            storage::ApplicationStorage::instance().shutdown();
             return 0;
         }
         if (app.arguments().contains(QStringLiteral("--remember-format"))) {

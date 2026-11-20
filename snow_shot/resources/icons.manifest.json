@@ -791,6 +791,14 @@
     },
     {
       "variant": "outlined",
+      "symbol": "ImageCompression",
+      "name": "image-compression",
+      "source": "../src/presentation/components/icons/resources/image-compression.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
       "symbol": "ImageEditing",
       "name": "image-editing",
       "source": "../src/presentation/components/icons/resources/image-editing.svg",

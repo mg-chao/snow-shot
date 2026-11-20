@@ -28,6 +28,7 @@
 #include "snow_shot/presentation/collagewindowcoordinator.h"
 #include "snow_shot/presentation/imagesplitwindow.h"
 #include "snow_shot/presentation/imageeditingwindow.h"
+#include "snow_shot/presentation/imagecompressionwindow.h"
 #include "snow_shot/presentation/screenshotexportartifact.h"
 #include "snow_shot/presentation/screenshotexportcache.h"
 
@@ -629,6 +630,8 @@ class ApplicationController::Impl {
         mcpLifecycle = std::make_unique<mcp::McpRuntimeLifecycle>(mcp::McpRuntimeLifecycle::Hooks{
             [this] { return startMcp(); }, [this](auto done) { mcpGraph.drain(std::move(done)); },
             [this] { mcpGraph.stop(); }});
+        QObject::connect(&app, &QCoreApplication::aboutToQuit, &imageCompression,
+                         &presentation::ImageCompressionWindowCoordinator::shutdown);
         QObject::connect(&app, &QCoreApplication::aboutToQuit, &q, [this] {
             shuttingDown = true;
             deferredStartup.stop();
@@ -1429,6 +1432,13 @@ class ApplicationController::Impl {
                                  }));
                              });
             QObject::connect(screenshotController.get(),
+                             &ScreenshotController::imageCompressionRequested, &q,
+                             [this](const ScreenshotPinnedImageSnapshot& snapshot) {
+                                 static_cast<void>(actionGate.dispatch([this, snapshot] {
+                                     imageCompression.presentSnapshot(snapshot);
+                                 }));
+                             });
+            QObject::connect(screenshotController.get(),
                              &ScreenshotController::pinnedImageEditingRequested, &q,
                              [this](const QString& id) {
                                  static_cast<void>(actionGate.dispatch([this, id] {
@@ -1598,6 +1608,11 @@ class ApplicationController::Impl {
                                      ensureImageEditingWindowCoordinator().presentHistory(record);
                                  }));
                              });
+            QObject::connect(mainWindow, &MainWindow::screenshotHistoryImageCompressionRequested,
+                             &q, [this](const storage::CaptureHistoryRecord& record) {
+                                 static_cast<void>(actionGate.dispatch(
+                                     [this, record] { imageCompression.presentHistory(record); }));
+                             });
             QObject::connect(mainWindow, &MainWindow::pinnedWindowStitchImagesRequested, &q,
                              [this](const QStringList& recordIds) {
                                  static_cast<void>(actionGate.dispatch([this, recordIds] {
@@ -1617,6 +1632,12 @@ class ApplicationController::Impl {
                                  static_cast<void>(actionGate.dispatch([this, recordId] {
                                      ensureImageEditingWindowCoordinator().presentPinnedRecord(
                                          recordId);
+                                 }));
+                             });
+            QObject::connect(mainWindow, &MainWindow::pinnedWindowImageCompressionRequested, &q,
+                             [this](const QString& recordId) {
+                                 static_cast<void>(actionGate.dispatch([this, recordId] {
+                                     imageCompression.presentPinnedRecord(recordId);
                                  }));
                              });
         }
@@ -1838,6 +1859,12 @@ class ApplicationController::Impl {
             auto backend = platform::createSelectedFileBackend();
             const auto target = backend->captureTarget();
             ensureImageEditingWindowCoordinator().presentSelectedFiles(std::move(backend), target);
+            break;
+        }
+        case presentation::GlobalShortcutAction::CompressSelectedImages: {
+            auto backend = platform::createSelectedFileBackend();
+            const auto target = backend->captureTarget();
+            imageCompression.presentSelectedFiles(std::move(backend), target);
             break;
         }
         case presentation::GlobalShortcutAction::OpenPinToScreenManagement:
@@ -2109,6 +2136,8 @@ class ApplicationController::Impl {
     mcp::McpRuntimeGraph mcpGraph{&q};
     std::unique_ptr<mcp::McpRuntimeLifecycle> mcpLifecycle;
     std::unique_ptr<presentation::ImageStitchingWindowCoordinator> imageStitchingWindowCoordinator;
+    presentation::ImageCompressionWindowCoordinator imageCompression{
+        pinnedImageSnapshotRequest(ScreenshotPinnedRenderMode::SourceResolution)};
     std::unique_ptr<presentation::ImageSplitWindowCoordinator> imageSplitWindowCoordinator;
     std::unique_ptr<presentation::ImageEditingWindowCoordinator> imageEditingWindowCoordinator;
 #if SNOW_SHOT_ENABLE_TEXT_TRANSLATION

@@ -2,6 +2,93 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="zh_CN" sourcelanguage="en_US">
     <context>
+        <name>ImageCompressionWindow</name>
+        <message>
+            <source>Add an image to start image compression</source>
+            <translation>添加图像以开始图像压缩</translation>
+        </message>
+        <message>
+            <source>Add image</source>
+            <translation>添加图像</translation>
+        </message>
+        <message>
+            <source>Allow Snow Shot to access Finder in System Settings &gt; Privacy &amp; Security &gt; Automation, then try again</source>
+            <translation>请在“系统设置 &gt; 隐私与安全性 &gt; 自动化”中允许 Snow Shot 访问访达，然后重试</translation>
+        </message>
+        <message>
+            <source>Cancel</source>
+            <translation>取消</translation>
+        </message>
+        <message>
+            <source>Copy</source>
+            <translation>复制</translation>
+        </message>
+        <message>
+            <source>Could not read the selected image files. Please try again</source>
+            <translation>无法读取选中的图像文件，请重试</translation>
+        </message>
+        <message>
+            <source>Drag an image file here, or choose Add image</source>
+            <translation>将图像文件拖到此处，或选择“添加图像”</translation>
+        </message>
+        <message>
+            <source>Drop an image to compress</source>
+            <translation>拖入一张图像以进行压缩</translation>
+        </message>
+        <message>
+            <source>Drop one image file at a time</source>
+            <translation>请一次拖入一个图像文件</translation>
+        </message>
+        <message>
+            <source>Drop one image to replace the current image</source>
+            <translation>拖入一张图像以替换当前图像</translation>
+        </message>
+        <message>
+            <source>Export completed</source>
+            <translation>导出完成</translation>
+        </message>
+        <message>
+            <source>Image compression</source>
+            <translation>图像压缩</translation>
+        </message>
+        <message>
+            <source>Images</source>
+            <translation>图像</translation>
+        </message>
+        <message>
+            <source>Loading image…</source>
+            <translation>正在加载图像…</translation>
+        </message>
+        <message>
+            <source>Replace</source>
+            <translation>替换</translation>
+        </message>
+        <message>
+            <source>Replace file</source>
+            <translation>替换文件</translation>
+        </message>
+        <message>
+            <source>Replace the existing file "%1"?</source>
+            <translation>是否替换现有文件“%1”？</translation>
+        </message>
+        <message>
+            <source>Save</source>
+            <translation>保存</translation>
+        </message>
+        <message>
+            <source>The image could not be copied</source>
+            <translation>无法复制图像</translation>
+        </message>
+        <message>
+            <source>The image could not be loaded</source>
+            <translation>无法加载图像</translation>
+        </message>
+        <message>
+            <source>The screenshot export queue is full</source>
+            <translation>截图导出队列已满</translation>
+        </message>
+    </context>
+    <context>
         <name>ScreenshotAirDropService</name>
         <message>
             <source>AirDrop is unavailable on this Mac</source>
@@ -626,6 +713,14 @@
         <message>
             <source>Export comparison preview</source>
             <translation>导出对比预览</translation>
+        </message>
+        <message>
+            <source>Fit image to window</source>
+            <translation>适应窗口</translation>
+        </message>
+        <message>
+            <source>View at actual size (100%)</source>
+            <translation>以实际大小查看（100%）</translation>
         </message>
     </context>
 </TS>

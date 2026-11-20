@@ -775,6 +775,7 @@ std::shared_ptr<Encoded> render(std::shared_ptr<PreparedPixels> pixels,
             *error = output.errorString();
             return {};
         }
+        result->fileBytes = output.size();
         result->codecResult.roundTrip = snow::image::PixelRoundTrip::exact;
         return cancellation.isCancellationRequested() ? nullptr : result;
     }
@@ -798,6 +799,7 @@ std::shared_ptr<Encoded> render(std::shared_ptr<PreparedPixels> pixels,
             *error = output.errorString();
             return {};
         }
+        result->fileBytes = output.size();
         result->codecResult.roundTrip = result->options.quality == 100
                                             ? snow::image::PixelRoundTrip::exact
                                             : snow::image::PixelRoundTrip::codec_artifact;
@@ -816,6 +818,7 @@ std::shared_ptr<Encoded> render(std::shared_ptr<PreparedPixels> pixels,
         *error = output.errorString();
         return {};
     }
+    result->fileBytes = output.size();
     output.close();
     if (cancellation.isCancellationRequested())
         return {};

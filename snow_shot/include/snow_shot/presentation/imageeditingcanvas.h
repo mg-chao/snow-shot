@@ -5,6 +5,8 @@
 #include "snow_draw_engine_qt/snow_canvas_custom_renderer.h"
 #include <optional>
 
+class CanvasStatusReadout;
+
 namespace snow_shot::presentation {
 class ImageEditingCanvas final : public SnowCanvasWidget, private SnowCanvasCustomRenderer {
   public:
@@ -15,7 +17,7 @@ class ImageEditingCanvas final : public SnowCanvasWidget, private SnowCanvasCust
     Mode mode() const {
         return m_mode;
     }
-    void fit();
+    void fit(bool showZoomReadout = false);
     void actualSize();
     void setRecognitionDisplay(bool active, bool showImage, bool showFiltered);
     void setRecognitionBackground(QImage image = {}, const QRectF& canvasRect = {});
@@ -48,7 +50,8 @@ class ImageEditingCanvas final : public SnowCanvasWidget, private SnowCanvasCust
 
   private:
     void syncImage();
-    void syncCamera();
+    void syncCamera(bool showZoomReadout = false);
+    double actualSizeZoom() const;
     QPointF pixelAt(QPointF view) const;
     QRectF cropStrip(int* pixelCount = nullptr) const;
     QRect cropPreviewDamage() const;
@@ -59,6 +62,7 @@ class ImageEditingCanvas final : public SnowCanvasWidget, private SnowCanvasCust
     void renderOriginalBackground(QPainter&, const SnowCanvasRenderContext&) override;
     void renderAfterCanvas(QPainter&, const SnowCanvasRenderContext&) override;
     ImageEditingDocument& m_document;
+    CanvasStatusReadout* m_zoomReadout;
     Mode m_mode = Mode::Pan;
     QPointF m_center;
     double m_zoom = 1;

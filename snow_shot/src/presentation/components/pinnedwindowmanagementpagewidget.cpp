@@ -1041,6 +1041,14 @@ void PinnedWindowManagementPageWidget::rebuildEntries() {
                     imageEditing->setToolTip(imageEditing->text());
                     connect(imageEditing, &QAction::triggered, row,
                             [this, id] { emit imageEditingRequested(id); });
+                    auto* imageCompression =
+                        menu->addItem(tr("Image compression"),
+                                      presentation::icons::custom::outlined::ImageCompression());
+                    imageCompression->setObjectName(
+                        QStringLiteral("pinnedManagementEntryImageCompression"));
+                    imageCompression->setToolTip(imageCompression->text());
+                    connect(imageCompression, &QAction::triggered, row,
+                            [this, id] { emit imageCompressionRequested(id); });
                     auto* copyImagePath = menu->addItem(history_page::copyImagePathActionText(),
                                                         outlined_icons::Copy());
                     copyImagePath->setObjectName(
@@ -1152,6 +1160,11 @@ void PinnedWindowManagementPageWidget::rebuildEntries() {
         for (auto* action :
              row->findChildren<QAction*>(QStringLiteral("pinnedManagementEntryImageEditing"))) {
             action->setText(tr("Image editing"));
+            action->setToolTip(action->text());
+        }
+        for (auto* action :
+             row->findChildren<QAction*>(QStringLiteral("pinnedManagementEntryImageCompression"))) {
+            action->setText(tr("Image compression"));
             action->setToolTip(action->text());
         }
         for (auto* split :

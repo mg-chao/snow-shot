@@ -82,6 +82,7 @@ class PinnedWindowManagementPageWidget final : public QWidget {
     void stitchImagesRequested(const QStringList& recordIds);
     void splitRequested(const QString& recordId);
     void imageEditingRequested(const QString& recordId);
+    void imageCompressionRequested(const QString& recordId);
 
   protected:
     void changeEvent(QEvent* event) override;

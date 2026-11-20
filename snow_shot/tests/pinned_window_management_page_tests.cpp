@@ -930,9 +930,15 @@ void pinnedEntryMoreActionsUseOnlyTheirRecord() {
                      });
     const QPoint previousCursor = QCursor::pos();
     const auto restoreCursor = qScopeGuard([previousCursor] { QCursor::setPos(previousCursor); });
+    // Keep the physical cursor away from triggers while delivering synthetic hover and keyboard
+    // events. Otherwise closing one popup can immediately open it again over the next row.
+    QCursor::setPos(page.mapToGlobal(QPoint(1, 1)));
     QString editorId;
     QObject::connect(&page, &PinnedWindowManagementPageWidget::imageEditingRequested, &page,
                      [&](const QString& id) { editorId = id; });
+    QString compressionId;
+    QObject::connect(&page, &PinnedWindowManagementPageWidget::imageCompressionRequested, &page,
+                     [&](const QString& id) { compressionId = id; });
     const auto rows = page.findChildren<QFrame*>(QStringLiteral("pinnedManagementRecord"));
     require(rows.size() == 3, "stitching fixtures include closed and open pins");
     auto* selection = rows.back()->findChild<adqt::widgets::AdCheckbox*>();
@@ -964,19 +970,18 @@ void pinnedEntryMoreActionsUseOnlyTheirRecord() {
                 "More creates its menu only when opened");
         const QPoint local = more->rect().center();
         const QPoint global = more->mapToGlobal(local);
-        QCursor::setPos(global);
         QEnterEvent hover(local, local, global);
         QApplication::sendEvent(more, &hover);
         QCoreApplication::processEvents();
         QPointer<adqt::widgets::AdContextMenu> menu = row->findChild<adqt::widgets::AdContextMenu*>(
             QStringLiteral("pinnedManagementEntryMoreMenu"));
         require(menu && menu->isPopupVisible() && !menu->nativeMenuEnabled() &&
-                    menu->actions().size() == 5,
+                    menu->actions().size() == 6,
                 "hovering More opens the shared widget menu");
         auto* stitch = menu->actions().at(0);
         auto* split = menu->actions().at(1);
-        auto* copyImagePath = menu->actions().at(3);
-        auto* reveal = menu->actions().at(4);
+        auto* copyImagePath = menu->actions().at(4);
+        auto* reveal = menu->actions().at(5);
         require(copyImagePath->objectName() ==
                         QStringLiteral("pinnedManagementEntryCopyImagePath") &&
                     copyImagePath->text() == QStringLiteral("Copy image path") &&
@@ -990,6 +995,10 @@ void pinnedEntryMoreActionsUseOnlyTheirRecord() {
                     imageEditing->text() == QStringLiteral("Image editing") &&
                     !imageEditing->icon().isNull(),
                 "independent editor follows Image Splitting for open and closed pins");
+        require(menu->actions().at(3)->objectName() ==
+                        QStringLiteral("pinnedManagementEntryImageCompression") &&
+                    menu->actions().at(3)->text() == QStringLiteral("Image compression"),
+                "Image compression immediately follows Image editing");
         require(reveal->objectName() == QStringLiteral("pinnedManagementEntryReveal") &&
                     reveal->text() == presentation::components::history_page::revealActionText() &&
                     reveal->toolTip() == reveal->text() && reveal->isEnabled() &&
@@ -1017,7 +1026,7 @@ void pinnedEntryMoreActionsUseOnlyTheirRecord() {
         menu = row->findChild<adqt::widgets::AdContextMenu*>(
             QStringLiteral("pinnedManagementEntryMoreMenu"));
         require(menu, "reopen More for reveal");
-        activatePinnedMenuAction(menu, menu->actions().at(4));
+        activatePinnedMenuAction(menu, menu->actions().at(5));
         require(!menu && fixture.revealed.last() == row->property("recordId").toString(),
                 "reveal dispatches only its row and retires the menu");
         QTemporaryDir imageDirectory;
@@ -1031,7 +1040,7 @@ void pinnedEntryMoreActionsUseOnlyTheirRecord() {
         menu = row->findChild<adqt::widgets::AdContextMenu*>(
             QStringLiteral("pinnedManagementEntryMoreMenu"));
         require(menu, "reopen More for Copy image path");
-        activatePinnedMenuAction(menu, menu->actions().at(3));
+        activatePinnedMenuAction(menu, menu->actions().at(4));
         require(!menu && QApplication::clipboard()->text() == QDir::toNativeSeparators(imagePath) &&
                     !QApplication::clipboard()->mimeData()->hasUrls() &&
                     !QApplication::clipboard()->mimeData()->hasImage(),
@@ -1045,6 +1054,15 @@ void pinnedEntryMoreActionsUseOnlyTheirRecord() {
             menu, menu->findChild<QAction*>(QStringLiteral("pinnedManagementEntryImageEditing")));
         require(editorId == row->property("recordId").toString() && !menu,
                 "Image Editing dispatches exactly its pin and retires the menu");
+        more->click();
+        QCoreApplication::processEvents();
+        menu = row->findChild<adqt::widgets::AdContextMenu*>(
+            QStringLiteral("pinnedManagementEntryMoreMenu"));
+        require(menu, "reopen More for compression");
+        activatePinnedMenuAction(menu, menu->findChild<QAction*>(QStringLiteral(
+                                           "pinnedManagementEntryImageCompression")));
+        require(compressionId == row->property("recordId").toString() && !menu,
+                "Image compression dispatches exactly its pin and retires the menu");
     }
     require(requests == 3 && splitRequests == 3 && fixture.revealed.size() == 3 &&
                 selection->isChecked() && fixture.fullImageRequests == 0 &&
@@ -1085,11 +1103,11 @@ void pinnedEntryMoreActionsUseOnlyTheirRecord() {
             "language changes retranslate both actions in the open menu");
         const QString revealLabel = presentation::components::history_page::revealActionText();
         const QString copyLabel = translator.translate("HistoryFileLocation", "Copy image path");
-        require(!copyLabel.isEmpty() && menu->actions().at(3)->text() == copyLabel &&
-                    menu->actions().at(3)->toolTip() == copyLabel,
+        require(!copyLabel.isEmpty() && menu->actions().at(4)->text() == copyLabel &&
+                    menu->actions().at(4)->toolTip() == copyLabel,
                 "language changes retranslate Copy image path in the open menu");
-        require(menu->actions().at(4)->text() == revealLabel &&
-                    menu->actions().at(4)->toolTip() == revealLabel &&
+        require(menu->actions().at(5)->text() == revealLabel &&
+                    menu->actions().at(5)->toolTip() == revealLabel &&
                     !translator.translate("HistoryFileLocation", "Open in Explorer").isEmpty() &&
                     !translator.translate("HistoryFileLocation", "Reveal in Finder").isEmpty(),
                 "language changes retranslate the platform reveal action in the open menu");
@@ -1112,7 +1130,7 @@ void pinnedEntryMoreActionsUseOnlyTheirRecord() {
     menu = rows.front()->findChild<adqt::widgets::AdContextMenu*>(
         QStringLiteral("pinnedManagementEntryMoreMenu"));
     require(menu, "reopen More for missing image path");
-    activatePinnedMenuAction(menu, menu->actions().at(3));
+    activatePinnedMenuAction(menu, menu->actions().at(4));
     require(!menu && failureMessage == QStringLiteral("Unable to copy this entry's image path") &&
                 QApplication::clipboard()->text() == clipboardBeforeFailure &&
                 fixture.removed.isEmpty() && fixture.shown.isEmpty() && selection->isChecked(),
@@ -1124,7 +1142,7 @@ void pinnedEntryMoreActionsUseOnlyTheirRecord() {
     menu = rows.front()->findChild<adqt::widgets::AdContextMenu*>(
         QStringLiteral("pinnedManagementEntryMoreMenu"));
     require(menu, "reopen More for failure fixture");
-    activatePinnedMenuAction(menu, menu->actions().at(4));
+    activatePinnedMenuAction(menu, menu->actions().at(5));
     require(!menu &&
                 failureMessage == QStringLiteral("Unable to open this entry's file location") &&
                 QApplication::activeModalWidget() == nullptr && fixture.removed.isEmpty() &&
@@ -1140,7 +1158,7 @@ void pinnedEntryMoreActionsUseOnlyTheirRecord() {
             item.pending = true;
     }
     page.refresh();
-    require(menu && !menu->actions().at(3)->isEnabled() && !menu->actions().at(4)->isEnabled(),
+    require(menu && !menu->actions().at(4)->isEnabled() && !menu->actions().at(5)->isEnabled(),
             "pending pins retain visible disabled Copy image path and reveal actions");
     fixture.items.clear();
     page.refresh();

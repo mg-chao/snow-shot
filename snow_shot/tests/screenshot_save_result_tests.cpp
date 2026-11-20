@@ -1,3 +1,4 @@
+#include "export_dialog_test_support.h"
 #include "snow_shot/presentation/screenshotsaveasfiledialog.h"
 #include "snow_shot/platform/filemanager.h"
 #include "snow_shot/presentation/screenshotsavepreviewcanvas.h"
@@ -20,6 +21,7 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QDir>
+#include <QDeadlineTimer>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
@@ -477,8 +479,6 @@ void resultActionsFollowAvailableWidth(const QString& directory) {
 
 #ifdef Q_OS_WIN
 QByteArray nativeClipboardBytes(UINT format) {
-    require(OpenClipboard(nullptr) != FALSE, "open clipboard for verification");
-    const auto close = qScopeGuard([] { CloseClipboard(); });
     const auto handle = GetClipboardData(format);
     require(handle != nullptr, "clipboard format missing");
     const auto* data = static_cast<const char*>(GlobalLock(handle));
@@ -509,25 +509,7 @@ void copyImageResults(const QString& directory) {
                     !dialog.button("saveOpenFolderButton")->isEnabled(),
                 "copy disables competing actions");
         dialog.complete();
-        QByteArray png;
-        QString copiedFile;
-#ifdef Q_OS_WIN
-        png = nativeClipboardBytes(RegisterClipboardFormatW(L"PNG"));
-        const auto files = nativeClipboardBytes(CF_HDROP);
-        require(files.size() > qsizetype(sizeof(DROPFILES)), "clipboard file list missing");
-        DROPFILES header{};
-        std::memcpy(&header, files.constData(), sizeof(header));
-        require(header.fWide && qsizetype(header.pFiles) < files.size(),
-                "clipboard file list must be Unicode");
-        copiedFile = QString::fromWCharArray(
-            reinterpret_cast<const wchar_t*>(files.constData() + header.pFiles));
-#else
-        const auto* mime = QApplication::clipboard()->mimeData();
-        require(mime && mime->hasUrls() && mime->urls().size() == 1,
-                "clipboard must include saved file");
-        png = mime->data(QStringLiteral("image/png"));
-        copiedFile = mime->urls().first().toLocalFile();
-#endif
+        const auto [png, copiedFile] = readExportTestClipboard();
         const auto copiedImage =
             snow_shot::image_codec::decode(png, snow::image::Format::png, "copied.png");
         require(copiedImage.size() == QSize(80, 50) &&
@@ -664,4 +646,37 @@ void runScreenshotSaveResultTests() {
     resultActions(directory.path());
     cancelPendingActions(directory.path());
     require(storage::ScreenshotSettings().setShowSaveResult(false), "restore result default");
+}
+
+std::pair<QByteArray, QString> readExportTestClipboard() {
+    QByteArray png;
+    QString copiedFile;
+#ifdef Q_OS_WIN
+    // Clipboard listeners can briefly hold the native clipboard after publication. Read both
+    // formats under the same lock so they always describe a single publication.
+    QDeadlineTimer deadline(3000);
+    while (!OpenClipboard(nullptr)) {
+        require(!deadline.hasExpired(), "open clipboard for verification");
+        QThread::msleep(5);
+    }
+    const auto close = qScopeGuard([] { CloseClipboard(); });
+    png = nativeClipboardBytes(RegisterClipboardFormatW(L"PNG"));
+    if (IsClipboardFormatAvailable(CF_HDROP)) {
+        const auto files = nativeClipboardBytes(CF_HDROP);
+        require(files.size() > qsizetype(sizeof(DROPFILES)), "clipboard file list missing");
+        DROPFILES header{};
+        std::memcpy(&header, files.constData(), sizeof(header));
+        require(header.fWide && qsizetype(header.pFiles) < files.size(),
+                "clipboard file list must be Unicode");
+        copiedFile = QString::fromWCharArray(
+            reinterpret_cast<const wchar_t*>(files.constData() + header.pFiles));
+    }
+#else
+    const auto* mime = QApplication::clipboard()->mimeData();
+    require(mime && mime->urls().size() <= 1, "unexpected clipboard publication");
+    png = mime->data(QStringLiteral("image/png"));
+    if (mime->hasUrls())
+        copiedFile = mime->urls().first().toLocalFile();
+#endif
+    return {png, copiedFile};
 }
