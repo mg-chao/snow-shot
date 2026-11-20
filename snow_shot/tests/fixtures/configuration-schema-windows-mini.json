@@ -984,6 +984,16 @@
       "defaultStringIsNull": false,
       "defaultValue": [],
       "integerRange": null,
+      "key": "global_shortcuts/compress_selected_images",
+      "maximumListItems": 2,
+      "valueKind": "ShortcutList"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
       "key": "global_shortcuts/open_settings",
       "maximumListItems": 2,
       "valueKind": "ShortcutList"
@@ -4473,6 +4483,7 @@
         "quick.stitch-selected-images",
         "quick.split-selected-images",
         "quick.edit-selected-images",
+        "quick.compress-selected-images",
         "quick.toggle-window-under-cursor-always-on-top",
         "quick.toggle-global-hotkeys",
         "quick.toggle-global-mouse",

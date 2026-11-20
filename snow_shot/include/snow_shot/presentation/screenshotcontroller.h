@@ -159,6 +159,7 @@ class ScreenshotController : public QObject {
     void imageStitchingRequested(const QVector<ScreenshotPinnedImageSnapshot>& snapshots);
     void imageSplittingRequested(const snow_shot::presentation::ImageSplitSource& source);
     void scrollingImageEditingRequested(const ScreenshotExportSource& source);
+    void imageCompressionRequested(const ScreenshotPinnedImageSnapshot& snapshot);
     void pinnedImageEditingRequested(const QString& recordId);
     void recordingExportNotificationRequested(const QString& path);
     void captureActivityChanged(const QString& source, bool active);
@@ -177,6 +178,10 @@ class ScreenshotController : public QObject {
     struct Impl;
 
     std::unique_ptr<Impl> m_impl;
+
+    [[nodiscard]] bool
+    handleActiveScreenshotShortcut(snow_shot::presentation::GlobalShortcutAction action,
+                                   bool requireActivation);
 };
 
 #endif // SNOW_SHOT_PRESENTATION_SCREENSHOTCONTROLLER_H

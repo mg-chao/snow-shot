@@ -63,6 +63,10 @@
             <translation>焦点窗口</translation>
         </message>
         <message>
+            <source>Image compression</source>
+            <translation>图像压缩</translation>
+        </message>
+        <message>
             <source>Image editing</source>
             <translation>图像编辑</translation>
         </message>
@@ -1634,6 +1638,10 @@ Files:
             <translation>已隐藏</translation>
         </message>
         <message>
+            <source>Image compression</source>
+            <translation>图像压缩</translation>
+        </message>
+        <message>
             <source>Image editing</source>
             <translation>图像编辑</translation>
         </message>
@@ -2098,6 +2106,10 @@ Files:
         <message>
             <source>Hide other windows</source>
             <translation>隐藏其他窗口</translation>
+        </message>
+        <message>
+            <source>Image compression</source>
+            <translation>图像压缩</translation>
         </message>
         <message>
             <source>Image editing</source>

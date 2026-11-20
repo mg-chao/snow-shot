@@ -298,7 +298,7 @@ struct ImageSplitWindow::Impl final {
         layout->setContentsMargins(0, 0, 0, 0);
         layout->setSpacing(
             styles::ThemeManager::instance().themeColorScheme().metricAlias.marginXS);
-        layout->addWidget(editor->outputDescriptionWidget(), 1);
+        layout->addWidget(editor->outputDescriptionWidget(), 1, Qt::AlignVCenter);
         editor->outputDescriptionWidget()->show();
         cancel->setObjectName(QStringLiteral("imageSplitCancel"));
         save->setObjectName(QStringLiteral("imageSplitSaveAll"));
@@ -307,7 +307,7 @@ struct ImageSplitWindow::Impl final {
         save->setAccentRole(AdButton::AccentRole::Primary);
         for (auto* button : {cancel, stitch, save}) {
             button->setFocusPolicy(Qt::StrongFocus);
-            layout->addWidget(button);
+            layout->addWidget(button, 0, Qt::AlignVCenter);
         }
         modal->setFooterWidget(footer);
         QObject::connect(save, &AdButton::clicked, &q, &ImageSplitWindow::saveAll);

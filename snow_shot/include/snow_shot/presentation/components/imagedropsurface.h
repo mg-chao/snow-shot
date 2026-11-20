@@ -5,6 +5,7 @@
 #include "antd_icons.h"
 #include "icon_renderer.h"
 #include "theme/theme_manager.h"
+#include "widgets/button.h"
 
 #include <QLabel>
 #include <QPainter>
@@ -52,6 +53,19 @@ class ImageDropSurface final : public QWidget {
         if (active)
             setAttribute(Qt::WA_TransparentForMouseEvents);
         refreshTheme();
+    }
+
+    adqt::widgets::AdButton* addImageButton() {
+        using adqt::widgets::AdButton;
+        auto* button = new AdButton(this);
+        button->setIconRef(adqt::icons::antd::outlined::Plus());
+        button->setButtonStyle(AdButton::ButtonStyle::Solid);
+        button->setAccentRole(AdButton::AccentRole::Primary);
+        button->setFocusPolicy(Qt::StrongFocus);
+        auto* column = static_cast<QVBoxLayout*>(layout());
+        column->insertSpacing(column->count() - 1, 8);
+        column->insertWidget(column->count() - 1, button, 0, Qt::AlignHCenter);
+        return button;
     }
 
     void refreshTheme() {

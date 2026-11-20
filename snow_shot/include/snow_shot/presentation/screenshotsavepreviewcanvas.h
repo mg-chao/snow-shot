@@ -3,11 +3,13 @@
 #include "snow_shot/presentation/screenshotpdfexport.h"
 #include "snow_shot/presentation/screenshotexportcoordinator.h"
 #include <QImage>
-#include <QPixmap>
 #include <QWidget>
 #include <QTimer>
 
 class CanvasStatusReadout;
+namespace adqt::widgets {
+class AdButton;
+}
 
 class ScreenshotSavePreviewCanvas final : public QWidget {
     Q_OBJECT
@@ -66,14 +68,13 @@ class ScreenshotSavePreviewCanvas final : public QWidget {
     [[nodiscard]] QRectF imageBounds() const;
     [[nodiscard]] QRect detailRequest(const QImage& preview, QSize pixels,
                                       const DetailRenderer& renderer, const Detail& detail) const;
-    void updateReadout();
-    void showReadout();
+    void retranslate();
+    void updateReadout(bool showOnChange = false);
     void zoomAt(double value, QPointF position);
     [[nodiscard]] bool splitHandleContains(QPointF position) const;
     screenshot_pdf::Layout m_pdfLayout;
     QImage m_original;
     QImage m_output;
-    QPixmap m_checkerboard;
     QSize m_sourcePixels;
     QSize m_outputPixels;
     DetailRenderer m_sourceRenderer;
@@ -92,6 +93,8 @@ class ScreenshotSavePreviewCanvas final : public QWidget {
     bool m_splitDragging = false;
     bool m_splitHovered = false;
     bool m_fit = true;
+    adqt::widgets::AdButton* m_fitButton = nullptr;
+    adqt::widgets::AdButton* m_actualSizeButton = nullptr;
     CanvasStatusReadout* m_readout = nullptr;
     CanvasStatusReadout* m_busy = nullptr;
 };

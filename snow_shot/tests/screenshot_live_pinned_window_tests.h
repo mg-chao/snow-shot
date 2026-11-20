@@ -923,10 +923,10 @@ void statusAndCapabilityGates() {
     auto source = std::make_shared<FakeSource>();
     ScreenshotPinnedWindow window;
     present(window, config(source));
-    const QStringList frameCommands{QStringLiteral("copy_to_clipboard"),
-                                    QStringLiteral("save_as_file"),
-                                    QStringLiteral("convert_to_image"),
-                                    QStringLiteral("split_image"), QStringLiteral("image_editing")};
+    const QStringList frameCommands{
+        QStringLiteral("copy_to_clipboard"), QStringLiteral("save_as_file"),
+        QStringLiteral("convert_to_image"),  QStringLiteral("split_image"),
+        QStringLiteral("image_editing"),     QStringLiteral("image_compression")};
     const QStringList independent{
         QStringLiteral("toggle_click_through"), QStringLiteral("toggle_lock"),
         QStringLiteral("always_on_top"),        QStringLiteral("show_border"),
@@ -943,7 +943,7 @@ void statusAndCapabilityGates() {
         for (const char* name :
              {"screenshotPinnedCopyAction", "screenshotPinnedSaveAsFileAction",
               "screenshotPinnedConvertToImageAction", "screenshotPinnedSplitImageAction",
-              "screenshotPinnedImageEditingAction"}) {
+              "screenshotPinnedImageEditingAction", "screenshotPinnedImageCompressionAction"}) {
             auto* action = menu->findChild<QAction*>(QString::fromLatin1(name));
             require(action && !action->isEnabled(),
                     "all materialized menu frame operations track source status");
@@ -991,7 +991,7 @@ void statusAndCapabilityGates() {
     for (const char* name :
          {"screenshotPinnedCopyAction", "screenshotPinnedSaveAsFileAction",
           "screenshotPinnedConvertToImageAction", "screenshotPinnedSplitImageAction",
-          "screenshotPinnedImageEditingAction"}) {
+          "screenshotPinnedImageEditingAction", "screenshotPinnedImageCompressionAction"}) {
         auto* action = menu->findChild<QAction*>(QString::fromLatin1(name));
         require(action && action->isEnabled(),
                 "source recovery reenables materialized frame actions");
@@ -1176,8 +1176,21 @@ void splittingAndEditingRetainTheirLiveSource() {
         menu->findChild<QAction*>(QStringLiteral("screenshotPinnedSplitImageAction"));
     require(splitAction && splitAction->isEnabled(),
             "live splitting is available in the shared menu");
+    ScreenshotPinnedImageSnapshot compressed;
+    QObject::connect(&window, &ScreenshotPinnedWindow::imageCompressionRequested, &window,
+                     [&](const ScreenshotPinnedImageSnapshot& value) { compressed = value; });
+    auto* compressAction =
+        menu->findChild<QAction*>(QStringLiteral("screenshotPinnedImageCompressionAction"));
+    require(compressAction && compressAction->isEnabled(),
+            "compression is available for the live frame");
+    compressAction->trigger();
     splitAction->trigger();
     source->publish(Qt::blue);
+    require(compressed.source.isValid(), "compression provides the live frame");
+    const auto compressedImage =
+        image(std::make_shared<ScreenshotExportArtifact>(compressed.source), &window);
+    require(compressedImage.size() == output && compressedImage.pixelColor(0, 0) == QColor(Qt::red),
+            "compression retains the action-time frame at source resolution");
     require(splitReceived && split.source.isValid(), "splitting imports the current live frame");
     const auto splitImage =
         image(std::make_shared<ScreenshotExportArtifact>(split.source), &window);

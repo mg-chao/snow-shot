@@ -1400,10 +1400,15 @@ void selectedImagesSettings(const settings::SettingsRegistry& registry) {
         QStringLiteral("settings-item-quick-split-selected-images"));
     auto* edit =
         page.findChild<ShortcutKeyRow*>(QStringLiteral("settings-item-quick-edit-selected-images"));
+    auto* compress = page.findChild<ShortcutKeyRow*>(
+        QStringLiteral("settings-item-quick-compress-selected-images"));
     auto* mouseToggle =
         page.findChild<ShortcutKeyRow*>(QStringLiteral("settings-item-quick-toggle-global-mouse"));
     require(
-        stitch && canvas && split && edit &&
+        stitch && canvas && split && edit && compress &&
+            compress->mapTo(&page, QPoint()).y() > edit->mapTo(&page, QPoint()).y() &&
+            session.shortcutState(GlobalShortcutAction::CompressSelectedImages)
+                .shortcuts.isEmpty() &&
             edit->mapTo(&page, QPoint()).y() > split->mapTo(&page, QPoint()).y() &&
             session.shortcutState(GlobalShortcutAction::EditSelectedImages).shortcuts.isEmpty() &&
             stitch->mapTo(&page, QPoint()).y() > canvas->mapTo(&page, QPoint()).y() &&
@@ -1429,10 +1434,13 @@ void selectedImagesSettings(const settings::SettingsRegistry& registry) {
     expectedAction = GlobalShortcutAction::EditSelectedImages;
     require(QMetaObject::invokeMethod(edit, "clicked", Qt::DirectConnection) && commands == 3,
             "the editing row runs without an assigned key");
+    expectedAction = GlobalShortcutAction::CompressSelectedImages;
+    require(QMetaObject::invokeMethod(compress, "clicked", Qt::DirectConnection) && commands == 4,
+            "the compression row runs without an assigned key");
     expectedAction = GlobalShortcutAction::ToggleGlobalMouse;
     require(mouseToggle &&
                 QMetaObject::invokeMethod(mouseToggle, "clicked", Qt::DirectConnection) &&
-                commands == 4,
+                commands == 5,
             "the mouse toggle row dispatches its action without an assigned key");
     const snow_shot::shortcuts::ShortcutBindingList bindings{QStringLiteral("Ctrl+Alt+F8"),
                                                              QStringLiteral("Ctrl+Alt+F9")};
@@ -1447,12 +1455,16 @@ void selectedImagesSettings(const settings::SettingsRegistry& registry) {
                 stored.splitSelectedImages() == splitBindings &&
                 session.applyShortcuts(GlobalShortcutAction::EditSelectedImages, editBindings) &&
                 stored.editSelectedImages() == editBindings &&
+                session.applyShortcuts(GlobalShortcutAction::CompressSelectedImages,
+                                       {QStringLiteral("Ctrl+Alt+F6")}) &&
+                !stored.compressSelectedImages().isEmpty() &&
                 session.applyShortcuts(GlobalShortcutAction::ToggleGlobalMouse, mouseBindings) &&
                 stored.toggleGlobalMouse() == mouseBindings &&
                 session.reset(settings::SettingsSectionReset::OtherShortcuts) &&
-                stored.editSelectedImages().isEmpty() && stored.stitchSelectedImages().isEmpty() &&
-                stored.splitSelectedImages().isEmpty() && stored.toggleGlobalMouse().isEmpty() &&
-                stored.screenshot() == screenshot,
+                stored.editSelectedImages().isEmpty() &&
+                stored.compressSelectedImages().isEmpty() &&
+                stored.stitchSelectedImages().isEmpty() && stored.splitSelectedImages().isEmpty() &&
+                stored.toggleGlobalMouse().isEmpty() && stored.screenshot() == screenshot,
             "Other reset clears its own keys and preserves screenshot keys");
     auto& languages = LanguageManager::instance();
     for (const auto* locale : {"zh_CN", "zh_TW"}) {
@@ -1460,16 +1472,20 @@ void selectedImagesSettings(const settings::SettingsRegistry& registry) {
                 "switch stitching row language");
         page.retranslateUi();
         drainEvents();
-        require(stitch->accessibleName() ==
-                        QCoreApplication::translate("SettingsCatalog", "Stitch selected images") &&
-                    stitch->accessibleName() != QStringLiteral("Stitch selected images") &&
-                    split->accessibleName() ==
-                        QCoreApplication::translate("SettingsCatalog", "Split selected images") &&
-                    split->accessibleName() != QStringLiteral("Split selected images") &&
-                    edit->accessibleName() ==
-                        QCoreApplication::translate("SettingsCatalog", "Edit selected images") &&
-                    edit->accessibleName() != QStringLiteral("Edit selected images"),
-                "both selected-image actions retranslate in both Chinese catalogs");
+        require(
+            stitch->accessibleName() ==
+                    QCoreApplication::translate("SettingsCatalog", "Stitch selected images") &&
+                stitch->accessibleName() != QStringLiteral("Stitch selected images") &&
+                split->accessibleName() ==
+                    QCoreApplication::translate("SettingsCatalog", "Split selected images") &&
+                split->accessibleName() != QStringLiteral("Split selected images") &&
+                compress->accessibleName() ==
+                    QCoreApplication::translate("SettingsCatalog", "Compress selected images") &&
+                compress->accessibleName() != QStringLiteral("Compress selected images") &&
+                edit->accessibleName() ==
+                    QCoreApplication::translate("SettingsCatalog", "Edit selected images") &&
+                edit->accessibleName() != QStringLiteral("Edit selected images"),
+            "both selected-image actions retranslate in both Chinese catalogs");
     }
     require(languages.setLanguage(QStringLiteral("en_US")), "restore settings test language");
 }

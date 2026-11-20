@@ -98,8 +98,8 @@ void everySnowShotEntryRenders() {
     const auto registered = icons::registerWith(renderer);
     require(registered.ok(), "Snow Shot pack registration should succeed");
     const adqt::icons::IconPack* staticPack = icons::pack().staticPack();
-    require(staticPack != nullptr && staticPack->entryCount == 223,
-            "Snow Shot pack should contain all 223 project-owned assets");
+    require(staticPack != nullptr && staticPack->entryCount == 224,
+            "Snow Shot pack should contain all 224 project-owned assets");
     require(adqt::icons::describeIcon(icons::outlined::CreditsCoin()).key.name ==
                 QStringLiteral("credits-coin"),
             "account credits should resolve to their project-owned coin icon");
@@ -671,6 +671,25 @@ void imageStitchingIconFollowsAntDesign() {
     painter.end();
     if (const auto path = qEnvironmentVariable("SNOW_STITCHING_ICON_PREVIEW"); !path.isEmpty())
         require(preview.save(path), "save stitching icon light/dark inspection sheet");
+}
+
+void imageCompressionArrowsStaySeparatedAtMenuSize() {
+    namespace icons = snow_shot::presentation::icons::custom;
+    for (const QColor& color : {QColor("#262626"), QColor("#f0f0f0")}) {
+        const auto icon =
+            icons::outlined::ImageCompression(adqt::icons::IconColors::primary(color));
+        for (qreal dpr : {1.0, 1.25, 2.0}) {
+            const QImage image = render(icon, QSize(16, 16), dpr).toImage();
+            require(containsOpaqueColor(image, color), "compression icon uses the menu text color");
+            const int side = image.width();
+            const QRect upperArrow(side * 3 / 4, side / 4, side / 4, side / 4);
+            const QRect gap(upperArrow.left(), side / 2, upperArrow.width(), 1);
+            require(opaquePixelCount(image, upperArrow) > 0 &&
+                        opaquePixelCount(image, upperArrow.translated(0, side / 4)) > 0 &&
+                        opaquePixelCount(image, gap) == 0,
+                    "opposing compression arrows remain visible with a clear gap");
+        }
+    }
 }
 
 void spreadsheetIconFollowsAntDesign() {
@@ -1257,6 +1276,7 @@ int main(int argc, char** argv) {
             everySnowShotEntryRenders();
             return 0;
         }
+        imageCompressionArrowsStaySeparatedAtMenuSize();
         imageStitchingIconFollowsAntDesign();
         if (application.arguments().contains(QStringLiteral("--image-stitching-only"))) {
             everySnowShotEntryRenders();

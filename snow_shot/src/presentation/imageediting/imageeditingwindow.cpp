@@ -238,15 +238,8 @@ struct ImageEditingWindow::Impl {
         stack->addWidget(canvas);
         emptyState = new components::ImageDropSurface(false, surface);
         emptyState->setObjectName(QStringLiteral("imageEditingEmptyState"));
-        addImages = new AdButton(emptyState);
+        addImages = emptyState->addImageButton();
         addImages->setObjectName(QStringLiteral("imageEditingAddImages"));
-        addImages->setIconRef(adqt::icons::antd::outlined::Plus());
-        addImages->setButtonStyle(AdButton::ButtonStyle::Solid);
-        addImages->setAccentRole(AdButton::AccentRole::Primary);
-        addImages->setFocusPolicy(Qt::StrongFocus);
-        auto* emptyLayout = static_cast<QVBoxLayout*>(emptyState->layout());
-        emptyLayout->insertSpacing(emptyLayout->count() - 1, 8);
-        emptyLayout->insertWidget(emptyLayout->count() - 1, addImages, 0, Qt::AlignHCenter);
         stack->addWidget(emptyState);
         stack->setCurrentWidget(emptyState);
         dropHint = new components::ImageDropSurface(true, surface);
@@ -308,7 +301,7 @@ struct ImageEditingWindow::Impl {
                          [this] { drawing(ImageEditingCanvas::Mode::CropRows); });
         QObject::connect(palette, &ScreenshotToolPalette::cropColumnsRequested, &q,
                          [this] { drawing(ImageEditingCanvas::Mode::CropColumns); });
-        QObject::connect(fit, &AdButton::clicked, canvas, &ImageEditingCanvas::fit);
+        QObject::connect(fit, &AdButton::clicked, canvas, [this] { canvas->fit(true); });
         QObject::connect(actual, &AdButton::clicked, canvas, &ImageEditingCanvas::actualSize);
         QObject::connect(palette, &ScreenshotToolPalette::moveRequested, &q,
                          [this] { drawing(ImageEditingCanvas::Mode::Pan); });

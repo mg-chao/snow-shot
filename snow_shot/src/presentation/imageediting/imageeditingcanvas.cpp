@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "snow_shot/presentation/imageeditingcanvas.h"
+#include "snow_shot/presentation/canvasstatusreadout.h"
 #include "snow_shot/presentation/canvastexteditingpreferences.h"
 #include "snow_shot/presentation/screenshotcanvasrenderer.h"
 #include "snow_draw_engine_qt/snow_canvas_overlay_style.h"
@@ -15,7 +16,8 @@
 
 namespace snow_shot::presentation {
 ImageEditingCanvas::ImageEditingCanvas(ImageEditingDocument& document, QWidget* parent)
-    : SnowCanvasWidget(document.runtime(), parent), m_document(document) {
+    : SnowCanvasWidget(document.runtime(), parent), m_document(document),
+      m_zoomReadout(new CanvasStatusReadout(this)) {
     bindCanvasTextEditingPreferences(*this);
     setObjectName(QStringLiteral("imageEditingCanvas"));
     setCustomRenderer(this);
@@ -25,6 +27,8 @@ ImageEditingCanvas::ImageEditingCanvas(ImageEditingDocument& document, QWidget* 
     setWheelZoomEnabled(false);
     setMouseTracking(true);
     setMode(Mode::Pan);
+    m_zoomReadout->setObjectName(QStringLiteral("imageEditingZoom"));
+    m_zoomReadout->layoutIn(rect());
     connect(&document, &ImageEditingDocument::baseImageChanged, this, [this] { syncImage(); });
 }
 ImageEditingCanvas::~ImageEditingCanvas() {
@@ -38,6 +42,7 @@ void ImageEditingCanvas::setMode(Mode mode) {
     update();
 }
 void ImageEditingCanvas::syncImage() {
+    m_zoomReadout->dismiss();
     setContentClip(m_document.bounds());
     setDecorationRenderAreas({m_document.bounds(), m_document.bounds()});
     setBaseImageSources(baseImageSources());
@@ -47,7 +52,7 @@ void ImageEditingCanvas::syncImage() {
         syncCamera();
     update();
 }
-void ImageEditingCanvas::fit() {
+void ImageEditingCanvas::fit(bool showZoomReadout) {
     const auto bounds = m_document.bounds();
     if (bounds.isEmpty() || width() <= 0 || height() <= 0)
         return;
@@ -55,16 +60,21 @@ void ImageEditingCanvas::fit() {
     m_zoom = std::min(std::max(1, width() - 48) / bounds.width(),
                       std::max(1, height() - 48) / bounds.height());
     m_fitted = true;
-    syncCamera();
+    syncCamera(showZoomReadout);
 }
 void ImageEditingCanvas::actualSize() {
     if (m_document.bounds().isEmpty())
         return;
-    m_zoom = m_document.image().width() / m_document.bounds().width() / devicePixelRatioF();
-    syncCamera();
+    m_zoom = actualSizeZoom();
+    syncCamera(true);
 }
-void ImageEditingCanvas::syncCamera() {
+double ImageEditingCanvas::actualSizeZoom() const {
+    return m_document.image().width() / m_document.bounds().width() / devicePixelRatioF();
+}
+void ImageEditingCanvas::syncCamera(bool showZoomReadout) {
     setViewportCamera(m_center.x(), m_center.y(), m_zoom);
+    if (!m_document.bounds().isEmpty())
+        m_zoomReadout->setScale(m_zoom / actualSizeZoom(), showZoomReadout && m_showImage);
     if (viewportChanged)
         viewportChanged();
 }
@@ -74,6 +84,8 @@ void ImageEditingCanvas::setRecognitionDisplay(bool active, bool showImage, bool
     m_recognitionActive = active;
     m_showImage = showImage;
     m_showFiltered = showFiltered;
+    if (!showImage)
+        m_zoomReadout->dismiss();
     setCanvasContentVisible(!active);
     update();
 }
@@ -189,7 +201,7 @@ void ImageEditingCanvas::wheelEvent(QWheelEvent* event) {
                                                       : event->pixelDelta().y() / 50.0;
     m_zoom = std::clamp(m_zoom * std::pow(1.15, steps), 1e-9, 1e6);
     m_center = anchor - (event->position() - QPointF(width() / 2.0, height() / 2.0)) / m_zoom;
-    syncCamera();
+    syncCamera(true);
     event->accept();
 }
 void ImageEditingCanvas::keyPressEvent(QKeyEvent* event) {
@@ -216,6 +228,7 @@ void ImageEditingCanvas::keyPressEvent(QKeyEvent* event) {
 }
 void ImageEditingCanvas::resizeEvent(QResizeEvent* event) {
     SnowCanvasWidget::resizeEvent(event);
+    m_zoomReadout->layoutIn(rect());
     if (!m_fitted)
         fit();
     else

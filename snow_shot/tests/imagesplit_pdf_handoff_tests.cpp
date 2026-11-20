@@ -7,6 +7,7 @@
 #include "snow_shot/presentation/languagemanager.h"
 #include "snow_shot/presentation/styles/thememanager.h"
 #include "snow_shot/storage/applicationstorage.h"
+#include "theme/theme_manager.h"
 #include "widgets/button.h"
 #include "widgets/input_number.h"
 #include "widgets/modal.h"
@@ -18,6 +19,7 @@
 #include <QEventLoop>
 #include <QHBoxLayout>
 #include <QKeyEvent>
+#include <QLabel>
 #include <QLineEdit>
 #include <QTemporaryDir>
 #include <QThread>
@@ -79,6 +81,45 @@ void typeCount(ImageSplitWindow& window, int key, const QString& text) {
     input->selectAll();
     QKeyEvent event(QEvent::KeyPress, key, Qt::NoModifier, text);
     QApplication::sendEvent(input, &event);
+}
+
+void footerDescriptionStyle() {
+    ImageSplitWindow window;
+    ImageSplitSettings settings;
+    settings.type = ImageSplitType::Equal;
+    window.document()->setImage(image(), {}, settings);
+    window.modal()->setWindowPreferredSize(QSize(1200, 800));
+    window.modal()->present();
+    flush();
+    auto* footer = window.modal()->footerWidget();
+    require(footer, "the split footer is available");
+    auto* save = footer->findChild<AdButton*>(QStringLiteral("imageSplitSaveAll"));
+    auto* dimensions = footer->findChild<QLabel*>(QStringLiteral("imageSplitDimensions"));
+    auto* total = footer->findChild<QLabel*>(QStringLiteral("imageSplitOutputCount"));
+    require(save && dimensions && total && dimensions->isVisible() && total->isVisible(),
+            "the split footer shows dimensions and output count");
+    auto& themes = adqt::theme::ThemeManager::instance();
+    for (const auto scheme : {adqt::theme::ThemeScheme::Light, adqt::theme::ThemeScheme::Dark}) {
+        adqt::theme::ThemeOverride overrideValue;
+        overrideValue.scheme = scheme;
+        overrideValue.fontSize = 19.0;
+        themes.setScopeOverride(window.editor(), overrideValue);
+        flush();
+        footer->layout()->activate();
+        const auto theme = themes.resolveTheme(window.editor());
+        const int buttonCenter = save->mapTo(footer, save->rect().center()).y();
+        for (const auto* label : {dimensions, total}) {
+            const int lineHeight = label->fontMetrics().height();
+            const int textCenter = label->mapTo(footer, label->rect().center()).y();
+            require(label->font().pixelSize() == qMax(10, qRound(theme.fontSizeSM)) &&
+                        label->font().weight() == QFont::Normal && label->height() == lineHeight &&
+                        label->palette().color(QPalette::WindowText) == theme.colorTextSecondary,
+                    "split footer uses the save dialog's small secondary text style");
+            require(std::abs(textCenter - buttonCenter) <= 1,
+                    "split footer text is vertically centered with the buttons");
+        }
+    }
+    themes.clearScopeOverride(window.editor());
 }
 
 void footerDraftsAndTranslations() {
@@ -381,6 +422,12 @@ int main(int argc, char** argv) {
     styles::ThemeManager::instance().initialize(application);
     LanguageManager::instance().initialize();
     require(LanguageManager::instance().setLanguage(QStringLiteral("en_US")), "initialize English");
+    footerDescriptionStyle();
+    if (application.arguments().contains(QStringLiteral("--footer-only"))) {
+        storage.shutdown();
+        std::cout << "Image split footer style tests passed\n";
+        return 0;
+    }
     footerDraftsAndTranslations();
     piecesAppendAsPdfAndOwnTheirSource();
     newHandoffRestoresRememberedTemplate();

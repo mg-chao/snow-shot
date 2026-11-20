@@ -726,6 +726,57 @@ std::pair<QImage, QString> captureClipboardOutput() {
 #endif
 }
 
+void clipboardPinPrefersActiveScreenshotSelection(ScreenshotController& controller) {
+    using snow_shot::storage::PinnedWindowCreationSource;
+
+    const QImage screenshot = fixture();
+    QImage clipboardImage(40, 24, QImage::Format_RGB32);
+    clipboardImage.fill(Qt::green);
+    QApplication::clipboard()->setImage(clipboardImage);
+
+    ScreenshotSelectionParams selection;
+    selection.selection = QRect(10, 12, 60, 42);
+    ScreenshotControllerTestAccess::prepareSelection(controller, screenshot, selection);
+    const auto* overlay = ScreenshotControllerTestAccess::presentSelection(controller);
+    require(overlay && overlay->isVisible(),
+            "present the screenshot overlay for clipboard pinning");
+    ScreenshotControllerTestAccess::confirmCaptureSelection(
+        controller, ScreenshotController::CaptureAction::None);
+    controller.pinClipboardContentToScreen();
+    waitUntil([] { return visiblePins().size() == 1; }, "clipboard action must create a pin");
+    const auto screenshotPin = visiblePins().constFirst()->persistenceSnapshot();
+    require(screenshotPin.creationSource == PinnedWindowCreationSource::Screenshot &&
+                screenshotPin.image.size() == selection.selection.size(),
+            "clipboard action must pin the current screenshot selection");
+    closePins();
+
+    controller.pinClipboardContentToScreen();
+    waitUntil([] { return visiblePins().size() == 1; },
+              "clipboard action must still pin when idle");
+    const auto clipboardPin = visiblePins().constFirst()->persistenceSnapshot();
+    require(clipboardPin.creationSource == PinnedWindowCreationSource::Clipboard &&
+                clipboardPin.image.convertToFormat(QImage::Format_RGB32) == clipboardImage,
+            "clipboard action must pin the clipboard image after the capture closes");
+    closePins();
+
+    ScreenshotControllerTestAccess::prepareSelection(controller, screenshot, selection);
+    ScreenshotControllerTestAccess::presentSelection(controller);
+    ScreenshotControllerTestAccess::confirmCaptureSelection(
+        controller, ScreenshotController::CaptureAction::None);
+    auto& input = ScreenshotControllerTestAccess::overlayInput(controller);
+    input.beginRegionOperation(true);
+    require(input.regionOperationActive(), "a region operation blocks selection shortcuts");
+    controller.pinClipboardContentToScreen();
+    waitUntil([] { return visiblePins().size() == 1; },
+              "clipboard action must fall back when the selection shortcut is blocked");
+    const auto fallbackPin = visiblePins().constFirst()->persistenceSnapshot();
+    require(fallbackPin.creationSource == PinnedWindowCreationSource::Clipboard &&
+                fallbackPin.image.convertToFormat(QImage::Format_RGB32) == clipboardImage,
+            "the blocked overlay shortcut must leave the clipboard action available");
+    closePins();
+    controller.mcpCancelCapture();
+}
+
 void combinedCopiesPreserveImagePlacementAndAppearance(ScreenshotController& controller) {
     const QImage image = fixture();
     const QRect geometry(40, 60, image.width(), image.height());
@@ -2225,6 +2276,12 @@ int runScreenshotControllerClipboardTests(int argc, char** argv) {
                 settings.setShowBorderByDefault(true) && settings.setShowShadowByDefault(false),
             "clipboard controller settings must be isolated and deterministic");
     static_cast<void>(snow_shot::presentation::styles::ThemeManager::instance());
+    if (application.arguments().contains(QStringLiteral("--selection-priority-only"))) {
+        const auto shutdown = qScopeGuard([&] { storage.shutdown(); });
+        ScreenshotController controller;
+        clipboardPinPrefersActiveScreenshotSelection(controller);
+        return EXIT_SUCCESS;
+    }
     if (application.arguments().contains(QStringLiteral("--system-notification-window-tests"))) {
         using namespace snow_shot::presentation;
         using Status = snow_shot::platform::SystemNotificationResult::Status;

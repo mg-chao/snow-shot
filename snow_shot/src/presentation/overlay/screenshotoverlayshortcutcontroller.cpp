@@ -567,11 +567,11 @@ void ScreenshotOverlayShortcutController::reloadConfiguredShortcuts() {
 }
 
 bool ScreenshotOverlayShortcutController::handleGlobalScreenshotShortcut(
-    snow_shot::presentation::GlobalShortcutAction action, bool captureReady) {
+    snow_shot::presentation::GlobalShortcutAction action, bool captureReady,
+    bool requireActivation) {
     const QString id = screenshotShortcutForGlobalAction(action);
     if (id.isEmpty())
         return false;
-    if (captureReady)
-        static_cast<void>(m_impl->activateToolbarShortcut(id, false));
-    return true;
+    const bool activated = captureReady && m_impl->activateToolbarShortcut(id, false);
+    return activated || !requireActivation;
 }

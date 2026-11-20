@@ -42,6 +42,7 @@ enum class GlobalShortcutAction {
     ScreenshotScrolling,
     EditSelectedImages,
     ToggleGlobalMouse,
+    CompressSelectedImages,
 };
 
 [[nodiscard]] constexpr bool controlsGlobalShortcutGates(GlobalShortcutAction action) {

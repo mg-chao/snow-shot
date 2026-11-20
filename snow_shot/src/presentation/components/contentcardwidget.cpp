@@ -181,6 +181,8 @@ QWidget* ContentCardWidget::createPage(
                 &ContentCardWidget::screenshotHistorySplitRequested);
         connect(historyPage, &ScreenshotHistoryPageWidget::imageEditingRequested, this,
                 &ContentCardWidget::screenshotHistoryImageEditingRequested);
+        connect(historyPage, &ScreenshotHistoryPageWidget::imageCompressionRequested, this,
+                &ContentCardWidget::screenshotHistoryImageCompressionRequested);
         page = historyPage;
     } else if (definition.kind ==
                snow_shot::presentation::settings::SettingsPageKind::PinnedWindowManagement) {
@@ -191,6 +193,8 @@ QWidget* ContentCardWidget::createPage(
                 &ContentCardWidget::pinnedWindowSplitRequested);
         connect(pinnedPage, &PinnedWindowManagementPageWidget::imageEditingRequested, this,
                 &ContentCardWidget::pinnedWindowImageEditingRequested);
+        connect(pinnedPage, &PinnedWindowManagementPageWidget::imageCompressionRequested, this,
+                &ContentCardWidget::pinnedWindowImageCompressionRequested);
         page = pinnedPage;
     } else if (definition.kind ==
                snow_shot::presentation::settings::SettingsPageKind::Translation) {

@@ -1491,14 +1491,14 @@ void moreMenuOffersPinStitchAndDelete() {
     hover(more);
     flushEvents();
     QPointer<adqt::widgets::AdContextMenu> menu = visibleMenu(pinnableEntry);
-    require(menu != nullptr && menu->actions().size() == 7 && !menu->nativeMenuEnabled(),
+    require(menu != nullptr && menu->actions().size() == 8 && !menu->nativeMenuEnabled(),
             "hovering More must show the shared widget action menu");
     QAction* pin = menu->actions().at(0);
     QAction* stitch = menu->actions().at(1);
     QAction* split = menu->actions().at(2);
-    QAction* copyImagePath = menu->actions().at(4);
-    QAction* reveal = menu->actions().at(5);
-    QAction* remove = menu->actions().at(6);
+    QAction* copyImagePath = menu->actions().at(5);
+    QAction* reveal = menu->actions().at(6);
+    QAction* remove = menu->actions().at(7);
     require(copyImagePath->objectName() == QStringLiteral("screenshotHistoryEntryCopyImagePath") &&
                 copyImagePath->text() == QStringLiteral("Copy image path") &&
                 copyImagePath->toolTip() == copyImagePath->text() && copyImagePath->isEnabled() &&
@@ -1510,6 +1510,10 @@ void moreMenuOffersPinStitchAndDelete() {
                 imageEditing->text() == QStringLiteral("Image editing") &&
                 !imageEditing->icon().isNull(),
             "independent image editing follows Image Splitting in the record menu");
+    require(menu->actions().at(4)->objectName() ==
+                    QStringLiteral("screenshotHistoryEntryImageCompression") &&
+                menu->actions().at(4)->text() == QStringLiteral("Image compression"),
+            "Image compression immediately follows Image editing");
     require(reveal->objectName() == QStringLiteral("screenshotHistoryEntryReveal") &&
                 reveal->text() ==
                     snow_shot::presentation::components::history_page::revealActionText() &&
@@ -1549,11 +1553,24 @@ void moreMenuOffersPinStitchAndDelete() {
     require(editorRecord == records[0] && dataSource.removedIds.isEmpty(),
             "Image Editing dispatches the source record without altering history");
 
+    storage::CaptureHistoryRecord compressionRecord;
+    QObject::connect(&page, &ScreenshotHistoryPageWidget::imageCompressionRequested, &page,
+                     [&](const auto& record) { compressionRecord = record; });
+    more->click();
+    flushEvents();
+    auto* compressionMenu = visibleMenu(pinnableEntry);
+    require(compressionMenu, "reopen More for compression");
+    activateMenuAction(compressionMenu, compressionMenu->findChild<QAction*>(QStringLiteral(
+                                            "screenshotHistoryEntryImageCompression")));
+    flushEvents();
+    require(compressionRecord == records[0] && dataSource.removedIds.isEmpty(),
+            "Image compression dispatches the source record without altering history");
+
     more->click();
     flushEvents();
     menu = visibleMenu(pinnableEntry);
     require(menu, "reopen More for Copy image path");
-    activateMenuAction(menu, menu->actions().at(4));
+    activateMenuAction(menu, menu->actions().at(5));
     flushEvents();
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     require(!menu && QApplication::clipboard()->text() == QDir::toNativeSeparators(imagePath) &&
@@ -1572,11 +1589,11 @@ void moreMenuOffersPinStitchAndDelete() {
                 plainMenu->actions().at(0)->toolTip() ==
                     QStringLiteral("This screenshot cannot be pinned"),
             "Pin to screen must stay unavailable when the history entry has no image");
-    require(!plainMenu->actions().at(4)->isEnabled(),
+    require(!plainMenu->actions().at(5)->isEnabled(),
             "a missing result keeps Copy image path visible and disabled");
-    require(plainMenu->actions().at(5)->isEnabled(),
+    require(plainMenu->actions().at(6)->isEnabled(),
             "resultless history still supports revealing its stored source or directory");
-    activateMenuAction(plainMenu, plainMenu->actions().at(5));
+    activateMenuAction(plainMenu, plainMenu->actions().at(6));
     flushEvents();
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     require(dataSource.revealedIds == QStringList{QStringLiteral("record-1")},
@@ -1596,17 +1613,17 @@ void moreMenuOffersPinStitchAndDelete() {
         QApplication::sendEvent(pinnableEntry, &languageChange);
         const QString label = snow_shot::presentation::components::history_page::revealActionText();
         const QString copyLabel = translator.translate("HistoryFileLocation", "Copy image path");
-        require(!copyLabel.isEmpty() && menu->actions().at(4)->text() == copyLabel &&
-                    menu->actions().at(4)->toolTip() == copyLabel,
+        require(!copyLabel.isEmpty() && menu->actions().at(5)->text() == copyLabel &&
+                    menu->actions().at(5)->toolTip() == copyLabel,
                 "open history menus translate Copy image path and its tooltip");
-        require(menu && menu->actions().at(5)->text() == label &&
-                    menu->actions().at(5)->toolTip() == label &&
+        require(menu && menu->actions().at(6)->text() == label &&
+                    menu->actions().at(6)->toolTip() == label &&
                     !translator.translate("HistoryFileLocation", "Open in Explorer").isEmpty() &&
                     !translator.translate("HistoryFileLocation", "Reveal in Finder").isEmpty(),
                 "open history menus translate their reveal label and tooltip");
         QCoreApplication::removeTranslator(&translator);
     }
-    activateMenuAction(menu, menu->actions().at(5));
+    activateMenuAction(menu, menu->actions().at(6));
     flushEvents();
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     require(!menu && selected->isChecked() &&
@@ -1628,7 +1645,7 @@ void moreMenuOffersPinStitchAndDelete() {
         flushEvents();
         menu = visibleMenu(pinnableEntry);
         require(menu, "reopen Copy image path failure fixture menu");
-        activateMenuAction(menu, menu->actions().at(4));
+        activateMenuAction(menu, menu->actions().at(5));
         flushEvents();
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
         require(!menu &&
@@ -1643,7 +1660,7 @@ void moreMenuOffersPinStitchAndDelete() {
     menu = visibleMenu(pinnableEntry);
     require(menu, "reopen reveal failure fixture menu");
     // Exercise keyboard dispatch as well as the successful mouse activations above.
-    menu->setActiveAction(menu->actions().at(5));
+    menu->setActiveAction(menu->actions().at(6));
     QKeyEvent revealKey(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
     QApplication::sendEvent(menu, &revealKey);
     flushEvents();

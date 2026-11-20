@@ -2274,6 +2274,10 @@
             <translation>Color picker display mode</translation>
         </message>
         <message>
+            <source>Compress selected images</source>
+            <translation>Compress selected images</translation>
+        </message>
+        <message>
             <source>Compression level</source>
             <translation>Compression level</translation>
         </message>
@@ -3592,6 +3596,10 @@
         <message>
             <source>Open at login</source>
             <translation>Open at login</translation>
+        </message>
+        <message>
+            <source>Open image compression for each selected image file, or an empty window if no images are selected</source>
+            <translation>Open image compression for each selected image file, or an empty window if no images are selected</translation>
         </message>
         <message>
             <source>Open image editing for each selected image file, or an empty window if no images are selected</source>

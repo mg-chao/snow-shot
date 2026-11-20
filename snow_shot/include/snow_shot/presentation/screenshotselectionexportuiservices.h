@@ -156,6 +156,10 @@ class ScreenshotSelectionExportUiServices final : public ScreenshotSelectionExpo
     void setRestoreFailureHandler(std::function<void()> handler) {
         m_restoreFailure = std::move(handler);
     }
+    void
+    setImageCompressionHandler(std::function<void(const ScreenshotPinnedImageSnapshot&)> handler) {
+        m_imageCompressionRequested = std::move(handler);
+    }
     void setLiveImageEditingHandler(std::function<void(const ScreenshotExportSource&)> handler) {
         m_liveImageEditingRequested = std::move(handler);
     }
@@ -224,6 +228,7 @@ class ScreenshotSelectionExportUiServices final : public ScreenshotSelectionExpo
     SnowShotApiClient* m_tableRecognition = nullptr;
     std::function<void()> m_showMainWindowRequested;
     std::function<void(const ScreenshotPinnedImageSnapshot&)> m_imageSplittingRequested;
+    std::function<void(const ScreenshotPinnedImageSnapshot&)> m_imageCompressionRequested;
     std::function<void(const QString&)> m_imageEditingRequested;
     std::function<void()> m_automaticRestoreRequested;
     std::function<void(const ScreenshotExportSource&)> m_liveImageEditingRequested;

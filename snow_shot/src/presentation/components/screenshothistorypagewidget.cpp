@@ -578,6 +578,7 @@ class HistoryEntryWidget final : public HistoryEntryCard {
                        std::function<void()> pinRequested, std::function<void()> stitchRequested,
                        std::function<void()> splitRequested,
                        std::function<void()> imageEditingRequested,
+                       std::function<void()> imageCompressionRequested,
                        std::function<void()> copyImagePathRequested,
                        std::function<void()> revealRequested,
                        std::function<void(QWidget*)> deleteRequested, QWidget* parent = nullptr)
@@ -587,6 +588,7 @@ class HistoryEntryWidget final : public HistoryEntryCard {
           m_pinRequested(std::move(pinRequested)), m_stitchRequested(std::move(stitchRequested)),
           m_splitRequested(std::move(splitRequested)),
           m_imageEditingRequested(std::move(imageEditingRequested)),
+          m_imageCompressionRequested(std::move(imageCompressionRequested)),
           m_copyImagePathRequested(std::move(copyImagePathRequested)),
           m_revealRequested(std::move(revealRequested)),
           m_deleteRequested(std::move(deleteRequested)) {
@@ -855,6 +857,10 @@ class HistoryEntryWidget final : public HistoryEntryCard {
             m_imageEditingAction->setText(HistoryEntryWidget::tr("Image editing"));
             m_imageEditingAction->setToolTip(m_imageEditingAction->text());
         }
+        if (m_imageCompressionAction != nullptr) {
+            m_imageCompressionAction->setText(HistoryEntryWidget::tr("Image compression"));
+            m_imageCompressionAction->setToolTip(m_imageCompressionAction->text());
+        }
         if (m_splitAction != nullptr) {
             const QString label = QCoreApplication::translate(
                 "ImageSplitWindow", QT_TRANSLATE_NOOP("ImageSplitWindow", "Image splitting"));
@@ -889,6 +895,17 @@ class HistoryEntryWidget final : public HistoryEntryCard {
         connect(m_imageEditingAction, &QAction::triggered, this, [this] {
             if (m_imageEditingRequested)
                 m_imageEditingRequested();
+            m_imageCompressionRequested();
+        });
+        m_imageCompressionAction = menu->addItem(HistoryEntryWidget::tr("Image compression"),
+                                                 custom_outlined_icons::ImageCompression());
+        m_imageCompressionAction->setObjectName(
+            QStringLiteral("screenshotHistoryEntryImageCompression"));
+        m_imageCompressionAction->setEnabled(m_record.result.has_value());
+        connect(m_imageCompressionAction, &QAction::triggered, this, [this] {
+            if (m_imageCompressionRequested)
+                m_imageCompressionRequested();
+            m_imageCompressionRequested();
         });
         m_copyImagePathAction = menu->addItem(QString(), outlined_icons::Copy());
         m_copyImagePathAction->setObjectName(QStringLiteral("screenshotHistoryEntryCopyImagePath"));
@@ -942,7 +959,9 @@ class HistoryEntryWidget final : public HistoryEntryCard {
     std::function<void()> m_stitchRequested;
     std::function<void()> m_splitRequested;
     std::function<void()> m_imageEditingRequested;
+    std::function<void()> m_imageCompressionRequested;
     QPointer<QAction> m_imageEditingAction;
+    QPointer<QAction> m_imageCompressionAction;
     std::function<void()> m_copyImagePathRequested;
     QPointer<QAction> m_copyImagePathAction;
     std::function<void()> m_revealRequested;
@@ -1552,6 +1571,7 @@ void ScreenshotHistoryPageWidget::rebuildEntries() {
                 [this, record]() { emit stitchImagesRequested({record}); },
                 [this, record]() { emit splitRequested(record); },
                 [this, record]() { emit imageEditingRequested(record); },
+                [this, record]() { emit imageCompressionRequested(record); },
                 [this, record]() {
                     const auto resolvedAssets =
                         m_dataSource ? m_dataSource->displayAssets(record) : std::nullopt;

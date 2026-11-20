@@ -2856,6 +2856,8 @@ SettingsResetResult BuiltInSettingsBackend::resetSectionWithResults(SettingsSect
                       QStringLiteral("global_shortcuts/split_selected_images"));
         resetShortcut(GlobalShortcutAction::EditSelectedImages,
                       QStringLiteral("global_shortcuts/edit_selected_images"));
+        resetShortcut(GlobalShortcutAction::CompressSelectedImages,
+                      QStringLiteral("global_shortcuts/compress_selected_images"));
         resetShortcut(GlobalShortcutAction::TranslateSelectedText,
                       QStringLiteral("global_shortcuts/translate_selected_text"));
         resetShortcut(GlobalShortcutAction::ToggleWindowUnderCursorAlwaysOnTop,

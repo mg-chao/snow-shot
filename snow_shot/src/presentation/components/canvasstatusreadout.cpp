@@ -41,6 +41,17 @@ void CanvasStatusReadout::setMessage(Message message, qreal value, int decimals)
     refreshPresentation();
 }
 
+void CanvasStatusReadout::setScale(qreal factor, bool showOnChange) {
+    const qreal percent = factor * 100;
+    const int decimals = factor < 0.1 ? 1 : 0;
+    if (!m_customText && m_message == Message::Scale && m_decimals == decimals &&
+        qFuzzyCompare(m_value, percent))
+        return;
+    setMessage(Message::Scale, percent, decimals);
+    if (showOnChange)
+        showTransient();
+}
+
 CanvasStatusReadout::Message CanvasStatusReadout::message() const {
     return m_message;
 }

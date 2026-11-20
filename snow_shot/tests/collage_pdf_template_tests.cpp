@@ -2,6 +2,7 @@
 #include "snow_shot/presentation/components/collagepdftemplatewidget.h"
 #include "snow_shot/presentation/components/collageeditorwidget.h"
 #include "snow_shot/presentation/components/collagepdfpagegrid.h"
+#include "snow_shot/presentation/canvasstatusreadout.h"
 #include "snow_shot/presentation/components/imagedropsurface.h"
 #include "snow_shot/presentation/components/overlaycontrolbutton.h"
 #include "snow_shot/presentation/screenshotexportcoordinator.h"
@@ -25,7 +26,9 @@
 #include <QPalette>
 #include <QScrollBar>
 #include <QThread>
+#include <QTimer>
 #include <QTranslator>
+#include <QWheelEvent>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -617,6 +620,31 @@ void centeredResizeMoveResetAndCancellation() {
     saveFixture(widget, "centered-fit-after-reset.png");
 }
 
+void templateZoomReadoutFollowsViewport() {
+    ImageStitchingDocument document;
+    configure(document);
+    document.append(image({400, 200}, Qt::red), QStringLiteral("first"));
+    ImageStitchingPdfTemplateCanvas canvas(&document);
+    show(canvas);
+    auto* hint = canvas.findChild<CanvasStatusReadout*>(QStringLiteral("collagePdfTemplateZoom"));
+    require(hint && hint->isHidden(),
+            "initial PDF template fitting keeps the scale readout hidden");
+    const QPointF center = canvas.rect().center();
+    QWheelEvent event(center, canvas.mapToGlobal(center), {}, QPoint(0, 120), Qt::NoButton,
+                      Qt::NoModifier, Qt::NoScrollPhase, false);
+    QApplication::sendEvent(&canvas, &event);
+    require(hint->isVisible() && hint->text() == QStringLiteral("Scale: 115%") && hint->x() == 8 &&
+                canvas.height() - hint->geometry().bottom() - 1 == 8 &&
+                hint->dismissalTimer()->isActive(),
+            "the PDF template displays a transient scale relative to the fitted page");
+    button(canvas, "collagePdfTemplateFitToCanvas")->click();
+    require(hint->isVisible() && hint->text() == QStringLiteral("Scale: 100%"),
+            "the PDF template fit action displays its restored zoom");
+    canvas.hide();
+    require(hint->isHidden() && !hint->dismissalTimer()->isActive(),
+            "leaving the PDF template dismisses the zoom readout");
+}
+
 void automaticContainmentAcrossTemplatesAndLayoutChanges() {
     ImageStitchingDocument document;
     configure(document);
@@ -976,6 +1004,7 @@ int main(int argc, char** argv) {
         paginationThumbnailsAndSwaps();
         thumbnailReplacementAndDeletion();
         centeredResizeMoveResetAndCancellation();
+        templateZoomReadoutFollowsViewport();
         automaticContainmentAcrossTemplatesAndLayoutChanges();
         clippingBlankCellsAndDetails();
         longThinImagesPrepareVisibleSourceDetail();

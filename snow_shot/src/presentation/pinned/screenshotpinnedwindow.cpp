@@ -3651,6 +3651,7 @@ void ScreenshotPinnedWindow::resetContextMenuActions() {
     m_loadContentAction = nullptr;
     m_splitImageAction = nullptr;
     m_imageEditingAction = nullptr;
+    m_imageCompressionAction = nullptr;
     m_opacityActions = nullptr;
     m_scaleActions = nullptr;
     m_scaleMenuAction = nullptr;
@@ -3962,6 +3963,22 @@ void ScreenshotPinnedWindow::createContextMenu() {
                     return;
                 emit imageEditingRequested(m_persistenceId);
             });
+            m_imageCompressionAction = processMenu->addItem(
+                tr("Image compression"), custom_outlined_icons::ImageCompression());
+            setActionTranslationSource(m_imageCompressionAction, "Image compression");
+            m_imageCompressionAction->setObjectName(
+                QStringLiteral("screenshotPinnedImageCompressionAction"));
+            m_imageCompressionAction->setProperty("liveCommand",
+                                                  QStringLiteral("image_compression"));
+            connect(m_imageCompressionAction, &QAction::triggered, this, [this] {
+                const QPointer<ScreenshotPinnedWindow> receiver(this);
+                requestRenderedImageSnapshot(
+                    [receiver](ScreenshotPinnedImageSnapshot snapshot) {
+                        if (receiver && !receiver->m_closing)
+                            emit receiver->imageCompressionRequested(snapshot);
+                    },
+                    ScreenshotPinnedRenderMode::SourceResolution);
+            });
             refreshContextMenu();
             refreshMenuShortcutDisplays();
         },
@@ -4259,6 +4276,15 @@ void ScreenshotPinnedWindow::refreshContextMenu() {
         m_imageEditingAction->setEnabled(liveCommandAllowed(QStringLiteral("image_editing")) &&
                                          m_firstContentFramePublished && !m_closing &&
                                          (!m_transformedImage.isNull() || m_imageSource.isValid()));
+    }
+    if (m_imageCompressionAction != nullptr) {
+        const QString label = tr("Image compression");
+        m_imageCompressionAction->setText(label);
+        m_imageCompressionAction->setToolTip(label);
+        m_imageCompressionAction->setEnabled(
+            liveCommandAllowed(QStringLiteral("image_compression")) &&
+            m_firstContentFramePublished && !m_closing &&
+            (!m_transformedImage.isNull() || m_imageSource.isValid()));
     }
     if (m_groupMenu && m_groupMenu->isPopupVisible() && !m_groupMenu->isRetiring())
         rebuildGroupMenu();

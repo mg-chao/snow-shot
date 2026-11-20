@@ -36,6 +36,7 @@ struct PreparedPixels {
 struct Encoded {
     QTemporaryDir directory;
     QString path;
+    qint64 fileBytes = 0;
     ScreenshotSaveExportOptions options;
     std::shared_ptr<PreparedPixels> pixels;
     snow_shot::image_codec::EncodeResult codecResult;

@@ -7,6 +7,7 @@
 #include "snow_draw_engine_qt/snow_canvas_overlay_style.h"
 #include "antd_icons.h"
 #include "snow_shot/presentation/screenshotwheelinput.h"
+#include "snow_shot/presentation/styles/outputdescriptionstyle.h"
 #include "snow_shot/presentation/styles/thememanager.h"
 #include "snow_shot/presentation/styles/sequencenumberbadgestyle.h"
 #include "snow_shot/presentation/windowshortcutmanager.h"
@@ -1172,11 +1173,8 @@ struct ImageSplitEditorWidget::Impl {
     }
     void theme() {
         const auto theme = adqt::theme::ThemeManager::instance().resolveTheme(owner);
-        QPalette palette = owner->palette();
-        palette.setColor(QPalette::WindowText, theme.colorTextSecondary);
-        palette.setColor(QPalette::Disabled, QPalette::WindowText, theme.colorTextDisabled);
         for (auto* label : {dimensions, total})
-            label->setPalette(palette);
+            styles::applyOutputDescriptionStyle(*label, form->font(), theme);
         emptyState->refreshTheme();
         dropHint->refreshTheme();
         owner->update();
@@ -1312,6 +1310,7 @@ ImageSplitEditorWidget::ImageSplitEditorWidget(ImageSplitDocument* document, QWi
     formLayout->setAlignment(Qt::AlignTop);
     d.description = new QWidget(this);
     d.description->setObjectName(QStringLiteral("imageSplitOutputDescription"));
+    d.description->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     d.description->hide();
     auto* descriptionLayout = new QHBoxLayout(d.description);
     descriptionLayout->setContentsMargins(0, 0, 0, 0);
@@ -1320,8 +1319,11 @@ ImageSplitEditorWidget::ImageSplitEditorWidget(ImageSplitDocument* document, QWi
     d.dimensions->setObjectName(QStringLiteral("imageSplitDimensions"));
     d.total = new QLabel(d.description);
     d.total->setObjectName(QStringLiteral("imageSplitOutputCount"));
-    descriptionLayout->addWidget(d.dimensions);
-    descriptionLayout->addWidget(d.total);
+    for (auto* label : {d.dimensions, d.total}) {
+        label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        descriptionLayout->addWidget(label, 0, Qt::AlignVCenter);
+    }
     descriptionLayout->addStretch(1);
     d.dropHint = new ImageDropSurface(true, this);
     d.dropHint->setObjectName(QStringLiteral("imageSplitDropHint"));
