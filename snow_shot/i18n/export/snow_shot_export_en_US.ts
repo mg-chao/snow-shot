@@ -28,8 +28,8 @@
             <translation>Could not read the selected image files. Please try again</translation>
         </message>
         <message>
-            <source>Drag an image file here, or choose Add image</source>
-            <translation>Drag an image file here, or choose Add image</translation>
+            <source>Drag an image file here, choose Add image, or press %1 to paste</source>
+            <translation>Drag an image file here, choose Add image, or press %1 to paste</translation>
         </message>
         <message>
             <source>Drop an image to compress</source>

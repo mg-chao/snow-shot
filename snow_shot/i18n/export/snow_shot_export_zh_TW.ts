@@ -28,8 +28,8 @@
             <translation>無法讀取選取的影像檔案，請重試</translation>
         </message>
         <message>
-            <source>Drag an image file here, or choose Add image</source>
-            <translation>將影像檔案拖曳至此處，或選擇「新增影像」</translation>
+            <source>Drag an image file here, choose Add image, or press %1 to paste</source>
+            <translation>將影像檔案拖曳至此處、選擇「新增影像」，或按 %1 貼上</translation>
         </message>
         <message>
             <source>Drop an image to compress</source>

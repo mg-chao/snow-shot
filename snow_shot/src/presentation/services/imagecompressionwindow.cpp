@@ -8,6 +8,7 @@
 #include "snow_shot/presentation/components/icons/snowshoticons.h"
 #include "snow_shot/presentation/components/imagedropsurface.h"
 #include "snow_shot/presentation/screenshotsavepreviewcanvas.h"
+#include "snow_shot/presentation/windowshortcutmanager.h"
 #include "snow_shot/storage/applicationstorage.h"
 #include "snow_shot/storage/capturehistoryrepository.h"
 #include "snow_shot/storage/clipboardfilecache.h"
@@ -22,6 +23,7 @@
 #include <QClipboard>
 #include <QDragEnterEvent>
 #include <QFileDialog>
+#include <QKeySequence>
 #include <QMimeData>
 #include <QPointer>
 #include <QScreen>
@@ -186,6 +188,25 @@ class ImageCompressionWindow final : public ImageExportEditor {
         connect(m_save, &AdButton::clicked, this, [this] { chooseFile(true); });
         connect(m_copy, &AdButton::clicked, this, [this] { beginExport({}); });
         connect(m_choose, &AdButton::clicked, this, [this] { chooseFile(false); });
+        WindowShortcutManager::Binding pasteBinding;
+        pasteBinding.id = QStringLiteral("imageCompressionPaste");
+        for (const auto& sequence : QKeySequence::keyBindings(QKeySequence::Paste)) {
+            if (sequence.count() == 1)
+                pasteBinding.keyCombinations.append(sequence[0]);
+        }
+        pasteBinding.priority = WindowShortcutManager::StandardPriority::WindowCommand;
+        pasteBinding.canActivate = [this](const auto& context) {
+            const auto* receiver = qobject_cast<QWidget*>(context.receiver);
+            return editable() && m_modal->isOpen() && !m_picker && !m_overwrite && receiver &&
+                   receiver->window() == window() &&
+                   !WindowShortcutManager::focusAcceptsTextInput(context.focusWidget) &&
+                   !WindowShortcutManager::inputTargetsPopup(context);
+        };
+        pasteBinding.activate = [this](const auto&) {
+            paste();
+            return true;
+        };
+        static_cast<void>(m_shortcuts.addBinding(this, std::move(pasteBinding)));
         connect(&adqt::theme::ThemeManager::instance(), &adqt::theme::ThemeManager::themeChanged,
                 this, [this] {
                     m_empty->refreshTheme();
@@ -194,6 +215,7 @@ class ImageCompressionWindow final : public ImageExportEditor {
         retranslate();
         updatePresentation();
         m_modal->open();
+        m_shortcuts.addScopeWindow(window());
     }
     ~ImageCompressionWindow() override {
         stop();
@@ -339,6 +361,37 @@ class ImageCompressionWindow final : public ImageExportEditor {
             retranslate();
         QWidget::changeEvent(event);
     }
+    void paste() {
+        const auto paths = Reader::localImageFilePaths(QApplication::clipboard()->mimeData());
+        if (paths.isEmpty())
+            openInlineImage();
+        else
+            openFile(paths.first());
+    }
+    void openInlineImage(const QMimeData* dropMime = nullptr) {
+        auto budget = std::make_shared<ImageStitchingImportReservation>();
+        bool rejected = false;
+        const auto reserve = [&](qint64 bytes) {
+            rejected = rejected || !budget->resize(bytes);
+            return !rejected;
+        };
+        auto snapshot =
+            dropMime
+                ? Reader::snapshotImageMimeData(dropMime, devicePixelRatioF(), reserve)
+                : Reader::snapshotImage(QApplication::clipboard(), devicePixelRatioF(), reserve);
+        if (!snapshot) {
+            if (dropMime || rejected)
+                sourceFailed(tr("The image could not be loaded"));
+            return;
+        }
+        present(ScreenshotExportSource::fromProducer(
+            [snapshot = std::move(*snapshot),
+             budget = std::move(budget)](const auto& cancellation) {
+                return readImageImportClipboard(
+                    snapshot, [&] { return cancellation.isCancellationRequested(); },
+                    [budget](qint64 bytes) { return budget->resize(bytes); });
+            }));
+    }
     bool eventFilter(QObject* watched, QEvent* event) override {
         if (watched != m_surface)
             return QWidget::eventFilter(watched, event);
@@ -369,22 +422,10 @@ class ImageCompressionWindow final : public ImageExportEditor {
             m_drop->show();
         } else {
             m_drop->hide();
-            if (!paths.isEmpty())
+            if (paths.isEmpty())
+                openInlineImage(mime);
+            else
                 openFile(paths.first());
-            else {
-                auto budget = std::make_shared<ImageStitchingImportReservation>();
-                const auto reserve = [budget](qint64 n) { return budget->resize(n); };
-                auto snapshot = Reader::snapshotImageMimeData(mime, devicePixelRatioF(), reserve);
-                if (!snapshot)
-                    sourceFailed(tr("The image could not be loaded"));
-                else
-                    present(ScreenshotExportSource::fromProducer(
-                        [snapshot = std::move(*snapshot), reserve](const auto& cancellation) {
-                            return readImageImportClipboard(
-                                snapshot, [&] { return cancellation.isCancellationRequested(); },
-                                reserve);
-                        }));
-            }
         }
         return true;
     }
@@ -395,9 +436,13 @@ class ImageCompressionWindow final : public ImageExportEditor {
         const bool hasImage = m_source.rows.isValid();
         m_form->setEnabled(editable() && hasImage);
         m_surface->setCurrentWidget(hasImage ? static_cast<QWidget*>(m_preview) : m_empty);
+        const auto pasteShortcut =
+            QKeySequence(QKeySequence::Paste).toString(QKeySequence::NativeText);
         m_empty->description->setText(m_resolving || m_pendingArtifact
                                           ? tr("Loading image…")
-                                          : tr("Drag an image file here, or choose Add image"));
+                                          : tr("Drag an image file here, choose Add image, or "
+                                               "press %1 to paste")
+                                                .arg(pasteShortcut));
         m_empty->setAccessibleDescription(m_empty->description->text());
         m_drop->title->setText(hasImage ? tr("Drop one image to replace the current image")
                                         : tr("Drop an image to compress"));
@@ -625,6 +670,7 @@ class ImageCompressionWindow final : public ImageExportEditor {
     bool m_replaceExisting = false;
     ScreenshotExportJobHandle m_exportJob;
     ScreenshotExportJobHandle m_selectionJob;
+    WindowShortcutManager m_shortcuts{this};
     ScreenshotClipboardCommitScope m_clipboard;
     ScreenshotClipboardService::PublicationId m_publication = 0;
 };
