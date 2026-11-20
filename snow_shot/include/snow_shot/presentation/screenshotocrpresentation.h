@@ -23,6 +23,7 @@ struct ScreenshotOcrSourceTextMetrics {
     qreal spacingEm = 0; // Extra letter spacing for a row, cell advance for a vertical column.
     qreal inkAscentEm = 0;
     qreal inkDescentEm = 0;
+    qreal inkThicknessEm = 0; // Painted row height or column width.
     bool operator==(const ScreenshotOcrSourceTextMetrics&) const = default;
 };
 

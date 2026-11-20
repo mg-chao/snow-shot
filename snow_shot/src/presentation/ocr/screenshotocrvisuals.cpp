@@ -795,6 +795,21 @@ QPolygon imagePolygonForQuad(const QPolygonF& quad, const QRectF& canvasRect,
     return clippedPolygon(polygon, pixelSize);
 }
 
+QRegion imageEraseRegion(const ScreenshotOcrLine& line, const QRectF& canvasRect,
+                         const QSize& pixelSize, bool solidFill) {
+    const bool hasSourceRows = line.smartMergeTranslation && !line.sourceLineQuads.isEmpty();
+    const QPolygon block =
+        imagePolygonForQuad(line.quad, canvasRect, pixelSize, !hasSourceRows, solidFill);
+    QRegion region(block);
+    // Fill the paragraph interior, including gaps. Only the original OCR rows need the
+    // extra source-pixel margin for glyphs protruding beyond their detection boxes.
+    if (hasSourceRows && !block.isEmpty()) {
+        for (const auto& row : line.sourceLineQuads)
+            region += QRegion(imagePolygonForQuad(row, canvasRect, pixelSize, true, solidFill));
+    }
+    return region;
+}
+
 } // namespace
 
 void prepareScreenshotOcrTextColors(ScreenshotOcrPresentation& presentation, const QImage& source,
@@ -1007,12 +1022,10 @@ QRegion screenshotOcrFilterRegion(const ScreenshotOcrPresentation& presentation,
     }
     QRegion region;
     for (const ScreenshotOcrLine& line : presentation.lines) {
-        // The displayed block is authoritative after layout processing, including its gaps.
-        if (line.quad.size() >= 3) {
-            region += QRegion(imagePolygonForQuad(
-                line.quad, normalized, pixelSize, !line.smartMergeTranslation,
-                presentation.solidBackgroundFill || line.smartMergeTranslation));
-        }
+        if (line.quad.size() >= 3)
+            region +=
+                imageEraseRegion(line, normalized, pixelSize,
+                                 presentation.solidBackgroundFill || line.smartMergeTranslation);
     }
     return region.intersected(QRect(QPoint(), pixelSize));
 }
@@ -1070,13 +1083,9 @@ QImage renderScreenshotOcrFilteredImage(const QImage& source, const QRectF& canv
             continue;
         }
         const bool solidFill = presentation.solidBackgroundFill || line.smartMergeTranslation;
-        const QPolygon polygon = imagePolygonForQuad(line.quad, normalized, source.size(),
-                                                     !line.smartMergeTranslation, solidFill);
-        if (polygon.isEmpty()) {
-            continue;
-        }
         if (solidFill || line.backgroundFillColor.isValid()) {
-            QRegion region = QRegion(polygon).intersected(imageRect);
+            QRegion region =
+                imageEraseRegion(line, normalized, source.size(), solidFill).intersected(imageRect);
             if (!region.isEmpty()) {
                 crop = crop.united(region.boundingRect());
                 QColor color = line.backgroundFillColor.isValid() ? line.backgroundFillColor
@@ -1090,6 +1099,9 @@ QImage renderScreenshotOcrFilteredImage(const QImage& source, const QRectF& canv
         // Quads whose support-expanded bounds never meet are filtered
         // independently; merging only spatially close quads keeps each blur
         // pass proportional to the area it actually covers.
+        const QPolygon polygon = imagePolygonForQuad(line.quad, normalized, source.size(), true);
+        if (polygon.isEmpty())
+            continue;
         Cluster next{QRegion(polygon),
                      polygon.boundingRect().adjusted(-support, -support, support, support)};
         for (std::size_t index = 0; index < clusters.size();) {

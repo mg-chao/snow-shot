@@ -29,6 +29,9 @@ class ScreenshotOcrTextLayout final {
     struct SmartMergeLayout {
         QSizeF box;
         qreal inkCap;
+        std::optional<qreal> sourceFontSize;
+        QVector<qreal> sourceCenters;
+        qreal sourceAdvance;
         Qt::Alignment horizontalAlignment;
         bool operator==(const SmartMergeLayout&) const = default;
     };
@@ -129,7 +132,7 @@ configureScreenshotOcrTextLayout(ScreenshotOcrTextLayout& layout, const Screensh
                                  const QColor& textColor, const ScreenshotOcrTextRange& selection,
                                  QTransform* textToOutput, qreal* fittedFontPixelSize = nullptr);
 
-// Capture Original font metrics or prepare a Smart Merge overlay for geometry-based fitting.
+// Capture rendered OCR metrics before replacing the source text with its translation.
 void prepareScreenshotOcrTranslationLayout(QVector<ScreenshotOcrLine>& translation,
                                            const QVector<ScreenshotOcrLine>& source,
                                            const QVector<QVector<int>>& sourceIndices,
