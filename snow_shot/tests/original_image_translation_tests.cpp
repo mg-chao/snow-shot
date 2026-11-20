@@ -575,9 +575,11 @@ void smartLayoutStreamsParagraphsAndSwitchesModes() {
     const auto paragraphQuad = session.displayed->lines[0].quad;
     const auto sourceQuads = session.displayed->lines[0].sourceLineQuads;
     require(session.displayed->lines[0].smartMergeTranslation &&
-                !session.displayed->lines[0].fontSizeCapRatio &&
+                session.displayed->lines[0].fontSizeCapRatio &&
+                session.displayed->lines[0].sourceTextMetrics &&
+                session.displayed->lines[0].sourceTextMetrics->inkThicknessEm > 0 &&
                 !session.source->lines[0].smartMergeTranslation,
-            "only the Smart Merge overlay uses paragraph box fitting");
+            "the Smart Merge overlay retains the rendered OCR metrics for streaming");
     server.delta(0, QStringLiteral("partial paragraph"));
     waitUntil([&]() { return session.textUpdates == 1; },
               "merged paragraph streams into its block");
@@ -1701,8 +1703,10 @@ void runPinnedOriginalImageTranslationTests() {
                         actual.direction == expected.direction,
                     "pin persistence must retain paragraph geometry and rendering metadata");
             require(actual.smartMergeTranslation && expected.smartMergeTranslation &&
+                        actual.sourceTextMetrics == expected.sourceTextMetrics &&
+                        actual.fontSizeCapRatio == expected.fontSizeCapRatio &&
                         std::abs(renderedFontSize(actual) - renderedFontSize(expected)) < 0.0001,
-                    "pin restoration reconstructs the Smart Merge fit from saved OCR");
+                    "pin restoration reconstructs the source metrics and Smart Merge fit");
             auto* content = window->findChild<ScreenshotRecognitionWindow*>();
             auto* layer =
                 content == nullptr

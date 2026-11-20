@@ -193,7 +193,6 @@ void streamingTypeMatchesTheRenderedOcr() {
                     "completion restores the fitted layout of the same translation");
         }
     }
-
 }
 
 void cappedSnapshotsMatchDirectPaintingAtEveryResolution() {
@@ -236,7 +235,8 @@ void smartMergeExportSamplesTheSourceBeforeTheLiveFillArrives() {
     const QColor background(232, 220, 180);
     snapshot.image.fill(background);
     const QColor outside(18, 36, 55);
-    snapshot.image.setPixelColor(19, 40, outside);
+    snapshot.image.setPixelColor(19, 55, outside);
+    snapshot.image.setPixelColor(85, 18, ink);
     const auto canvasQuad = [&](const QRectF& pixels) {
         const auto box = pixels.translated(snapshot.canvasRect.topLeft());
         return QPolygonF{box.topLeft(), box.topRight(), box.bottomRight(), box.bottomLeft()};
@@ -270,8 +270,9 @@ void smartMergeExportSamplesTheSourceBeforeTheLiveFillArrives() {
         screenshotOcrFilteredImageCanvasRect(snapshot.canvasRect, snapshot.image.size(), pixels);
     const auto exported = renderScreenshotRecognitionImage(snapshot);
     require(exported == renderScreenshotRecognitionImage(prepared) &&
-                exported.pixelColor(25, 23) == background && exported.pixelColor(19, 40) == outside,
-            "early export matches the prepared overlay and fills only the paragraph");
+                exported.pixelColor(25, 23) == background &&
+                exported.pixelColor(85, 18) == background && exported.pixelColor(19, 55) == outside,
+            "early and prepared exports erase protruding source ink and preserve adjacent content");
     bool foundInk = false;
     for (int y = 20; y < 100 && !foundInk; ++y)
         for (int x = 20; x < 280 && !foundInk; ++x)

@@ -147,6 +147,9 @@ void smartMergeFillsTheWholeParagraphWithTheSourceColor() {
         QPainter painter(&source);
         painter.fillRect(36, 29, 65, 3, Qt::red);
         painter.fillRect(30, 63, 85, 3, Qt::red);
+        painter.fillRect(45, 23, 13, 2, Qt::red);
+        painter.fillRect(85, 75, 8, 2, Qt::red);
+        painter.fillRect(29, 50, 1, 1, Qt::blue);
     }
     ScreenshotOcrPresentation presentation;
     presentation.lines = {box(30, 25, 100, 50)};
@@ -160,16 +163,60 @@ void smartMergeFillsTheWholeParagraphWithTheSourceColor() {
     QRect pixels;
     const auto fill = renderScreenshotOcrFilteredImage(source, source.rect(), presentation,
                                                        Qt::white, 1, &pixels);
-    require(region == QRegion(QRect(30, 25, 100, 50)) && pixels == region.boundingRect() &&
-                !fill.isNull(),
-            "Smart Merge fills the paragraph bounds, including the gaps between source rows");
-    for (const auto point : {QPoint(55, 30), QPoint(55, 50), QPoint(55, 64)})
-        require(fill.pixelColor(point - pixels.topLeft()) == background,
-                "paragraph ink and inter-row gaps receive the representative solid color");
+    ScreenshotOcrPresentation original;
+    original.lines = {box(36, 25, 70, 14), box(30, 60, 100, 15)};
+    const auto sourceRegion = screenshotOcrFilterRegion(original, source.rect(), source.size());
+    require(region == QRegion(QRect(30, 25, 100, 50)).united(sourceRegion) &&
+                pixels == region.boundingRect() && !fill.isNull(),
+            "the paragraph fill includes the exact erase margins of its original OCR rows");
+    QImage result = source.copy();
+    QPainter(&result).drawImage(pixels.topLeft(), fill);
+    for (const auto point :
+         {QPoint(55, 30), QPoint(55, 50), QPoint(55, 64), QPoint(45, 23), QPoint(85, 76)})
+        require(result.pixelColor(point) == background,
+                "the solid fill covers inter-row gaps and ink protruding beyond the paragraph");
+    require(result.pixelColor(29, 50) == QColor(Qt::blue),
+            "a neighboring pixel beside the inter-row gap stays intact");
 
     line.smartMergeTranslation = false;
     prepareScreenshotOcrFillColors(presentation, source, source.rect(), false);
     require(!line.backgroundFillColor.isValid(), "Original restores the general OCR fill policy");
+}
+
+void smartMergeRetainsOcrEraseMarginsAcrossTransforms() {
+    const QSize pixels(180, 120);
+    const QRectF canvas(-80, 25, pixels.width() / 1.5, pixels.height() / 2.0);
+    QTransform pixelsToCanvas;
+    pixelsToCanvas.translate(canvas.x(), canvas.y()).scale(1 / 1.5, 0.5);
+    for (const int angle : {0, 27, 90}) {
+        QTransform rotate;
+        rotate.translate(41, 6).rotate(angle);
+        const auto toCanvas = rotate * pixelsToCanvas;
+        ScreenshotOcrPresentation original;
+        original.solidBackgroundFill = true;
+        original.lines = {box(-12, 0, 66, 13), box(0, 32, 84, 14)};
+        for (auto& row : original.lines)
+            row.quad = toCanvas.map(row.quad);
+        const auto ocr = screenshotOcrFilterRegion(original, canvas, pixels);
+
+        ScreenshotOcrPresentation translated;
+        auto paragraph = box(-12, 0, 96, 46);
+        paragraph.quad = toCanvas.map(paragraph.quad);
+        paragraph.sourceLineQuads = {original.lines[0].quad, original.lines[1].quad};
+        paragraph.smartMergeTranslation = true;
+        translated.lines = {paragraph};
+        const auto merged = screenshotOcrFilterRegion(translated, canvas, pixels);
+        require(!ocr.isEmpty() && ocr.subtracted(merged).isEmpty() &&
+                    QRect(QPoint(), pixels).contains(merged.boundingRect()),
+                "rotated and edge-clipped paragraphs cover every original source-pixel margin");
+
+        original.lines.resize(1);
+        translated.lines = original.lines;
+        translated.lines[0].smartMergeTranslation = true;
+        require(screenshotOcrFilterRegion(translated, canvas, pixels) ==
+                    screenshotOcrFilterRegion(original, canvas, pixels),
+                "a translation with no saved source rows uses the OCR margin on its own quad");
+    }
 }
 
 void flatPanelsSurviveTextNoiseAndGeometry() {
@@ -520,6 +567,7 @@ int main(int argc, char** argv) {
     backgroundFillNeverBlurs();
     mixedRegionsRetainTheBlurFallback();
     smartMergeFillsTheWholeParagraphWithTheSourceColor();
+    smartMergeRetainsOcrEraseMarginsAcrossTransforms();
     flatPanelsSurviveTextNoiseAndGeometry();
     complexBackgroundsStillChooseSolidColors();
     clippingScalingAndModeChanges();

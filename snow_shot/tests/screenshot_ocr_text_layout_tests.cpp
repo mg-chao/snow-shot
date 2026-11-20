@@ -2,6 +2,7 @@
 
 #include <QGuiApplication>
 #include <QFontDatabase>
+#include <QFontMetricsF>
 #include <QImage>
 #include <QPainter>
 
@@ -74,8 +75,9 @@ void smartMergeReflowsMoreRowsAtTheAverageInkHeight() {
                     std::abs(rows[i].left() - box.left()) <= 1,
                 "every row, including the former indent, uses the full width at the ink cap");
         if (i > 0)
-            require(std::abs(rows[i].top() - rows[i - 1].bottom() - 1 - size * 0.2) < 2,
-                    "each visible ink gap scales with the paragraph font");
+            require(std::abs(rows[i].top() - rows[i - 1].top() - (box.height() - 20) / 4) < 2 &&
+                        rows[i].top() - rows[i - 1].bottom() > size * 0.2,
+                    "extra rows tighten the source advance just enough to fit at the target size");
     }
     require(std::abs((rows.first().top() + rows.last().bottom() + 1) / 2.0 - box.center().y()) < 1,
             "the paragraph is vertically centered");
@@ -145,10 +147,75 @@ void smartMergeKeepsAlignmentAndBlankRows() {
         line.text.append(u'\u2029');
         require(configure(), "trailing empty row must configure");
         const auto trailingBlank = paintedRows(paint(layout, transform));
-        require(trailingBlank.size() == 2 && withoutBlank.size() == 2 &&
-                    trailingBlank.first().top() < withoutBlank.first().top() - 6,
-                "the final explicit break reserves a trailing blank row");
+        require(trailingBlank.size() == 2 && trailingBlank == withoutBlank &&
+                    transform.mapRect(layout.boundingRect()).bottom() >
+                        trailingBlank.last().bottom() + 10,
+                "a trailing blank row reserves space after the anchored visible rows");
     }
+}
+
+void smartMergeMatchesPaintedSourceTypeAcrossScripts() {
+    auto font = QGuiApplication::font();
+    font.setPixelSize(22);
+    const QString original = QStringLiteral("Image compression and layout Agyp");
+    const qreal width = QFontMetricsF(font).horizontalAdvance(original);
+    QVector<ScreenshotOcrLine> source;
+    ScreenshotOcrLine paragraph;
+    paragraph.quad = quad(QRectF(20, 18, width, 116));
+    paragraph.paragraph = true;
+    ScreenshotOcrTextLayout layout;
+    QTransform transform;
+    qreal sourceSize = 0;
+    QVector<QRect> reference;
+    for (const int top : {18, 53, 102}) {
+        ScreenshotOcrLine row;
+        row.quad = quad(QRectF(20, top, width, 32));
+        row.text = original;
+        require(configureScreenshotOcrTextLayout(layout, row, {}, font, Qt::black, {}, &transform,
+                                                 &sourceSize),
+                "render the OCR reference row");
+        reference += paintedRows(paint(layout, transform));
+        paragraph.sourceLineQuads.push_back(row.quad);
+        source.push_back(row);
+    }
+    require(reference.size() == 3 && reference.front().height() < 27,
+            "width-limited source ink must be visibly smaller than its detector boxes");
+    if (reference.size() != 3)
+        return;
+
+    QVector<ScreenshotOcrLine> overlay{paragraph};
+    prepareScreenshotOcrTranslationLayout(overlay, source, {{0, 1, 2}}, font, true);
+    auto& line = overlay.front();
+    const QString mixed = QStringLiteral("图像压缩 8K");
+    line.text = QStringList{mixed, mixed, mixed}.join(u'\n');
+    qreal size = 0;
+    const auto render = [&] {
+        require(configureScreenshotOcrTextLayout(layout, line, {}, font, Qt::black, {}, &transform,
+                                                 &size),
+                "render the source-matched translation");
+        return paintedRows(paint(layout, transform));
+    };
+    const auto rows = render();
+    require(rows.size() == reference.size() && size <= sourceSize + 0.01,
+            "fitting translated rows retain the OCR font cap");
+    if (rows.size() != reference.size())
+        return;
+    for (int i = 0; i < rows.size(); ++i) {
+        require(std::abs(rows[i].center().y() - reference[i].center().y()) <= 1 &&
+                    std::abs(rows[i].height() - reference[i].height()) <= 2,
+                "mixed-script ink matches the painted source height and irregular row positions");
+    }
+    const qreal fittingSize = size;
+    line.text = mixed;
+    const auto shortRow = render();
+    require(shortRow.size() == 1 && std::abs(shortRow.first().top() - rows.first().top()) <= 1 &&
+                std::abs(size - fittingSize) < 0.01,
+            "a shorter translation starts on the same row and leaves empty space below");
+    line.text = (mixed + u'\n').repeated(7) + mixed;
+    const auto overflow = render();
+    require(overflow.size() == 8 && size < fittingSize && overflow.front().top() >= 17 &&
+                overflow.back().bottom() <= 134,
+            "overflowing translations keep every line inside the box at a smaller size");
 }
 
 void smartMergeFitsInkAtDifferentHeights() {
@@ -208,11 +275,13 @@ void smartMergeBalancesVerticalColumnsAndWhitespace() {
                 std::abs(3 * second.height() - 4 * third.height()) < 0.001,
             "eleven cells are balanced 4, 4, 3 from the right edge with equal top alignment");
     const QRectF paintedBox = transform.mapRect(first.united(second).united(third));
-    require(std::abs(paintedBox.center().x() - 100) < 0.001 &&
+    require(std::abs(transform.mapRect(first).center().x() - 164) < 0.001 &&
+                std::abs(transform.mapRect(second).center().x() - 77.5) < 0.001 &&
+                std::abs(transform.mapRect(third).left() - 20) < 0.001 &&
                 std::abs(paintedBox.top() - 20) < 0.001 &&
                 std::abs(transform.mapRect(first).width() - 20) < 0.001 &&
                 paintedBox.bottom() <= 158.001,
-            "column width reaches the mean source width with the group centered and contained");
+            "columns retain source centers, clamping the leftmost ink inside the paragraph");
     require(columns[1].range.start == 4 && columns[1].range.end == 13 &&
                 layout.rangeFragments({5, 6}).size() == 1 &&
                 layout.cursorPositionAt(second.topLeft() + QPointF(second.width() / 2, 0)) == 4,
@@ -221,6 +290,42 @@ void smartMergeBalancesVerticalColumnsAndWhitespace() {
     line.text = QStringLiteral("HHHHH HHHHH");
     require(configure() && paint(layout, transform) == withWhitespace,
             "vertical whitespace collapses to one ordinary blank cell");
+    line.text = QStringLiteral("HH");
+    require(configure(), "a short vertical translation must configure");
+    const auto shortColumn = layout.rangeFragments({0, 2});
+    require(shortColumn.size() == 1 &&
+                std::abs(transform.mapRect(rectFor(shortColumn.first())).center().x() - 164) <
+                    0.001,
+            "a short vertical translation begins in the rightmost source column");
+}
+
+void smartMergeUsesPaintedVerticalSourceWidth() {
+    ScreenshotOcrLine original;
+    original.direction = ScreenshotOcrTextDirection::Vertical;
+    original.text = QStringLiteral("HHHHHHHH");
+    original.quad = quad(QRectF(20, 16, 44, 155));
+    const auto font = QGuiApplication::font();
+    ScreenshotOcrTextLayout layout;
+    QTransform transform;
+    qreal size = 0;
+    const auto inkWidth = [&](const ScreenshotOcrLine& line) {
+        require(configureScreenshotOcrTextLayout(layout, line, {}, font, Qt::black, {}, &transform,
+                                                 &size),
+                "render a vertical source or translated column");
+        QRect ink;
+        for (const auto& row : paintedRows(paint(layout, transform)))
+            ink = ink.united(row);
+        return ink.width();
+    };
+    const int sourceWidth = inkWidth(original);
+    const qreal sourceSize = size;
+    QVector<ScreenshotOcrLine> overlay{original};
+    prepareScreenshotOcrTranslationLayout(overlay, {original}, {{0}}, font, true);
+    overlay[0].text = QStringLiteral("图");
+    const int translatedWidth = inkWidth(overlay[0]);
+    require(sourceWidth > 0 && sourceWidth < 30 && translatedWidth > 0 &&
+                translatedWidth <= sourceWidth + 2 && size <= sourceSize + 0.01,
+            "a short upright translation respects the painted width of rotated source glyphs");
 }
 
 void sourceTextFillsWideQuadsAtFullHeight() {
@@ -601,8 +706,10 @@ int main(int argc, char** argv) {
     translationKeepsHardBreaksAndCompactsOverflowingRows();
     smartMergeReflowsMoreRowsAtTheAverageInkHeight();
     smartMergeKeepsAlignmentAndBlankRows();
+    smartMergeMatchesPaintedSourceTypeAcrossScripts();
     smartMergeFitsInkAtDifferentHeights();
     smartMergeBalancesVerticalColumnsAndWhitespace();
+    smartMergeUsesPaintedVerticalSourceWidth();
     sourceColorsPaintWithoutChangingSelectionOrShaping();
     sourceRowsKeepTheirColorsAfterSorting();
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

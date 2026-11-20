@@ -21,7 +21,7 @@ constexpr qreal kOcrTranslationMinimumSingleLinePixels = 6.0;
 constexpr qreal kOcrSourceRowMinimumScale = 0.65;
 constexpr qreal kQtTextSpacingStep = 1.0 / 64.0;
 constexpr int kSmartMergeShapingPixelSize = 128;
-constexpr qreal kSmartMergeGapEm = 0.2;
+constexpr qreal kCompactGapEm = 0.2;
 // QTextLine uses QFIXED_MAX for its maximum line width.
 constexpr qreal kQtTextWidthLimit = std::numeric_limits<int>::max() / 256;
 qreal edgeLength(const QPointF& first, const QPointF& second) {
@@ -271,6 +271,59 @@ struct ReflowRow {
     int length;
 };
 
+qreal median(QVector<qreal> samples) {
+    if (samples.isEmpty())
+        return 0;
+    std::sort(samples.begin(), samples.end());
+    return (samples[(samples.size() - 1) / 2] + samples[samples.size() / 2]) / 2;
+}
+
+struct TrackInk {
+    qreal offset; // Leading ink edge relative to the shared typographic center.
+    qreal extent;
+};
+
+// Work along the paragraph's cross axis, in shaping coordinates. Recover the actual OCR
+// centers while the text fits the original rows/columns and its typical advance after overflow.
+QVector<qreal> positionTracks(const QVector<TrackInk>& tracks,
+                              const ScreenshotOcrTextLayout::SmartMergeLayout& geometry,
+                              qreal scale, qreal available, qreal naturalAdvance, qreal gap,
+                              qsizetype firstCenter = 0) {
+    const bool anchored = tracks.size() <= geometry.sourceCenters.size();
+    const qreal advance =
+        geometry.sourceAdvance > 0 ? geometry.sourceAdvance / scale : naturalAdvance;
+    const auto desiredStart = [&](qsizetype i) {
+        if (!anchored)
+            return qreal(i) * advance + tracks[i].offset;
+        return std::clamp(geometry.sourceCenters[firstCenter + i] / scale + tracks[i].offset, 0.0,
+                          std::max<qreal>(0, available - tracks[i].extent));
+    };
+    QVector<qreal> starts(tracks.size(), 0);
+    qreal compact = tracks.first().extent;
+    qreal extra = 0;
+    for (qsizetype i = 1; i < tracks.size(); ++i) {
+        const qreal minimum = tracks[i - 1].extent + gap;
+        starts[i] = std::max<qreal>(0, desiredStart(i) - desiredStart(i - 1) - minimum);
+        compact += tracks[i].extent + gap;
+        extra += starts[i];
+    }
+    const qreal spare = std::max<qreal>(0, available - compact);
+    const qreal fraction = extra > spare ? spare / extra : 1;
+    const qreal margin = std::max<qreal>(0, spare - fraction * extra);
+    starts[0] = anchored ? std::clamp(desiredStart(0), 0.0, margin) : margin / 2;
+    for (qsizetype i = 1; i < tracks.size(); ++i)
+        starts[i] = starts[i - 1] + tracks[i - 1].extent + gap + fraction * starts[i];
+    return starts;
+}
+
+qreal compactTrackGap(const ScreenshotOcrTextLayout::SmartMergeLayout& geometry, qreal em,
+                      qreal scale) {
+    const qreal gap = kCompactGapEm * em;
+    return geometry.sourceAdvance > 0
+               ? std::clamp((geometry.sourceAdvance - geometry.inkCap) / scale, 0.0, gap)
+               : gap;
+}
+
 bool wrapSmartMergeText(QTextLayout& layout, int widthSteps,
                         const QVector<ReflowRow>* expected = nullptr) {
     bool matches = true;
@@ -301,9 +354,11 @@ QVector<ReflowRow> measureReflowRows(const QTextLayout& layout) {
     return rows;
 }
 
-qreal fitHorizontalReflow(QTextLayout& layout, const QSizeF& box, qreal inkCap,
-                          QVector<QRectF>& rowBounds, Qt::Alignment alignment) {
-    const qreal gap = layout.font().pixelSize() * kSmartMergeGapEm;
+qreal fitHorizontalReflow(QTextLayout& layout,
+                          const ScreenshotOcrTextLayout::SmartMergeLayout& geometry,
+                          QVector<QRectF>& rowBounds) {
+    const QSizeF box = geometry.box;
+    const qreal em = layout.font().pixelSize();
     constexpr int maxSteps = static_cast<int>(kQtTextWidthLimit / kQtTextSpacingStep);
     const auto widthStepsAt = [&](qreal scale) {
         return static_cast<int>(std::clamp(box.width() / scale / kQtTextSpacingStep, 1.0,
@@ -314,9 +369,11 @@ qreal fitHorizontalReflow(QTextLayout& layout, const QSizeF& box, qreal inkCap,
     qreal tallestGlyph = 0;
     for (const auto& run : layout.glyphRuns())
         glyphRunInkBounds(run, &tallestGlyph);
-    const qreal upperScale = tallestGlyph > 0
-                                 ? std::min(inkCap, box.height()) / tallestGlyph
-                                 : box.height() / QFontMetricsF(layout.font()).height();
+    qreal upperScale = tallestGlyph > 0 ? std::min(geometry.inkCap, box.height()) / tallestGlyph
+                                        : box.height() / QFontMetricsF(layout.font()).height();
+    if (geometry.sourceFontSize)
+        upperScale = std::min(upperScale, *geometry.sourceFontSize / em);
+    const qreal gap = compactTrackGap(geometry, em, upperScale);
 
     int widthSteps = widthStepsAt(upperScale);
     for (;;) {
@@ -339,7 +396,7 @@ qreal fitHorizontalReflow(QTextLayout& layout, const QSizeF& box, qreal inkCap,
         if (widest > 0)
             scale = std::min(scale, box.width() / widest);
         if (tallest > 0)
-            scale = std::min(scale, inkCap / tallest);
+            scale = std::min(scale, geometry.inkCap / tallest);
 
         const int targetSteps = widthStepsAt(scale);
         if (targetSteps > widthSteps && !wrapSmartMergeText(layout, targetSteps, &rows)) {
@@ -359,16 +416,29 @@ qreal fitHorizontalReflow(QTextLayout& layout, const QSizeF& box, qreal inkCap,
         }
 
         const qreal width = box.width() / scale;
-        qreal top = 0;
+        // Center the shared baseline envelope on each source row. Short glyphs such as
+        // punctuation then keep their natural position relative to the other lines.
+        QRectF envelope;
+        for (int i = 0; i < rows.size(); ++i)
+            envelope = envelope.united(rows[i].ink.translated(0, -layout.lineAt(i).ascent()));
+        QVector<TrackInk> tracks;
+        for (int i = 0; i < rows.size(); ++i) {
+            const auto& row = rows[i];
+            const qreal offset = row.ink.isValid() ? row.ink.top() - layout.lineAt(i).ascent() -
+                                                         envelope.center().y()
+                                                   : -row.height / 2;
+            tracks.push_back({offset, row.height});
+        }
+        const auto tops = positionTracks(tracks, geometry, scale, box.height() / scale,
+                                         QFontMetricsF(layout.font()).lineSpacing(), gap);
         for (int i = 0; i < layout.lineCount(); ++i) {
             const auto& row = rows[i];
             const qreal spare = width - row.ink.width();
-            const qreal left = alignment == Qt::AlignRight     ? spare
-                               : alignment == Qt::AlignHCenter ? spare / 2
-                                                               : 0;
-            layout.lineAt(i).setPosition({left - row.ink.left(), top - row.ink.top()});
-            rowBounds.push_back({0, top, width, row.height});
-            top += row.height + gap;
+            const qreal left = geometry.horizontalAlignment == Qt::AlignRight     ? spare
+                               : geometry.horizontalAlignment == Qt::AlignHCenter ? spare / 2
+                                                                                  : 0;
+            layout.lineAt(i).setPosition({left - row.ink.left(), tops[i] - row.ink.top()});
+            rowBounds.push_back({0, tops[i], width, row.height});
         }
         return scale;
     }
@@ -619,7 +689,22 @@ ScreenshotOcrTextLayout::SmartMergeLayout smartMergeGeometry(const ScreenshotOcr
             !(evidence == 1 && box.width() - rows.first().width() > 2 * tolerance))
             alignment = Qt::AlignRight;
     }
-    return {box, cap, alignment};
+    std::optional<qreal> sourceFontSize;
+    qreal inkCap = cap;
+    if (line.fontSizeCapRatio) {
+        sourceFontSize = *line.fontSizeCapRatio * thickness(paragraph);
+        if (line.sourceTextMetrics && line.sourceTextMetrics->inkThicknessEm > 0)
+            inkCap = std::min(cap, *sourceFontSize * line.sourceTextMetrics->inkThicknessEm);
+    }
+    QVector<qreal> centers;
+    QVector<qreal> advances;
+    for (const auto& row : rows) {
+        if (!centers.isEmpty())
+            advances.push_back(center(row) - centers.last());
+        centers.push_back(center(row));
+    }
+    return {box,      inkCap, sourceFontSize, std::move(centers), median(std::move(advances)),
+            alignment};
 }
 
 bool aspectFitQuadTransform(const QPolygonF& destination, qreal sourceWidth, qreal sourceHeight,
@@ -678,10 +763,9 @@ void ScreenshotOcrTextLayout::fitSmartMerge(const SmartMergeLayout& geometry) {
         option.setAlignment(Qt::AlignLeft | Qt::AlignAbsolute);
         m_layout->setTextOption(option);
         m_layout->setCacheEnabled(true);
-        m_smartMergeScale = fitHorizontalReflow(*m_layout, geometry.box, geometry.inkCap,
-                                                m_reflowRows, geometry.horizontalAlignment);
+        m_smartMergeScale = fitHorizontalReflow(*m_layout, geometry, m_reflowRows);
         if (!m_reflowRows.isEmpty())
-            m_bounds = QRectF(0, 0, m_reflowRows.last().width(), m_reflowRows.last().bottom());
+            m_bounds = m_reflowRows.first().united(m_reflowRows.last());
         return;
     }
 
@@ -715,8 +799,6 @@ void ScreenshotOcrTextLayout::fitSmartMerge(const SmartMergeLayout& geometry) {
         return;
     if (columnWidth <= 0)
         columnWidth = pixelSize;
-    const qreal gap = pixelSize * kSmartMergeGapEm;
-    const qreal columnStep = columnWidth + gap;
     const auto columnsAt = [&](qreal scale) {
         const qreal capacity = geometry.box.height() / (m_verticalCellAdvance * scale);
         const auto cells = static_cast<int>(std::clamp(capacity, 1.0, qreal(count)));
@@ -724,9 +806,13 @@ void ScreenshotOcrTextLayout::fitSmartMerge(const SmartMergeLayout& geometry) {
     };
     qreal high = std::min({geometry.inkCap / columnWidth, geometry.box.width() / columnWidth,
                            geometry.box.height() / m_verticalCellAdvance});
+    if (geometry.sourceFontSize)
+        high = std::min(high, *geometry.sourceFontSize / pixelSize);
+    const qreal gap = compactTrackGap(geometry, pixelSize, high);
     qreal low = std::min(high, geometry.box.height() / (m_verticalCellAdvance * count));
     const auto fits = [&](qreal scale) {
-        return (columnsAt(scale) * columnStep - gap) * scale <= geometry.box.width();
+        const int columns = columnsAt(scale);
+        return (columns * columnWidth + (columns - 1) * gap) * scale <= geometry.box.width();
     };
     if (fits(high)) {
         low = high;
@@ -741,19 +827,24 @@ void ScreenshotOcrTextLayout::fitSmartMerge(const SmartMergeLayout& geometry) {
     }
     m_smartMergeScale = low;
     const int columns = columnsAt(low);
-    const qreal width = columns * columnStep - gap;
+    // Vertical reading begins at the rightmost source column, including for short translations.
+    const auto firstCenter = std::max<qsizetype>(0, geometry.sourceCenters.size() - columns);
+    const auto lefts = positionTracks(QVector<TrackInk>(columns, {-columnWidth / 2, columnWidth}),
+                                      geometry, low, geometry.box.width() / low,
+                                      QFontMetricsF(m_font).lineSpacing(), gap, firstCenter);
     const int longColumns = count % columns;
     int start = 0;
     for (int column = 0; column < columns; ++column) {
         const int length = count / columns + (column < longColumns ? 1 : 0);
-        const qreal left = (columns - 1 - column) * columnStep;
+        const qreal left = lefts[columns - 1 - column];
         m_verticalColumns.push_back({start, length});
         for (int cell = 0; cell < length; ++cell)
             m_verticalGlyphs[static_cast<std::size_t>(start + cell)].cell =
                 QRectF(left, cell * m_verticalCellAdvance, columnWidth, m_verticalCellAdvance);
         start += length;
     }
-    m_bounds = QRectF(0, 0, width, m_verticalColumns.first().length * m_verticalCellAdvance);
+    m_bounds = QRectF(lefts.first(), 0, lefts.last() + columnWidth - lefts.first(),
+                      m_verticalColumns.first().length * m_verticalCellAdvance);
 }
 
 QRectF ScreenshotOcrTextLayout::verticalCell(std::size_t index) const {
@@ -1544,11 +1635,7 @@ bool configureScreenshotOcrTextLayout(ScreenshotOcrTextLayout& layout,
         const qreal scale = layout.smartMergeScale();
         if (!(scale > 0))
             return false;
-        const QSizeF used = layout.boundingRect().size() * scale;
-        const bool vertical = line.direction == ScreenshotOcrTextDirection::Vertical;
-        const QTransform textToBox(scale, 0, 0, scale, vertical ? (width - used.width()) / 2 : 0,
-                                   vertical ? 0 : (height - used.height()) / 2);
-        *textToOutput = textToBox * boxToCanvas * canvasToOutput;
+        *textToOutput = QTransform::fromScale(scale, scale) * boxToCanvas * canvasToOutput;
         if (fittedFontPixelSize)
             *fittedFontPixelSize =
                 layout.fontPixelSize() * std::hypot(textToOutput->m11(), textToOutput->m12());
@@ -1640,8 +1727,17 @@ bool configureScreenshotOcrTextLayout(ScreenshotOcrTextLayout& layout,
 }
 
 ScreenshotOcrSourceTextMetrics ScreenshotOcrTextLayout::sourceTextMetrics() const {
-    if (m_direction == ScreenshotOcrTextDirection::Vertical)
-        return {m_verticalCellAdvance / m_font.pixelSize(), 0, 0};
+    if (m_direction == ScreenshotOcrTextDirection::Vertical) {
+        qreal width = 0;
+        for (const auto& glyph : m_verticalGlyphs) {
+            if (hasVisibleCharacters(QStringView(m_text).mid(glyph.textStart, glyph.textLength)))
+                width = std::max(width, glyph.rotated ? glyph.inkBounds.height()
+                                                      : glyph.inkBounds.width());
+        }
+        // Source vertical cells include the safety margin on both sides of each glyph.
+        return {m_verticalCellAdvance / m_font.pixelSize(), 0, 0,
+                std::max<qreal>(0, width - 2 * kOcrTextInkSafetyMargin) / m_font.pixelSize()};
+    }
     const auto* layout = usesSourceRows() ? m_fittedRows.front().layout.get() : m_layout.get();
     if (!layout || layout->lineCount() == 0)
         return {};
@@ -1649,37 +1745,43 @@ ScreenshotOcrSourceTextMetrics ScreenshotOcrTextLayout::sourceTextMetrics() cons
     const QRectF ink = textLayoutInkBounds(first);
     const QFont font = layout->font();
     const qreal em = font.pixelSize();
+    QVector<qreal> heights;
+    if (ink.isValid())
+        heights.push_back(ink.height());
+    if (usesSourceRows()) {
+        for (std::size_t i = 1; i < m_fittedRows.size(); ++i)
+            heights.push_back(textLayoutInkBounds(*m_fittedRows[i].layout).height());
+    } else {
+        for (int i = 1; i < layout->lineCount(); ++i)
+            heights.push_back(textLayoutInkBounds(layout->lineAt(i)).height());
+    }
     return {font.letterSpacingType() == QFont::AbsoluteSpacing ? font.letterSpacing() / em : 0,
-            (first.ascent() - ink.top()) / em, (ink.bottom() - first.ascent()) / em};
+            (first.ascent() - ink.top()) / em, (ink.bottom() - first.ascent()) / em,
+            median(std::move(heights)) / em};
 }
 
 void prepareScreenshotOcrTranslationLayout(QVector<ScreenshotOcrLine>& translation,
                                            const QVector<ScreenshotOcrLine>& source,
                                            const QVector<QVector<int>>& sourceIndices,
                                            const QFont& font, bool smartMerge) {
-    if (smartMerge) {
-        for (auto& line : translation) {
-            line.smartMergeTranslation = true;
-            line.fontSizeCapRatio.reset();
-            line.sourceTextMetrics.reset();
-        }
-        return;
-    }
+    for (auto& line : translation)
+        line.smartMergeTranslation = smartMerge;
     if (translation.size() != sourceIndices.size() ||
         std::all_of(translation.cbegin(), translation.cend(), [](const ScreenshotOcrLine& line) {
             return line.fontSizeCapRatio && line.sourceTextMetrics;
         }))
         return;
-    QVector<qreal> baselines(source.size(), 0);
+    QVector<qreal> fontSizes(source.size(), 0);
     QVector<ScreenshotOcrSourceTextMetrics> metrics(source.size());
     ScreenshotOcrTextLayout layout;
     for (int index = 0; index < source.size(); ++index) {
         auto original = source[index];
         original.fontSizeCapRatio.reset();
         original.translationStreaming = false;
+        original.smartMergeTranslation = false;
         QTransform transform;
         if (configureScreenshotOcrTextLayout(layout, original, {}, font, Qt::black, {}, &transform,
-                                             &baselines[index]))
+                                             &fontSizes[index]))
             metrics[index] = layout.sourceTextMetrics();
     }
     for (int index = 0; index < translation.size(); ++index) {
@@ -1691,27 +1793,29 @@ void prepareScreenshotOcrTranslationLayout(QVector<ScreenshotOcrLine>& translati
             continue;
         QVector<qreal> sizes;
         QVector<qreal> spacings;
+        QVector<qreal> inkThicknesses;
         ScreenshotOcrSourceTextMetrics firstRow;
         for (const int sourceIndex : sourceIndices[index]) {
-            if (sourceIndex >= 0 && sourceIndex < baselines.size() &&
-                std::isfinite(baselines[sourceIndex]) && baselines[sourceIndex] > 0) {
+            if (sourceIndex >= 0 && sourceIndex < fontSizes.size() &&
+                std::isfinite(fontSizes[sourceIndex]) && fontSizes[sourceIndex] > 0) {
                 if (sizes.isEmpty())
                     firstRow = metrics[sourceIndex];
-                sizes.push_back(baselines[sourceIndex]);
+                sizes.push_back(fontSizes[sourceIndex]);
                 spacings.push_back(metrics[sourceIndex].spacingEm);
+                if (metrics[sourceIndex].inkThicknessEm > 0)
+                    inkThicknesses.push_back(fontSizes[sourceIndex] *
+                                             metrics[sourceIndex].inkThicknessEm);
             }
         }
         if (sizes.isEmpty())
             continue;
-        const auto median = [](QVector<qreal>& samples) {
-            std::sort(samples.begin(), samples.end());
-            return (samples[(samples.size() - 1) / 2] + samples[samples.size() / 2]) / 2;
-        };
+        const qreal fontSize = median(std::move(sizes));
         if (!line.fontSizeCapRatio)
-            line.fontSizeCapRatio = median(sizes) / crossAxis;
+            line.fontSizeCapRatio = fontSize / crossAxis;
         if (!line.sourceTextMetrics) {
             // Keep the first row's baseline while using representative spacing for merged text.
-            firstRow.spacingEm = median(spacings);
+            firstRow.spacingEm = median(std::move(spacings));
+            firstRow.inkThicknessEm = median(std::move(inkThicknesses)) / fontSize;
             line.sourceTextMetrics = firstRow;
         }
     }

@@ -9454,6 +9454,10 @@ if(SNOW_SHOT_BUILD_TESTS)
         COMMAND snow-shot-ocr-text-layout-tests -platform offscreen)
     set_tests_properties(snow-shot-ocr-text-layout-tests PROPERTIES LABELS "unit" TIMEOUT 30
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+    if(WIN32)
+        set_property(TEST snow-shot-ocr-text-layout-tests APPEND PROPERTY
+            ENVIRONMENT "QT_QPA_FONTDIR=$ENV{SystemRoot}/Fonts")
+    endif()
 
     add_executable(snow-shot-ocr-background-tests
         tests/screenshot_ocr_background_tests.cpp
