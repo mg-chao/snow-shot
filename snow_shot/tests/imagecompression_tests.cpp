@@ -9,6 +9,7 @@
 #include "snow_shot/storage/settingsadapters.h"
 #include "snowimageqtcodec.h"
 #include "export_dialog_test_support.h"
+#include "physical_key_test_support.h"
 #include "theme/theme_manager.h"
 #include "widgets/button.h"
 #include "widgets/input_number.h"
@@ -20,9 +21,11 @@
 
 #include <QAbstractButton>
 #include <QApplication>
+#include <QClipboard>
 #include <QDragEnterEvent>
 #include <QElapsedTimer>
 #include <QFileDialog>
+#include <QKeySequence>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -92,6 +95,74 @@ void dropFile(QWidget* surface, const QString& path) {
     QApplication::sendEvent(surface, &drop);
     require(drop.isAccepted(), "The preview receives the dropped file");
 }
+void pasteKey(QWidget* receiver) {
+    receiver->window()->activateWindow();
+    receiver->setFocus();
+    QApplication::processEvents();
+    require(receiver->hasFocus(), "The paste receiver has keyboard focus");
+    const auto key = QKeySequence::keyBindings(QKeySequence::Paste).first()[0];
+    PhysicalKeyEvent press(QEvent::KeyPress, key.key(), key.keyboardModifiers());
+    QApplication::sendEvent(receiver, &press);
+    PhysicalKeyEvent release(QEvent::KeyRelease, key.key(), key.keyboardModifiers());
+    QApplication::sendEvent(receiver, &release);
+}
+
+void clipboardImports(const QString& path, const QSize& fileSize) {
+    ImageCompressionWindowCoordinator windows;
+    windows.presentSelectedFiles({}, {});
+    auto* modal = child<AdModal>(&windows, "imageCompressionWindow");
+    auto* editor = modal->contentWidget();
+    auto* select = child<AdButton>(editor, "imageCompressionAddImage");
+    auto* copy = child<AdButton>(modal->footerWidget(), "imageCompressionCopy");
+    auto* canvas = editor->findChild<ScreenshotSavePreviewCanvas*>();
+    require(canvas, "The compression window has a comparison preview");
+    auto* clipboard = QApplication::clipboard();
+    const auto clearClipboard = qScopeGuard([clipboard] { clipboard->clear(); });
+
+    clipboard->setText(QStringLiteral("plain text"));
+    pasteKey(select);
+    require(select->isVisible() && select->isEnabled() && !copy->isEnabled(),
+            "Plain text leaves the compression window empty");
+
+    QImage image(73, 47, QImage::Format_ARGB32);
+    image.fill(QColor(21, 90, 141, 170));
+    auto* mixed = new QMimeData;
+    mixed->setImageData(image);
+    mixed->setUrls({QUrl::fromLocalFile(path)});
+    clipboard->setMimeData(mixed);
+    pasteKey(select);
+    clipboard->clear();
+    until([&] { return copy->isEnabled() && canvas->outputImage().size() == image.size(); });
+    require(
+        canvas->outputImage().pixelColor(0, 0) == image.pixelColor(0, 0),
+        "Pasting prioritizes clipboard pixels and retains their alpha after the clipboard changes");
+
+    auto* files = new QMimeData;
+    files->setUrls({QUrl::fromLocalFile(path)});
+    clipboard->setMimeData(files);
+    pasteKey(canvas);
+    until([&] { return copy->isEnabled() && canvas->outputImage().size() == fileSize; });
+
+    auto* broken = new QMimeData;
+    broken->setData(QStringLiteral("image/png"), QByteArrayLiteral("not a PNG"));
+    clipboard->setMimeData(broken);
+    pasteKey(canvas);
+    until([&] {
+        return copy->isEnabled() && !child<QLabel>(editor, "saveErrorLabel")->text().isEmpty();
+    });
+    require(canvas->outputImage().size() == fileSize,
+            "A failed clipboard replacement preserves the existing source");
+
+    auto* width = child<AdInputNumber>(editor, "saveWidthInput")->findChild<QLineEdit*>();
+    require(width, "The width control has a text input");
+    width->setFocus();
+    width->selectAll();
+    clipboard->setText(QStringLiteral("120"));
+    pasteKey(width);
+    require(width->text() == QStringLiteral("120"), "The width field still accepts text paste");
+    modal->reject();
+}
+
 AdMessageHandle* exportNotice(QWidget* window) {
     for (auto* handle : window->window()->findChildren<AdMessageHandle*>()) {
         if (handle->isOpen() && handle->key() == QStringLiteral("imageCompressionExport"))
@@ -263,34 +334,38 @@ void runImageCompressionTests() {
         auto* surface = child<QWidget>(editor, "imageCompressionSurface");
         auto* empty = child<QWidget>(surface, "imageCompressionEmptyState");
         auto* hint = child<QWidget>(surface, "imageCompressionDropHint");
-        auto* add = child<AdButton>(empty, "imageCompressionAddImage");
-        require(empty->isVisible() && !hint->isVisible() && add->isVisible() && add->isEnabled() &&
-                    empty->accessibleName() ==
-                        QStringLiteral("Add an image to start image compression") &&
+        auto* select = child<AdButton>(empty, "imageCompressionAddImage");
+        require(empty->isVisible() && !hint->isVisible() && select->isVisible() &&
+                    select->isEnabled() &&
+                    empty->accessibleName() == QStringLiteral("Select an image to compress") &&
                     empty->accessibleDescription() ==
-                        QStringLiteral("Drag an image file here, or choose Add image") &&
-                    add->text() == QStringLiteral("Add image") &&
-                    add->buttonStyle() == AdButton::ButtonStyle::Solid &&
-                    add->accentRole() == AdButton::AccentRole::Primary &&
-                    add->focusPolicy() == Qt::StrongFocus,
-                "Empty compression shows an accessible drop prompt and primary add action");
-        add->click();
+                        QStringLiteral("Drag an image file here, or choose select image") &&
+                    select->text() == QStringLiteral("Select image") &&
+                    select->buttonStyle() == AdButton::ButtonStyle::Solid &&
+                    select->accentRole() == AdButton::AccentRole::Primary &&
+                    select->focusPolicy() == Qt::StrongFocus,
+                "Empty compression shows an accessible drop prompt and primary select action");
+        select->click();
         QPointer<QFileDialog> picker = editor->window()->findChild<QFileDialog*>();
-        require(picker && picker->windowTitle() == add->text() &&
+        require(picker && picker->windowTitle() == select->text() &&
                     picker->fileMode() == QFileDialog::ExistingFile &&
                     !picker->testOption(QFileDialog::DontUseNativeDialog),
-                "Add image allows the system picker for a single existing file");
+                "Select image allows the system picker for a single existing file");
         QTranslator translator;
         require(translator.load(QStringLiteral(":/i18n/snow_shot_zh_CN.qm")) &&
                     QApplication::installTranslator(&translator),
                 "Switch the open image picker language");
         until([&] {
             return picker->windowTitle() ==
-                   translator.translate("ImageCompressionWindow", "Add image");
+                   translator.translate("ImageSplitEditorWidget", "Select image");
         });
         require(picker->nameFilters().value(0).startsWith(
                     translator.translate("ImageCompressionWindow", "Images") + u' '),
                 "The open image picker updates its name filter");
+        require(empty->accessibleDescription() ==
+                    translator.translate("ImageSplitEditorWidget",
+                                         "Drag an image file here, or choose select image"),
+                "The translated empty prompt matches image splitting");
         QApplication::removeTranslator(&translator);
         picker->reject();
         until([&] { return !picker; });
@@ -301,14 +376,14 @@ void runImageCompressionTests() {
         QApplication::sendEvent(surface, &enter);
         require(enter.isAccepted() && empty->isVisible() && hint->isVisible() &&
                     hint->geometry() == surface->rect() &&
-                    hint->accessibleName() == QStringLiteral("Drop an image to compress") &&
+                    hint->accessibleName() == QStringLiteral("Drop one image to compress") &&
                     hint->accessibleDescription() ==
                         QStringLiteral("Drop one image file at a time"),
                 "Dragging over an empty window shows the single-image import overlay");
         QDragLeaveEvent leave;
         QApplication::sendEvent(surface, &leave);
         require(empty->isVisible() && !hint->isVisible(), "Drag leave restores the empty prompt");
-        add->click();
+        select->click();
         picker = editor->window()->findChild<QFileDialog*>();
         require(picker, "The image picker can reopen after cancellation");
         picker->selectFile(first);
@@ -366,6 +441,7 @@ void runImageCompressionTests() {
             [&] { return width->value() == source.width() && height->value() == source.height(); });
         modal->reject();
     }
+    clipboardImports(first, source.size());
     {
         ImageCompressionWindowCoordinator windows;
         selection->paths = {first, dir.filePath(QStringLiteral("ignored.txt")), second};

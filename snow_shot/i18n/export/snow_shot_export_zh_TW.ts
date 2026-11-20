@@ -4,14 +4,6 @@
     <context>
         <name>ImageCompressionWindow</name>
         <message>
-            <source>Add an image to start image compression</source>
-            <translation>新增影像以開始影像壓縮</translation>
-        </message>
-        <message>
-            <source>Add image</source>
-            <translation>新增影像</translation>
-        </message>
-        <message>
             <source>Allow Snow Shot to access Finder in System Settings &gt; Privacy &amp; Security &gt; Automation, then try again</source>
             <translation>請在「系統設定 &gt; 隱私權與安全性 &gt; 自動化」中允許 Snow Shot 存取 Finder，然後再試一次</translation>
         </message>
@@ -28,16 +20,16 @@
             <translation>無法讀取選取的影像檔案，請重試</translation>
         </message>
         <message>
-            <source>Drag an image file here, or choose Add image</source>
-            <translation>將影像檔案拖曳至此處，或選擇「新增影像」</translation>
-        </message>
-        <message>
-            <source>Drop an image to compress</source>
-            <translation>拖入一張影像以進行壓縮</translation>
+            <source>Drag an image file here, or choose select image</source>
+            <translation>將影像檔案拖曳至此處，或點選「選擇影像」</translation>
         </message>
         <message>
             <source>Drop one image file at a time</source>
             <translation>請一次拖入一個影像檔案</translation>
+        </message>
+        <message>
+            <source>Drop one image to compress</source>
+            <translation>拖入一張影像進行壓縮</translation>
         </message>
         <message>
             <source>Drop one image to replace the current image</source>
@@ -74,6 +66,14 @@
         <message>
             <source>Save</source>
             <translation>儲存</translation>
+        </message>
+        <message>
+            <source>Select an image to compress</source>
+            <translation>選擇要壓縮的影像</translation>
+        </message>
+        <message>
+            <source>Select image</source>
+            <translation>選擇影像</translation>
         </message>
         <message>
             <source>The image could not be copied</source>
