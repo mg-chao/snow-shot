@@ -4,14 +4,6 @@
     <context>
         <name>ImageCompressionWindow</name>
         <message>
-            <source>Add an image to start image compression</source>
-            <translation>Add an image to start image compression</translation>
-        </message>
-        <message>
-            <source>Add image</source>
-            <translation>Add image</translation>
-        </message>
-        <message>
             <source>Allow Snow Shot to access Finder in System Settings &gt; Privacy &amp; Security &gt; Automation, then try again</source>
             <translation>Allow Snow Shot to access Finder in System Settings &gt; Privacy &amp; Security &gt; Automation, then try again</translation>
         </message>
@@ -28,16 +20,16 @@
             <translation>Could not read the selected image files. Please try again</translation>
         </message>
         <message>
-            <source>Drag an image file here, choose Add image, or press %1 to paste</source>
-            <translation>Drag an image file here, choose Add image, or press %1 to paste</translation>
-        </message>
-        <message>
-            <source>Drop an image to compress</source>
-            <translation>Drop an image to compress</translation>
+            <source>Drag an image file here, or choose select image</source>
+            <translation>Drag an image file here, or choose select image</translation>
         </message>
         <message>
             <source>Drop one image file at a time</source>
             <translation>Drop one image file at a time</translation>
+        </message>
+        <message>
+            <source>Drop one image to compress</source>
+            <translation>Drop one image to compress</translation>
         </message>
         <message>
             <source>Drop one image to replace the current image</source>
@@ -74,6 +66,14 @@
         <message>
             <source>Save</source>
             <translation>Save</translation>
+        </message>
+        <message>
+            <source>Select an image to compress</source>
+            <translation>Select an image to compress</translation>
+        </message>
+        <message>
+            <source>Select image</source>
+            <translation>Select image</translation>
         </message>
         <message>
             <source>The image could not be copied</source>

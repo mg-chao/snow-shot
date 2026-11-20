@@ -343,12 +343,12 @@ class ImageCompressionWindow final : public ImageExportEditor {
         m_cancel->setText(tr("Cancel"));
         m_save->setText(tr("Save"));
         m_copy->setText(tr("Copy"));
-        m_choose->setText(tr("Add image"));
+        m_choose->setText(tr("Select image"));
         for (auto* button : {m_cancel, m_save, m_copy, m_choose})
             button->setAccessibleName(button->text());
         retranslatePicker();
         retranslateOverwriteConfirmation();
-        m_empty->title->setText(tr("Add an image to start image compression"));
+        m_empty->title->setText(tr("Select an image to compress"));
         m_empty->setAccessibleName(m_empty->title->text());
         m_drop->description->setText(tr("Drop one image file at a time"));
         m_drop->setAccessibleDescription(m_drop->description->text());
@@ -436,16 +436,12 @@ class ImageCompressionWindow final : public ImageExportEditor {
         const bool hasImage = m_source.rows.isValid();
         m_form->setEnabled(editable() && hasImage);
         m_surface->setCurrentWidget(hasImage ? static_cast<QWidget*>(m_preview) : m_empty);
-        const auto pasteShortcut =
-            QKeySequence(QKeySequence::Paste).toString(QKeySequence::NativeText);
         m_empty->description->setText(m_resolving || m_pendingArtifact
                                           ? tr("Loading image…")
-                                          : tr("Drag an image file here, choose Add image, or "
-                                               "press %1 to paste")
-                                                .arg(pasteShortcut));
+                                          : tr("Drag an image file here, or choose select image"));
         m_empty->setAccessibleDescription(m_empty->description->text());
         m_drop->title->setText(hasImage ? tr("Drop one image to replace the current image")
-                                        : tr("Drop an image to compress"));
+                                        : tr("Drop one image to compress"));
         m_drop->setAccessibleName(m_drop->title->text());
         if (!editable())
             m_drop->hide();

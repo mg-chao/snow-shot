@@ -4,14 +4,6 @@
     <context>
         <name>ImageCompressionWindow</name>
         <message>
-            <source>Add an image to start image compression</source>
-            <translation>添加图像以开始图像压缩</translation>
-        </message>
-        <message>
-            <source>Add image</source>
-            <translation>添加图像</translation>
-        </message>
-        <message>
             <source>Allow Snow Shot to access Finder in System Settings &gt; Privacy &amp; Security &gt; Automation, then try again</source>
             <translation>请在“系统设置 &gt; 隐私与安全性 &gt; 自动化”中允许 Snow Shot 访问访达，然后重试</translation>
         </message>
@@ -28,16 +20,16 @@
             <translation>无法读取选中的图像文件，请重试</translation>
         </message>
         <message>
-            <source>Drag an image file here, choose Add image, or press %1 to paste</source>
-            <translation>将图像文件拖到此处、选择“添加图像”，或按 %1 粘贴</translation>
-        </message>
-        <message>
-            <source>Drop an image to compress</source>
-            <translation>拖入一张图像以进行压缩</translation>
+            <source>Drag an image file here, or choose select image</source>
+            <translation>将图像文件拖到此处，或点击“选择图像”</translation>
         </message>
         <message>
             <source>Drop one image file at a time</source>
             <translation>请一次拖入一个图像文件</translation>
+        </message>
+        <message>
+            <source>Drop one image to compress</source>
+            <translation>拖入一张图像进行压缩</translation>
         </message>
         <message>
             <source>Drop one image to replace the current image</source>
@@ -74,6 +66,14 @@
         <message>
             <source>Save</source>
             <translation>保存</translation>
+        </message>
+        <message>
+            <source>Select an image to compress</source>
+            <translation>选择要压缩的图像</translation>
+        </message>
+        <message>
+            <source>Select image</source>
+            <translation>选择图像</translation>
         </message>
         <message>
             <source>The image could not be copied</source>

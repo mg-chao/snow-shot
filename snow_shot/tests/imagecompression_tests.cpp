@@ -299,42 +299,35 @@ void runImageCompressionTests() {
         auto* surface = child<QWidget>(editor, "imageCompressionSurface");
         auto* empty = child<QWidget>(surface, "imageCompressionEmptyState");
         auto* hint = child<QWidget>(surface, "imageCompressionDropHint");
-        auto* add = child<AdButton>(empty, "imageCompressionAddImage");
-        const auto pasteShortcut =
-            QKeySequence(QKeySequence::Paste).toString(QKeySequence::NativeText);
-        require(empty->isVisible() && !hint->isVisible() && add->isVisible() && add->isEnabled() &&
-                    empty->accessibleName() ==
-                        QStringLiteral("Add an image to start image compression") &&
+        auto* select = child<AdButton>(empty, "imageCompressionAddImage");
+        require(empty->isVisible() && !hint->isVisible() && select->isVisible() &&
+                    select->isEnabled() &&
+                    empty->accessibleName() == QStringLiteral("Select an image to compress") &&
                     empty->accessibleDescription() ==
-                        QStringLiteral("Drag an image file here, choose Add image, or press %1 to "
-                                       "paste")
-                            .arg(pasteShortcut) &&
-                    add->text() == QStringLiteral("Add image") &&
-                    add->buttonStyle() == AdButton::ButtonStyle::Solid &&
-                    add->accentRole() == AdButton::AccentRole::Primary &&
-                    add->focusPolicy() == Qt::StrongFocus,
-                "Empty compression shows an accessible drop prompt and primary add action");
-        add->click();
+                        QStringLiteral("Drag an image file here, or choose select image") &&
+                    select->text() == QStringLiteral("Select image") &&
+                    select->buttonStyle() == AdButton::ButtonStyle::Solid &&
+                    select->accentRole() == AdButton::AccentRole::Primary &&
+                    select->focusPolicy() == Qt::StrongFocus,
+                "Empty compression shows an accessible drop prompt and primary select action");
+        select->click();
         QPointer<QFileDialog> picker = editor->window()->findChild<QFileDialog*>();
-        require(picker && picker->windowTitle() == add->text(), "Add image opens a picker");
+        require(picker && picker->windowTitle() == select->text(), "Select image opens a picker");
         QTranslator translator;
         require(translator.load(QStringLiteral(":/i18n/snow_shot_zh_CN.qm")) &&
                     QApplication::installTranslator(&translator),
                 "Switch the open image picker language");
         until([&] {
             return picker->windowTitle() ==
-                   translator.translate("ImageCompressionWindow", "Add image");
+                   translator.translate("ImageSplitEditorWidget", "Select image");
         });
         require(picker->nameFilters().value(0).startsWith(
                     translator.translate("ImageCompressionWindow", "Images") + u' '),
                 "The open image picker updates its name filter");
-        require(
-            empty->accessibleDescription() ==
-                translator
-                    .translate("ImageCompressionWindow",
-                               "Drag an image file here, choose Add image, or press %1 to paste")
-                    .arg(pasteShortcut),
-            "The empty state retranslates its paste hint");
+        require(empty->accessibleDescription() ==
+                    translator.translate("ImageSplitEditorWidget",
+                                         "Drag an image file here, or choose select image"),
+                "The translated empty prompt matches image splitting");
         QApplication::removeTranslator(&translator);
         picker->reject();
         until([&] { return !picker; });
@@ -345,7 +338,7 @@ void runImageCompressionTests() {
         QApplication::sendEvent(surface, &enter);
         require(enter.isAccepted() && empty->isVisible() && hint->isVisible() &&
                     hint->geometry() == surface->rect() &&
-                    hint->accessibleName() == QStringLiteral("Drop an image to compress") &&
+                    hint->accessibleName() == QStringLiteral("Drop one image to compress") &&
                     hint->accessibleDescription() ==
                         QStringLiteral("Drop one image file at a time"),
                 "Dragging over an empty window shows the single-image import overlay");
