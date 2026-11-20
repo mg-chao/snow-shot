@@ -810,14 +810,30 @@ struct ImageStitchingPreviewCanvas::Impl {
                    ? mapped(layout.clipRects[index])
                    : QRectF{};
     }
-    quint64 hit(QPointF position, bool includeWhitespace = false) const {
+    quint64 hitCell(QPointF position) const {
         if (!layout.isValid() || zoom <= 0)
             return 0;
         for (const auto id : order)
-            if (clipViewportRect(id).contains(position) &&
-                (includeWhitespace || viewportRect(id).contains(position)))
+            if (clipViewportRect(id).contains(position))
                 return id;
         return 0;
+    }
+    quint64 hitImage(QPointF position) const {
+        if (!layout.isValid() || zoom <= 0)
+            return 0;
+        const auto selectedId = document->selectedId();
+        quint64 overflow = 0;
+        for (const auto id : order) {
+            const auto bounds = viewportRect(id);
+            if (!bounds.contains(position))
+                continue;
+            const auto cell = clipViewportRect(id);
+            if (cell.contains(position))
+                return id;
+            if (image_stitching_detail::showsImageOverflow(bounds, cell, id == selectedId))
+                overflow = id;
+        }
+        return overflow;
     }
     void paintImage(QPainter& painter, quint64 id) const {
         const auto bounds = viewportRect(id);
@@ -1169,16 +1185,10 @@ void ImageStitchingPreviewCanvas::paintEvent(QPaintEvent*) {
     painter.fillRect(output, d.document->settings().background);
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
     const auto selectedId = d.document->selectedId();
-    if (!d.viewportRect(selectedId).isEmpty()) {
-        QPainterPath outside;
-        outside.addRect(QRectF(rect()));
-        QPainterPath inside;
-        inside.addRect(d.clipViewportRect(selectedId));
-        painter.save();
-        painter.setClipPath(outside.subtracted(inside));
-        painter.setOpacity(.25);
-        d.paintImage(painter, selectedId);
-        painter.restore();
+    for (const auto id : d.order) {
+        image_stitching_detail::paintImageOverflow(painter, rect(), d.viewportRect(id),
+                                                   d.clipViewportRect(id), id == selectedId,
+                                                   [&] { d.paintImage(painter, id); });
     }
     for (const auto id : d.order) {
         painter.save();
@@ -1232,8 +1242,9 @@ void ImageStitchingPreviewCanvas::mousePressEvent(QMouseEvent* event) {
             d.editing ? snowCanvasImageSelectionHandleAt(d.viewportRect(d.document->selectedId()),
                                                          event->position())
                       : SnowCanvasSelectionHandle::None;
-        const auto selected = handle == SnowCanvasSelectionHandle::None ? d.hit(event->position())
-                                                                        : d.document->selectedId();
+        const auto selected = handle == SnowCanvasSelectionHandle::None
+                                  ? d.hitImage(event->position())
+                                  : d.document->selectedId();
         d.document->select(selected);
         if (d.editing && selected) {
             d.initialImage = d.itemRect(selected);
@@ -1281,7 +1292,7 @@ void ImageStitchingPreviewCanvas::mouseMoveEvent(QMouseEvent* event) {
         d.pendingPlacement = candidate.staticPlacement;
         d.pendingImage = resolved;
         const auto target =
-            d.handle == SnowCanvasSelectionHandle::None ? d.hit(event->position(), true) : 0;
+            d.handle == SnowCanvasSelectionHandle::None ? d.hitCell(event->position()) : 0;
         d.targetId = target != d.pressedId ? target : 0;
         if (d.handle == SnowCanvasSelectionHandle::None)
             setCursor(d.targetId ? Qt::DragMoveCursor : Qt::ClosedHandCursor);
@@ -1313,7 +1324,7 @@ void ImageStitchingPreviewCanvas::mouseReleaseEvent(QMouseEvent* event) {
         }
         const auto id = d.pressedId;
         const auto target =
-            d.handle == SnowCanvasSelectionHandle::None ? d.hit(event->position(), true) : 0;
+            d.handle == SnowCanvasSelectionHandle::None ? d.hitCell(event->position()) : 0;
         const auto placement = d.pendingPlacement;
         const bool commit = d.dragging && d.editing;
         d.cancelGesture();
@@ -1375,7 +1386,7 @@ void ImageStitchingPreviewCanvas::dragEnterEvent(QDragEnterEvent* event) {
         event->acceptProposedAction();
 }
 void ImageStitchingPreviewCanvas::dragMoveEvent(QDragMoveEvent* event) {
-    m_impl->targetId = m_impl->hit(event->position(), true);
+    m_impl->targetId = m_impl->hitCell(event->position());
     if (m_impl->targetId && m_impl->targetId != dragItem(event->mimeData(), m_impl->document))
         event->acceptProposedAction();
     else
@@ -1387,7 +1398,7 @@ void ImageStitchingPreviewCanvas::dragLeaveEvent(QDragLeaveEvent*) {
     update();
 }
 void ImageStitchingPreviewCanvas::dropEvent(QDropEvent* event) {
-    const auto target = m_impl->hit(event->position(), true);
+    const auto target = m_impl->hitCell(event->position());
     const auto source = dragItem(event->mimeData(), m_impl->document);
     m_impl->targetId = 0;
     if (m_impl->editing && target && source && swapImages(source, target))
