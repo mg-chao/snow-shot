@@ -470,22 +470,27 @@ class ImageCompressionWindow final : public ImageExportEditor {
             return;
         auto* dialog = new QFileDialog(window());
         m_picker = dialog;
-        // Use one replace prompt for the normalized path on all platforms.
-        dialog->setOption(QFileDialog::DontUseNativeDialog);
-        dialog->setAttribute(Qt::WA_DeleteOnClose);
-        dialog->setWindowModality(Qt::WindowModal);
         if (save) {
-            dialog->setAcceptMode(QFileDialog::AcceptSave);
+#ifndef Q_OS_MACOS
+            // Defer confirmation until the output suffix has been applied where supported.
             dialog->setOption(QFileDialog::DontConfirmOverwrite);
+#endif
+            dialog->setAcceptMode(QFileDialog::AcceptSave);
+            dialog->setFileMode(QFileDialog::AnyFile);
             dialog->setDirectory(m_state.directory);
             dialog->setDefaultSuffix(ScreenshotImageFileService::extension(m_state.output.format));
             dialog->selectFile(QFileInfo(m_state.outputPath()).fileName());
         } else {
             dialog->setFileMode(QFileDialog::ExistingFile);
         }
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        dialog->setWindowModality(Qt::WindowModal);
         retranslatePicker();
-        connect(dialog, &QFileDialog::fileSelected, this, [this, save](const QString& path) {
+        connect(dialog, &QDialog::accepted, this, [this, dialog, save] {
             if (!editable())
+                return;
+            const auto path = dialog->selectedFiles().value(0);
+            if (path.isEmpty())
                 return;
             if (!save) {
                 openFile(path);
@@ -493,10 +498,13 @@ class ImageCompressionWindow final : public ImageExportEditor {
             }
             const auto target =
                 ScreenshotImageFileService::normalizedPath(path, m_state.output.format);
-            if (QFileInfo::exists(target))
+            const bool exists = QFileInfo::exists(target);
+            const bool pickerConfirmedTarget =
+                path == target && !dialog->testOption(QFileDialog::DontConfirmOverwrite);
+            if (exists && !pickerConfirmedTarget)
                 confirmOverwrite(target);
             else
-                beginExport(target);
+                beginExport(target, /*replaceExisting=*/exists);
         });
         dialog->open();
     }

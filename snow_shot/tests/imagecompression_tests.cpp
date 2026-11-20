@@ -18,18 +18,21 @@
 #include "widgets/select.h"
 #include "widgets/slider.h"
 
+#include <QAbstractButton>
 #include <QApplication>
 #include <QDragEnterEvent>
 #include <QElapsedTimer>
 #include <QFileDialog>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QMimeData>
 #include <QPointer>
 #include <QScopeGuard>
 #include <QSemaphore>
 #include <QTemporaryDir>
 #include <QThread>
+#include <QTimer>
 #include <QTranslator>
 #include <QUuid>
 #include <limits>
@@ -129,8 +132,18 @@ void saveCollisionAndDialogTranslations(const ScreenshotPinnedImageSnapshot& sna
     const auto target = dir.filePath(QStringLiteral("save-collision.png"));
     save->click();
     QPointer<QFileDialog> picker = editor->window()->findChild<QFileDialog*>();
-    require(picker && picker->windowTitle() == QStringLiteral("Save"),
-            "The save picker starts in English");
+    require(picker && picker->windowTitle() == QStringLiteral("Save") &&
+                picker->acceptMode() == QFileDialog::AcceptSave &&
+                picker->fileMode() == QFileDialog::AnyFile &&
+                !picker->testOption(QFileDialog::DontUseNativeDialog),
+            "The save picker starts in English and allows the system dialog");
+#ifdef Q_OS_MACOS
+    require(!picker->testOption(QFileDialog::DontConfirmOverwrite),
+            "The macOS save picker confirms replacement of the selected path");
+#else
+    require(picker->testOption(QFileDialog::DontConfirmOverwrite),
+            "The save picker defers overwrite confirmation to the compression window");
+#endif
     require(QApplication::installTranslator(&translator), "Switch to Simplified Chinese");
     until([&] { return picker->windowTitle() == translate("Save"); });
     require(picker->nameFilters() == QStringList{translator.translate("ScreenshotImageFileService",
@@ -153,6 +166,7 @@ void saveCollisionAndDialogTranslations(const ScreenshotPinnedImageSnapshot& sna
     auto unblock = qScopeGuard([release] { release->release(); });
     until([&] { return started->available() > 0; });
 
+    picker->setOption(QFileDialog::DontConfirmOverwrite, false);
     picker->setDirectory(dir.path());
     child<QLineEdit>(picker, "fileNameEdit")->setText(QFileInfo(target).fileName());
     require(picker->selectedFiles() == QStringList{target},
@@ -175,6 +189,27 @@ void saveCollisionAndDialogTranslations(const ScreenshotPinnedImageSnapshot& sna
     save->click();
     picker = editor->window()->findChild<QFileDialog*>();
     require(picker, "A failed save can be retried");
+    picker->setOption(QFileDialog::DontConfirmOverwrite, false);
+    picker->setDirectory(dir.path());
+    picker->selectFile(QFileInfo(target).fileName());
+    bool pickerConfirmed = false;
+    QTimer::singleShot(0, picker.data(), [&] {
+        if (auto* prompt = picker->findChild<QMessageBox*>()) {
+            pickerConfirmed = true;
+            prompt->button(QMessageBox::Yes)->click();
+        }
+    });
+    QMetaObject::invokeMethod(picker, "accept");
+    require(pickerConfirmed && save->busy() &&
+                !editor->findChild<AdModal*>(QStringLiteral("imageCompressionOverwrite")),
+            "The file picker's confirmation starts export without a second prompt");
+    waitForExport(modal);
+    until([&] { return !picker; });
+
+    save->click();
+    picker = editor->window()->findChild<QFileDialog*>();
+    require(picker, "Save can reopen after replacing an existing file");
+    picker->setOption(QFileDialog::DontConfirmOverwrite, false);
     picker->setDirectory(dir.path());
     child<QLineEdit>(picker, "fileNameEdit")->setText(QStringLiteral("save-collision.jpg"));
     QMetaObject::invokeMethod(picker, "accept");
@@ -241,7 +276,10 @@ void runImageCompressionTests() {
                 "Empty compression shows an accessible drop prompt and primary add action");
         add->click();
         QPointer<QFileDialog> picker = editor->window()->findChild<QFileDialog*>();
-        require(picker && picker->windowTitle() == add->text(), "Add image opens a picker");
+        require(picker && picker->windowTitle() == add->text() &&
+                    picker->fileMode() == QFileDialog::ExistingFile &&
+                    !picker->testOption(QFileDialog::DontUseNativeDialog),
+                "Add image allows the system picker for a single existing file");
         QTranslator translator;
         require(translator.load(QStringLiteral(":/i18n/snow_shot_zh_CN.qm")) &&
                     QApplication::installTranslator(&translator),
@@ -270,7 +308,11 @@ void runImageCompressionTests() {
         QDragLeaveEvent leave;
         QApplication::sendEvent(surface, &leave);
         require(empty->isVisible() && !hint->isVisible(), "Drag leave restores the empty prompt");
-        dropFile(surface, first);
+        add->click();
+        picker = editor->window()->findChild<QFileDialog*>();
+        require(picker, "The image picker can reopen after cancellation");
+        picker->selectFile(first);
+        QMetaObject::invokeMethod(picker, "accept");
         until([&] { return editor->property("previewGeneration").toUInt() > 0; });
         require(!empty->isVisible() && !hint->isVisible() &&
                     hint->accessibleName() ==
