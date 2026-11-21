@@ -332,6 +332,8 @@ ScreenshotOcrController::ScreenshotOcrController(ScreenshotOcrControllerContext 
                 return !m_copyAndEndCapture && (!m_context.shouldRenderTextBackground ||
                                                 m_context.shouldRenderTextBackground());
             },
+            {},
+            Qt::ApplicationModal,
         },
         this);
     connect(m_session.get(), &ScreenshotRecognitionSessionController::textEditingChanged, this,

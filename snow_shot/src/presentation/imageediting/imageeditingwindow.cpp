@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "snow_shot/presentation/imageeditingwindow.h"
+#include "snow_shot/presentation/components/windowconfirmation.h"
 #include "snow_shot/shortcuts/annotationoptionshortcut.h"
 #include "snow_shot/presentation/screenshotpinnedrenderpreparation.h"
 #include "snow_shot/presentation/canvasdrawingpreferences.h"
@@ -1963,16 +1964,12 @@ void ImageEditingWindow::confirmDiscard(std::function<void(bool)> done) {
         done(false);
         return;
     }
-    auto* dialog = new AdModal(this);
+    auto* dialog = modal_window::createConfirmation(this, d.surface->window());
     d.confirmation = dialog;
-    dialog->setMode(AdModal::Mode::Window);
-    dialog->setOwnerWindow(d.surface->window());
-    dialog->setWindowModality(Qt::WindowModal);
-    dialog->setPreset(AdModal::Preset::Confirm);
+
     d.translateConfirmation();
-    connect(dialog, &AdModal::finished, this, [this, done = std::move(done), dialog](auto code) {
+    connect(dialog, &AdModal::finished, this, [this, done = std::move(done)](auto code) {
         m_impl->confirmation = nullptr;
-        dialog->deleteLater();
         done(code == AdModal::DialogCode::Accepted);
     });
     dialog->setOpen(true);

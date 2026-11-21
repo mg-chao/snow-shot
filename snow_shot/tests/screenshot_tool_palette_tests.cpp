@@ -1130,8 +1130,8 @@ void recordingEffectSettingsModal() {
                     !surface->windowHandle()->format().hasAlpha() &&
                     settings.modal->contentWidget()->isVisible(),
                 "each Settings open must expose an opaque window with visible form content");
-        require(surface->windowHandle()->transientParent() ==
-                    settings.modal->ownerWindow()->windowHandle(),
+        require(settings.modal->ownerWindow()->windowHandle()->isAncestorOf(
+                    surface->windowHandle(), QWindow::IncludeTransients),
                 "each Settings open must retain native recording-window ownership");
         require(settings.modal == palette.findChild<adqt::widgets::AdModal*>(
                                       QStringLiteral("screenRecordingEffectSettingsModal")),
@@ -1173,7 +1173,7 @@ void recordingEffectSettingsModal() {
     }
 
     require(modal->mode() == adqt::widgets::AdModal::Mode::Window &&
-                modal->windowModality() == Qt::ApplicationModal && modal->centered() &&
+                modal->windowModality() == Qt::WindowModal && modal->centered() &&
                 !modal->maskVisible() && !modal->closeOnMaskClick() &&
                 modal->ownerWindow() == &recordingOwner &&
                 modal->windowTitle() == QStringLiteral("Effect settings") &&
@@ -6995,7 +6995,7 @@ void scrollingSettingsUseCenteredFormAndPersistOnAccept() {
                 captureInterface->controlSize() == AdSwitch::ControlSize::Medium,
             "form refreshes must preserve the generic switch's size and enabled state");
     require(modal->mode() == AdModal::Mode::Window && modal->centered() &&
-                modal->windowModality() == Qt::ApplicationModal && modal->ownerWindow() == &owner &&
+                modal->windowModality() == Qt::WindowModal && modal->ownerWindow() == &owner &&
                 modal->preferredWidth() == 440 && !modal->maskVisible() &&
                 !modal->closeOnMaskClick() &&
                 modal->standardButtons() == (AdModal::StandardButtons(AdModal::StandardButton::Ok) |
@@ -11304,10 +11304,10 @@ void watermarkEditsCommitCompleteConfigsAndClampWheel() {
 void watermarkTemplateLibraryAndEditorApplySnapshotsDeterministically() {
     const snow_shot::storage::WatermarkTemplateSettings templateSettings;
     require(templateSettings.setTemplates({
-                {QStringLiteral("Duplicate"), QStringLiteral("{text}-{YYYY}")},
+                {QStringLiteral("Duplicate"), QStringLiteral("{text}-{MM}")},
                 {QStringLiteral("Duplicate"), QStringLiteral("{text}-{YYYY}")},
             }),
-            "watermark-template fixture should persist duplicate rows");
+            "watermark-template fixture should persist duplicate names");
 
     int clockCalls = 0;
     ScreenshotToolPalette::Options options;
@@ -11482,7 +11482,7 @@ void watermarkTemplateLibraryAndEditorApplySnapshotsDeterministically() {
     require(nameItem != nullptr && valueItem != nullptr,
             "Add template should expose its named form items");
     require(createModal->mode() == adqt::widgets::AdModal::Mode::Window &&
-                createModal->windowModality() == Qt::ApplicationModal && createModal->centered() &&
+                createModal->windowModality() == Qt::WindowModal && createModal->centered() &&
                 createModal->ownerWindow() == &selectionDisplayOverlay &&
                 createModal->windowTitle() == QStringLiteral("Add template") &&
                 createModal->acceptButton()->text() == QStringLiteral("Add") &&
@@ -11554,16 +11554,16 @@ void watermarkTemplateLibraryAndEditorApplySnapshotsDeterministically() {
     select->showPopup();
     QCoreApplication::processEvents();
     QListView* view = select->view();
-    QModelIndex firstDuplicate;
+    QModelIndex secondDuplicate;
     for (int row = 0; view != nullptr && row < view->model()->rowCount(); ++row) {
         const QModelIndex candidate = view->model()->index(row, 0);
-        if (candidate.data(Qt::UserRole).toString() == QStringLiteral("watermark-template:0")) {
-            firstDuplicate = candidate;
+        if (candidate.data(Qt::UserRole).toString() == QStringLiteral("watermark-template:1")) {
+            secondDuplicate = candidate;
             break;
         }
     }
-    require(firstDuplicate.isValid(), "the first duplicate template should have a popup row");
-    const QRect rowRect = view->visualRect(firstDuplicate);
+    require(secondDuplicate.isValid(), "the second duplicate template should have a popup row");
+    const QRect rowRect = view->visualRect(secondDuplicate);
     const QPoint deletePoint(rowRect.right() - 15, rowRect.center().y());
     const auto sendMouse = [view](QEvent::Type type, const QPoint& point, Qt::MouseButton button,
                                   Qt::MouseButtons buttons) {
@@ -11576,14 +11576,14 @@ void watermarkTemplateLibraryAndEditorApplySnapshotsDeterministically() {
     sendMouse(QEvent::MouseButtonRelease, deletePoint, Qt::LeftButton, Qt::NoButton);
     QCoreApplication::processEvents();
 
-    auto* deleteModal = palette.findChild<adqt::widgets::AdModal*>(
+    QPointer<adqt::widgets::AdModal> deleteModal = palette.findChild<adqt::widgets::AdModal*>(
         QStringLiteral("screenshotWatermarkTemplateDeleteModal"));
     const SnowCanvasWatermarkConfig beforeDelete = applied;
     require(deleteModal && deleteModal->ownerWindow() == &selectionDisplayOverlay,
             "watermark deletion must use the same display owner as creation");
     require(deleteModal != nullptr && deleteModal->isOpen() &&
                 deleteModal->mode() == adqt::widgets::AdModal::Mode::Window &&
-                deleteModal->windowModality() == Qt::ApplicationModal &&
+                deleteModal->windowModality() == Qt::WindowModal &&
                 deleteModal->windowTitle() == QStringLiteral("Delete template") &&
                 deleteModal->text() ==
                     QStringLiteral("Delete template \"Duplicate\"? This action cannot be undone") &&
@@ -11603,13 +11603,21 @@ void watermarkTemplateLibraryAndEditorApplySnapshotsDeterministically() {
     require(languageManager.setLanguage(QStringLiteral("en_US")),
             "English Delete template language restoration should succeed");
     QCoreApplication::processEvents();
+    const snow_shot::storage::WatermarkTemplate concurrent{QStringLiteral("Added elsewhere"),
+                                                           QStringLiteral("{text}-{hh}")};
+    auto updatedLibrary = templateSettings.templates();
+    updatedLibrary.removeFirst();
+    updatedLibrary.append(concurrent);
+    require(templateSettings.setTemplates(updatedLibrary),
+            "another window can remove a preceding row and add a new template");
     deleteModal->acceptButton()->click();
     QCoreApplication::processEvents();
     const QVector<snow_shot::storage::WatermarkTemplate> afterDelete = templateSettings.templates();
-    require(afterDelete.size() == 2 && afterDelete.at(0).name == QStringLiteral("Duplicate") &&
-                afterDelete.at(1).name == QStringLiteral("Added") && commits == 4 &&
-                applied == beforeDelete,
-            "deleting a duplicate row should remove only that index and leave the snapshot intact");
+    require((!deleteModal || !deleteModal->isOpen()) && afterDelete.size() == 2 &&
+                afterDelete.at(0).name == QStringLiteral("Added") &&
+                afterDelete.at(1) == concurrent && commits == 4 && applied == beforeDelete,
+            "deletion follows the confirmed template after its index shifts and preserves other "
+            "windows' changes");
 
     require(templateSettings.setTemplates({}), "empty watermark-template library should persist");
     select->hidePopup();

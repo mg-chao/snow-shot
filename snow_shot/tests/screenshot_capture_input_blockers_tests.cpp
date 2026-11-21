@@ -1,7 +1,10 @@
 #include "../src/presentation/capture/screenshotcaptureinputblockers.h"
 
+#include "widgets/modal.h"
+
 #include <QApplication>
 #include <QCloseEvent>
+#include <QLineEdit>
 #include <QMenu>
 #include <QMouseEvent>
 #include <QWidget>
@@ -11,7 +14,7 @@
 #include <iostream>
 
 namespace {
-using snow_shot::presentation::closeCaptureInputBlockers;
+using snow_shot::presentation::prepareCaptureInput;
 
 void require(bool condition, const char* message) {
     if (!condition) {
@@ -19,14 +22,6 @@ void require(bool condition, const char* message) {
         std::exit(1);
     }
 }
-
-class IndirectlyClosingModal final : public QWidget {
-  protected:
-    void closeEvent(QCloseEvent* event) override {
-        event->ignore();
-        hide();
-    }
-};
 
 class RefusingWindow final : public QWidget {
   protected:
@@ -73,7 +68,7 @@ void popupReleasesOverlayMouseInput() {
     sendWindowMouseMove(overlay);
     require(overlay.mouseMoves == 0,
             "an open popup redirects mouse movement away from the overlay");
-    require(closeCaptureInputBlockers(), "capture preparation should release popup input");
+    require(prepareCaptureInput(), "capture preparation should release popup input");
     sendWindowMouseMove(overlay);
     require(overlay.mouseMoves == 1,
             "capture preparation must restore mouse movement to the screenshot overlay");
@@ -81,56 +76,69 @@ void popupReleasesOverlayMouseInput() {
             "capture preparation must dismiss the popup before showing overlays");
 }
 
-void nestedPopupsCloseBeforeTheirModalOwner() {
-    QWidget modeless;
-    modeless.show();
-    QWidget modal;
-    modal.setWindowModality(Qt::ApplicationModal);
-    modal.show();
-    QMenu menu(&modal);
+void nestedMenusReleaseInputAndPreserveTheOwnerDialog() {
+    QWidget source;
+    source.show();
+    adqt::widgets::AdModal modal(&source);
+    modal.setMode(adqt::widgets::AdModal::Mode::Window);
+    auto* draft = new QLineEdit;
+    draft->setText(QStringLiteral("unsaved edits"));
+    modal.setContentWidget(draft);
+    modal.open();
+    QWidget* surface = draft->window();
+    QMenu menu(surface);
     auto* child = menu.addMenu(QStringLiteral("Child"));
-    auto* nested = child->addMenu(QStringLiteral("Nested"));
-    nested->addAction(QStringLiteral("Item"));
+    child->addAction(QStringLiteral("Item"));
     menu.popup(QPoint(200, 200));
     child->popup(QPoint(300, 200));
-    nested->popup(QPoint(400, 200));
-    require(QApplication::activeModalWidget() == &modal &&
-                QApplication::activePopupWidget() == nested,
-            "nested menus and their modal owner should both block capture input");
+    require(QApplication::activePopupWidget() == child, "nested menu owns popup input");
 
-    require(closeCaptureInputBlockers(), "capture should dismiss the entire popup and modal stack");
-    require(!menu.isVisible() && !child->isVisible() && !nested->isVisible() &&
-                !modal.isVisible() && QApplication::activePopupWidget() == nullptr &&
-                QApplication::activeModalWidget() == nullptr,
-            "no nested popup or modal may retain capture input");
-    require(modeless.isVisible(), "capture preparation must preserve unrelated modeless windows");
+    require(prepareCaptureInput(), "an owned modal must allow an independent capture");
+    require(!child->isVisible() && !menu.isVisible() && !QApplication::activePopupWidget(),
+            "capture dismisses every menu that redirects pointer input");
+
+    MouseTrackingOverlay overlay;
+    overlay.show();
+    QApplication::processEvents();
+    require(adqt::widgets::detail::blockingModalWindow(source.windowHandle()) &&
+                !adqt::widgets::detail::blockingModalWindow(overlay.windowHandle()),
+            "the dialog continues to block only its source window");
+    overlay.mouseMoves = 0;
+    sendWindowMouseMove(overlay);
+    require(overlay.mouseMoves == 1, "the independent screenshot overlay receives pointer input");
+    overlay.close();
+    require(modal.isOpen() && surface->isVisible() &&
+                draft->text() == QStringLiteral("unsaved edits"),
+            "finishing capture preserves the original dialog and its draft");
 }
 
-void modalCloseHandlerCanOpenAPopup() {
-    class Modal final : public QWidget {
-      public:
-        QMenu popup;
+void applicationModalUnderNestedWindowModalPreventsCapture() {
+    QWidget global(nullptr, Qt::Dialog);
+    global.setWindowModality(Qt::ApplicationModal);
+    global.show();
+    QWidget nested(&global, Qt::Dialog);
+    nested.setWindowModality(Qt::WindowModal);
+    nested.show();
+    require(QApplication::activeModalWidget() == &nested,
+            "the nested window modal is on top of the application modal");
+    require(!prepareCaptureInput() && global.isVisible() && nested.isVisible(),
+            "capture respects an application-wide blocker anywhere in the modal stack");
+    nested.close();
+    require(!prepareCaptureInput() && global.isVisible(),
+            "capture must leave the application-modal decision to the user");
+    global.close();
+    require(prepareCaptureInput(), "capture is available after the user closes the dialog");
+}
 
-      protected:
-        void closeEvent(QCloseEvent* event) override {
-            require(QApplication::activePopupWidget() == nullptr,
-                    "capture must close popups before their modal owner");
-            popup.addAction(QStringLiteral("Opened while closing"));
-            popup.popup(QPoint(200, 200));
-            event->accept();
-        }
-    } modal;
-    modal.setWindowModality(Qt::ApplicationModal);
-    modal.show();
-    QMenu original(&modal);
-    original.addAction(QStringLiteral("Original popup"));
-    original.popup(QPoint(300, 300));
-
-    require(closeCaptureInputBlockers(), "capture should close blockers created by close handlers");
-    require(!original.isVisible() && !modal.popup.isVisible() && !modal.isVisible() &&
-                QApplication::activePopupWidget() == nullptr &&
-                QApplication::activeModalWidget() == nullptr,
-            "capture must recheck popup ownership after closing a modal");
+void popupCloseHandlerCanOpenAnApplicationModal() {
+    QWindow modal;
+    modal.setModality(Qt::ApplicationModal);
+    QMenu menu;
+    menu.addAction(QStringLiteral("Item"));
+    QObject::connect(&menu, &QMenu::aboutToHide, &modal, [&modal] { modal.show(); });
+    menu.popup(QPoint(200, 200));
+    require(!prepareCaptureInput() && !menu.isVisible() && modal.isVisible(),
+            "capture rechecks Qt modality after closing menus, including non-widget dialogs");
 }
 
 void refusingPopupPreventsCapture() {
@@ -139,7 +147,7 @@ void refusingPopupPreventsCapture() {
     popup.show();
     require(QApplication::activePopupWidget() == &popup,
             "the refusing window must own popup input");
-    require(!closeCaptureInputBlockers(), "capture must not start when a popup refuses to close");
+    require(!prepareCaptureInput(), "capture must not start when a popup refuses to close");
     require(popup.isVisible() && QApplication::activePopupWidget() == &popup,
             "a refused close must leave the popup usable");
     popup.hide();
@@ -149,32 +157,9 @@ void refusingPopupPreventsCapture() {
 int main(int argc, char* argv[]) {
     QApplication application(argc, argv);
     popupReleasesOverlayMouseInput();
-    nestedPopupsCloseBeforeTheirModalOwner();
-    modalCloseHandlerCanOpenAPopup();
+    nestedMenusReleaseInputAndPreserveTheOwnerDialog();
+    applicationModalUnderNestedWindowModalPreventsCapture();
+    popupCloseHandlerCanOpenAnApplicationModal();
     refusingPopupPreventsCapture();
-
-    QWidget first;
-    first.setWindowModality(Qt::ApplicationModal);
-    first.show();
-    IndirectlyClosingModal second;
-    second.setWindowModality(Qt::ApplicationModal);
-    second.show();
-    QApplication::processEvents();
-    require(QApplication::activeModalWidget() == &second,
-            "the last dialog should block the screenshot overlay");
-
-    require(closeCaptureInputBlockers(), "capture should close every active modal window");
-    require(!first.isVisible() && !second.isVisible() &&
-                QApplication::activeModalWidget() == nullptr,
-            "closed dialogs must no longer block screenshot input");
-
-    RefusingWindow refusing;
-    refusing.setWindowModality(Qt::ApplicationModal);
-    refusing.show();
-    QApplication::processEvents();
-    require(!closeCaptureInputBlockers(), "capture must not start when a dialog refuses to close");
-    require(refusing.isVisible() && QApplication::activeModalWidget() == &refusing,
-            "a refused close must leave the dialog usable");
-    refusing.hide();
     return 0;
 }

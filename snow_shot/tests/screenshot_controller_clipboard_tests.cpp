@@ -2209,8 +2209,14 @@ void exportTaskClipboardOrder() {
 
     ScreenshotControllerTestAccess::prepareSelection(controller, fixture(), selection);
     ScreenshotControllerTestAccess::presentSelection(controller);
+    QWidget source;
+    source.show();
+    QWidget modal(&source, Qt::Dialog);
+    modal.setWindowModality(Qt::WindowModal);
+    modal.show();
     commands.printSelection();
-    waitUntil([&] { return bool(submitPrint); }, "print holds its primary result");
+    waitUntil([&] { return bool(submitPrint); },
+              "an unrelated dialog allows the selection to print");
     copyNewerImage();
     std::exchange(submitPrint, {})({ScreenshotPrintService::Status::Submitted, {}});
     waitUntil([&] { return !printService.busy() && idle(); },
@@ -2302,6 +2308,11 @@ void exportTaskErrorsSurviveCaptureTeardown() {
     selection.selection = QRect(10, 12, 80, 50);
     const auto* detailText = "The screenshot filename format is invalid";
     const auto* summaryText = "Automatic screenshot saving failed: %1";
+    QWidget source;
+    source.show();
+    QWidget modal(&source, Qt::Dialog);
+    modal.setWindowModality(Qt::WindowModal);
+    modal.show();
     for (const auto& locale : {QStringLiteral("zh_CN"), QStringLiteral("zh_TW")}) {
         require(language.setLanguage(locale), "load the follow-up error locale");
         const auto detail = QCoreApplication::translate("ScreenshotImageFileService", detailText);

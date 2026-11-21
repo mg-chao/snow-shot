@@ -662,6 +662,13 @@ void screenshotWindowsKeepTheirStackingOrder(bool cocoa) {
                         "unrelated application tools must retain their original level");
             }
         }
+        QWidget other;
+        QWidget otherDialog(&other, Qt::Dialog);
+        if (attempt == 2) {
+            other.show();
+            otherDialog.setWindowModality(Qt::WindowModal);
+            otherDialog.show();
+        }
         auto* modal = new adqt::widgets::AdModal(&overlay);
         modal->setMode(adqt::widgets::AdModal::Mode::Window);
         modal->setWindowModality(attempt < 2 ? Qt::ApplicationModal : Qt::WindowModal);
@@ -724,7 +731,12 @@ void screenshotWindowsKeepTheirStackingOrder(bool cocoa) {
         delete modal;
         finishNativeModalTransition();
         if (cocoa) {
-            require(NSApp.keyWindow == reinterpret_cast<NSView*>(overlay.winId()).window,
+            NSWindow* expectedKeyWindow = reinterpret_cast<NSView*>(overlay.winId()).window;
+            QElapsedTimer activation;
+            activation.start();
+            while (NSApp.keyWindow != expectedKeyWindow && activation.elapsed() < 3000)
+                finishNativeModalTransition();
+            require(NSApp.keyWindow == expectedKeyWindow,
                     "closing a screenshot modal must return native keyboard focus to its owner");
             [toolbarNative removeObserver:trace forKeyPath:@"level"];
             [recognitionNative removeObserver:trace forKeyPath:@"level"];
@@ -734,8 +746,8 @@ void screenshotWindowsKeepTheirStackingOrder(bool cocoa) {
                     "modal closure must not change toolbar or OCR levels, even transiently");
         }
         require(toolbar.isVisible() && recognition.isVisible() &&
-                    QApplication::activeModalWidget() == nullptr,
-                "closing selection editing must preserve the screenshot tools and OCR result");
+                    QApplication::activeModalWidget() == (attempt == 2 ? &otherDialog : nullptr),
+                "closing selection editing preserves the screenshot tools and unrelated dialogs");
         if (cocoa) {
             require(level(toolbar) > level(overlay) && level(recognition) > level(overlay),
                     "ending Cocoa's modal session must not bury the toolbar or OCR result");
@@ -780,13 +792,18 @@ void nativeFilePanelsCoverScreenshotModals(bool cocoa) {
     modal.setWindowModality(Qt::ApplicationModal);
     auto* content = new QWidget;
     modal.setContentWidget(content);
-    for (bool withModal : {false, true}) {
-        if (withModal)
+    QWidget other;
+    other.show();
+    for (QWidget* owner : {static_cast<QWidget*>(&overlay), content, &other}) {
+        if (owner == content) {
             modal.open();
+            owner = content->window();
+        }
         finishNativeModalTransition();
-        QWidget* owner = withModal ? content->window() : &overlay;
         for (bool directory : {false, true}) {
             QFileDialog dialog(owner);
+            if (owner == &other)
+                dialog.setWindowModality(Qt::WindowModal);
             dialog.setAcceptMode(directory ? QFileDialog::AcceptOpen : QFileDialog::AcceptSave);
             dialog.setFileMode(directory ? QFileDialog::Directory : QFileDialog::AnyFile);
             bool inspected = false;
@@ -799,14 +816,22 @@ void nativeFilePanelsCoverScreenshotModals(bool cocoa) {
                         if (window.visible && [window isKindOfClass:[NSSavePanel class]])
                             panel = static_cast<NSSavePanel*>(window);
                     }
-                    if (!panel)
+                    // AppKit can report a visible panel before key-window delivery
+                    // applies its capture level.
+                    if (!panel || !panel.keyWindow)
                         return;
                     require([panel isKindOfClass:[NSOpenPanel class]] == directory,
                             "the native fixture must use the requested save or directory panel");
-                    require(panel.level > reinterpret_cast<NSView*>(owner->winId()).window.level &&
-                                panel.level >
-                                    reinterpret_cast<NSView*>(overlay.winId()).window.level,
-                            "native file panels must cover the screenshot and its modal");
+                    const auto overlayLevel =
+                        reinterpret_cast<NSView*>(overlay.winId()).window.level;
+                    if (owner == &other)
+                        require(panel.level < overlayLevel,
+                                "an unrelated window's file panel must stay below capture");
+                    else
+                        require(panel.level >
+                                        reinterpret_cast<NSView*>(owner->winId()).window.level &&
+                                    panel.level > overlayLevel,
+                                "native file panels must cover their screenshot owner");
                     inspected = true;
                     inspectedPanel = [panel retain];
                     [panel cancel:nil];

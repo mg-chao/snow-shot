@@ -107,6 +107,7 @@ struct ScreenshotToolPaletteStyleControlCallbacks {
     std::function<QWidget*()> watermarkTemplateModalOwnerWindow;
     std::function<void(const SnowCanvasMagnifierStyle& style, quint32 properties)>
         magnifierStyleChanged;
+    Qt::WindowModality dialogModality = Qt::WindowModal;
 };
 
 // Palette-owned row services used by the family builders. The palette supplies
@@ -474,7 +475,7 @@ class ScreenshotToolPaletteStyleControls final {
     void refreshWatermarkTemplateOptions();
     void openCreateWatermarkTemplateModal();
     void openDeleteWatermarkTemplateModal(const QString& templateKey);
-    void deleteWatermarkTemplate(const QString& templateKey);
+    bool deleteWatermarkTemplate(int index, const snow_shot::storage::WatermarkTemplate& target);
     void setWatermarkAngle(double angle);
     void setWatermarkGap(double gap);
     void setWatermarkOpacity(double opacity);

@@ -7,8 +7,7 @@ bool macosRecordingModalAboveControls(QWidget* modal, QWidget* area, QWidget* to
     NSWindow* surface = reinterpret_cast<NSView*>(modal->winId()).window;
     NSArray<NSNumber*>* ordered = [NSWindow windowNumbersWithOptions:0];
     const NSUInteger surfaceIndex = [ordered indexOfObject:@(surface.windowNumber)];
-    if (!surface.visible || surface.alphaValue < 0.99 || surfaceIndex == NSNotFound ||
-        NSApp.modalWindow != surface)
+    if (!surface.visible || surface.alphaValue < 0.99 || surfaceIndex == NSNotFound)
         return false;
     for (QWidget* widget : {area, toolbar}) {
         NSWindow* control = reinterpret_cast<NSView*>(widget->winId()).window;

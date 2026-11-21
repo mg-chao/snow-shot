@@ -2693,7 +2693,8 @@ void ScreenshotRecognitionSessionController::openTranslationSettings() {
                 if (!notify(&ScreenshotRecognitionSessionController::beginTextTranslation))
                     return;
             }
-        });
+        },
+        m_actions.translationSettingsModality);
     connect(m_translationSettingsModal, &adqt::widgets::AdModal::finished, this,
             [this] { m_translationSettingsModal = nullptr; });
 #endif

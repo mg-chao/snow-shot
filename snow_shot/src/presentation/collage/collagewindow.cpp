@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "snow_shot/presentation/collagewindow.h"
+#include "snow_shot/presentation/components/windowconfirmation.h"
 #include "snow_shot/presentation/imagesplitdocument.h"
 #include "snow_shot/presentation/collagesettingsstore.h"
 #include "snow_shot/presentation/components/collageeditorwidget.h"
@@ -598,21 +599,17 @@ struct ImageStitchingWindow::Impl {
             services.confirm(editor->window(), clear, std::move(complete));
             return;
         }
-        auto* dialog = new AdModal(&q);
+        auto* dialog = modal_window::createConfirmation(&q, editor->window());
         confirmation = dialog;
         confirmationClear = clear;
         dialog->setObjectName(QStringLiteral("collageDiscardConfirmation"));
-        dialog->setMode(AdModal::Mode::Window);
-        dialog->setOwnerWindow(editor->window());
-        dialog->setWindowModality(Qt::WindowModal);
-        dialog->setPreset(AdModal::Preset::Confirm);
+
         translateConfirmation();
         dialog->setAcceptAccentRole(AdButton::AccentRole::Danger);
         QObject::connect(dialog, &AdModal::finished, &q,
                          [complete = std::move(complete)](AdModal::DialogCode code) {
                              complete(code == AdModal::DialogCode::Accepted);
                          });
-        QObject::connect(dialog, &AdModal::finished, dialog, &QObject::deleteLater);
         dialog->present();
     }
 

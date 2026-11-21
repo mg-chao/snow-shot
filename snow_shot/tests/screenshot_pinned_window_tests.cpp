@@ -19684,8 +19684,14 @@ void pinnedSaveDialogRoutingAndCancellation() {
     require(!adqt::widgets::detail::blockingModalWindow(
                 modal->contentWidget()->window()->windowHandle()),
             "pinned save must not block its own visible surface");
-    require(modal->contentWidget()->window()->windowHandle()->transientParent() ==
-                toolbar->windowHandle(),
+    QWindow independent;
+    require(modal->windowModality() == Qt::WindowModal &&
+                adqt::widgets::detail::blockingModalWindow(window->windowHandle()) &&
+                adqt::widgets::detail::blockingModalWindow(toolbar->windowHandle()) &&
+                !adqt::widgets::detail::blockingModalWindow(&independent),
+            "pinned save blocks its pin and toolbar while allowing independent capture");
+    require(toolbar->windowHandle()->isAncestorOf(modal->contentWidget()->window()->windowHandle(),
+                                                  QWindow::IncludeTransients),
             "pinned save must stay above its visible editing toolbar");
     modal->rejectButton()->click();
     waitForUi(30);
@@ -23369,6 +23375,14 @@ void pinnedPrintingWithoutToolbarAndDelayedCompletion(bool locked) {
             "printing fixture must apply the requested lock state through its shortcut");
     const QRect geometry = window.currentNativeGeometry();
     QApplication::clipboard()->setText(QStringLiteral("print must not publish"));
+    QWidget independent;
+    independent.show();
+    adqt::widgets::AdModal otherConfirmation(&independent);
+    otherConfirmation.setMode(adqt::widgets::AdModal::Mode::Window);
+    otherConfirmation.open();
+    window.activateWindow();
+    canvas->setFocus();
+    waitForUi(20);
     sendShortcut(*canvas, Qt::Key_P, Qt::ControlModifier);
     sendShortcut(*canvas, Qt::Key_P, Qt::ControlModifier);
     QElapsedTimer timer;
@@ -23376,7 +23390,8 @@ void pinnedPrintingWithoutToolbarAndDelayedCompletion(bool locked) {
     while (starts == 0 && timer.elapsed() < 10000)
         waitForUi(5);
     require(starts == 1 && Access::printPending(window) && !hasToolbar(),
-            "Ctrl+P must print directly once without creating the toolbar");
+            "another window's confirmation must allow this pin to print once via Ctrl+P");
+    otherConfirmation.close();
     sendShortcut(*canvas, Qt::Key_L);
     require(window.persistenceSnapshot().lockedMode == locked &&
                 window.currentNativeGeometry() == geometry,
@@ -25184,7 +25199,10 @@ void pinnedMultiSelectionCloseAndGroups() {
             .trigger();
         auto* modal = first.findChild<adqt::widgets::AdModal*>(
             QStringLiteral("pinnedWindowGroupCreateModal"));
-        require(modal && modal->isOpen(), "batch New Group opens the existing group-name form");
+        require(modal && modal->isOpen() && modal->windowModality() == Qt::WindowModal &&
+                    adqt::widgets::detail::blockingModalWindow(first.windowHandle()) &&
+                    !adqt::widgets::detail::blockingModalWindow(second.windowHandle()),
+                "New Group blocks its source pin while other windows remain usable");
         auto* input = modal->contentWidget()->findChild<adqt::widgets::AdLineEdit*>(
             QStringLiteral("pinnedWindowGroupNameInput"));
         require(input != nullptr, "batch New Group preserves the existing group-name editor");
@@ -25277,55 +25295,74 @@ void pinnedMultiSelectionDestroyConfirmation() {
     auto& first = fixture.add({40, 60});
     auto& second = fixture.add({230, 160});
     auto& other = fixture.add({420, 260});
+    auto& fourth = fixture.add({610, 360});
     fixture.selection.toggleSelection(&first);
     fixture.selection.toggleSelection(&second);
-    const auto openConfirmation = [&]() {
-        auto& menu = fixture.menu(first);
+    const auto confirmationName = QStringLiteral("screenshotPinnedSelectionDestroyConfirmation");
+    const auto openConfirmation = [&](ScreenshotPinnedWindow& owner) {
+        auto& menu = fixture.menu(owner);
         auto& action =
             pinnedSelectionAction(menu, QStringLiteral("screenshotPinnedSelectionDestroy"));
         action.trigger();
-        auto* modal = first.findChild<adqt::widgets::AdModal*>(
-            QStringLiteral("screenshotPinnedSelectionDestroyConfirmation"));
-        require(modal && modal->isOpen() && modal->windowModality() == Qt::ApplicationModal &&
+        auto* modal = owner.findChild<adqt::widgets::AdModal*>(confirmationName);
+        require(modal && modal->isOpen() && modal->windowModality() == Qt::WindowModal &&
                     modal->property("pinnedSelectionCount").toInt() == 2,
-                "Destroy opens one count-aware application-modal confirmation");
+                "Destroy opens one count-aware confirmation on the source pin");
         action.trigger();
-        require(first.findChildren<adqt::widgets::AdModal*>(
-                         QStringLiteral("screenshotPinnedSelectionDestroyConfirmation"))
-                        .size() == 1,
+        require(owner.findChildren<adqt::widgets::AdModal*>(confirmationName).size() == 1,
                 "repeated Destroy requests reuse the batch confirmation");
         return modal;
     };
-    auto* modal = openConfirmation();
+    auto* modal = openConfirmation(first);
     modal->reject();
     waitForUi(5);
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     require(fixture.destroyAttempts == 0 && fixture.selection.selectedCount() == 2 &&
                 first.sourcePinAvailable() && second.sourcePinAvailable() &&
-                fixture.repository.summaries().size() == 3,
+                fixture.repository.summaries().size() == 4,
             "canceling batch Destroy preserves records and selection");
     fixture.rejectDestroy = true;
-    modal = openConfirmation();
+    modal = openConfirmation(first);
     modal->accept();
     waitForUi(5);
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     require(fixture.destroyAttempts == 1 && fixture.selection.selectedCount() == 2 &&
                 first.sourcePinAvailable() && second.sourcePinAvailable() &&
-                fixture.repository.summaries().size() == 3,
+                fixture.repository.summaries().size() == 4,
             "failed destruction preflight leaves all selected windows and records untouched");
     fixture.rejectDestroy = false;
-    modal = openConfirmation();
+    QPointer<adqt::widgets::AdModal> previous = openConfirmation(first);
+    fixture.selection.destroyWindows(&other, {&first, &second, &other, &fourth});
+    auto* displayed = other.findChild<adqt::widgets::AdModal*>(confirmationName);
+    require((!previous || !previous->isOpen()) && displayed && displayed->isOpen() &&
+                displayed->property("pinnedDisplayedBatch").toBool() &&
+                displayed->property("pinnedSelectionCount").toInt() == 4,
+            "Destroy displayed windows replaces the earlier selected-window request");
+    displayed->reject();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+
+    previous = openConfirmation(first);
+    fixture.selection.selectAll({&other, &fourth});
+    require(!previous || !previous->isOpen(),
+            "changing the selection invalidates an outstanding batch Destroy");
+    if (previous)
+        previous->accept();
+    require(fixture.destroyAttempts == 1 && fixture.repository.summaries().size() == 4,
+            "a superseded confirmation cannot delete the previous selection");
+    modal = openConfirmation(other);
     modal->accept();
     waitForUi(5);
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     require(fixture.destroyAttempts == 2 && fixture.lastDestroyedIds.size() == 2 &&
-                fixture.lastDestroyedIds.contains(first.persistenceId()) &&
-                fixture.lastDestroyedIds.contains(second.persistenceId()) &&
+                fixture.lastDestroyedIds.contains(other.persistenceId()) &&
+                fixture.lastDestroyedIds.contains(fourth.persistenceId()) &&
                 fixture.selection.selectedCount() == 0 &&
-                !fixture.repository.loadRecord(first.persistenceId()) &&
-                !fixture.repository.loadRecord(second.persistenceId()) &&
-                fixture.repository.loadRecord(other.persistenceId()) && other.sourcePinAvailable(),
-            "confirmed Destroy removes only the frozen selection with one backend batch");
+                !fixture.repository.loadRecord(other.persistenceId()) &&
+                !fixture.repository.loadRecord(fourth.persistenceId()) &&
+                fixture.repository.loadRecord(first.persistenceId()) &&
+                fixture.repository.loadRecord(second.persistenceId()) &&
+                first.sourcePinAvailable() && second.sourcePinAvailable(),
+            "confirmed Destroy removes only the updated selection with one backend batch");
 }
 
 void pinnedMultiSelectionDestroyWithoutConfirmation() {

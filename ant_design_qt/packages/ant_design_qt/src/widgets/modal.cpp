@@ -956,44 +956,16 @@ QWidget* effectiveFocusTarget(QWidget* widget) {
 
 }  // namespace
 
-AdModal* AdModalService::showStaticRequest(const AdModalService::Request& request,
-                                           AdModal::Preset defaultPreset, QWidget* ownerWindow) {
-  QWidget* resolvedOwnerWindow = ownerWindow ? ownerWindow : QApplication::activeWindow();
-  auto* modal = new AdModal(resolvedOwnerWindow);
-  modal->staticServiceOwned_ = true;
-  modal->setCentered(true);
-  modal->setMaskVisible(true);
-  modal->setCloseOnMaskClick(false);
-  modal->setCloseOnEscape(true);
-  modal->setCloseButtonVisible(false);
-  modal->setFooterVisible(true);
-  modal->setPreset(request.preset.value_or(defaultPreset));
-  modal->setStandardButtons(modal->preset() == AdModal::Preset::Confirm
-                                ? (AdModal::StandardButton::Ok | AdModal::StandardButton::Cancel)
-                                : AdModal::StandardButton::Ok);
-  modal->setPreferredWidth(416);
-  modal->setOwnerWindow(resolvedOwnerWindow);
-
-  switch (modal->preset()) {
-    case AdModal::Preset::Info:
-      modal->setWindowTitle(AdModal::tr("Information"));
-      break;
-    case AdModal::Preset::Success:
-      modal->setWindowTitle(AdModal::tr("Success"));
-      break;
-    case AdModal::Preset::Error:
-      modal->setWindowTitle(AdModal::tr("Error"));
-      break;
-    case AdModal::Preset::Warning:
-      modal->setWindowTitle(AdModal::tr("Warning"));
-      break;
-    case AdModal::Preset::Confirm:
-      modal->setWindowTitle(AdModal::tr("Confirm"));
-      break;
-    case AdModal::Preset::Plain:
-      break;
+AdModal* AdModalService::create(const Request& request, QObject* lifetimeOwner,
+                                QWidget* ownerWindow) {
+  auto* modal = new AdModal(lifetimeOwner);
+  modal->setOwnerWindow(ownerWindow);
+  if (request.preset) {
+    modal->setPreset(*request.preset);
   }
-
+  if (request.windowModality) {
+    modal->setWindowModality(*request.windowModality);
+  }
   if (request.title.has_value()) {
     modal->setWindowTitle(request.title.value());
   }
@@ -1052,26 +1024,62 @@ AdModal* AdModalService::showStaticRequest(const AdModalService::Request& reques
   if (request.onAccept || request.onReject) {
     modal->setClosePolicy(AdModal::ClosePolicy::Manual);
     QObject::connect(modal, &AdModal::closeRequested, modal,
-                     [modal, request](AdModal::CloseReason reason) {
-                       if (!modal) {
-                         return;
-                       }
+                     [modal, onAccept = request.onAccept,
+                      onReject = request.onReject](AdModal::CloseReason reason) {
                        if (reason == AdModal::CloseReason::OkAction) {
-                         if (request.onAccept) {
-                           request.onAccept(modal);
+                         if (onAccept) {
+                           onAccept(modal);
                          } else {
                            modal->accept();
                          }
                          return;
                        }
-                       if (request.onReject) {
-                         request.onReject(modal);
+                       if (onReject) {
+                         onReject(modal);
                        } else {
                          modal->reject();
                        }
                      });
   }
 
+  return modal;
+}
+
+AdModal* AdModalService::showStaticRequest(const Request& request, AdModal::Preset defaultPreset,
+                                           QWidget* ownerWindow) {
+  Request options = request;
+  options.preset = options.preset.value_or(defaultPreset);
+  options.centered = options.centered.value_or(true);
+  options.closeOnMaskClick = options.closeOnMaskClick.value_or(false);
+  options.closeButtonVisible = options.closeButtonVisible.value_or(false);
+  options.preferredWidth = options.preferredWidth.value_or(416);
+  if (!options.standardButtons && *options.preset != AdModal::Preset::Confirm) {
+    options.standardButtons = AdModal::StandardButton::Ok;
+  }
+  if (!options.title) {
+    switch (*options.preset) {
+      case AdModal::Preset::Info:
+        options.title = AdModal::tr("Information");
+        break;
+      case AdModal::Preset::Success:
+        options.title = AdModal::tr("Success");
+        break;
+      case AdModal::Preset::Error:
+        options.title = AdModal::tr("Error");
+        break;
+      case AdModal::Preset::Warning:
+        options.title = AdModal::tr("Warning");
+        break;
+      case AdModal::Preset::Confirm:
+        options.title = AdModal::tr("Confirm");
+        break;
+      case AdModal::Preset::Plain:
+        break;
+    }
+  }
+  QWidget* owner = ownerWindow ? ownerWindow : QApplication::activeWindow();
+  auto* modal = create(options, owner, owner);
+  modal->staticServiceOwned_ = true;
   AdModal::registerStaticServiceModal(modal);
   QObject::connect(modal, &AdModal::finished, modal, &QObject::deleteLater);
   modal->open();

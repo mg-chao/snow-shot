@@ -1876,7 +1876,7 @@ void ScreenshotController::Impl::startHistoryEdit(const QString& recordId) {
 #ifdef Q_OS_MACOS
     m_sessionFocus->prepare();
 #endif
-    if (!snow_shot::presentation::closeCaptureInputBlockers()) {
+    if (!snow_shot::presentation::prepareCaptureInput()) {
 #ifdef Q_OS_MACOS
         m_sessionFocus->abandonPrepared();
 #endif
@@ -4805,8 +4805,7 @@ void ScreenshotController::Impl::printSelection() {
     auto& service = m_printService ? *m_printService : ScreenshotPrintService::shared();
     if (m_printPending || !m_activeImageExports.isEmpty() ||
         owner.property("saveDialogOpen").toBool() || service.busy() ||
-        QApplication::activeModalWidget() || !m_selection.hasPixelSelection() ||
-        !ensureExportFeature() || !resetCanvasEditingState())
+        !m_selection.hasPixelSelection())
         return;
     rememberKeyboardOwner(QApplication::focusWidget());
     const QPointer<ScreenshotOverlayWindow> keyboardOwner(keyboardOwnerOverlay());
@@ -4816,7 +4815,8 @@ void ScreenshotController::Impl::printSelection() {
             : m_selection.normalizedSelection();
     const QPointer<ScreenshotOverlayWindow> dialogOwner(screenshotSelectionDialogOwner(
         m_displaySession, m_geometry, dialogSelection, keyboardOwner));
-    if (!dialogOwner)
+    if (!dialogOwner || adqt::widgets::detail::blockingModalWindow(dialogOwner->windowHandle()) ||
+        !ensureExportFeature() || !resetCanvasEditingState())
         return;
     QList<QWidget*> printWindows;
     for (qsizetype i = 0; i < m_displaySession.size(); ++i)
@@ -4929,8 +4929,7 @@ void ScreenshotController::Impl::airDropSelection() {
     auto& service = m_airDropService ? *m_airDropService : Service::shared();
     if (m_airDropPending || !m_activeImageExports.isEmpty() ||
         owner.property("saveDialogOpen").toBool() || service.busy() ||
-        QApplication::activeModalWidget() || !m_selection.hasPixelSelection() ||
-        !ensureExportFeature() || !resetCanvasEditingState())
+        !m_selection.hasPixelSelection())
         return;
     rememberKeyboardOwner(QApplication::focusWidget());
     const QPointer<ScreenshotOverlayWindow> keyboardOwner(keyboardOwnerOverlay());
@@ -4939,7 +4938,8 @@ void ScreenshotController::Impl::airDropSelection() {
                                  : m_selection.normalizedSelection();
     const QPointer<ScreenshotOverlayWindow> dialogOwner(
         screenshotSelectionDialogOwner(m_displaySession, m_geometry, selection, keyboardOwner));
-    if (!dialogOwner)
+    if (!dialogOwner || adqt::widgets::detail::blockingModalWindow(dialogOwner->windowHandle()) ||
+        !ensureExportFeature() || !resetCanvasEditingState())
         return;
     QList<QWidget*> windows;
     for (qsizetype i = 0; i < m_displaySession.size(); ++i)
@@ -6409,7 +6409,7 @@ bool ScreenshotController::Impl::beginCapture(PendingSelectionAction action,
     if (m_mcpOptions.value(QStringLiteral("presentation")).toString() != QStringLiteral("silent"))
         m_sessionFocus->prepare();
 #endif
-    if (!snow_shot::presentation::closeCaptureInputBlockers() || !lifetime ||
+    if (!snow_shot::presentation::prepareCaptureInput() || !lifetime ||
         !canBeginCapture(true, false)) {
 #ifdef Q_OS_MACOS
         if (lifetime)

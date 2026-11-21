@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/screenshotsaveasfiledialog.h"
+#include "snow_shot/presentation/components/modalwindow.h"
 
 #include "snow_shot/presentation/components/actionpopupmenu.h"
 #include "snow_shot/presentation/components/pathinput.h"
@@ -753,17 +754,12 @@ bool ScreenshotSaveAsFileDialog::open(QObject* lifetime, QWidget* owner,
         return false;
     const QPointer<QWidget> stackingWindow(
         stackingOwner && stackingOwner->isVisible() ? stackingOwner : nullptr);
-    auto* modal = new AdModal(lifetime);
+    auto* modal = snow_shot::presentation::modal_window::create(lifetime, owner,
+                                                                {.windowModality = modality});
     modal->setObjectName(QStringLiteral("screenshotSaveAsFileModal"));
-    modal->setOwnerWindow(owner);
-    modal->setMode(AdModal::Mode::Window);
     if (stackingWindow) {
         QObject::connect(stackingWindow, &QObject::destroyed, modal, &AdModal::reject);
     }
-    modal->setWindowModality(modality);
-    modal->setCentered(true);
-    modal->setMaskVisible(false);
-    modal->setCloseOnMaskClick(false);
     modal->setClosePolicy(AdModal::ClosePolicy::Manual);
     const QRect available = owner->screen()->availableGeometry();
     modal->setPreferredWidth(std::min(1080, available.width() - 40));
@@ -791,7 +787,15 @@ bool ScreenshotSaveAsFileDialog::open(QObject* lifetime, QWidget* owner,
     // an owned window of the toolbar. Raising an owner cannot cover its owned dialog.
     if (stackingWindow) {
         QWidget* surface = content->window();
-        surface->windowHandle()->setTransientParent(stackingWindow->windowHandle());
+        QWindow* stackingSurface = surface->windowHandle();
+#ifdef Q_OS_MACOS
+        // An owned AdModal uses a window-modal proxy on Cocoa. Keep the visible
+        // editor inside that proxy so it can receive input while its owner is blocked.
+        if (modality == Qt::WindowModal && stackingSurface->transientParent())
+            stackingSurface = stackingSurface->transientParent();
+#endif
+        if (stackingSurface != stackingWindow->windowHandle())
+            stackingSurface->setTransientParent(stackingWindow->windowHandle());
 #if defined(Q_OS_WIN)
         // QWidget keeps its original parent; synchronize the HWND owner as well as QWindow.
         if (QApplication::platformName() == QStringLiteral("windows")) {

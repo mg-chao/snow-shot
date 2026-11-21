@@ -149,7 +149,7 @@ void verifyCaptureDismissesTrayMenus(snow_shot::presentation::SystemTrayControll
         }
         require(QApplication::activePopupWidget() == (submenu ? submenu.data() : menu.data()),
                 "the open tray menu must own popup input before capture");
-        require(snow_shot::presentation::closeCaptureInputBlockers(),
+        require(snow_shot::presentation::prepareCaptureInput(),
                 "capture preparation must dismiss the tray menu and any open submenu");
         require(QApplication::activePopupWidget() == nullptr && !menu->isPopupVisible() &&
                     menu->isRetiring(),

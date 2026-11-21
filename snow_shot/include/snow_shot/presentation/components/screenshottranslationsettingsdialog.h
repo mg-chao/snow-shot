@@ -1,5 +1,6 @@
 #ifndef SNOW_SHOT_PRESENTATION_SCREENSHOTTRANSLATIONSETTINGSDIALOG_H
 #define SNOW_SHOT_PRESENTATION_SCREENSHOTTRANSLATIONSETTINGSDIALOG_H
+#include <Qt>
 #include <functional>
 class QObject;
 class QWidget;
@@ -13,6 +14,7 @@ namespace snow_shot::presentation {
 adqt::widgets::AdModal*
 createScreenshotTranslationSettingsDialog(translation::TranslationService& service, QWidget* owner,
                                           QObject* parent,
-                                          std::function<void(bool before)> displayModeChanged);
+                                          std::function<void(bool before)> displayModeChanged,
+                                          Qt::WindowModality modality = Qt::WindowModal);
 }
 #endif

@@ -23,6 +23,7 @@
 #include "widgets/input_line_edit.h"
 #include "widgets/input_number.h"
 #include "widgets/modal.h"
+#include "widgets/detail/window_modality.h"
 #include "widgets/select.h"
 #include "widgets/segmented.h"
 #include "widgets/slider.h"
@@ -271,8 +272,10 @@ void imageStitchingWindowModalityAndRetry(QWidget& owner) {
             return modal->contentWidget()->property("previewGeneration").toULongLong() > 0;
         });
         require(modal->windowModality() == Qt::WindowModal && modal->ownerWindow() == &owner &&
-                    modal->contentWidget()->window()->windowModality() == Qt::WindowModal &&
-                    neighbor.isVisible() && neighbor.isEnabled(),
+                    adqt::widgets::detail::blockingModalWindow(owner.windowHandle()) &&
+                    !adqt::widgets::detail::blockingModalWindow(
+                        modal->contentWidget()->window()->windowHandle()) &&
+                    !adqt::widgets::detail::blockingModalWindow(neighbor.windowHandle()),
                 "collage save is scoped to its owner and leaves other windows usable");
         modal->reject();
         processUntil([&] { return completions == 1; });

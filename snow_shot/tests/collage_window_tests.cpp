@@ -898,7 +898,7 @@ void independentWindowsAndClosePolicy() {
                 firstSurface->findChild<QToolButton*>(QStringLiteral("ad-modal-maximize")),
             "collage windows expose native window-management capabilities and an icon");
     mainWindow.hide();
-    require(first.modal()->isOpen() && second.modal()->isOpen() && closeCaptureInputBlockers(),
+    require(first.modal()->isOpen() && second.modal()->isOpen() && prepareCaptureInput(),
             "main-window hiding and capture modal cleanup preserve independent collages");
     require(QApplication::activeModalWidget() == nullptr,
             "collages do not block the main application or screenshot overlays");

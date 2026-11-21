@@ -965,6 +965,8 @@ set(SNOW_SHOT_SETTINGS_SOURCES
     include/snow_shot/presentation/components/pagecontainerwidget.h
     include/snow_shot/presentation/components/sectionheaderwidget.h
     include/snow_shot/presentation/components/confirmationskipbutton.h
+    include/snow_shot/presentation/components/modalwindow.h
+    include/snow_shot/presentation/components/windowconfirmation.h
     include/snow_shot/presentation/components/overlaycontrolbutton.h
     include/snow_shot/presentation/components/canvasactiontoolbar.h
     include/snow_shot/presentation/styles/sequencenumberbadgestyle.h
@@ -4587,7 +4589,7 @@ if(SNOW_SHOT_BUILD_TESTS)
         tests/screenshot_capture_input_blockers_tests.cpp
         src/presentation/capture/screenshotcaptureinputblockers.h
     )
-    target_link_libraries(snow-shot-capture-input-blockers-tests PRIVATE Qt6::Widgets)
+    target_link_libraries(snow-shot-capture-input-blockers-tests PRIVATE ant_design_qt Qt6::Widgets)
     snow_shot_import_offscreen_platform(snow-shot-capture-input-blockers-tests)
     add_test(NAME snow-shot-capture-input-blockers-tests
         COMMAND snow-shot-capture-input-blockers-tests)
@@ -14577,8 +14579,10 @@ if(SNOW_SHOT_BUILD_TESTS)
     endif()
 endif()
 # Compile pinned-source adapters with each consumer's edition and fixture definitions.
-# Imports from storage and live pins use the same rendering and recognition implementation.
+# Keep the import reader out of settings-widget unity objects: only editor consumers link
+# the export implementation used to restore pinned images.
 set_source_files_properties(
+    src/presentation/services/imageimportsourcereader_p.cpp
     src/presentation/services/screenshotpinnedimagerecord.cpp
     src/presentation/services/screenshotpinnedrecognition.cpp
     src/presentation/services/screenshotexportpinnedsource.cpp

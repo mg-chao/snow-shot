@@ -18,6 +18,10 @@
 #ifdef Q_OS_MACOS
 #import <AppKit/AppKit.h>
 #import <objc/runtime.h>
+
+// adqt is linked statically. Count its AppKit feedback requests without playing audio.
+static int blockedClickBeeps = 0;
+extern "C" void NSBeep(void) { ++blockedClickBeeps; }
 #endif
 
 #ifdef Q_OS_WIN
@@ -652,6 +656,74 @@ class TstModalWindow : public QObject {
       modal.close();
       [nativeOwner makeKeyAndOrderFront:nil];
       QVERIFY(orderedAbove(nativeOwner, nativeUnrelated));
+    }
+  }
+
+  void macBlockedClicksRequestFeedback() {
+    if (QGuiApplication::platformName() != QStringLiteral("cocoa"))
+      QSKIP("Requires AppKit event dispatch");
+    QPushButton owner(QStringLiteral("Owner"));
+    QPushButton independent(QStringLiteral("Independent"));
+    const auto available = qApp->primaryScreen()->availableGeometry();
+    owner.setGeometry(available.left() + 30, available.top() + 30, 160, 80);
+    independent.setGeometry(available.right() - 200, available.bottom() - 100, 160, 80);
+    owner.show();
+    independent.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&owner));
+    QVERIFY(QTest::qWaitForWindowExposed(&independent));
+    QSignalSpy ownerClicks(&owner, &QPushButton::clicked);
+    QSignalSpy independentClicks(&independent, &QPushButton::clicked);
+    const auto send = [](QWidget& target, NSEventType type) {
+      NSWindow* window = reinterpret_cast<NSView*>(target.winId()).window;
+      NSPoint point =
+          NSMakePoint(NSMidX(window.contentView.bounds), NSMidY(window.contentView.bounds));
+      NSEvent* event = [NSEvent mouseEventWithType:type
+                                          location:point
+                                     modifierFlags:0
+                                         timestamp:NSProcessInfo.processInfo.systemUptime
+                                      windowNumber:window.windowNumber
+                                           context:nil
+                                       eventNumber:1
+                                        clickCount:1
+                                          pressure:1];
+      [NSApp sendEvent:event];
+      QCoreApplication::processEvents();
+    };
+    for (auto preset : {AdModal::Preset::Plain, AdModal::Preset::Confirm}) {
+      AdModal modal(&owner);
+      modal.setMode(AdModal::Mode::Window);
+      modal.setPreset(preset);
+      modal.open();
+      QWidget* surface = modal.acceptButton()->window();
+      QVERIFY(QTest::qWaitForWindowExposed(surface));
+      NSWindow* other = reinterpret_cast<NSView*>(independent.winId()).window;
+      [other makeKeyAndOrderFront:nil];
+      blockedClickBeeps = 0;
+      const auto oldClicks = ownerClicks.count();
+      send(owner, NSEventTypeLeftMouseDown);
+      QCOMPARE(blockedClickBeeps, 1);
+      QCOMPARE(NSApp.keyWindow, reinterpret_cast<NSView*>(surface->winId()).window);
+      send(owner, NSEventTypeLeftMouseDragged);
+      send(owner, NSEventTypeLeftMouseUp);
+      send(owner, NSEventTypeMouseMoved);
+      QCOMPARE(ownerClicks.count(), oldClicks);
+      QCOMPARE(blockedClickBeeps, 1);
+      send(owner, NSEventTypeRightMouseDown);
+      send(owner, NSEventTypeRightMouseUp);
+      send(owner, NSEventTypeOtherMouseDown);
+      send(owner, NSEventTypeOtherMouseUp);
+      QCOMPARE(blockedClickBeeps, 3);
+      [other makeKeyAndOrderFront:nil];
+      const auto oldIndependentClicks = independentClicks.count();
+      send(independent, NSEventTypeLeftMouseDown);
+      send(independent, NSEventTypeLeftMouseUp);
+      QCOMPARE(independentClicks.count(), oldIndependentClicks + 1);
+      modal.close();
+      [reinterpret_cast<NSView*>(owner.winId()).window makeKeyAndOrderFront:nil];
+      send(owner, NSEventTypeLeftMouseDown);
+      send(owner, NSEventTypeLeftMouseUp);
+      QCOMPARE(ownerClicks.count(), oldClicks + 1);
+      QCOMPARE(blockedClickBeeps, 3);
     }
   }
 
@@ -1353,6 +1425,40 @@ class TstModalWindow : public QObject {
     explicitlyHidden.setCloseButtonVisible(false);
     explicitlyHidden.setPreset(AdModal::Preset::Plain);
     QVERIFY(!explicitlyHidden.closeButtonVisible());
+  }
+
+  void preparedWindowHonorsRequestedScope() {
+    using adqt::widgets::AdModalService;
+    QWidget owner;
+    QWidget independent;
+    owner.show();
+    independent.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&owner));
+    QVERIFY(QTest::qWaitForWindowExposed(&independent));
+    ModalityObserver ownerState;
+    ModalityObserver independentState;
+    owner.windowHandle()->installEventFilter(&ownerState);
+    independent.windowHandle()->installEventFilter(&independentState);
+    for (auto scope : {Qt::WindowModal, Qt::ApplicationModal}) {
+      QObject lifetime;
+      AdModalService::Request request;
+      request.mode = AdModal::Mode::Window;
+      request.preset = AdModal::Preset::Confirm;
+      request.windowModality = scope;
+      auto* modal = AdModalService::create(request, &lifetime, &owner);
+      QCOMPARE(modal->parent(), &lifetime);
+      QCOMPARE(modal->ownerWindow(), &owner);
+      QVERIFY(!modal->isOpen());
+      QVERIFY(!ownerState.blocked);
+      QSignalSpy accepted(modal, &AdModal::accepted);
+      modal->open();
+      QVERIFY(ownerState.blocked);
+      QCOMPARE(independentState.blocked, scope == Qt::ApplicationModal);
+      modal->acceptButton()->click();
+      QCOMPARE(accepted.count(), 1);
+      QVERIFY(!ownerState.blocked);
+      QVERIFY(!independentState.blocked);
+    }
   }
 
   void servicePresetCloseButtonVisibility_data() {

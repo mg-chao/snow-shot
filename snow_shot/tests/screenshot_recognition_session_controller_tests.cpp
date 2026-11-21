@@ -1748,7 +1748,8 @@ void translationLanguageSelectsUseCodePrefixGroups() {
     controller->openTranslationSettings();
     auto* modal = controller->findChild<adqt::widgets::AdModal*>(
         QStringLiteral("screenshotTranslationSettingsModal"));
-    require(modal != nullptr, "translation settings should create its modal");
+    require(modal && modal->ownerWindow() == &owner && modal->windowModality() == Qt::WindowModal,
+            "translation settings are modal to their source window");
     QWidget* content = modal->contentWidget();
     auto* source = content == nullptr ? nullptr
                                       : content->findChild<adqt::widgets::AdSelect*>(
@@ -1813,13 +1814,39 @@ void translationLanguageSelectsUseCodePrefixGroups() {
     service->setCurrentValue(model.selectionId());
     source->setCurrentValue(QStringLiteral("en"));
     target->setCurrentValue(QStringLiteral("zh-Hans"));
+
+    QWidget otherOwner;
+    otherOwner.show();
+    ScreenshotRecognitionSessionActions otherActions;
+    otherActions.translationSettingsOwner = [&otherOwner] { return &otherOwner; };
+    ScreenshotRecognitionSessionController otherController(nullptr, nullptr, &apiClient,
+                                                           std::move(otherActions));
+    otherController.openTranslationSettings();
+    auto* otherModal = otherController.findChild<adqt::widgets::AdModal*>(
+        QStringLiteral("screenshotTranslationSettingsModal"));
+    require(otherModal && otherModal->isOpen() && otherModal->ownerWindow() == &otherOwner,
+            "another owner can open its own translation settings");
+    auto* otherContents = otherModal->contentWidget();
+    auto* otherImage = otherContents->findChild<adqt::widgets::AdSwitch*>(
+        QStringLiteral("screenshotTranslationOriginalImage"));
+    auto* otherTarget = otherContents->findChild<adqt::widgets::AdSelect*>(
+        QStringLiteral("screenshotTranslationTargetLanguage"));
+    require(otherImage && otherImage->isChecked() == previousOriginalImage && otherTarget,
+            "the second dialog loads the persisted setting while the first has a draft");
+
     modal->closeRequested(adqt::widgets::AdModal::CloseReason::OkAction);
     require(settings.layoutProcessing() == QStringLiteral("original") &&
                 settings.configuration().modelId == model.selectionId(),
             "accepting translation languages preserves the separate layout processing choice");
-    require(settings.setConfiguration(previousConfiguration), "restore translation configuration");
     require(settings.originalImageTranslationEnabled() == !previousOriginalImage,
             "OK should persist the original image translation toggle");
+    otherTarget->setCurrentValue(QStringLiteral("de"));
+    otherModal->closeRequested(adqt::widgets::AdModal::CloseReason::OkAction);
+    require(!otherModal->isOpen() &&
+                settings.configuration().targetLanguage == QStringLiteral("de") &&
+                settings.originalImageTranslationEnabled() == !previousOriginalImage,
+            "saving a language from the second window preserves the saved original image setting");
+    require(settings.setConfiguration(previousConfiguration), "restore translation configuration");
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     controller->openTranslationSettings();
     modal = controller->findChild<adqt::widgets::AdModal*>(

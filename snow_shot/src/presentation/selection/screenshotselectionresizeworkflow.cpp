@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/screenshotselectionresizeworkflow.h"
+#include "snow_shot/presentation/components/modalwindow.h"
 
 #include "snow_shot/presentation/screenshotselectionresizemodalcontent.h"
 #include "snow_shot/presentation/screenshotselectionsettingsstore.h"
@@ -26,7 +27,8 @@ bool ScreenshotSelectionResizeWorkflow::open(QObject* modalParent,
         return false;
     }
 
-    auto* modal = new adqt::widgets::AdModal(modalParent);
+    auto* modal = snow_shot::presentation::modal_window::create(
+        modalParent, request.ownerWindow, {.windowModality = Qt::ApplicationModal});
 
     const auto previousParams =
         request.previousParams ? clampScreenshotSelectionParamsForRestore(*request.previousParams,
@@ -44,14 +46,8 @@ bool ScreenshotSelectionResizeWorkflow::open(QObject* modalParent,
                          settingsStore->setPresets(presets);
                      });
 
-    modal->setOwnerWindow(request.ownerWindow);
-    modal->setMode(adqt::widgets::AdModal::Mode::Window);
-    modal->setWindowModality(Qt::ApplicationModal);
     modal->setWindowTitle(tr("Resize selection"));
-    modal->setCentered(true);
     modal->setPreferredWidth(500);
-    modal->setMaskVisible(false);
-    modal->setCloseOnMaskClick(false);
     modal->setClosePolicy(adqt::widgets::AdModal::ClosePolicy::Manual);
     modal->setAcceptText(tr("OK"));
     modal->setRejectText(tr("Cancel"));

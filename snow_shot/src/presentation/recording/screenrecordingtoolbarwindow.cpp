@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/windowcloseshortcut.h"
+#include "widgets/detail/window_modality.h"
 #include "snow_shot/presentation/screenrecordingtoolbarwindow.h"
 
 #include "snow_shot/presentation/screenshotgeometry.h"
@@ -494,7 +495,7 @@ class ScreenRecordingToolbarWindow::AutoHide final : public QObject {
         transfer = {};
         QWidget* focus = QApplication::focusWidget();
         return dragging || !blockers.isEmpty() || QWidget::mouseGrabber() ||
-               QApplication::activeModalWidget() ||
+               adqt::widgets::detail::blockingModalWindow(toolbar.windowHandle()) ||
                QGuiApplication::mouseButtons() != Qt::NoButton ||
                (focus && (focus == &toolbar || toolbar.isAncestorOf(focus)) &&
                 focus->testAttribute(Qt::WA_InputMethodEnabled)) ||

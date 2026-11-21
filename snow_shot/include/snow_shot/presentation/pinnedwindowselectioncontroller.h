@@ -88,6 +88,7 @@ class PinnedWindowSelectionController final : public QObject {
     QSet<const ScreenshotPinnedWindow*> m_selectedIndex;
     QPointer<adqt::widgets::AdContextMenu> m_contextMenu;
     QPointer<adqt::widgets::AdModal> m_destroyConfirmation;
+    QSet<QString> m_destroyConfirmationIds;
     DestroyRecords m_destroyRecords;
     quint64 m_selectionRevision = 0;
     struct GeometryState;
