@@ -136,6 +136,7 @@ struct ScreenshotPinnedDragExport::Request {
     QImage image;
     Completion completion;
     std::function<bool()> canStart;
+    QMetaObject::Connection gestureEnded;
 };
 
 ScreenshotPinnedDragExport::ScreenshotPinnedDragExport(QObject* parent) : QObject(parent) {
@@ -157,6 +158,7 @@ void ScreenshotPinnedDragExport::setExecutor(Executor executor) {
 void ScreenshotPinnedDragExport::cancel() {
     auto request = std::exchange(m_request, {});
     if (request) {
+        disconnect(request->gestureEnded);
         request->artifact->cancel();
         request->job.cancel();
     }
@@ -165,13 +167,17 @@ void ScreenshotPinnedDragExport::cancel() {
 }
 
 void ScreenshotPinnedDragExport::start(std::shared_ptr<ScreenshotExportArtifact> artifact,
-                                       Completion completion, std::function<bool()> canStart) {
+                                       Completion completion, std::function<bool()> canStart,
+                                       QObject* gesture) {
     cancel();
     auto request = std::make_shared<Request>();
     request->artifact = std::move(artifact);
     request->completion = std::move(completion);
     request->canStart = std::move(canStart);
     m_request = request;
+    if (gesture)
+        request->gestureEnded =
+            connect(gesture, &QObject::destroyed, this, &ScreenshotPinnedDragExport::cancel);
     const snow_shot::storage::ScreenshotSettings settings;
     const auto format = ScreenshotImageFileService::formatForKey(settings.imageFormat());
     const auto encoding = snow_shot::presentation::screenshotEncodingOptions(settings);
@@ -239,6 +245,8 @@ void ScreenshotPinnedDragExport::finish(const std::shared_ptr<Request>& request,
                                         const ScreenshotExportTaskResult& result) {
     if (m_request != request)
         return;
+    // Native drag delivery owns release and deactivation once preparation finishes.
+    disconnect(request->gestureEnded);
     if (!request->canStart()) {
         m_request.reset();
         request->completion({});

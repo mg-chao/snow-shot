@@ -56,6 +56,7 @@ class MainWindow : public QMainWindow {
     void
     globalMouseDragRequested(snow_shot::presentation::settings::SettingsGlobalMouseAction action);
     void screenshotHistoryEditRequested(const QString& recordId);
+    void imageDragRequested(QObject* gesture, const QImage& image);
     void screenshotHistoryPinRequested(const QString& recordId);
     void screenshotHistoryStitchImagesRequested(
         const QVector<snow_shot::storage::CaptureHistoryRecord>& records);

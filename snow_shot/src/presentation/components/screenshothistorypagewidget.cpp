@@ -647,6 +647,8 @@ class HistoryEntryWidget final : public HistoryEntryCard {
         m_carousel->setDraggable(true);
 
         auto* imageLoader = createScreenshotHistoryImageLoader(record, dataSource, this);
+        if (record.result && assets && assets->result)
+            setDragImage(imageLoader, assets->result->localFileUrl);
         adqt::widgets::AdImageItems previewItems;
         if (assets.has_value()) {
             previewItems.reserve(assets->displays.size() + (assets->result.has_value() ? 1 : 0));
@@ -822,7 +824,7 @@ class HistoryEntryWidget final : public HistoryEntryCard {
             event->accept();
             return;
         }
-        QFrame::mousePressEvent(event);
+        HistoryEntryCard::mousePressEvent(event);
     }
 
     void changeEvent(QEvent* event) override {
@@ -1585,6 +1587,8 @@ void ScreenshotHistoryPageWidget::rebuildEntries() {
                 },
                 [this, id = record.id](QWidget* anchor) { requestEntryDeletion(id, anchor); },
                 m_entriesHost);
+            connect(entry, &HistoryEntryCard::imageDragRequested, this,
+                    &ScreenshotHistoryPageWidget::imageDragRequested);
             entry->applyTheme(m_colorScheme);
             m_entryWidgetsById.insert(record.id, entry);
         }

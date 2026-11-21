@@ -1092,6 +1092,9 @@ void PinnedWindowManagementPageWidget::rebuildEntries() {
             QUrl imageSource;
             imageSource.setScheme(QStringLiteral("pinned"));
             imageSource.setPath(record.id);
+            row->setDragImage(m_previewViewer->imageLoader(), imageSource);
+            connect(row, &HistoryEntryCard::imageDragRequested, this,
+                    &PinnedWindowManagementPageWidget::imageDragRequested);
             const QString altText = tr("Pinned window image");
             preview->setViewer(m_previewViewer);
             preview->setImageLoader(m_previewViewer->imageLoader());

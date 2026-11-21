@@ -220,6 +220,7 @@ int macPinnedContentDragTests(
 #include <shellapi.h>
 #include <dwmapi.h>
 #include <commctrl.h>
+#undef CopyFile // Keep ExportTask::CopyFile visible in the test fixtures.
 #endif
 
 void runPinnedOriginalImageTranslationTests();
@@ -18197,7 +18198,44 @@ void pinnedDragExportOffscreen() {
 
     // Exercise format selection and service lifetime without a native event loop.
     QImage image(20, 10, QImage::Format_RGB32);
+    image.setColorSpace(QColorSpace::SRgb);
     image.fill(Qt::green);
+    {
+        ScreenshotPinnedDragExport exporter;
+        int drops = 0;
+        std::unique_ptr<QObject> gesture;
+        exporter.setExecutor([&](QDrag& drag) {
+            gesture.reset();
+            const auto urls = drag.mimeData()->urls();
+            require(urls.size() == 1 && urls.first().isLocalFile(), "record drag has one file");
+            const QString path = urls.first().toLocalFile();
+            require(QFileInfo(path).fileName() == QStringLiteral("drag-result.png") &&
+                        normalize(QImage(path)) == normalize(image) &&
+                        normalize(qvariant_cast<QImage>(drag.mimeData()->imageData())) ==
+                            normalize(image),
+                    "record drag delivers the configured file and image");
+            ++drops;
+            return Qt::CopyAction;
+        });
+        int completions = 0;
+        const auto start = [&] {
+            gesture = std::make_unique<QObject>();
+            exporter.start(
+                std::make_shared<ScreenshotExportArtifact>(
+                    ScreenshotExportSource::fromImage(image)),
+                [&](QString error) {
+                    require(error.isEmpty(), "record drag finished successfully");
+                    ++completions;
+                },
+                [] { return true; }, gesture.get());
+        };
+        start();
+        gesture.reset();
+        require(!exporter.busy(), "ending the press cancels pending file preparation");
+        start();
+        wait([&] { return completions == 1; }, "a new press can finish its native drag");
+        require(drops == 1, "only the active record gesture published an image");
+    }
     for (const QString& format : {QStringLiteral("jpeg"), QStringLiteral("pdf")}) {
         require(settings.setImageFormat(format), "set drag file format");
         ScreenshotPinnedDragExport exporter;

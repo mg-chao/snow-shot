@@ -19,6 +19,9 @@
 #include "widgets/message.h"
 #include "history_sticky_selection_test_support.h"
 #include "history_viewport_test_support.h"
+#include "history_drag_test_support.h"
+#include "pinned_animation_fixtures.h"
+#include "snowimageqtcodec.h"
 #include <QElapsedTimer>
 #include <QTimeZone>
 #include <QThread>
@@ -75,6 +78,8 @@ class Fixture final : public PinnedWindowManagementDataSource {
     QVector<QString> removed;
     QVector<QSize> previewSizes;
     int fullImageRequests = 0;
+    bool delayFullImage = false;
+    quint64 lastFullRequest = 0;
     bool previewFailure = false;
     mutable int recordRequests = 0;
     QHash<QString, quint64> previewRevisions;
@@ -103,6 +108,9 @@ class Fixture final : public PinnedWindowManagementDataSource {
     void requestFullImage(const QString& id, quint64 requestId) override {
         ++fullImageRequests;
         lastFullImageId = id;
+        lastFullRequest = requestId;
+        if (delayFullImage)
+            return;
         QImage image(120, 60, QImage::Format_RGB32);
         image.fill(Qt::green);
         emit fullImageReady(id, requestId, image);
@@ -122,6 +130,133 @@ class Fixture final : public PinnedWindowManagementDataSource {
         removed = ids;
     }
 };
+
+void pinnedCardDragCancellation() {
+    using namespace history_drag_test;
+    Fixture source;
+    storage::PinnedWindowSummary item;
+    item.id = QStringLiteral("delayed");
+    item.createdUtc = QDateTime::currentDateTimeUtc();
+    source.items.push_back(item);
+    source.delayFullImage = true;
+    PinnedWindowManagementPageWidget page(&source, nullptr);
+    page.resize(980, 640);
+    page.show();
+    history_sticky_test::settleLayout();
+    int publications = 0;
+    QObject::connect(&page, &PinnedWindowManagementPageWidget::imageDragRequested, &page,
+                     [&](QObject*, const QImage&) { ++publications; });
+    auto* row = page.findChild<QFrame*>(QStringLiteral("pinnedManagementRecord"));
+    require(row && source.fullImageRequests == 0, "cards load only thumbnails before a drag");
+    const QPoint origin(3, 3);
+    mouse(row, QEvent::MouseButtonPress, origin);
+    mouse(row, QEvent::MouseMove, origin + QPoint(QApplication::startDragDistance() - 1, 0));
+    QApplication::processEvents();
+    require(source.fullImageRequests == 0, "sub-threshold movement does not load the full image");
+    mouse(row, QEvent::MouseButtonRelease, origin);
+    QImage image(12, 7, QImage::Format_RGB32);
+    image.fill(Qt::yellow);
+    quint64 previous = 0;
+    for (int i = 0; i < 4; ++i) {
+        page.show();
+        start(row, QPoint(3, 3));
+        require(waitFor([&] { return source.fullImageRequests == i + 1; }),
+                "crossing the threshold requests one full image");
+        emit source.fullImageReady(item.id, previous, image);
+        require(publications == 0, "late replies cannot satisfy another drag");
+        previous = source.lastFullRequest;
+        if (i == 0) {
+            mouse(row, QEvent::MouseButtonRelease, QPoint(3, 3));
+        } else if (i == 1) {
+            QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+            QApplication::sendEvent(row, &escape);
+        } else if (i == 2) {
+            page.hide();
+        } else {
+            emit source.fullImageReady(item.id, previous, image);
+            require(publications == 1, "the current gesture can publish its own reply");
+            mouse(row, QEvent::MouseButtonRelease, QPoint(3, 3));
+        }
+        emit source.fullImageReady(item.id, previous, image);
+        require(publications == (i == 3 ? 1 : 0), "cancelled or completed replies cannot publish");
+    }
+    start(row, origin);
+    require(waitFor([&] { return source.fullImageRequests == 5; }), "start a drag before removal");
+    source.items.clear();
+    page.refresh();
+    emit source.fullImageReady(item.id, source.lastFullRequest, image);
+    require(publications == 1, "a removed card cannot start a late native drag");
+}
+
+void pinnedCardDragsMatchFullPreviews() {
+    using namespace history_drag_test;
+    auto& repository = storage::ApplicationStorage::instance().pinnedWindows();
+    const auto animation =
+        image_codec::decodeAnimationSource(pinned_animation_fixtures::images().first().bytes);
+    require(animation && animation->isAnimated(), "decode the two-frame pinned drag fixture");
+    QStringList ids;
+    for (int i = 0; i < 3; ++i) {
+        storage::PinnedWindowRecord record;
+        record.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        record.sourceKind = storage::PinnedWindowSourceKind::ImageData;
+        QSize size(530, 300);
+        if (i == 0) {
+            record.image = QImage(size, QImage::Format_RGB32);
+            record.image.fill(Qt::blue);
+        } else if (i == 1) {
+            record.sourceKind = storage::PinnedWindowSourceKind::ClipboardText;
+            record.originalText = QStringLiteral("Render this text at full size");
+        } else {
+            record.animationSource = animation;
+            record.image = animation->firstFrame;
+            size = record.image.size();
+        }
+        record.nativeGeometry = QRect(QPoint(), size);
+        record.canvasSourceRect = QRectF(record.nativeGeometry);
+        record.contentCanvasRect = record.canvasSourceRect;
+        record.surfaceCanvasRect = record.canvasSourceRect;
+        record.initialWindowSize = size;
+        require(repository.upsert(record).success, "persist a pinned drag fixture");
+        ids.append(record.id);
+    }
+    require(repository.flush().success, "flush pinned drag fixtures");
+    {
+        PinnedWindowManagementPageWidget page;
+        page.resize(980, 900);
+        page.show();
+        history_sticky_test::settleLayout();
+        const auto rows = page.findChildren<QFrame*>(QStringLiteral("pinnedManagementRecord"));
+        require(rows.size() == ids.size(), "all pinned drag records are visible");
+        for (auto* row : rows)
+            row->findChild<adqt::widgets::AdCheckbox*>()->setChecked(true);
+        QImage dragged;
+        int publications = 0;
+        QObject::connect(&page, &PinnedWindowManagementPageWidget::imageDragRequested, &page,
+                         [&](QObject*, const QImage& image) {
+                             dragged = image;
+                             ++publications;
+                         });
+        for (auto* row : rows) {
+            auto* preview = row->findChild<adqt::widgets::AdImage*>();
+            auto* viewer = preview->viewer();
+            const auto url = viewer->itemAt(preview->previewRow()).source;
+            auto* reply = viewer->imageLoader()->load(url, {}, &page);
+            require(waitFor([&] { return reply->isFinished(); }) && reply->isSuccessful(),
+                    "read the full preview for this pinned record");
+            auto* label = row->findChild<QLabel*>(QStringLiteral("pinnedManagementGroup"));
+            dragged = {};
+            start(label, label->rect().center());
+            require(waitFor([&] { return !dragged.isNull(); }) && dragged == reply->image(),
+                    "drag pixels equal the full preview for images, text and animations");
+            mouse(label, QEvent::MouseButtonRelease, label->rect().center());
+            require(row->findChild<adqt::widgets::AdCheckbox*>()->isChecked(),
+                    "dragging a pinned record preserves selection");
+        }
+        require(publications == ids.size(), "each pinned card exports just one image");
+    }
+    for (const auto& id : ids)
+        require(repository.remove(id).success, "remove pinned drag fixture");
+}
 
 class SkinBackdrop final : public QWidget {
   public:
@@ -1241,6 +1376,8 @@ int main(int argc, char** argv) {
     second.creationSource = storage::PinnedWindowCreationSource::Screenshot;
     fixture.items = {first, second};
     pinnedDescriptionsUseSmallThemeText(fixture.items);
+    pinnedCardDragCancellation();
+    pinnedCardDragsMatchFullPreviews();
     pinnedThemeChangesDoNotRestyleTwice(fixture.items);
     pinnedRowsRespectSkinMask(fixture.items);
     selectionPanelSticksWhileScrolling();

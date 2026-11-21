@@ -107,6 +107,7 @@ class ScreenshotHistoryPageWidget final : public QWidget {
     void retranslateUi();
 
   signals:
+    void imageDragRequested(QObject* gesture, const QImage& image);
     void editRequested(const QString& recordId);
     void pinRequested(const QString& recordId);
     void stitchImagesRequested(const QVector<snow_shot::storage::CaptureHistoryRecord>& records);
