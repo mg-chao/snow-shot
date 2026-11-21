@@ -43,6 +43,7 @@ struct TranslationSettingsDraft {
     bool targetEdited = false;
     bool secondaryTargetEdited = false;
     bool confidenceThresholdEdited = false;
+    bool originalImageEdited = false;
     std::optional<QString> model;
 };
 QString text(const char* source) {
@@ -242,6 +243,10 @@ adqt::widgets::AdModal* createScreenshotTranslationSettingsDialog(
         if (!draft->applying)
             draft->model = value.toString();
     });
+    QObject::connect(imageField.field, &fields::FormField::valueEdited, modal, [draft] {
+        if (!draft->applying)
+            draft->originalImageEdited = true;
+    });
     body->retranslate = [retranslate, sync] {
         retranslate();
         sync();
@@ -278,7 +283,8 @@ adqt::widgets::AdModal* createScreenshotTranslationSettingsDialog(
                                            static_cast<int>(confidenceThreshold->value())}))
             return;
         const storage::ScreenshotTranslationSettings settings;
-        const bool changed = settings.originalImageTranslationEnabled() != image->isChecked();
+        const bool changed = draft->originalImageEdited &&
+                             settings.originalImageTranslationEnabled() != image->isChecked();
         if (changed && !settings.setOriginalImageTranslationEnabled(image->isChecked())) {
             error->setText(
                 QCoreApplication::translate("snow_shot::translation::TranslationService",

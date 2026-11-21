@@ -475,7 +475,7 @@ class ScreenshotToolPaletteStyleControls final {
     void refreshWatermarkTemplateOptions();
     void openCreateWatermarkTemplateModal();
     void openDeleteWatermarkTemplateModal(const QString& templateKey);
-    void deleteWatermarkTemplate(const QString& templateKey);
+    bool deleteWatermarkTemplate(int index, const snow_shot::storage::WatermarkTemplate& target);
     void setWatermarkAngle(double angle);
     void setWatermarkGap(double gap);
     void setWatermarkOpacity(double opacity);

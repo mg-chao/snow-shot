@@ -6967,6 +6967,7 @@ void ScreenshotToolPaletteStyleControls::openDeleteWatermarkTemplateModal(
         index < 0 || index >= m_watermarkTemplates.size()) {
         return;
     }
+    const auto target = m_watermarkTemplates.at(index);
     auto* modal = snow_shot::presentation::modal_window::createConfirmation(
         m_watermarkTemplateSelect,
         m_callbacks.watermarkTemplateModalOwnerWindow
@@ -6979,16 +6980,15 @@ void ScreenshotToolPaletteStyleControls::openDeleteWatermarkTemplateModal(
 
     modal->setAcceptAccentRole(adqt::widgets::AdButton::AccentRole::Danger);
     m_deleteWatermarkTemplateModal = modal;
-    m_deleteWatermarkTemplateName = m_watermarkTemplates.at(index).name;
+    m_deleteWatermarkTemplateName = target.name;
     retranslateWatermarkTemplateUi();
 
     QObject::connect(modal, &adqt::widgets::AdModal::closeRequested,
                      m_watermarkTemplateCallbackContext,
-                     [this, modal = QPointer<adqt::widgets::AdModal>(modal),
-                      templateKey](adqt::widgets::AdModal::CloseReason reason) {
+                     [this, modal = QPointer<adqt::widgets::AdModal>(modal), index,
+                      target](adqt::widgets::AdModal::CloseReason reason) {
                          if (reason == adqt::widgets::AdModal::CloseReason::OkAction) {
-                             deleteWatermarkTemplate(templateKey);
-                             if (modal != nullptr) {
+                             if (deleteWatermarkTemplate(index, target) && modal != nullptr) {
                                  modal->accept();
                              }
                              return;
@@ -7008,23 +7008,23 @@ void ScreenshotToolPaletteStyleControls::openDeleteWatermarkTemplateModal(
     }
 }
 
-void ScreenshotToolPaletteStyleControls::deleteWatermarkTemplate(const QString& templateKey) {
-    const int index = watermarkTemplateIndex(templateKey);
-    if (index < 0 || index >= m_watermarkTemplates.size()) {
-        return;
-    }
-    QVector<snow_shot::storage::WatermarkTemplate> templates = m_watermarkTemplates;
-    templates.removeAt(index);
+bool ScreenshotToolPaletteStyleControls::deleteWatermarkTemplate(
+    int index, const snow_shot::storage::WatermarkTemplate& target) {
     const snow_shot::storage::WatermarkTemplateSettings settings;
+    auto templates = settings.templates();
+    // Keep the selected position for identical rows when it still matches.
+    const auto match = index < templates.size() && templates.at(index) == target
+                           ? templates.cbegin() + index
+                           : std::find(templates.cbegin(), templates.cend(), target);
     const QPointer<QObject> context = m_watermarkTemplateCallbackContext;
-    if (!settings.setTemplates(templates)) {
-        return;
+    if (match != templates.cend()) {
+        templates.erase(match);
+        if (!settings.setTemplates(templates))
+            return false;
     }
-    if (context == nullptr) {
-        return;
-    }
-    m_watermarkTemplates = templates;
-    refreshWatermarkTemplateOptions();
+    if (context)
+        refreshWatermarkTemplateOptions();
+    return true;
 }
 
 void ScreenshotToolPaletteStyleControls::retranslateWatermarkTemplateUi() {

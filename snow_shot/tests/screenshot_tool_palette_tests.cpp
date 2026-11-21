@@ -11304,10 +11304,10 @@ void watermarkEditsCommitCompleteConfigsAndClampWheel() {
 void watermarkTemplateLibraryAndEditorApplySnapshotsDeterministically() {
     const snow_shot::storage::WatermarkTemplateSettings templateSettings;
     require(templateSettings.setTemplates({
-                {QStringLiteral("Duplicate"), QStringLiteral("{text}-{YYYY}")},
+                {QStringLiteral("Duplicate"), QStringLiteral("{text}-{MM}")},
                 {QStringLiteral("Duplicate"), QStringLiteral("{text}-{YYYY}")},
             }),
-            "watermark-template fixture should persist duplicate rows");
+            "watermark-template fixture should persist duplicate names");
 
     int clockCalls = 0;
     ScreenshotToolPalette::Options options;
@@ -11554,16 +11554,16 @@ void watermarkTemplateLibraryAndEditorApplySnapshotsDeterministically() {
     select->showPopup();
     QCoreApplication::processEvents();
     QListView* view = select->view();
-    QModelIndex firstDuplicate;
+    QModelIndex secondDuplicate;
     for (int row = 0; view != nullptr && row < view->model()->rowCount(); ++row) {
         const QModelIndex candidate = view->model()->index(row, 0);
-        if (candidate.data(Qt::UserRole).toString() == QStringLiteral("watermark-template:0")) {
-            firstDuplicate = candidate;
+        if (candidate.data(Qt::UserRole).toString() == QStringLiteral("watermark-template:1")) {
+            secondDuplicate = candidate;
             break;
         }
     }
-    require(firstDuplicate.isValid(), "the first duplicate template should have a popup row");
-    const QRect rowRect = view->visualRect(firstDuplicate);
+    require(secondDuplicate.isValid(), "the second duplicate template should have a popup row");
+    const QRect rowRect = view->visualRect(secondDuplicate);
     const QPoint deletePoint(rowRect.right() - 15, rowRect.center().y());
     const auto sendMouse = [view](QEvent::Type type, const QPoint& point, Qt::MouseButton button,
                                   Qt::MouseButtons buttons) {
@@ -11576,7 +11576,7 @@ void watermarkTemplateLibraryAndEditorApplySnapshotsDeterministically() {
     sendMouse(QEvent::MouseButtonRelease, deletePoint, Qt::LeftButton, Qt::NoButton);
     QCoreApplication::processEvents();
 
-    auto* deleteModal = palette.findChild<adqt::widgets::AdModal*>(
+    QPointer<adqt::widgets::AdModal> deleteModal = palette.findChild<adqt::widgets::AdModal*>(
         QStringLiteral("screenshotWatermarkTemplateDeleteModal"));
     const SnowCanvasWatermarkConfig beforeDelete = applied;
     require(deleteModal && deleteModal->ownerWindow() == &selectionDisplayOverlay,
@@ -11603,13 +11603,21 @@ void watermarkTemplateLibraryAndEditorApplySnapshotsDeterministically() {
     require(languageManager.setLanguage(QStringLiteral("en_US")),
             "English Delete template language restoration should succeed");
     QCoreApplication::processEvents();
+    const snow_shot::storage::WatermarkTemplate concurrent{QStringLiteral("Added elsewhere"),
+                                                           QStringLiteral("{text}-{hh}")};
+    auto updatedLibrary = templateSettings.templates();
+    updatedLibrary.removeFirst();
+    updatedLibrary.append(concurrent);
+    require(templateSettings.setTemplates(updatedLibrary),
+            "another window can remove a preceding row and add a new template");
     deleteModal->acceptButton()->click();
     QCoreApplication::processEvents();
     const QVector<snow_shot::storage::WatermarkTemplate> afterDelete = templateSettings.templates();
-    require(afterDelete.size() == 2 && afterDelete.at(0).name == QStringLiteral("Duplicate") &&
-                afterDelete.at(1).name == QStringLiteral("Added") && commits == 4 &&
-                applied == beforeDelete,
-            "deleting a duplicate row should remove only that index and leave the snapshot intact");
+    require((!deleteModal || !deleteModal->isOpen()) && afterDelete.size() == 2 &&
+                afterDelete.at(0).name == QStringLiteral("Added") &&
+                afterDelete.at(1) == concurrent && commits == 4 && applied == beforeDelete,
+            "deletion follows the confirmed template after its index shifts and preserves other "
+            "windows' changes");
 
     require(templateSettings.setTemplates({}), "empty watermark-template library should persist");
     select->hidePopup();
