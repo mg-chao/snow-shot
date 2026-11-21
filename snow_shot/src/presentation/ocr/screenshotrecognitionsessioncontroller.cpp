@@ -722,6 +722,7 @@ void ScreenshotRecognitionSessionController::seedRecognitionResults(
                                                   QApplication::font(), smartMerge);
             entry.overlayTranslation.status = TextCacheEntry::TranslationStatus::Completed;
             entry.overlayTranslation.captured = true;
+            entry.overlayTranslation.complete = results.translatedTextComplete;
             entry.translationConfiguration =
                 snow_shot::storage::ScreenshotTranslationSettings().configuration();
             entry.hasTranslationConfiguration = true;
@@ -829,6 +830,25 @@ ScreenshotRecognitionSessionController::cachedTextRecognitionResult() const {
     return result;
 }
 
+QString ScreenshotRecognitionSessionController::cachedCompletedTranslationText() const {
+#if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
+    const auto entry = m_textCache.constFind(m_target.key);
+    if (entry == m_textCache.cend())
+        return {};
+    if (m_translationKey == m_target.key && !m_translationInImage) {
+        return entry->translationStatus == TextCacheEntry::TranslationStatus::Completed &&
+                       entry->hasSuccessfulTranslation
+                   ? entry->successfulTranslation
+                   : QString{};
+    }
+    // A restored pin can have a completed overlay before its translation view is opened.
+    const auto& overlay = entry->overlayTranslation;
+    if (overlay.complete && overlay.presentation)
+        return snow_shot::presentation::originalOcrText(*overlay.presentation);
+#endif
+    return {};
+}
+
 ScreenshotRecognitionResults
 ScreenshotRecognitionSessionController::cachedRecognitionResults() const {
     ScreenshotRecognitionResults results;
@@ -911,6 +931,8 @@ ScreenshotRecognitionSessionController::recognitionResultsSnapshot() const {
     if (const auto entry = m_textCache.constFind(m_target.key); entry != m_textCache.cend()) {
         // Freeze partial translation independently of the source session's live requests.
         results.translatedText = copyTextPresentation(entry->overlayTranslation.presentation);
+        results.translatedTextComplete =
+            results.translatedText && entry->overlayTranslation.complete;
         if (results.translatedText && m_target.key == m_translationKey && entry->jobInImage &&
             entry->translationJob) {
             for (const int index : m_pendingTranslationUnits) {
@@ -2722,8 +2744,10 @@ void ScreenshotRecognitionSessionController::startTranslation() {
     const QString key = m_translationKey;
     const quint64 generation = ++m_translationGeneration;
     const bool inImage = m_translationInImage;
-    if (inImage)
+    if (inImage) {
         it->overlayTranslation.failureReported = false;
+        it->overlayTranslation.complete = false;
+    }
     if (it->translationJob != nullptr && it->jobInImage != inImage) {
         it->translationJob->cancel();
         it->translationJob->deleteLater();
@@ -2791,8 +2815,14 @@ void ScreenshotRecognitionSessionController::startTranslation() {
         if (generation != m_translationGeneration)
             return;
         if (inImage) {
-            if (!notify(&ScreenshotRecognitionSessionController::reportOverlayTranslationFailure))
-                return;
+            const auto entry = m_textCache.find(key);
+            if (entry != m_textCache.end() &&
+                entry->overlayTranslation.status == TextCacheEntry::TranslationStatus::Completed) {
+                entry->overlayTranslation.complete = true;
+                notify(&ScreenshotRecognitionSessionController::translationCompleted);
+            } else {
+                notify(&ScreenshotRecognitionSessionController::reportOverlayTranslationFailure);
+            }
         } else if (!notify(&ScreenshotRecognitionSessionController::handleTranslationFinished,
                            generation, key, job->result()))
             return;
@@ -3089,6 +3119,8 @@ void ScreenshotRecognitionSessionController::handleTranslationFinished(
     }
     if (!updateTextState())
         return;
+    if (result.succeeded())
+        notify(&ScreenshotRecognitionSessionController::translationCompleted);
 #else
     Q_UNUSED(generation)
     Q_UNUSED(key)

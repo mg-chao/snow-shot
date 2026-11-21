@@ -11,7 +11,7 @@
 
 namespace {
 constexpr quint32 kTextTranslationPayloadMarker = 0x53535452;
-constexpr quint8 kTextTranslationPayloadVersion = 3;
+constexpr quint8 kTextTranslationPayloadVersion = 4;
 QTransform imagePixelsToCanvasTransform(const QTransform& imageTransform,
                                         const QSize& transformedPixels, const QRectF& contentRect) {
     QTransform pixelsToCanvas;
@@ -183,12 +183,13 @@ ScreenshotRecognitionResults decodeScreenshotPinnedRecognition(const QByteArray&
 #endif
             continue;
         }
-        if (marker != kTextTranslationPayloadMarker ||
-            (version != 1 && version != 2 && version != kTextTranslationPayloadVersion) ||
-            !results.text.has_value() || !results.text->error.isEmpty() ||
-            results.text->presentation == nullptr) {
+        if (marker != kTextTranslationPayloadMarker || version < 1 ||
+            version > kTextTranslationPayloadVersion || !results.text.has_value() ||
+            !results.text->error.isEmpty() || results.text->presentation == nullptr) {
             return {};
         }
+        if (version >= 4)
+            stream >> results.translatedTextComplete;
 #if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
         results.translatedText = std::make_shared<ScreenshotOcrPresentation>();
         if (version == 1) {

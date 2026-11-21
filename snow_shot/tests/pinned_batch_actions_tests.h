@@ -71,6 +71,7 @@ void menuSelectionAndModes() {
     const QStringList names = {QStringLiteral("SelectAllAction"),
                                QStringLiteral("ImageStitchingAction"),
                                QStringLiteral("CopyFilesToClipboardAction"),
+                               QStringLiteral("CopyTextToClipboardAction"),
                                QStringLiteral("SaveAsFileAction"),
                                {},
                                QStringLiteral("EnableThumbnailAction"),
@@ -116,7 +117,7 @@ void menuSelectionAndModes() {
                 "batch stitching preserves displayed order and rendered snapshots");
     QObject::disconnect(stitching);
     action(first, "SelectAllAction").trigger();
-    if (fixture.selection.selectedCount() != 2 || !fixture.selection.isSelected(&first) ||
+    if (fixture.selection.selectedCount() != 3 || !fixture.selection.isSelected(&first) ||
         !fixture.selection.isSelected(&second) || !second.persistenceSnapshot().lockedMode ||
         !thumbnail.persistenceSnapshot().thumbnailMode || !top.active() ||
         !clickThrough.persistenceSnapshot().clickThroughMode)
@@ -135,13 +136,16 @@ void menuSelectionAndModes() {
                    << second.persistenceSnapshot().lockedMode
                    << thumbnail.persistenceSnapshot().thumbnailMode << top.active()
                    << clickThrough.persistenceSnapshot().clickThroughMode;
-    require(fixture.selection.selectedCount() == 2 && fixture.selection.isSelected(&first) &&
+    require(fixture.selection.selectedCount() == 3 && fixture.selection.isSelected(&first) &&
                 fixture.selection.isSelected(&second) && second.persistenceSnapshot().lockedMode &&
+                fixture.selection.isSelected(&thumbnail) &&
                 thumbnail.persistenceSnapshot().thumbnailMode && top.active() &&
                 clickThrough.persistenceSnapshot().clickThroughMode,
-            "Select All includes locked normal pins without changing special modes");
+            "Select All includes thumbnails and locked normal pins");
     action(first, "SelectAllAction").trigger();
-    require(fixture.selection.selectedCount() == 2, "Select All is idempotent");
+    require(fixture.selection.selectedCount() == 3, "Select All is idempotent");
+    require(!action(first, "CopyTextToClipboardAction").isEnabled(),
+            "the batch text action is disabled when displayed pins have no text");
 
     action(first, "EnableLockAction").trigger();
     action(first, "EnableLockAction").trigger();
@@ -153,12 +157,15 @@ void menuSelectionAndModes() {
     require(!hidden.persistenceSnapshot().lockedMode && !inactive.persistenceSnapshot().lockedMode,
             "mode commands do not touch excluded pins");
     action(first, "DisableLockAction").trigger();
+    const auto selectionBeforeThumbnail = fixture.selection.selectedWindows();
     action(first, "EnableThumbnailAction").trigger();
     action(first, "EnableThumbnailAction").trigger();
     for (auto* pin : {&first, &second, &thumbnail, &tab, &clickThrough})
         require(pin->persistenceSnapshot().thumbnailMode && !pin->persistenceSnapshot().lockedMode,
                 "batch thumbnail enables once, independently of selection");
     action(first, "DisableThumbnailAction").trigger();
+    require(fixture.selection.selectedWindows() == selectionBeforeThumbnail,
+            "batch thumbnail actions preserve selection order through both transitions");
     action(first, "EnableHideToTopAction").trigger();
     for (auto* pin : {&first, &second, &thumbnail, &tab, &clickThrough}) {
         auto& controller = Access::hideToTop(*pin);
@@ -195,11 +202,231 @@ void menuSelectionAndModes() {
                 action(first, "CopyFilesToClipboardAction")
                     .text()
                     .startsWith(QStringLiteral("Translated Copy files to clipboard")) &&
+                action(first, "CopyTextToClipboardAction").text() ==
+                    QStringLiteral("Translated Copy text to clipboard") &&
                 action(first, "DisplayedCount").text() == QStringLiteral("Displayed translation 5"),
             "materialized batch menus and count retranslate live");
     second.hide();
     require(action(first, "DisplayedCount").text() == QStringLiteral("Displayed translation 4"),
             "the count refreshes each time the submenu opens");
+}
+
+void refreshTextCopyWhenPeerGainsOcr() {
+    IdleOcrRecognition recognition;
+    PinnedSelectionFixture fixture;
+    const QSize size(180, 120);
+    auto& owner = fixture.add({40, 60}, size);
+    auto result = cachedOcrPinConfig(&recognition).recognitionResults;
+    auto& ocr = fixture.add({240, 60}, size, [&](auto& config) {
+        config.recognition = &recognition;
+        config.recognitionResults.key = result.key;
+        config.recognitionResults.text.emplace();
+    });
+    auto* session = ocr.findChild<ScreenshotRecognitionSessionController*>();
+    require(session, "the OCR test pin has a recognition session");
+    translation_tests::waitUntil([&] { return session->hasTarget(); }, "prepare the OCR cache");
+    auto& emptyCopy = action(owner, "CopyTextToClipboardAction");
+    auto* batchMenu = qobject_cast<adqt::widgets::AdContextMenu*>(emptyCopy.parent());
+    require(batchMenu && !emptyCopy.isEnabled(), "the batch action starts disabled");
+    batchMenu->setNativeMenuEnabled(false);
+    batchMenu->popupAt(owner.mapToGlobal(owner.rect().center()));
+    const QPointer<QAction> openCopy(&emptyCopy);
+    session->seedRecognitionResults(std::move(result));
+    translation_tests::waitUntil([&] { return openCopy && openCopy->isEnabled(); },
+                                 "an open batch menu enables copying when a peer gains cached OCR");
+    batchMenu->dismissPopup();
+}
+
+void copyingText() {
+    IdleOcrRecognition recognition;
+    PinnedSelectionFixture fixture;
+    const QSize size(180, 120);
+    auto& owner =
+        fixture.add({40, 60}, size, [&](auto& config) { config.recognition = &recognition; });
+    auto& ocr = fixture.add({240, 60}, size, [&](auto& config) {
+        config.recognition = &recognition;
+        config.recognitionResults = cachedOcrPinConfig(&recognition).recognitionResults;
+        config.recognitionResults.text->presentation->setLineText(
+            0, QStringLiteral("Full OCR result"));
+    });
+    const auto textPin = [](QString text, bool rich = false) {
+        return [text = std::move(text), rich](auto& config) {
+            config.formattedTextDocument = std::make_shared<QTextDocument>();
+            if (rich)
+                config.formattedTextDocument->setHtml(text);
+            else
+                config.formattedTextDocument->setPlainText(text);
+        };
+    };
+    fixture.add({440, 60}, size, textPin(QStringLiteral("Plain text\nsecond line")));
+    auto& rich = fixture.add({40, 220}, size,
+                             textPin(QStringLiteral("<p><b>Rich</b> &amp; text</p>"), true));
+    auto& hidden = fixture.add({240, 220}, size, textPin(QStringLiteral("Hidden pin")));
+    auto& inactive = fixture.add({440, 220}, size, textPin(QStringLiteral("Inactive pin")));
+    hidden.hide();
+    const auto otherGroup = fixture.groups.createGroup(QStringLiteral("Text inactive"));
+    require(otherGroup.has_value(), "create an inactive group for text copy");
+    inactive.setGroupId(*otherGroup);
+    Access::thumbnailForHideTest(rich, true);
+    require(!ocr.persistenceSnapshot().recognitionVisible,
+            "the text copy fixture keeps cached OCR hidden");
+
+    for (auto* pin : {&rich, &owner, &ocr})
+        fixture.selection.toggleSelection(pin);
+    auto& menu = fixture.menu(rich);
+    auto* selectedCopy =
+        menu.findChild<QAction*>(QStringLiteral("screenshotPinnedSelectionCopyTextToClipboard"));
+    require(selectedCopy && selectedCopy->isEnabled(),
+            "a selected thumbnail can open the text copy action");
+    auto* clipboard = QApplication::clipboard();
+    selectedCopy->trigger();
+    require(clipboard->text() == QStringLiteral("Rich & text\nFull OCR result") &&
+                !clipboard->mimeData()->hasHtml(),
+            "selected copy uses click order and skips pins without text");
+    menu.dismissPopup();
+    fixture.selection.clearSelection();
+
+    auto& textCopy = action(owner, "CopyTextToClipboardAction");
+    require(textCopy.isEnabled(), "displayed text makes the batch command available");
+    Access::batchCopy(ocr, Access::batchTargets(owner));
+    require(Access::batchSaving(), "leave an older file copy preparing in the background");
+    textCopy.trigger();
+    waitForSave();
+    require(clipboard->text() ==
+                    QStringLiteral("Full OCR result\nPlain text\nsecond line\nRich & text") &&
+                !clipboard->mimeData()->hasHtml() && !clipboard->mimeData()->hasUrls() &&
+                recognition.requests == 0,
+            "text copy follows displayed file order and supersedes the older file publication");
+}
+
+void copyingCompletedTranslations() {
+    const snow_shot::storage::ScreenshotTranslationSettings settings;
+    const auto previousConfiguration = settings.configuration();
+    const bool previousOverlay = settings.originalImageTranslationEnabled();
+    const auto restoreSettings = qScopeGuard([&] {
+        settings.setConfiguration(previousConfiguration);
+        settings.setOriginalImageTranslationEnabled(previousOverlay);
+    });
+    require(settings.setConfiguration({QStringLiteral("en"), QStringLiteral("zh-Hans"),
+                                       QStringLiteral("general"), QStringLiteral("original")}),
+            "configure the local translation test");
+    for (bool overlay : {true, false}) {
+        require(settings.setOriginalImageTranslationEnabled(overlay),
+                "select the translation presentation for batch copy");
+        translation_tests::Server server;
+        SnowShotApiClient api(server.url());
+        IdleOcrRecognition recognition;
+        PinnedSelectionFixture fixture;
+        auto& owner = fixture.add({40, 60});
+        auto& translated = fixture.add({220, 120}, {320, 180}, [&](auto& config) {
+            config.tableRecognition = &api;
+            config.recognition = &recognition;
+            if (overlay) {
+                config.recognitionResults = cachedOcrPinConfig(&recognition).recognitionResults;
+            } else {
+                config.formattedTextDocument = std::make_shared<QTextDocument>();
+                config.formattedTextDocument->setHtml(QStringLiteral("<b>Source</b> text"));
+            }
+        });
+        auto* session = translated.findChild<ScreenshotRecognitionSessionController*>();
+        require(session, "the translated test pin has a recognition session");
+        translation_tests::waitUntil([&] { return session->hasTextResult(); },
+                                     "prepare text for translation");
+        materializePinnedMenuTree(translated);
+        auto* translation = translated.findChild<QAction*>(
+            QStringLiteral("screenshotPinnedTranslationResultsAction"));
+        require(translation && translation->isEnabled(), "the pin can select Translation results");
+        translation->trigger();
+        translation_tests::waitUntil([&] { return server.streams.size() == 1; },
+                                     "start the selected translation");
+        server.delta(0, QStringLiteral("Partial output"));
+        translation_tests::waitUntil(
+            [&] { return session->textDraft() == QStringLiteral("Partial output"); },
+            "receive partial translation text");
+        auto* clipboard = QApplication::clipboard();
+        clipboard->setText(QStringLiteral("Clipboard before translation copy"));
+        auto& partialCopy = action(owner, "CopyTextToClipboardAction");
+        partialCopy.trigger();
+        require(!partialCopy.isEnabled() &&
+                    clipboard->text() == QStringLiteral("Clipboard before translation copy"),
+                "partial translation is unavailable and does not fall back to source text");
+
+        server.fail(0);
+        translation_tests::waitUntil(
+            [&] { return !session->workflowState().value(QStringLiteral("busy")).toBool(); },
+            "settle failed translation");
+        require(!action(owner, "CopyTextToClipboardAction").isEnabled() &&
+                    server.streams.size() == 1,
+                "failed translation remains unavailable for batch copy");
+        Access::toggleTextResults(translated);
+        Access::toggleTextResults(translated);
+        translation_tests::waitUntil([&] { return server.streams.size() == 2; },
+                                     "retry translation explicitly");
+        const QString expected = QStringLiteral("Complete translation");
+        server.delta(1, expected);
+        server.finish(1);
+        translation_tests::waitUntil(
+            [&] { return session->cachedCompletedTranslationText() == expected; },
+            "receive the completed translation");
+        Access::toggleTextResults(translated);
+        auto& completedCopy = action(owner, "CopyTextToClipboardAction");
+        require(!session->active() && completedCopy.isEnabled(),
+                "completed translation is available with its view hidden");
+        completedCopy.trigger();
+        require(clipboard->text() == expected && !clipboard->mimeData()->hasHtml() &&
+                    server.streams.size() == 2 && recognition.requests == 0,
+                "batch copy publishes the cached translation without starting any requests");
+
+        if (overlay) {
+            const auto record = translated.persistenceSnapshot();
+            require(settings.setOriginalImageTranslationEnabled(false),
+                    "switch the same OCR pin to the translation editor");
+            auto* batchMenu = qobject_cast<adqt::widgets::AdContextMenu*>(completedCopy.parent());
+            require(batchMenu, "the completed copy action belongs to the displayed batch menu");
+            batchMenu->setNativeMenuEnabled(false);
+            batchMenu->setDeleteOnHide(false);
+            batchMenu->popupAt(owner.mapToGlobal(owner.rect().center()));
+            const QPointer<QAction> openCopy(batchMenu->findChild<QAction*>(
+                QStringLiteral("screenshotPinnedBatchCopyTextToClipboardAction")));
+            require(openCopy && openCopy->isEnabled(),
+                    "the open batch menu starts with the completed overlay available");
+            Access::toggleTextResults(translated);
+            translation_tests::waitUntil([&] { return server.streams.size() == 3; },
+                                         "start the editor translation with an overlay cached");
+            translation_tests::waitUntil(
+                [&] { return openCopy && !openCopy->isEnabled(); },
+                "an open batch menu disables copying while the editor translation streams");
+
+            const QString editorText = QStringLiteral("Completed editor translation");
+            server.delta(2, editorText);
+            server.finish(2);
+            translation_tests::waitUntil([&] { return openCopy && openCopy->isEnabled(); },
+                                         "an open batch menu enables copying the editor result");
+            openCopy->trigger();
+            require(clipboard->text() == editorText, "batch copy uses the completed editor result");
+            batchMenu->dismissPopup();
+            Access::toggleTextResults(translated);
+            auto& hiddenEditorCopy = action(owner, "CopyTextToClipboardAction");
+            clipboard->clear();
+            hiddenEditorCopy.trigger();
+            require(!session->active() && clipboard->text() == editorText,
+                    "batch copy uses the last translation view when it is hidden");
+
+            translated.hide();
+            fixture.add({220, 330}, {320, 180}, [&](auto& config) {
+                config.restorePersistentState = true;
+                config.persistedTextType = record.textType;
+                config.persistedRecognitionResults = record.recognitionResults;
+            });
+            clipboard->clear();
+            auto& restoredCopy = action(owner, "CopyTextToClipboardAction");
+            require(restoredCopy.isEnabled(),
+                    "restoring a completed overlay retains its copy text");
+            restoredCopy.trigger();
+            require(clipboard->text() == expected && server.streams.size() == 3,
+                    "restored overlay copies its saved translation without a provider");
+        }
+    }
 }
 
 void shortcuts() {
@@ -698,6 +925,9 @@ void recognitionSaving() {
 
 void pinnedBatchActionsTests() {
     pinned_batch_test::menuSelectionAndModes();
+    pinned_batch_test::copyingText();
+    pinned_batch_test::refreshTextCopyWhenPeerGainsOcr();
+    pinned_batch_test::copyingCompletedTranslations();
     pinned_batch_test::shortcuts();
     pinned_batch_test::lifecycle();
     pinned_batch_test::saving();

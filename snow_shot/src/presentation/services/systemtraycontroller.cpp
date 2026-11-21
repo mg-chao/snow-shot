@@ -24,7 +24,6 @@
 #include "widgets/context_menu.h"
 
 #include <QAction>
-#include <QActionGroup>
 #include <QApplication>
 #include <QCoreApplication>
 #include <QCursor>
@@ -722,35 +721,6 @@ class SystemTrayController::Impl {
             QObject::connect(action, &QAction::triggered, &q,
                              [this, id = group.id]() { groupManager->setActiveGroup(id); });
         }
-        groupMenu->addSeparator();
-        auto* transparentLayer = groupMenu->addLazySubMenu(
-            QCoreApplication::translate("ScreenshotPinnedWindow", "Transparent layer"),
-            [this](auto* popup) {
-                popup->setObjectName(QStringLiteral("systemTrayTransparentLayerMenu"));
-                new TrayMenuSkinBinding(popup);
-                using Mode = storage::PinnedTransparentLayerMode;
-                const auto modes = groupManager->activeGroupTransparentLayerModes();
-                auto* modeActions = new QActionGroup(popup);
-                const auto addMode = [&](const QString& label, Mode mode) {
-                    auto* action = popup->addItem(label);
-                    action->setCheckable(true);
-                    action->setChecked(modes.size() == 1 && modes.contains(mode));
-                    action->setEnabled(!modes.isEmpty());
-                    modeActions->addAction(action);
-                    QObject::connect(action, &QAction::triggered, popup, [this, mode] {
-                        groupManager->setActiveGroupTransparentLayerMode(mode);
-                    });
-                };
-                addMode(QCoreApplication::translate("ScreenshotPinnedWindow", "Click-through"),
-                        Mode::ClickThrough);
-                addMode(QCoreApplication::translate("ScreenshotPinnedWindow", "Keep transparent"),
-                        Mode::KeepTransparent);
-                addMode(QCoreApplication::translate("ScreenshotPinnedWindow", "Checkerboard"),
-                        Mode::Checkerboard);
-            },
-            custom_outlined_icons::TransparentLayer());
-        transparentLayer->setObjectName(QStringLiteral("systemTrayTransparentLayerAction"));
-        transparentLayer->setEnabled(!groupManager->activeGroupTransparentLayerModes().isEmpty());
         groupMenu->addSeparator();
         QAction* newGroup =
             groupMenu->addItem(QCoreApplication::translate("SystemTrayController", "New group"),

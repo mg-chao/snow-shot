@@ -52,6 +52,8 @@ struct ScreenshotRecognitionResults {
     std::optional<SnowShotTableResult> table;
     std::optional<ScreenshotQrRecognitionResult> qr;
     std::shared_ptr<ScreenshotOcrPresentation> translatedText;
+    // A captured overlay can contain partial output. Older saves lack completion metadata.
+    bool translatedTextComplete = false;
     QVector<ScreenshotImageConversionEntry> conversions;
     std::optional<SnowShotImageConversionFormat> visibleConversion;
     QVector<ScreenshotTableRecognitionEntry> tableEntries;
@@ -98,8 +100,10 @@ inline void sanitizeEditionRecognitionResults(ScreenshotRecognitionResults& resu
         results.conversions.clear();
         results.visibleConversion.reset();
     }
-    if constexpr (!edition::textTranslation)
+    if constexpr (!edition::textTranslation) {
         results.translatedText.reset();
+        results.translatedTextComplete = false;
+    }
 }
 
 #endif // SNOW_SHOT_PRESENTATION_SCREENSHOTRECOGNITIONRESULTS_H

@@ -198,7 +198,7 @@ void removedRecognitionViewsRemainUnavailable() {
 }
 
 void legacyPinPayloadsRetainOnlySupportedRecognition() {
-    for (const quint8 translationVersion : {quint8(1), quint8(2)}) {
+    for (const quint8 translationVersion : {quint8(1), quint8(2), quint8(3), quint8(4)}) {
         QByteArray bytes;
         QDataStream stream(&bytes, QIODevice::WriteOnly);
         stream.setVersion(QDataStream::Qt_6_11);
@@ -227,12 +227,16 @@ void legacyPinPayloadsRetainOnlySupportedRecognition() {
                << quint32(models.size());
         stream.writeRawData(models.constData(), static_cast<int>(models.size()));
         stream << quint32(0x53535452) << translationVersion;
+        if (translationVersion == 4)
+            stream << true;
         if (translationVersion == 1) {
             stream << QStringList{QStringLiteral("Unavailable translation")};
         } else {
             stream << selection << qint64(1) << QStringLiteral("Unavailable translation")
                    << line.confidence << line.quad << quint8(0) << line.paragraph
                    << line.sourceLineQuads;
+            if (translationVersion >= 3)
+                stream << line.sourceLineIndices;
         }
         require(stream.status() == QDataStream::Ok, "prepare a legacy Full recognition payload");
         const auto results = ScreenshotPinnedWindow::decodeRecognitionSnapshot(bytes);
@@ -240,10 +244,10 @@ void legacyPinPayloadsRetainOnlySupportedRecognition() {
                     results.text->presentation && !results.text->presentation->lines.isEmpty() &&
                     results.text->presentation->lines.front().text == line.text && !results.table &&
                     !results.qr && !results.latex && !results.visibleLatex &&
-                    !results.translatedText && results.conversions.isEmpty() &&
-                    !results.visibleConversion && results.tableEntries.isEmpty() &&
-                    results.latexEntries.isEmpty() && results.tableModelSelection.isEmpty() &&
-                    results.latexModelSelection.isEmpty(),
+                    !results.translatedText && !results.translatedTextComplete &&
+                    results.conversions.isEmpty() && !results.visibleConversion &&
+                    results.tableEntries.isEmpty() && results.latexEntries.isEmpty() &&
+                    results.tableModelSelection.isEmpty() && results.latexModelSelection.isEmpty(),
                 "Mini pin restore must skip removed payloads while retaining local text");
     }
 }

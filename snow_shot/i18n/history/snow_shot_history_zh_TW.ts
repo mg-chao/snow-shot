@@ -2008,6 +2008,10 @@ Files:
             <translation>複製原始內容</translation>
         </message>
         <message>
+            <source>Copy text to clipboard</source>
+            <translation>複製文字到剪貼簿</translation>
+        </message>
+        <message>
             <source>Copy to clipboard</source>
             <translation>複製到剪貼簿</translation>
         </message>
@@ -2622,6 +2626,10 @@ Files:
         <message>
             <source>Copy files to clipboard</source>
             <translation>複製檔案到剪貼簿</translation>
+        </message>
+        <message>
+            <source>Copy text to clipboard</source>
+            <translation>複製文字到剪貼簿</translation>
         </message>
         <message>
             <source>Delete empty groups</source>

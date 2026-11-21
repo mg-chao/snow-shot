@@ -24,6 +24,8 @@ namespace {
                       "Image stitching"),
     QT_TRANSLATE_NOOP("snow_shot::presentation::PinnedWindowSelectionController",
                       "Copy files to clipboard"),
+    QT_TRANSLATE_NOOP("snow_shot::presentation::PinnedWindowSelectionController",
+                      "Copy text to clipboard"),
     QT_TRANSLATE_NOOP("snow_shot::presentation::PinnedWindowSelectionController", "Save as file"),
     QT_TRANSLATE_NOOP("snow_shot::presentation::PinnedWindowSelectionController",
                       "Close other windows"),
@@ -105,8 +107,8 @@ void PinnedWindowSelectionController::unregisterWindow(ScreenshotPinnedWindow* w
 bool PinnedWindowSelectionController::isSelectable(const ScreenshotPinnedWindow* window) const {
     return window && !window->isLiveWindow() && m_windowIndex.contains(window) &&
            window->m_presented && window->m_firstContentFramePublished && !window->m_closing &&
-           window->isVisible() && !window->isMinimized() && !window->m_thumbnailMode &&
-           !window->hideToTopActive() && !window->m_clickThroughActive &&
+           window->isVisible() && !window->isMinimized() && !window->hideToTopActive() &&
+           !window->m_clickThroughActive &&
            (!window->m_groupManager ||
             window->groupId() == window->m_groupManager->activeGroupId());
 }
@@ -303,6 +305,22 @@ void PinnedWindowSelectionController::buildContextMenu(ScreenshotPinnedWindow* o
         if (valid() && !ScreenshotPinnedWindow::batchSavePending())
             owner->copyPinnedWindowFiles(targets);
     });
+    auto* copyText =
+        add("Copy text to clipboard",
+            QStringLiteral("screenshotPinnedSelectionCopyTextToClipboard"), outlined::Copy());
+    connect(copyText, &QAction::triggered, this, [owner, targets, valid] {
+        if (valid())
+            owner->copyPinnedWindowText(targets);
+    });
+    const auto refreshCopyText = [copyText, targets, valid] {
+        copyText->setEnabled(valid() && ScreenshotPinnedWindow::hasBatchClipboardText(targets));
+    };
+    connect(menu, &QMenu::aboutToShow, copyText, refreshCopyText);
+    for (const auto& target : targets)
+        if (target)
+            connect(target, &ScreenshotPinnedWindow::batchClipboardTextChanged, copyText,
+                    refreshCopyText, Qt::QueuedConnection);
+    refreshCopyText();
     auto* save = add("Save as file", QStringLiteral("screenshotPinnedSelectionSaveAsFile"),
                      customIcons::Save());
     connect(save, &QAction::triggered, this, [owner, targets, valid] {
