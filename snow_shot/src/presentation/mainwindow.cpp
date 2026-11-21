@@ -286,6 +286,8 @@ void MainWindow::buildUi() {
             &MainWindow::screenshotHistoryPinRequested);
     connect(m_contentCard, &ContentCardWidget::screenshotHistoryStitchImagesRequested, this,
             &MainWindow::screenshotHistoryStitchImagesRequested);
+    connect(m_contentCard, &ContentCardWidget::imageDragRequested, this,
+            &MainWindow::imageDragRequested);
     connect(m_contentCard, &ContentCardWidget::screenshotHistorySplitRequested, this,
             &MainWindow::screenshotHistorySplitRequested);
     connect(m_contentCard, &ContentCardWidget::screenshotHistoryImageEditingRequested, this,

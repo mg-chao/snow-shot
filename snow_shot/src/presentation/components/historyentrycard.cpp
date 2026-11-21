@@ -6,10 +6,14 @@
 #include "widgets/button.h"
 #include "widgets/checkbox.h"
 #include "widgets/detail/button_rendering.h"
+#include "widgets/image.h"
 
+#include <QApplication>
 #include <QBoxLayout>
 #include <QEvent>
 #include <QLabel>
+#include <QKeyEvent>
+#include <QMouseEvent>
 #include <QPainter>
 
 #include <algorithm>
@@ -47,6 +51,8 @@ HistoryEntryCard::HistoryEntryCard(QWidget* parent) : QFrame(parent) {
     detailsLayout->addWidget(m_summaryLabel);
     m_metadataLabel = new QLabel(m_details);
     detailsLayout->addWidget(m_metadataLabel);
+    for (auto* label : {m_sourceLabel, m_summaryLabel, m_metadataLabel})
+        label->setAttribute(Qt::WA_TransparentForMouseEvents);
     detailsLayout->addStretch(1);
 
     m_actions = new QHBoxLayout;
@@ -58,6 +64,11 @@ HistoryEntryCard::HistoryEntryCard(QWidget* parent) : QFrame(parent) {
     if (parent != nullptr) {
         parent->installEventFilter(this);
     }
+}
+
+HistoryEntryCard::~HistoryEntryCard() {
+    if (m_dragOrigin)
+        endDragGesture();
 }
 
 adqt::widgets::AdCheckbox* HistoryEntryCard::selectionCheckbox() const {
@@ -95,6 +106,46 @@ void HistoryEntryCard::setPreviewWidget(QWidget* preview) {
     updateResponsiveLayout();
 }
 
+void HistoryEntryCard::setDragImage(adqt::widgets::AdImageLoader* loader, const QUrl& source) {
+    m_dragLoader = loader;
+    m_dragSource = source;
+}
+
+void HistoryEntryCard::mousePressEvent(QMouseEvent* event) {
+    QWidget* hit = childAt(event->position().toPoint());
+    if (event->button() == Qt::LeftButton && m_dragLoader && !m_dragSource.isEmpty() &&
+        (!hit || hit == m_details)) {
+        m_dragOrigin = event->globalPosition().toPoint();
+        qApp->installEventFilter(this);
+        event->accept();
+        return;
+    }
+    QFrame::mousePressEvent(event);
+}
+
+void HistoryEntryCard::endDragGesture() {
+    qApp->removeEventFilter(this);
+    m_dragOrigin.reset();
+    m_dragGesture.reset();
+}
+
+void HistoryEntryCard::loadDragImage() {
+    m_dragGesture = std::make_unique<QObject>();
+    auto* reply = m_dragLoader->load(m_dragSource, {}, m_dragGesture.get());
+    if (!reply)
+        return;
+    const auto ready = [this, reply] {
+        const QImage image = reply->image();
+        reply->deleteLater();
+        if (!image.isNull())
+            emit imageDragRequested(m_dragGesture.get(), image);
+    };
+    if (reply->isFinished())
+        ready();
+    else
+        connect(reply, &adqt::widgets::AdImageReply::finished, m_dragGesture.get(), ready);
+}
+
 void HistoryEntryCard::applyTheme(const styles::ThemeColorScheme& scheme) {
     m_scheme = scheme;
     QPalette primary = m_selectionCheckbox->palette();
@@ -128,6 +179,28 @@ void HistoryEntryCard::updateBackgroundStyle() {
 }
 
 bool HistoryEntryCard::eventFilter(QObject* watched, QEvent* event) {
+    if (m_dragOrigin) {
+        const auto type = event->type();
+        if ((type == QEvent::MouseButtonRelease &&
+             static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton) ||
+            type == QEvent::MouseButtonPress ||
+            ((type == QEvent::ShortcutOverride || type == QEvent::KeyPress) &&
+             static_cast<QKeyEvent*>(event)->key() == Qt::Key_Escape) ||
+            (type == QEvent::Hide && watched == this) ||
+            (type == QEvent::WindowDeactivate && watched == window())) {
+            endDragGesture();
+        } else if (type == QEvent::MouseMove) {
+            const auto* mouse = static_cast<QMouseEvent*>(event);
+            if (!mouse->buttons().testFlag(Qt::LeftButton)) {
+                endDragGesture();
+            } else if (!m_dragGesture && m_dragLoader &&
+                       (mouse->globalPosition().toPoint() - *m_dragOrigin).manhattanLength() >=
+                           QApplication::startDragDistance()) {
+                loadDragImage();
+                return false;
+            }
+        }
+    }
     if (watched == parentWidget() && event->type() == QEvent::Resize) {
         updateResponsiveLayout();
     }

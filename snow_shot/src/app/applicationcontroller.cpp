@@ -30,6 +30,7 @@
 #include "snow_shot/presentation/imageeditingwindow.h"
 #include "snow_shot/presentation/imagecompressionwindow.h"
 #include "snow_shot/presentation/screenshotexportartifact.h"
+#include "../presentation/pinned/screenshotpinneddragexport.h"
 #include "snow_shot/presentation/screenshotexportcache.h"
 
 #include "snow_shot/presentation/globalshortcutmanager.h"
@@ -1574,6 +1575,27 @@ class ApplicationController::Impl {
                             return allowPermissions(presentation::requiredPermissions(
                                 action, permissions.microphoneEnabled()));
                         }));
+                });
+            auto* recordDrag = new ScreenshotPinnedDragExport(mainWindow);
+            QObject::connect(
+                mainWindow, &MainWindow::imageDragRequested, recordDrag,
+                [this, recordDrag](QObject* gesture, const QImage& image) {
+                    auto artifact = std::make_shared<ScreenshotExportArtifact>(
+                        ScreenshotExportSource::fromImage(image));
+                    recordDrag->start(
+                        std::move(artifact),
+                        [this](QString error) {
+                            if (error.isEmpty())
+                                return;
+                            adqt::widgets::AdMessage::Request message;
+                            message.content =
+                                QCoreApplication::translate("ScreenshotController",
+                                                            "The screenshot could not be saved: %1")
+                                    .arg(error);
+                            adqt::widgets::AdMessageService::error(std::move(message), mainWindow);
+                        },
+                        [] { return QApplication::mouseButtons().testFlag(Qt::LeftButton); },
+                        gesture);
                 });
             QObject::connect(mainWindow, &MainWindow::screenshotHistoryEditRequested, &q,
                              [this](const QString& recordId) {

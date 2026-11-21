@@ -83,6 +83,7 @@
 #endif
 #include <windows.h>
 #include <shellapi.h>
+#undef CopyFile // Keep ExportTask::CopyFile visible below.
 #endif
 
 #include <cstdlib>

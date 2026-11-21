@@ -171,6 +171,8 @@ QWidget* ContentCardWidget::createPage(
     QWidget* page = nullptr;
     if (definition.kind == snow_shot::presentation::settings::SettingsPageKind::ScreenshotHistory) {
         auto* historyPage = new ScreenshotHistoryPageWidget(m_stack);
+        connect(historyPage, &ScreenshotHistoryPageWidget::imageDragRequested, this,
+                &ContentCardWidget::imageDragRequested);
         connect(historyPage, &ScreenshotHistoryPageWidget::editRequested, this,
                 &ContentCardWidget::screenshotHistoryEditRequested);
         connect(historyPage, &ScreenshotHistoryPageWidget::pinRequested, this,
@@ -187,6 +189,8 @@ QWidget* ContentCardWidget::createPage(
     } else if (definition.kind ==
                snow_shot::presentation::settings::SettingsPageKind::PinnedWindowManagement) {
         auto* pinnedPage = new PinnedWindowManagementPageWidget(m_stack);
+        connect(pinnedPage, &PinnedWindowManagementPageWidget::imageDragRequested, this,
+                &ContentCardWidget::imageDragRequested);
         connect(pinnedPage, &PinnedWindowManagementPageWidget::stitchImagesRequested, this,
                 &ContentCardWidget::pinnedWindowStitchImagesRequested);
         connect(pinnedPage, &PinnedWindowManagementPageWidget::splitRequested, this,

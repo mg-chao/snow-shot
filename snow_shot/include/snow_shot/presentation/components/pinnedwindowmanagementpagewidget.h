@@ -79,6 +79,7 @@ class PinnedWindowManagementPageWidget final : public QWidget {
     void applyTheme(const snow_shot::presentation::styles::ThemeColorScheme& scheme);
 
   signals:
+    void imageDragRequested(QObject* gesture, const QImage& image);
     void stitchImagesRequested(const QStringList& recordIds);
     void splitRequested(const QString& recordId);
     void imageEditingRequested(const QString& recordId);

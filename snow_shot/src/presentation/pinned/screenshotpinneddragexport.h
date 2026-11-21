@@ -50,7 +50,7 @@ class ScreenshotPinnedDragExport final : public QObject {
     ~ScreenshotPinnedDragExport() override;
     void start(
         std::shared_ptr<ScreenshotExportArtifact> artifact, Completion completion,
-        std::function<bool()> canStart = [] { return true; });
+        std::function<bool()> canStart = [] { return true; }, QObject* gesture = nullptr);
     void cancel();
     bool busy() const;
     bool dragging() const;
