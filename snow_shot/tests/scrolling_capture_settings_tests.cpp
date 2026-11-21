@@ -314,7 +314,8 @@ void changedSettingsRecapture(ScreenshotScrollingRecognitionMode mode, bool auto
         QCoreApplication::processEvents();
         auto* modal = toolbar->palette()->findChild<AdModal*>(
             QStringLiteral("screenshotScrollingSettingsModal"));
-        require(modal && modal->isOpen(), "open scrolling capture settings");
+        require(modal && modal->isOpen() && modal->windowModality() == Qt::ApplicationModal,
+                "scrolling settings protect every display in the active capture");
         auto* editor = modal->contentWidget()->findChild<AdSwitch*>();
         require(editor != nullptr, "capture interface switch must exist");
         commands.settingsSurface = modal->contentWidget()->window();

@@ -8291,8 +8291,7 @@ void ScreenshotPinnedWindow::saveAsFile() {
                         setFocus();
                     }
                 },
-                m_editController ? m_editController->toolbarWindow() : nullptr,
-                Qt::ApplicationModal,
+                m_editController ? m_editController->toolbarWindow() : nullptr, Qt::WindowModal,
                 [this, tasks] {
                     auto writeTasks = tasks;
                     writeTasks.deferClipboardPublication();

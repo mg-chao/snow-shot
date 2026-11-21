@@ -49,17 +49,16 @@ QString text(const char* source) {
 }
 } // namespace
 
-adqt::widgets::AdModal*
-createScreenshotTranslationSettingsDialog(translation::TranslationService& service, QWidget* owner,
-                                          QObject* parent,
-                                          std::function<void(bool)> displayModeChanged) {
+adqt::widgets::AdModal* createScreenshotTranslationSettingsDialog(
+    translation::TranslationService& service, QWidget* owner, QObject* parent,
+    std::function<void(bool)> displayModeChanged, Qt::WindowModality modality) {
     using namespace adqt::widgets;
     const QPointer<translation::TranslationService> liveService(&service);
     auto* modal = new AdModal(parent);
     modal->setObjectName(QStringLiteral("screenshotTranslationSettingsModal"));
     modal->setOwnerWindow(owner);
     modal->setMode(AdModal::Mode::Window);
-    modal->setWindowModality(Qt::ApplicationModal);
+    modal->setWindowModality(modality);
     modal->setCentered(true);
     modal->setPreferredWidth(440);
     modal->setMaskVisible(false);

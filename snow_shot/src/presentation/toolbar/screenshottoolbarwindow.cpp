@@ -22,6 +22,8 @@ ScreenshotToolPalette::Options screenshotToolbarOptions() {
     ScreenshotToolPalette::Options options;
     options.showDragHandle = true;
     options.showHistoryActions = true;
+    // One capture session can have independent top-level overlays on several displays.
+    options.dialogModality = Qt::ApplicationModal;
     options.showMoveTool = true;
     options.enableMoveOptionsToolbar = true;
     options.showSelectTool = true;

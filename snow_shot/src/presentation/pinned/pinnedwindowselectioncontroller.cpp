@@ -513,7 +513,7 @@ void PinnedWindowSelectionController::confirmDestroy(
     modal->setObjectName(QStringLiteral("screenshotPinnedSelectionDestroyConfirmation"));
     modal->setOwnerWindow(owner);
     modal->setMode(adqt::widgets::AdModal::Mode::Window);
-    modal->setWindowModality(Qt::ApplicationModal);
+    modal->setWindowModality(Qt::WindowModal);
     modal->setPreset(adqt::widgets::AdModal::Preset::Confirm);
     modal->setProperty("pinnedSelectionCount", ids.size());
     modal->setProperty("pinnedDisplayedBatch", displayed);

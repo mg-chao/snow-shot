@@ -272,6 +272,7 @@ class ScreenshotToolPalette final : public QWidget,
         bool showScreenRecordButton = false;
         bool showRecordingControls = false;
         bool recordingDrawingMode = false;
+        Qt::WindowModality dialogModality = Qt::WindowModal;
         bool showTrailingDragHandle = false;
         bool enableStyleToolbar = true;
         bool separatorAfterSelect = false;

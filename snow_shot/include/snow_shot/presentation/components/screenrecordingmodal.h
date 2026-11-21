@@ -11,7 +11,7 @@ inline void configureScreenRecordingModal(adqt::widgets::AdModal& modal, QWidget
     modal.setWindowModeDetached(owner == nullptr);
     modal.setOwnerWindow(owner);
     modal.setMode(adqt::widgets::AdModal::Mode::Window);
-    modal.setWindowModality(Qt::ApplicationModal);
+    modal.setWindowModality(owner ? Qt::WindowModal : Qt::ApplicationModal);
     modal.setWindowAlwaysOnTop(owner == nullptr);
     modal.setCentered(true);
     modal.setMaskVisible(false);

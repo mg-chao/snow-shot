@@ -6893,7 +6893,7 @@ void ScreenshotToolPaletteStyleControls::openCreateWatermarkTemplateModal() {
                               : m_watermarkTemplateSelect->window();
     modal->setOwnerWindow(modalOwner);
     modal->setMode(adqt::widgets::AdModal::Mode::Window);
-    modal->setWindowModality(Qt::ApplicationModal);
+    modal->setWindowModality(m_callbacks.dialogModality);
     modal->setCentered(true);
     modal->setPreferredWidth(400);
     modal->setMaskVisible(false);
@@ -6976,7 +6976,7 @@ void ScreenshotToolPaletteStyleControls::openDeleteWatermarkTemplateModal(
                               ? m_callbacks.watermarkTemplateModalOwnerWindow()
                               : m_watermarkTemplateSelect->window());
     modal->setMode(adqt::widgets::AdModal::Mode::Window);
-    modal->setWindowModality(Qt::ApplicationModal);
+    modal->setWindowModality(m_callbacks.dialogModality);
     modal->setCentered(true);
     modal->setPreferredWidth(400);
     modal->setMaskVisible(false);

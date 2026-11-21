@@ -1748,7 +1748,8 @@ void translationLanguageSelectsUseCodePrefixGroups() {
     controller->openTranslationSettings();
     auto* modal = controller->findChild<adqt::widgets::AdModal*>(
         QStringLiteral("screenshotTranslationSettingsModal"));
-    require(modal != nullptr, "translation settings should create its modal");
+    require(modal && modal->ownerWindow() == &owner && modal->windowModality() == Qt::WindowModal,
+            "translation settings are modal to their source window");
     QWidget* content = modal->contentWidget();
     auto* source = content == nullptr ? nullptr
                                       : content->findChild<adqt::widgets::AdSelect*>(

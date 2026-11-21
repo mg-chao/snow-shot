@@ -113,6 +113,7 @@ struct ScreenshotRecognitionSessionActions {
     std::function<bool()> shouldRenderTextBackground{};
     // Hosts with a separate display presentation propagate prepared colors to it.
     std::function<void(const ScreenshotOcrPresentation&)> applyOcrColors{};
+    Qt::WindowModality translationSettingsModality = Qt::WindowModal;
 };
 
 class ScreenshotRecognitionSessionController final : public QObject {

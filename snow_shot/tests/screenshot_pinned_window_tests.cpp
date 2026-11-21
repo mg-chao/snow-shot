@@ -19684,8 +19684,14 @@ void pinnedSaveDialogRoutingAndCancellation() {
     require(!adqt::widgets::detail::blockingModalWindow(
                 modal->contentWidget()->window()->windowHandle()),
             "pinned save must not block its own visible surface");
-    require(modal->contentWidget()->window()->windowHandle()->transientParent() ==
-                toolbar->windowHandle(),
+    QWindow independent;
+    require(modal->windowModality() == Qt::WindowModal &&
+                adqt::widgets::detail::blockingModalWindow(window->windowHandle()) &&
+                adqt::widgets::detail::blockingModalWindow(toolbar->windowHandle()) &&
+                !adqt::widgets::detail::blockingModalWindow(&independent),
+            "pinned save blocks its pin and toolbar while allowing independent capture");
+    require(toolbar->windowHandle()->isAncestorOf(modal->contentWidget()->window()->windowHandle(),
+                                                  QWindow::IncludeTransients),
             "pinned save must stay above its visible editing toolbar");
     modal->rejectButton()->click();
     waitForUi(30);
@@ -25184,7 +25190,10 @@ void pinnedMultiSelectionCloseAndGroups() {
             .trigger();
         auto* modal = first.findChild<adqt::widgets::AdModal*>(
             QStringLiteral("pinnedWindowGroupCreateModal"));
-        require(modal && modal->isOpen(), "batch New Group opens the existing group-name form");
+        require(modal && modal->isOpen() && modal->windowModality() == Qt::WindowModal &&
+                    adqt::widgets::detail::blockingModalWindow(first.windowHandle()) &&
+                    !adqt::widgets::detail::blockingModalWindow(second.windowHandle()),
+                "New Group blocks its source pin while other windows remain usable");
         auto* input = modal->contentWidget()->findChild<adqt::widgets::AdLineEdit*>(
             QStringLiteral("pinnedWindowGroupNameInput"));
         require(input != nullptr, "batch New Group preserves the existing group-name editor");
@@ -25286,9 +25295,9 @@ void pinnedMultiSelectionDestroyConfirmation() {
         action.trigger();
         auto* modal = first.findChild<adqt::widgets::AdModal*>(
             QStringLiteral("screenshotPinnedSelectionDestroyConfirmation"));
-        require(modal && modal->isOpen() && modal->windowModality() == Qt::ApplicationModal &&
+        require(modal && modal->isOpen() && modal->windowModality() == Qt::WindowModal &&
                     modal->property("pinnedSelectionCount").toInt() == 2,
-                "Destroy opens one count-aware application-modal confirmation");
+                "Destroy opens one count-aware confirmation on the source pin");
         action.trigger();
         require(first.findChildren<adqt::widgets::AdModal*>(
                          QStringLiteral("screenshotPinnedSelectionDestroyConfirmation"))

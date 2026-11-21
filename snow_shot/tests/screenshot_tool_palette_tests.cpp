@@ -1130,8 +1130,8 @@ void recordingEffectSettingsModal() {
                     !surface->windowHandle()->format().hasAlpha() &&
                     settings.modal->contentWidget()->isVisible(),
                 "each Settings open must expose an opaque window with visible form content");
-        require(surface->windowHandle()->transientParent() ==
-                    settings.modal->ownerWindow()->windowHandle(),
+        require(settings.modal->ownerWindow()->windowHandle()->isAncestorOf(
+                    surface->windowHandle(), QWindow::IncludeTransients),
                 "each Settings open must retain native recording-window ownership");
         require(settings.modal == palette.findChild<adqt::widgets::AdModal*>(
                                       QStringLiteral("screenRecordingEffectSettingsModal")),
@@ -1173,7 +1173,7 @@ void recordingEffectSettingsModal() {
     }
 
     require(modal->mode() == adqt::widgets::AdModal::Mode::Window &&
-                modal->windowModality() == Qt::ApplicationModal && modal->centered() &&
+                modal->windowModality() == Qt::WindowModal && modal->centered() &&
                 !modal->maskVisible() && !modal->closeOnMaskClick() &&
                 modal->ownerWindow() == &recordingOwner &&
                 modal->windowTitle() == QStringLiteral("Effect settings") &&
@@ -6995,7 +6995,7 @@ void scrollingSettingsUseCenteredFormAndPersistOnAccept() {
                 captureInterface->controlSize() == AdSwitch::ControlSize::Medium,
             "form refreshes must preserve the generic switch's size and enabled state");
     require(modal->mode() == AdModal::Mode::Window && modal->centered() &&
-                modal->windowModality() == Qt::ApplicationModal && modal->ownerWindow() == &owner &&
+                modal->windowModality() == Qt::WindowModal && modal->ownerWindow() == &owner &&
                 modal->preferredWidth() == 440 && !modal->maskVisible() &&
                 !modal->closeOnMaskClick() &&
                 modal->standardButtons() == (AdModal::StandardButtons(AdModal::StandardButton::Ok) |
@@ -11482,7 +11482,7 @@ void watermarkTemplateLibraryAndEditorApplySnapshotsDeterministically() {
     require(nameItem != nullptr && valueItem != nullptr,
             "Add template should expose its named form items");
     require(createModal->mode() == adqt::widgets::AdModal::Mode::Window &&
-                createModal->windowModality() == Qt::ApplicationModal && createModal->centered() &&
+                createModal->windowModality() == Qt::WindowModal && createModal->centered() &&
                 createModal->ownerWindow() == &selectionDisplayOverlay &&
                 createModal->windowTitle() == QStringLiteral("Add template") &&
                 createModal->acceptButton()->text() == QStringLiteral("Add") &&
@@ -11583,7 +11583,7 @@ void watermarkTemplateLibraryAndEditorApplySnapshotsDeterministically() {
             "watermark deletion must use the same display owner as creation");
     require(deleteModal != nullptr && deleteModal->isOpen() &&
                 deleteModal->mode() == adqt::widgets::AdModal::Mode::Window &&
-                deleteModal->windowModality() == Qt::ApplicationModal &&
+                deleteModal->windowModality() == Qt::WindowModal &&
                 deleteModal->windowTitle() == QStringLiteral("Delete template") &&
                 deleteModal->text() ==
                     QStringLiteral("Delete template \"Duplicate\"? This action cannot be undone") &&

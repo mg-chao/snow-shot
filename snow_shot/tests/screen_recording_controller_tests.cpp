@@ -51,6 +51,7 @@
 #include "snow_shot/platform/screenshotwindownames.h"
 #include "snow_recording.h"
 #include "widgets/button.h"
+#include "widgets/detail/window_modality.h"
 #include "antd_icons.h"
 #include "../src/presentation/recording/recordingaudiogainpopover.h"
 #include "widgets/popover.h"
@@ -4990,13 +4991,17 @@ void recordingErrorDialogs(bool followMouse) {
                     "recording failures must use an AntDesignQt error dialog with one OK action");
             auto* surface = modal->acceptButton()->window();
             require(modal->mode() == AdModal::Mode::Window && modal->centered() &&
-                        modal->windowModality() == Qt::ApplicationModal &&
-                        QApplication::activeModalWidget() == surface,
+                        modal->windowModality() ==
+                            (area ? Qt::WindowModal : Qt::ApplicationModal) &&
+                        (area ? adqt::widgets::detail::blockingModalWindow(area->windowHandle()) !=
+                                    nullptr
+                              : QApplication::activeModalWidget() == surface),
                     "recording error dialogs must block the recording controls");
             require(
                 modal->ownerWindow() == area && modal->windowModeDetached() == !area &&
-                    surface->windowHandle()->transientParent() ==
-                        (area ? area->windowHandle() : nullptr),
+                    (area ? area->windowHandle()->isAncestorOf(surface->windowHandle(),
+                                                               QWindow::IncludeTransients)
+                          : surface->windowHandle()->transientParent() == nullptr),
                 "recording error dialogs must use the area as their native owner while it exists");
             if (area) {
                 area->raise();
@@ -5093,11 +5098,15 @@ void recordingModalStacking(bool followMouse) {
 #endif
         require(modal->ownerWindow() == area && !modal->windowModeDetached() &&
                     modal->mode() == AdModal::Mode::Window &&
-                    modal->windowModality() == Qt::ApplicationModal &&
-                    surface->windowHandle()->transientParent() == area->windowHandle(),
+                    modal->windowModality() == Qt::WindowModal &&
+                    area->windowHandle()->isAncestorOf(surface->windowHandle(),
+                                                       QWindow::IncludeTransients),
                 "settings and render progress must share recording area ownership and modality");
-        require(QApplication::activeModalWidget() == surface,
-                "the visible recording modal must block recording controls");
+        QWindow other;
+        require(adqt::widgets::detail::blockingModalWindow(area->windowHandle()) &&
+                    adqt::widgets::detail::blockingModalWindow(toolbar->windowHandle()) &&
+                    !adqt::widgets::detail::blockingModalWindow(&other),
+                "the recording modal blocks its controls and permits independent capture");
         requireModalCenteredOnArea(modal, anchor, screen);
     };
     const QPointer<AdModal> settingsGuard(settings);
@@ -5410,8 +5419,8 @@ void recordingPostProcessingLifecycle() {
         QPointer<AdModal> modal =
             controller.findChild<AdModal*>(QStringLiteral("screenRecordingRenderModal"));
         require(modal && modal->isOpen() && !modal->windowModeDetached() &&
-                    modal->windowModality() == Qt::ApplicationModal && modal->ownerWindow() == area,
-                "rendering must open an application modal anchored to the recording area");
+                    modal->windowModality() == Qt::WindowModal && modal->ownerWindow() == area,
+                "render progress must be modal to the recording area");
         require(areaInput.blocked && toolbarInput.blocked,
                 "render progress must block clicks on the recording area and toolbar");
         auto* renderWindow = modal->contentWidget()->window();

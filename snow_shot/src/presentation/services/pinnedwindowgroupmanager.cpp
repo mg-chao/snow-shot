@@ -750,7 +750,7 @@ void PinnedWindowGroupManager::openCreateGroupModal(
         QScreen* screen = QApplication::screenAt(QCursor::pos());
         modal->setWindowScreen(screen != nullptr ? screen : QApplication::primaryScreen());
     }
-    modal->setWindowModality(Qt::ApplicationModal);
+    modal->setWindowModality(owner ? Qt::WindowModal : Qt::ApplicationModal);
     modal->setWindowTitle(tr("New group"));
     modal->setCentered(true);
     modal->setPreferredWidth(400);

@@ -1094,6 +1094,7 @@ ScreenshotToolPalette::ScreenshotToolPalette(const Options& options, QWidget* pa
                             ? SnowCanvasStyleEditTarget::Selection
                             : SnowCanvasStyleEditTarget::Creation}));
                 },
+                options.dialogModality,
             },
             m_styleDefaults, options.watermarkTemplateClock);
     }
@@ -8020,7 +8021,7 @@ bool ScreenshotToolPalette::ensureRecordingEffectSettingsModal() {
     m_recordSettingsModal = modal;
     modal->setObjectName(QStringLiteral("screenRecordingEffectSettingsModal"));
     modal->setMode(adqt::widgets::AdModal::Mode::Window);
-    modal->setWindowModality(Qt::ApplicationModal);
+    modal->setWindowModality(Qt::WindowModal);
     modal->setCentered(true);
     modal->setPreferredWidth(kRecordingSettingsModalWidth);
     modal->setMaskVisible(false);
@@ -9291,7 +9292,7 @@ void ScreenshotToolPalette::openCreateDrawTemplateModal() {
                               ? m_watermarkTemplateModalOwnerWindow.data()
                               : m_drawTemplateSelect->window());
     modal->setMode(adqt::widgets::AdModal::Mode::Window);
-    modal->setWindowModality(Qt::ApplicationModal);
+    modal->setWindowModality(m_options.dialogModality);
     modal->setCentered(true);
     modal->setPreferredWidth(400);
     modal->setMaskVisible(false);
@@ -9364,7 +9365,7 @@ void ScreenshotToolPalette::openDeleteDrawTemplateModal(int index) {
                               ? m_watermarkTemplateModalOwnerWindow.data()
                               : m_drawTemplateSelect->window());
     modal->setMode(adqt::widgets::AdModal::Mode::Window);
-    modal->setWindowModality(Qt::ApplicationModal);
+    modal->setWindowModality(m_options.dialogModality);
     modal->setCentered(true);
     modal->setPreferredWidth(400);
     modal->setMaskVisible(false);
@@ -10264,7 +10265,7 @@ void ScreenshotToolPalette::openScrollingSettings() {
                               ? m_scrollingSettingsOwnerWindow.data()
                               : window());
     modal->setMode(adqt::widgets::AdModal::Mode::Window);
-    modal->setWindowModality(Qt::ApplicationModal);
+    modal->setWindowModality(m_options.dialogModality);
     modal->setCentered(true);
     modal->setPreferredWidth(440);
     modal->setMaskVisible(false);

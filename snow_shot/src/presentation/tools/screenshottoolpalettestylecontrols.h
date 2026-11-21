@@ -107,6 +107,7 @@ struct ScreenshotToolPaletteStyleControlCallbacks {
     std::function<QWidget*()> watermarkTemplateModalOwnerWindow;
     std::function<void(const SnowCanvasMagnifierStyle& style, quint32 properties)>
         magnifierStyleChanged;
+    Qt::WindowModality dialogModality = Qt::WindowModal;
 };
 
 // Palette-owned row services used by the family builders. The palette supplies

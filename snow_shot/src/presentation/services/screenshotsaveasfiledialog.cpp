@@ -791,7 +791,15 @@ bool ScreenshotSaveAsFileDialog::open(QObject* lifetime, QWidget* owner,
     // an owned window of the toolbar. Raising an owner cannot cover its owned dialog.
     if (stackingWindow) {
         QWidget* surface = content->window();
-        surface->windowHandle()->setTransientParent(stackingWindow->windowHandle());
+        QWindow* stackingSurface = surface->windowHandle();
+#ifdef Q_OS_MACOS
+        // An owned AdModal uses a window-modal proxy on Cocoa. Keep the visible
+        // editor inside that proxy so it can receive input while its owner is blocked.
+        if (modality == Qt::WindowModal && stackingSurface->transientParent())
+            stackingSurface = stackingSurface->transientParent();
+#endif
+        if (stackingSurface != stackingWindow->windowHandle())
+            stackingSurface->setTransientParent(stackingWindow->windowHandle());
 #if defined(Q_OS_WIN)
         // QWidget keeps its original parent; synchronize the HWND owner as well as QWindow.
         if (QApplication::platformName() == QStringLiteral("windows")) {
