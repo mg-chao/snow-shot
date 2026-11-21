@@ -152,6 +152,7 @@ class ScreenshotRecognitionSessionController final : public QObject {
     void seedRecognitionResults(ScreenshotRecognitionResults results);
     // A lightweight view of the current target's original OCR, without serializing other modes.
     [[nodiscard]] std::optional<ScreenshotOcrRecognitionResult> cachedTextRecognitionResult() const;
+    [[nodiscard]] QString cachedCompletedTranslationText() const;
     [[nodiscard]] ScreenshotRecognitionResults cachedRecognitionResults() const;
     [[nodiscard]] ScreenshotRecognitionResults recognitionResultsSnapshot() const;
     [[nodiscard]] bool hasTarget() const;
@@ -235,6 +236,7 @@ class ScreenshotRecognitionSessionController final : public QObject {
   signals:
     void textEditingChanged(bool editing);
     void textResultChanged(bool available);
+    void translationCompleted();
     void textDraftChanged(const QString& text);
     void recognitionResultsChanged();
     void workflowStateChanged() const;
@@ -320,6 +322,7 @@ class ScreenshotRecognitionSessionController final : public QObject {
             TranslationStatus status = TranslationStatus::Absent;
             bool failureReported = false;
             bool captured = false;
+            bool complete = false;
             QSet<int> streamingLines;
         };
 #endif

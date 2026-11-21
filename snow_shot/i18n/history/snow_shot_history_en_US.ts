@@ -2016,6 +2016,10 @@ Files:
             <translation>Copy original content</translation>
         </message>
         <message>
+            <source>Copy text to clipboard</source>
+            <translation>Copy text to clipboard</translation>
+        </message>
+        <message>
             <source>Copy to clipboard</source>
             <translation>Copy to clipboard</translation>
         </message>
@@ -2632,6 +2636,10 @@ Files:
         <message>
             <source>Copy files to clipboard</source>
             <translation>Copy files to clipboard</translation>
+        </message>
+        <message>
+            <source>Copy text to clipboard</source>
+            <translation>Copy text to clipboard</translation>
         </message>
         <message>
             <source>Delete empty groups</source>

@@ -847,7 +847,9 @@ void streamsIndividualBoxesAndKeepsOriginals() {
     require(snapshot.text.has_value() &&
                 snapshot.text->presentation->lines[2].text == QStringLiteral("source 2"),
             "pin snapshots must retain source OCR independently of displayed translation");
-    require(snapshot.translatedText != nullptr && snapshot.translatedText != session.displayed &&
+    require(snapshot.translatedText != nullptr && !snapshot.translatedTextComplete &&
+                session.controller->cachedCompletedTranslationText().isEmpty() &&
+                snapshot.translatedText != session.displayed &&
                 snapshot.translatedText->lines[2].text == QStringLiteral("third") &&
                 snapshot.translatedText->lines[1].text == QStringLiteral("source 1"),
             "a pin snapshot must freeze partial translation and untouched source boxes");
@@ -1934,6 +1936,9 @@ void runPinnedOriginalImageTranslationTests() {
                         QStringLiteral("translated"),
                 "restoration must retain separate original OCR and frozen partial translation");
         const auto restoredResults = session->recognitionResultsSnapshot();
+        require(!restoredResults.translatedTextComplete &&
+                    session->cachedCompletedTranslationText().isEmpty(),
+                "restored partial and legacy overlays are available for display only");
         for (int index = 0; index < restoredResults.translatedText->lines.size(); ++index) {
             const auto& line = restoredResults.translatedText->lines[index];
             require(line.fontSizeCapRatio &&

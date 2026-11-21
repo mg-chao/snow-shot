@@ -2,6 +2,7 @@
 #include "snow_shot/presentation/screenshotexportartifact.h"
 #include "snow_shot/presentation/screenshotclipboardservice.h"
 #include "snow_shot/presentation/screenshotencodingsettings.h"
+#include "snow_shot/presentation/screenshotocrtexttransform.h"
 #include "snow_shot/presentation/screenshotrecognitionsessioncontroller.h"
 #include "snow_shot/storage/exportfilename.h"
 #include "snow_shot/storage/clipboardfilecache.h"
@@ -13,6 +14,7 @@
 
 #include <QFile>
 #include <QApplication>
+#include <QClipboard>
 #include <QMimeData>
 #include <QUrl>
 #include <QFileDialog>
@@ -555,5 +557,53 @@ void ScreenshotPinnedWindow::copyPinnedWindowFiles(
         !batchSavePending()) {
         const auto publicationId = beginCopyRequest();
         (new ScreenshotPinnedBatchSaveSession(this, targets, publicationId))->startCopy();
+    }
+}
+
+QString ScreenshotPinnedWindow::batchClipboardText() const {
+    if (m_closing || isLiveWindow())
+        return {};
+    using snow_shot::presentation::originalOcrText;
+    const auto* session = m_recognitionTargetReady ? m_recognitionSession.get() : nullptr;
+    if (m_textType == snow_shot::storage::PinnedTextType::TranslationResults) {
+#if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
+        if (session)
+            return session->cachedCompletedTranslationText();
+        if (m_recognitionResults.translatedTextComplete && m_recognitionResults.translatedText)
+            return originalOcrText(*m_recognitionResults.translatedText);
+#endif
+        return {};
+    }
+    if (m_formattedTextAvailable)
+        return m_formattedPlainText;
+    const auto result =
+        session ? session->cachedTextRecognitionResult() : m_recognitionResults.text;
+    return result && result->error.isEmpty() && result->presentation
+               ? originalOcrText(*result->presentation)
+               : QString{};
+}
+
+bool ScreenshotPinnedWindow::hasBatchClipboardText(
+    const QList<QPointer<ScreenshotPinnedWindow>>& targets) {
+    return std::any_of(targets.cbegin(), targets.cend(),
+                       [](const auto& pin) { return pin && !pin->batchClipboardText().isEmpty(); });
+}
+
+void ScreenshotPinnedWindow::copyPinnedWindowText(
+    const QList<QPointer<ScreenshotPinnedWindow>>& targets) {
+    auto* clipboard = QApplication::clipboard();
+    if (!clipboard || m_closing)
+        return;
+    QStringList parts;
+    for (const auto& pin : targets) {
+        if (pin) {
+            const QString text = pin->batchClipboardText();
+            if (!text.isEmpty())
+                parts.append(text);
+        }
+    }
+    if (!parts.isEmpty()) {
+        static_cast<void>(beginCopyRequest());
+        clipboard->setText(parts.join(u'\n'), QClipboard::Clipboard);
     }
 }

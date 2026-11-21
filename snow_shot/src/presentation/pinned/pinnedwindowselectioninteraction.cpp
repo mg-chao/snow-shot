@@ -118,13 +118,16 @@ struct PinnedWindowSelectionController::GeometryState {
     begin(PinnedWindowSelectionController& controller, ScreenshotPinnedWindow* owner,
           const QPointF& desktopPress, std::optional<int> handle, std::optional<QPoint> nativePress,
           bool pointerDriven) {
-        const auto targets = controller.selectedWindows();
-        if (!owner || targets.size() < 2 || !controller.isSelected(owner))
+        auto targets = controller.selectedWindows();
+        if (!owner || targets.size() < 2 || !controller.isSelected(owner) ||
+            (handle && owner->m_thumbnailMode))
             return {};
+        if (handle)
+            targets.removeIf([](const auto& window) { return window && window->m_thumbnailMode; });
         for (const auto& window : targets) {
             if (!window || !controller.isSelectable(window) ||
                 !window->m_nativeGeometryController || !window->screen() ||
-                window->m_interactionPlacement ||
+                window->m_interactionPlacement || window->m_geometryAnimating ||
                 window->m_nativeGeometryController->phase() !=
                     ScreenshotPinnedNativeGeometryController::Phase::Stable)
                 return {};
@@ -471,11 +474,12 @@ bool PinnedWindowSelectionController::cancelPointerInteraction(ScreenshotPinnedW
 
 bool PinnedWindowSelectionController::scaleBy(ScreenshotPinnedWindow* window,
                                               double requestedLeaderScale) {
-    if (!usesSharedGeometry(window) || geometryActive() || !std::isfinite(requestedLeaderScale) ||
-        requestedLeaderScale <= 0 || window->m_scalePercent <= 0)
+    if (!usesSharedGeometry(window) || window->m_thumbnailMode || geometryActive() ||
+        !std::isfinite(requestedLeaderScale) || requestedLeaderScale <= 0 ||
+        window->m_scalePercent <= 0)
         return false;
     for (const auto& selected : selectedWindows()) {
-        if (selected && selected->m_ocrMode &&
+        if (selected && !selected->m_thumbnailMode && selected->m_ocrMode &&
             (!selected->m_recognitionSession ||
              !selected->m_recognitionSession->originalImageTranslationActive()))
             return false;
