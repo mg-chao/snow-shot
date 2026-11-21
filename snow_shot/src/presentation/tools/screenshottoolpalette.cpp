@@ -1,4 +1,5 @@
 #include "snow_shot/shortcuts/shortcutbinding.h"
+#include "snow_shot/presentation/components/windowconfirmation.h"
 #include "snow_shot/shortcuts/annotationoptionshortcut.h"
 #include "snow_shot/presentation/screenshottoolpalette.h"
 #include "snow_shot/presentation/components/pointerhoverevents.h"
@@ -7948,8 +7949,6 @@ void ScreenshotToolPalette::createRecordingExportSettingsToolbar() {
         if (!ensureRecordingEffectSettingsModal()) {
             return;
         }
-        m_recordSettingsModal->setOwnerWindow(
-            m_recordSettingsOwnerWindow ? m_recordSettingsOwnerWindow.data() : window());
         m_recordSettingsModal->open();
     });
     m_recordPreferencesButton = createScreenshotToolPaletteStyleActionButton(
@@ -8015,17 +8014,13 @@ bool ScreenshotToolPalette::ensureRecordingEffectSettingsModal() {
     }
     SNOW_SHOT_TOOLBAR_PERF_SCOPE("palette.hydrate.recording_effect_settings");
 
-    auto* modal = new adqt::widgets::AdModal(this);
+    auto* modal = snow_shot::presentation::modal_window::create(
+        this, m_recordSettingsOwnerWindow ? m_recordSettingsOwnerWindow.data() : window());
     // Publish the modal before building its content so a re-entrant call takes
     // the early return above instead of building a second dialog.
     m_recordSettingsModal = modal;
     modal->setObjectName(QStringLiteral("screenRecordingEffectSettingsModal"));
-    modal->setMode(adqt::widgets::AdModal::Mode::Window);
-    modal->setWindowModality(Qt::WindowModal);
-    modal->setCentered(true);
     modal->setPreferredWidth(kRecordingSettingsModalWidth);
-    modal->setMaskVisible(false);
-    modal->setCloseOnMaskClick(false);
     modal->setStandardButtons(adqt::widgets::AdModal::StandardButton::Ok);
     connect(modal, &adqt::widgets::AdModal::finished, this,
             [this, modal](adqt::widgets::AdModal::DialogCode) {
@@ -9286,17 +9281,13 @@ void ScreenshotToolPalette::openCreateDrawTemplateModal() {
     }
     alert->hide();
 
-    auto* modal = new adqt::widgets::AdModal(m_drawTemplateSelect);
+    auto* modal = snow_shot::presentation::modal_window::create(
+        m_drawTemplateSelect,
+        m_watermarkTemplateModalOwnerWindow != nullptr ? m_watermarkTemplateModalOwnerWindow.data()
+                                                       : m_drawTemplateSelect->window(),
+        {.windowModality = m_options.dialogModality});
     modal->setObjectName(QStringLiteral("screenshotDrawTemplateCreateModal"));
-    modal->setOwnerWindow(m_watermarkTemplateModalOwnerWindow != nullptr
-                              ? m_watermarkTemplateModalOwnerWindow.data()
-                              : m_drawTemplateSelect->window());
-    modal->setMode(adqt::widgets::AdModal::Mode::Window);
-    modal->setWindowModality(m_options.dialogModality);
-    modal->setCentered(true);
     modal->setPreferredWidth(400);
-    modal->setMaskVisible(false);
-    modal->setCloseOnMaskClick(false);
     modal->setClosePolicy(adqt::widgets::AdModal::ClosePolicy::Manual);
     modal->setStandardButtons(adqt::widgets::AdModal::StandardButton::Ok |
                               adqt::widgets::AdModal::StandardButton::Cancel);
@@ -9359,22 +9350,16 @@ void ScreenshotToolPalette::openDeleteDrawTemplateModal(int index) {
     }
     const snow_shot::storage::DrawTemplate target = m_drawTemplates.at(index);
     m_deleteDrawTemplateName = target.name;
-    auto* modal = new adqt::widgets::AdModal(m_drawTemplateSelect);
+    auto* modal = snow_shot::presentation::modal_window::createConfirmation(
+        m_drawTemplateSelect,
+        m_watermarkTemplateModalOwnerWindow != nullptr ? m_watermarkTemplateModalOwnerWindow.data()
+                                                       : m_drawTemplateSelect->window(),
+        {.windowModality = m_options.dialogModality});
     modal->setObjectName(QStringLiteral("screenshotDrawTemplateDeleteModal"));
-    modal->setOwnerWindow(m_watermarkTemplateModalOwnerWindow != nullptr
-                              ? m_watermarkTemplateModalOwnerWindow.data()
-                              : m_drawTemplateSelect->window());
-    modal->setMode(adqt::widgets::AdModal::Mode::Window);
-    modal->setWindowModality(m_options.dialogModality);
-    modal->setCentered(true);
     modal->setPreferredWidth(400);
-    modal->setMaskVisible(false);
-    modal->setCloseOnMaskClick(false);
     modal->setClosePolicy(adqt::widgets::AdModal::ClosePolicy::Manual);
-    modal->setPreset(adqt::widgets::AdModal::Preset::Confirm);
+
     modal->setAcceptAccentRole(adqt::widgets::AdButton::AccentRole::Danger);
-    modal->setStandardButtons(adqt::widgets::AdModal::StandardButton::Ok |
-                              adqt::widgets::AdModal::StandardButton::Cancel);
     m_deleteDrawTemplateModal = modal;
     retranslateDrawTemplateUi();
     connect(modal, &adqt::widgets::AdModal::closeRequested, modal,
@@ -9403,7 +9388,6 @@ void ScreenshotToolPalette::openDeleteDrawTemplateModal(int index) {
                     m_deleteDrawTemplateModal = nullptr;
                     m_deleteDrawTemplateName.clear();
                 }
-                modal->deleteLater();
             });
     modal->open();
 }
@@ -10258,18 +10242,14 @@ void ScreenshotToolPalette::openScrollingSettings() {
         m_scrollingSettingsModal->present();
         return;
     }
-    auto* modal = new adqt::widgets::AdModal(this);
+    auto* modal = snow_shot::presentation::modal_window::create(
+        this,
+        m_scrollingSettingsOwnerWindow != nullptr ? m_scrollingSettingsOwnerWindow.data()
+                                                  : window(),
+        {.windowModality = m_options.dialogModality});
     m_scrollingSettingsModal = modal;
     modal->setObjectName(QStringLiteral("screenshotScrollingSettingsModal"));
-    modal->setOwnerWindow(m_scrollingSettingsOwnerWindow != nullptr
-                              ? m_scrollingSettingsOwnerWindow.data()
-                              : window());
-    modal->setMode(adqt::widgets::AdModal::Mode::Window);
-    modal->setWindowModality(m_options.dialogModality);
-    modal->setCentered(true);
     modal->setPreferredWidth(440);
-    modal->setMaskVisible(false);
-    modal->setCloseOnMaskClick(false);
     modal->setClosePolicy(adqt::widgets::AdModal::ClosePolicy::Manual);
     modal->setStandardButtons(
         adqt::widgets::AdModal::StandardButtons(adqt::widgets::AdModal::StandardButton::Ok) |

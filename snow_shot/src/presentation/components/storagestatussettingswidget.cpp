@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/components/storagestatussettingswidget.h"
+#include "snow_shot/presentation/components/windowconfirmation.h"
 #include "snow_shot/presentation/components/formfields.h"
 
 #include "snow_shot/presentation/components/pathinput.h"
@@ -449,17 +450,12 @@ void StorageStatusSettingsWidget::openDirectoryDialog() {
         }
         m_directoryError->setText(QString());
         m_directoryError->hide();
-        auto* confirmation = new AdModal(modal->contentWidget());
+        auto* confirmation = snow_shot::presentation::modal_window::createConfirmation(
+            modal->contentWidget(), modal->contentWidget()->window());
         m_directoryConfirmation = confirmation;
         confirmation->setObjectName(QStringLiteral("storage-directory-confirmation"));
-        confirmation->setMode(AdModal::Mode::Window);
-        confirmation->setOwnerWindow(modal->contentWidget()->window());
-        confirmation->setCentered(true);
-        confirmation->setCloseOnMaskClick(false);
-        confirmation->setPreset(AdModal::Preset::Confirm);
+
         confirmation->setAcceptAccentRole(AdButton::AccentRole::Danger);
-        confirmation->setStandardButtons(AdModal::StandardButton::Ok |
-                                         AdModal::StandardButton::Cancel);
         retranslateUi();
         connect(confirmation, &AdModal::accepted, this, [this] {
             const QString directory = m_directoryInput->text();
@@ -473,10 +469,8 @@ void StorageStatusSettingsWidget::openDirectoryDialog() {
                     finishDirectoryChange({false, result.error, {}});
             });
         });
-        connect(confirmation, &AdModal::finished, this, [this, confirmation](AdModal::DialogCode) {
-            m_directoryConfirmation = nullptr;
-            confirmation->deleteLater();
-        });
+        connect(confirmation, &AdModal::finished, this,
+                [this](AdModal::DialogCode) { m_directoryConfirmation = nullptr; });
         confirmation->setOpen(true);
     });
     connect(modal, &AdModal::finished, this, [this, modal](AdModal::DialogCode) {

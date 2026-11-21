@@ -121,9 +121,8 @@ class ScreenRecordingSettingsBody final : public QWidget {
 
 adqt::widgets::AdModal* createScreenRecordingSettingsDialog(QWidget* owner, QObject* parent) {
     using namespace adqt::widgets;
-    auto* modal = new AdModal(parent);
+    auto* modal = snow_shot::presentation::createScreenRecordingModal(parent, owner);
     modal->setObjectName(QStringLiteral("screenRecordingSettingsModal"));
-    configureScreenRecordingModal(*modal, owner);
     modal->setPreferredWidth(660);
     modal->setStandardButtons(AdModal::StandardButton::Ok);
     modal->setContentWidget(new ScreenRecordingSettingsBody(*modal));

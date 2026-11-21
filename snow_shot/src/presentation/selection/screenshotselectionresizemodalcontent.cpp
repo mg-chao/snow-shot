@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/screenshotselectionresizemodalcontent.h"
+#include "snow_shot/presentation/components/windowconfirmation.h"
 
 #include "snow_shot/presentation/components/aspectratiolockbutton.h"
 #include "snow_shot/presentation/screenshotselectionlimits.h"
@@ -810,16 +811,11 @@ void ScreenshotSelectionResizeModalContent::openCreatePresetModal() {
         return result;
     });
 
-    auto* modal = new adqt::widgets::AdModal(this);
+    auto* modal = snow_shot::presentation::modal_window::create(
+        this, modalOwnerWindow(), {.windowModality = Qt::ApplicationModal});
     modal->setObjectName(QStringLiteral("selectionPresetCreateModal"));
-    modal->setOwnerWindow(modalOwnerWindow());
-    modal->setMode(adqt::widgets::AdModal::Mode::Window);
-    modal->setWindowModality(Qt::ApplicationModal);
     modal->setWindowTitle(tr("Add preset"));
-    modal->setCentered(true);
     modal->setPreferredWidth(400);
-    modal->setMaskVisible(false);
-    modal->setCloseOnMaskClick(false);
     modal->setClosePolicy(adqt::widgets::AdModal::ClosePolicy::Manual);
     modal->setAcceptText(tr("Add"));
     modal->setRejectText(tr("Cancel"));
@@ -870,24 +866,17 @@ void ScreenshotSelectionResizeModalContent::openDeletePresetModal(const QString&
     }
 
     const QString presetName = m_presets.at(index).name;
-    auto* modal = new adqt::widgets::AdModal(this);
+    auto* modal = snow_shot::presentation::modal_window::createConfirmation(
+        this, modalOwnerWindow(), {.windowModality = Qt::ApplicationModal});
     modal->setObjectName(QStringLiteral("selectionPresetDeleteModal"));
-    modal->setOwnerWindow(modalOwnerWindow());
-    modal->setMode(adqt::widgets::AdModal::Mode::Window);
-    modal->setWindowModality(Qt::ApplicationModal);
     modal->setWindowTitle(tr("Delete preset"));
-    modal->setCentered(true);
     modal->setPreferredWidth(400);
-    modal->setMaskVisible(false);
-    modal->setCloseOnMaskClick(false);
     modal->setClosePolicy(adqt::widgets::AdModal::ClosePolicy::Manual);
-    modal->setPreset(adqt::widgets::AdModal::Preset::Confirm);
+
     modal->setText(tr("Delete preset \"%1\"? This action cannot be undone").arg(presetName));
     modal->setAcceptText(tr("Delete"));
     modal->setRejectText(tr("Cancel"));
     modal->setAcceptAccentRole(adqt::widgets::AdButton::AccentRole::Danger);
-    modal->setStandardButtons(adqt::widgets::AdModal::StandardButton::Ok |
-                              adqt::widgets::AdModal::StandardButton::Cancel);
 
     m_deletePresetModal = modal;
     m_deletePresetName = presetName;
@@ -907,7 +896,6 @@ void ScreenshotSelectionResizeModalContent::openDeletePresetModal(const QString&
                     m_deletePresetModal = nullptr;
                     m_deletePresetName.clear();
                 }
-                modal->deleteLater();
             });
     modal->open();
     if (modal->rejectButton() != nullptr) {

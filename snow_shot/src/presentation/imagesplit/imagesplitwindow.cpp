@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "snow_shot/presentation/imagesplitwindow.h"
+#include "snow_shot/presentation/components/windowconfirmation.h"
 #include "snow_shot/presentation/collagedocument.h"
 #include "snow_shot/presentation/components/imagespliteditorwidget.h"
 #include "snow_shot/presentation/components/icons/snowshoticons.h"
@@ -490,13 +491,10 @@ struct ImageSplitWindow::Impl final {
             services.confirm(editor->window(), replace, std::move(done));
             return;
         }
-        auto* dialog = new AdModal(&q);
+        auto* dialog = modal_window::createConfirmation(&q, editor->window());
         confirmation = dialog;
         dialog->setObjectName(QStringLiteral("imageSplitConfirmation"));
-        dialog->setMode(AdModal::Mode::Window);
-        dialog->setOwnerWindow(editor->window());
-        dialog->setWindowModality(Qt::WindowModal);
-        dialog->setPreset(AdModal::Preset::Confirm);
+
         translateConfirmation();
         dialog->setAcceptAccentRole(replace ? AdButton::AccentRole::Primary
                                             : AdButton::AccentRole::Danger);
@@ -504,7 +502,6 @@ struct ImageSplitWindow::Impl final {
                          [done = std::move(done)](AdModal::DialogCode code) mutable {
                              done(code == AdModal::DialogCode::Accepted);
                          });
-        QObject::connect(dialog, &AdModal::finished, dialog, &QObject::deleteLater);
         dialog->present();
     }
     void clearSplitStatus() {

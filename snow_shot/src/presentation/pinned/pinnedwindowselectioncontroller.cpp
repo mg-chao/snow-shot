@@ -1,5 +1,5 @@
 #include "snow_shot/presentation/pinnedwindowselectioncontroller.h"
-#include "snow_shot/presentation/components/confirmationskipbutton.h"
+#include "snow_shot/presentation/components/windowconfirmation.h"
 #include "snow_shot/presentation/screenshotpinnedwindow.h"
 #include "snow_shot/presentation/pinnedwindowgroupmanager.h"
 #include "snow_shot/presentation/components/icons/snowshoticons.h"
@@ -508,29 +508,21 @@ void PinnedWindowSelectionController::confirmDestroy(
         destroy();
         return;
     }
-    auto* modal = new adqt::widgets::AdModal(owner);
+    auto* modal = modal_window::createConfirmation(owner, owner, {}, [] {
+        return storage::PinToScreenSettings().setConfirmBeforeDestroyingWindow(false);
+    });
     m_destroyConfirmation = modal;
     modal->setObjectName(QStringLiteral("screenshotPinnedSelectionDestroyConfirmation"));
-    modal->setOwnerWindow(owner);
-    modal->setMode(adqt::widgets::AdModal::Mode::Window);
-    modal->setWindowModality(Qt::WindowModal);
-    modal->setPreset(adqt::widgets::AdModal::Preset::Confirm);
     modal->setProperty("pinnedSelectionCount", ids.size());
     modal->setProperty("pinnedDisplayedBatch", displayed);
     modal->setAcceptAccentRole(adqt::widgets::AdButton::AccentRole::Danger);
-    modal->setStandardButtons(adqt::widgets::AdModal::StandardButton::Ok |
-                              adqt::widgets::AdModal::StandardButton::Cancel);
     retranslateUi();
     connect(modal, &adqt::widgets::AdModal::accepted, this, destroy);
     connect(modal, &adqt::widgets::AdModal::finished, this, [this, modal](auto) {
         if (m_destroyConfirmation == modal)
             m_destroyConfirmation = nullptr;
-        modal->deleteLater();
     });
     modal->open();
-    new ConfirmationSkipButton(*modal, [] {
-        return storage::PinToScreenSettings().setConfirmBeforeDestroyingWindow(false);
-    });
 }
 
 void PinnedWindowSelectionController::retranslateUi() {

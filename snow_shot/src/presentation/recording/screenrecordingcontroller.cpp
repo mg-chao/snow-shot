@@ -1,4 +1,5 @@
 #include "snow_shot/platform/screenshotwindownames.h"
+#include "widgets/detail/window_modality.h"
 #include "snow_shot/runtime/runtimeactivitytracker.h"
 #include "recordingtrimsession.h"
 #include "snow_shot/platform/applicationqos.h"
@@ -2735,8 +2736,9 @@ struct ScreenRecordingController::Impl {
         // Once startup begins, the recording worker owns capture and pause/resume.
         if (!recordingOptionsEditable())
             return;
-        const bool preview = !trimRequested && areaWindow && areaWindow->isVisible() &&
-                             !QApplication::activeModalWidget();
+        const bool preview =
+            !trimRequested && areaWindow && areaWindow->isVisible() &&
+            !adqt::widgets::detail::blockingModalWindow(areaWindow->windowHandle());
         static_cast<void>(
             snow_webcam_configure(webcam.get(), static_cast<uint32_t>(webcamSize), 30));
         snow_webcam_set_active(webcam.get(), static_cast<uint8_t>(preview));
@@ -2984,9 +2986,9 @@ struct ScreenRecordingController::Impl {
         if (automationOwned || automationCommand)
             return;
         using adqt::widgets::AdModal;
-        auto* modal = new AdModal(uiSession ? static_cast<QObject*>(uiSession) : &owner);
+        auto* modal = snow_shot::presentation::createScreenRecordingModal(
+            uiSession ? static_cast<QObject*>(uiSession) : &owner, areaWindow);
         modal->setObjectName(QStringLiteral("screenRecordingErrorModal"));
-        snow_shot::presentation::configureScreenRecordingModal(*modal, areaWindow);
         if (toolbarWindow) {
             toolbarWindow->setAutoHideBlocked(modal, true);
             QObject::connect(modal, &adqt::widgets::AdModal::finished, uiSession->connections.get(),

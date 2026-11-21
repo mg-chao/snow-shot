@@ -627,23 +627,22 @@ void recordingModalsBlockSessionShortcuts() {
     require(shapes == 1 && starts == 1 && closes == 1,
             "recording modal fixture shortcuts must activate before the modal opens");
 
-    adqt::widgets::AdModal modal(&area);
-    snow_shot::presentation::configureScreenRecordingModal(modal, &area);
+    auto* modal = snow_shot::presentation::createScreenRecordingModal(&area, &area);
     auto* button = new adqt::widgets::AdButton;
-    modal.setContentWidget(button);
-    modal.setInitialFocusWidget(button);
-    modal.open();
+    modal->setContentWidget(button);
+    modal->setInitialFocusWidget(button);
+    modal->open();
     QCoreApplication::processEvents();
-    require(modal.isOpen() && button->isVisible() &&
+    require(modal->isOpen() && button->isVisible() &&
                 !snow_shot::presentation::WindowShortcutManager::focusAcceptsTextInput(button),
             "recording modal must present a noneditable shortcut receiver");
     for (QWidget* receiver : {static_cast<QWidget*>(button), static_cast<QWidget*>(&area),
                               static_cast<QWidget*>(&toolbar)}) {
         pressCommands(*receiver);
-        require(shapes == 1 && starts == 1 && closes == 1 && modal.isOpen(),
+        require(shapes == 1 && starts == 1 && closes == 1 && modal->isOpen(),
                 "recording modals must block drawing and recording controls from every surface");
     }
-    modal.close();
+    modal->close();
     QCoreApplication::processEvents();
     focus(area);
     pressCommands(area);

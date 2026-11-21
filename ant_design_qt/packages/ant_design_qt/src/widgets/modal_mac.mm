@@ -97,11 +97,18 @@ class CocoaModalSession final : public MacModalSession {
                                                   handler:^NSEvent*(NSEvent* event) {
                                                     if (!blocks(event.window))
                                                         return event;
-                                                    if (event.type == NSEventTypeLeftMouseDown ||
-                                                        event.type == NSEventTypeRightMouseDown ||
-                                                        event.type == NSEventTypeOtherMouseDown ||
-                                                        event.type == NSEventTypeKeyDown)
+                                                    switch (event.type) {
+                                                    case NSEventTypeLeftMouseDown:
+                                                    case NSEventTypeRightMouseDown:
+                                                    case NSEventTypeOtherMouseDown:
+                                                        NSBeep();
+                                                        [[fallthrough]];
+                                                    case NSEventTypeKeyDown:
                                                         activateSurface();
+                                                        break;
+                                                    default:
+                                                        break;
+                                                    }
                                                     return nil;
                                                   }];
         activationObserver_ = [NSNotificationCenter.defaultCenter

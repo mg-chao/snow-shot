@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/screenshotsaveasfiledialog.h"
+#include "snow_shot/presentation/components/modalwindow.h"
 
 #include "snow_shot/presentation/components/actionpopupmenu.h"
 #include "snow_shot/presentation/components/pathinput.h"
@@ -753,17 +754,12 @@ bool ScreenshotSaveAsFileDialog::open(QObject* lifetime, QWidget* owner,
         return false;
     const QPointer<QWidget> stackingWindow(
         stackingOwner && stackingOwner->isVisible() ? stackingOwner : nullptr);
-    auto* modal = new AdModal(lifetime);
+    auto* modal = snow_shot::presentation::modal_window::create(lifetime, owner,
+                                                                {.windowModality = modality});
     modal->setObjectName(QStringLiteral("screenshotSaveAsFileModal"));
-    modal->setOwnerWindow(owner);
-    modal->setMode(AdModal::Mode::Window);
     if (stackingWindow) {
         QObject::connect(stackingWindow, &QObject::destroyed, modal, &AdModal::reject);
     }
-    modal->setWindowModality(modality);
-    modal->setCentered(true);
-    modal->setMaskVisible(false);
-    modal->setCloseOnMaskClick(false);
     modal->setClosePolicy(AdModal::ClosePolicy::Manual);
     const QRect available = owner->screen()->availableGeometry();
     modal->setPreferredWidth(std::min(1080, available.width() - 40));

@@ -1,4 +1,5 @@
 #include "recordingeffectpreview.h"
+#include "widgets/detail/window_modality.h"
 #include "recordingeffectstyle.h"
 #include "recordingeffectgeometry.h"
 #include "screenrecordingperfinstrumentation.h"
@@ -258,8 +259,8 @@ void RecordingEffectPreview::synchronize() {
         return;
     SNOW_SHOT_RECORDING_PERF_SCOPE("preview.synchronize");
     const bool enabled = m_eligible && m_area.isVisible() && !m_windowBlocked &&
-                         QApplication::activeModalWidget() == nullptr && m_capture.isValid() &&
-                         m_output.isValid();
+                         !adqt::widgets::detail::blockingModalWindow(m_area.windowHandle()) &&
+                         m_capture.isValid() && m_output.isValid();
     if (!enabled) {
         stopAndClear();
         return;

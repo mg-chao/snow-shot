@@ -32,6 +32,7 @@
 #include "widgets/button.h"
 #include "widgets/color_picker.h"
 #include "widgets/modal.h"
+#include "widgets/detail/window_modality.h"
 #include "widgets/popup_interaction_host.h"
 #include "widgets/detail/overlay_popup_surface.h"
 
@@ -2141,8 +2142,11 @@ void exitConfirmationStacksAbovePicker() {
                         surface->windowFlags().testFlag(Qt::WindowStaysOnTopHint) &&
                         surface->windowHandle()->transientParent() == owner.windowHandle(),
                     "confirmation must join the screenshot owner's topmost native window stack");
-            require(modal->windowModality() == Qt::WindowModal,
-                    "confirmation must block the screenshot owner while open");
+            require(adqt::widgets::detail::blockingModalWindow(owner.windowHandle()) ==
+                            surface->windowHandle() &&
+                        adqt::widgets::detail::blockingModalWindow(picker.windowHandle()) ==
+                            surface->windowHandle(),
+                    "the exit confirmation must block both the screenshot owner and magnifier");
             picker.updatePicker(QPoint(241, 161), QPointF(241, 161), true);
             QCoreApplication::processEvents();
 #ifdef Q_OS_WIN

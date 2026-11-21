@@ -1,7 +1,7 @@
 #include "snow_shot/presentation/screenshotshortcutexitconfirmation.h"
 
 #include "snow_shot/presentation/windowshortcutmanager.h"
-#include "snow_shot/presentation/components/confirmationskipbutton.h"
+#include "snow_shot/presentation/components/windowconfirmation.h"
 #include "snow_shot/storage/settingsadapters.h"
 
 #include "widgets/button.h"
@@ -40,53 +40,36 @@ struct ScreenshotShortcutExitConfirmation::Impl {
         suspension = shortcutManager.suspendInput();
 
         AdModalService::Request request;
-        // A child overlay cannot cover native floating screenshot tools such as the magnifier.
-        request.mode = AdModal::Mode::Window;
         request.title = QCoreApplication::translate("ScreenshotController", "Exit screenshot?");
         request.text = QCoreApplication::translate("ScreenshotController",
                                                    "Your current screenshot will be discarded");
         request.acceptText = QCoreApplication::translate("ScreenshotController", "Exit");
         request.rejectText = QCoreApplication::translate("ScreenshotController", "Cancel");
         request.acceptAccentRole = AdButton::AccentRole::Danger;
-        request.closeOnEscape = true;
+        request.preferredWidth = 416;
 
         const QPointer<ScreenshotShortcutExitConfirmation> receiver(&q);
-        request.onAccept = [receiver](AdModal* acceptedModal) {
-            if (receiver == nullptr) {
-                acceptedModal->reject();
-                return;
-            }
-            receiver->m_impl->accept(acceptedModal);
-        };
-        request.onReject = [](AdModal* rejectedModal) { rejectedModal->reject(); };
-
-        modal = AdModalService::showConfirm(request, owner);
-        if (modal == nullptr) {
-            complete(false);
-            return false;
-        }
-        modal->setObjectName(QStringLiteral("screenshotShortcutExitConfirmation"));
-        new ConfirmationSkipButton(*modal, [] {
+        // A capture may own independent overlays on several screens.
+        request.windowModality = Qt::ApplicationModal;
+        modal = modal_window::createConfirmation(owner, owner, std::move(request), [] {
             return storage::ScreenshotSettings().setConfirmBeforeExitingViaShortcut(false);
         });
+        modal->setObjectName(QStringLiteral("screenshotShortcutExitConfirmation"));
         QObject::connect(modal, &AdModal::finished, &q, [receiver](AdModal::DialogCode code) {
-            if (receiver != nullptr) {
-                receiver->m_impl->complete(code == AdModal::DialogCode::Accepted);
-            }
+            if (receiver == nullptr)
+                return;
+            const bool accepted = code == AdModal::DialogCode::Accepted;
+            receiver->m_impl->complete(accepted);
+            if (accepted && receiver && receiver->m_impl->exitAction)
+                receiver->m_impl->exitAction();
         });
-        QObject::connect(modal, &QObject::destroyed, &q, [receiver]() {
-            if (receiver != nullptr) {
+        QObject::connect(modal, &QObject::destroyed, &q, [receiver, handle = suspension]() {
+            if (receiver != nullptr && receiver->m_impl->suspension == handle) {
                 receiver->m_impl->complete(false);
             }
         });
+        modal->open();
         return true;
-    }
-
-    void accept(AdModal* acceptedModal) {
-        acceptedModal->accept();
-        if (exitAction) {
-            exitAction();
-        }
     }
 
     void dismiss() {

@@ -1,4 +1,5 @@
 #include "screenshottoolpalettestylecontrols.h"
+#include "snow_shot/presentation/components/windowconfirmation.h"
 #include "screenshottoolbarperfinstrumentation.h"
 
 #include "screenshottoolpalettestylepresets.h"
@@ -6886,18 +6887,14 @@ void ScreenshotToolPaletteStyleControls::openCreateWatermarkTemplateModal() {
         formLayout->insertWidget(formLayout->indexOf(valueItem) + 1, alert);
     }
 
-    auto* modal = new adqt::widgets::AdModal(m_watermarkTemplateSelect);
+    auto* modal = snow_shot::presentation::modal_window::create(
+        m_watermarkTemplateSelect,
+        m_callbacks.watermarkTemplateModalOwnerWindow
+            ? m_callbacks.watermarkTemplateModalOwnerWindow()
+            : m_watermarkTemplateSelect->window(),
+        {.windowModality = m_callbacks.dialogModality});
     modal->setObjectName(QStringLiteral("screenshotWatermarkTemplateCreateModal"));
-    QWidget* modalOwner = m_callbacks.watermarkTemplateModalOwnerWindow
-                              ? m_callbacks.watermarkTemplateModalOwnerWindow()
-                              : m_watermarkTemplateSelect->window();
-    modal->setOwnerWindow(modalOwner);
-    modal->setMode(adqt::widgets::AdModal::Mode::Window);
-    modal->setWindowModality(m_callbacks.dialogModality);
-    modal->setCentered(true);
     modal->setPreferredWidth(400);
-    modal->setMaskVisible(false);
-    modal->setCloseOnMaskClick(false);
     modal->setClosePolicy(adqt::widgets::AdModal::ClosePolicy::Manual);
     modal->setStandardButtons(adqt::widgets::AdModal::StandardButton::Ok |
                               adqt::widgets::AdModal::StandardButton::Cancel);
@@ -6970,22 +6967,17 @@ void ScreenshotToolPaletteStyleControls::openDeleteWatermarkTemplateModal(
         index < 0 || index >= m_watermarkTemplates.size()) {
         return;
     }
-    auto* modal = new adqt::widgets::AdModal(m_watermarkTemplateSelect);
+    auto* modal = snow_shot::presentation::modal_window::createConfirmation(
+        m_watermarkTemplateSelect,
+        m_callbacks.watermarkTemplateModalOwnerWindow
+            ? m_callbacks.watermarkTemplateModalOwnerWindow()
+            : m_watermarkTemplateSelect->window(),
+        {.windowModality = m_callbacks.dialogModality});
     modal->setObjectName(QStringLiteral("screenshotWatermarkTemplateDeleteModal"));
-    modal->setOwnerWindow(m_callbacks.watermarkTemplateModalOwnerWindow
-                              ? m_callbacks.watermarkTemplateModalOwnerWindow()
-                              : m_watermarkTemplateSelect->window());
-    modal->setMode(adqt::widgets::AdModal::Mode::Window);
-    modal->setWindowModality(m_callbacks.dialogModality);
-    modal->setCentered(true);
     modal->setPreferredWidth(400);
-    modal->setMaskVisible(false);
-    modal->setCloseOnMaskClick(false);
     modal->setClosePolicy(adqt::widgets::AdModal::ClosePolicy::Manual);
-    modal->setPreset(adqt::widgets::AdModal::Preset::Confirm);
+
     modal->setAcceptAccentRole(adqt::widgets::AdButton::AccentRole::Danger);
-    modal->setStandardButtons(adqt::widgets::AdModal::StandardButton::Ok |
-                              adqt::widgets::AdModal::StandardButton::Cancel);
     m_deleteWatermarkTemplateModal = modal;
     m_deleteWatermarkTemplateName = m_watermarkTemplates.at(index).name;
     retranslateWatermarkTemplateUi();
@@ -7009,7 +7001,6 @@ void ScreenshotToolPaletteStyleControls::openDeleteWatermarkTemplateModal(
                              m_deleteWatermarkTemplateModal = nullptr;
                              m_deleteWatermarkTemplateName.clear();
                          }
-                         modal->deleteLater();
                      });
     modal->open();
     if (modal->rejectButton() != nullptr) {

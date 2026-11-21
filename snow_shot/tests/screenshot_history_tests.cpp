@@ -1,4 +1,5 @@
 #include "physical_key_test_support.h"
+#include "widgets/detail/window_modality.h"
 #include "../src/presentation/recording/screenshotrecordingworkflow.h"
 #include <QLineEdit>
 #include <QWheelEvent>
@@ -4638,6 +4639,9 @@ void shortcutExitConfirmationGatesCancellation() {
     require(settings.setConfirmBeforeExitingViaShortcut(true), "enable exit confirmation");
     QWidget owner;
     owner.show();
+    QWidget otherDisplayOverlay;
+    otherDisplayOverlay.show();
+    otherDisplayOverlay.winId();
     snow_shot::presentation::WindowShortcutManager shortcutManager;
     shortcutManager.addScopeWindow(&owner);
 
@@ -4672,6 +4676,8 @@ void shortcutExitConfirmationGatesCancellation() {
     auto* modal = owner.findChild<adqt::widgets::AdModal*>(
         QStringLiteral("screenshotShortcutExitConfirmation"));
     require(modal != nullptr && modal->ownerWindow() == &owner &&
+                modal->windowModality() == Qt::ApplicationModal &&
+                adqt::widgets::detail::blockingModalWindow(otherDisplayOverlay.windowHandle()) &&
                 modal->mode() == adqt::widgets::AdModal::Mode::Window &&
                 modal->windowTitle() == QStringLiteral("Exit screenshot?") &&
                 modal->text() == QStringLiteral("Your current screenshot will be discarded") &&
@@ -4721,9 +4727,10 @@ void shortcutExitConfirmationGatesCancellation() {
     require(!modal->isOpen(), "Escape must close the confirmation modal");
     require(exits == 0, "Escape must not exit capture");
     require(restores == 2, "Escape must restore the capture owner");
-    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
-
     require(confirmation.request(true, &owner), "acceptance confirmation request was declined");
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    require(!dispatchShortcut(owner, Qt::Key_F11) && unrelatedActivations == 1,
+            "deleting an older confirmation must preserve the new input suspension");
     modal = owner.findChild<adqt::widgets::AdModal*>(
         QStringLiteral("screenshotShortcutExitConfirmation"));
     require(modal != nullptr, "acceptance confirmation modal did not open");

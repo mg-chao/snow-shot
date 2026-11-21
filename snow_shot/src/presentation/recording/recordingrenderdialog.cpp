@@ -19,9 +19,8 @@ RecordingRenderDialog::RecordingRenderDialog(QObject* parent, QScreen* screen,
                                              const QRect& anchorGeometry, QWidget* windowOwner)
     : QObject(parent) {
     using namespace adqt::widgets;
-    modal = new AdModal(this);
+    modal = snow_shot::presentation::createScreenRecordingModal(this, windowOwner);
     modal->setObjectName(QStringLiteral("screenRecordingRenderModal"));
-    snow_shot::presentation::configureScreenRecordingModal(*modal, windowOwner);
     modal->setWindowScreen(screen);
     modal->setWindowAnchorGeometry(anchorGeometry);
     modal->setPreferredWidth(500);

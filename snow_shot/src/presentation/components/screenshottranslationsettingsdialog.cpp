@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/components/screenshottranslationsettingsdialog.h"
+#include "snow_shot/presentation/components/modalwindow.h"
 #include "snow_shot/presentation/components/formfields.h"
 #include "snow_shot/presentation/components/translationserviceoptions.h"
 
@@ -54,15 +55,9 @@ adqt::widgets::AdModal* createScreenshotTranslationSettingsDialog(
     std::function<void(bool)> displayModeChanged, Qt::WindowModality modality) {
     using namespace adqt::widgets;
     const QPointer<translation::TranslationService> liveService(&service);
-    auto* modal = new AdModal(parent);
+    auto* modal = modal_window::create(parent, owner, {.windowModality = modality});
     modal->setObjectName(QStringLiteral("screenshotTranslationSettingsModal"));
-    modal->setOwnerWindow(owner);
-    modal->setMode(AdModal::Mode::Window);
-    modal->setWindowModality(modality);
-    modal->setCentered(true);
     modal->setPreferredWidth(440);
-    modal->setMaskVisible(false);
-    modal->setCloseOnMaskClick(false);
     modal->setClosePolicy(AdModal::ClosePolicy::Manual);
     modal->setStandardButtons(AdModal::StandardButtons(AdModal::StandardButton::Ok) |
                               AdModal::StandardButton::Cancel);

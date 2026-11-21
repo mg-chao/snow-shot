@@ -2081,6 +2081,16 @@ void effectsPreviewLifecycle() {
     pumpPreview();
     require(preview.generation() != stale->generation,
             "configuration must invalidate stale generations");
+    QWidget independent;
+    independent.show();
+    adqt::widgets::AdModal independentModal(&independent);
+    independentModal.setMode(adqt::widgets::AdModal::Mode::Window);
+    independentModal.open();
+    preview.setEligible(false);
+    preview.setEligible(true);
+    pumpPreview();
+    require(state->active, "an unrelated window's dialog must allow the recording preview");
+    independentModal.close();
     QDialog modal;
     modal.setModal(true);
     modal.show();
@@ -2337,21 +2347,26 @@ void recordingStatusPrompts() {
     }
     ThemeManager::instance().setThemeMode(previousTheme);
     palette()->recordingMicrophoneToggled(true);
+    // On macOS a format change computes preview dimensions on a worker before
+    // publishing the new prompt. Wait for that publication at each transition.
+    const auto waitForPrompt = [&](const QString& expected) {
+        ready.restart();
+        while (prompt->accessibleName() != expected && ready.elapsed() < 3000)
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        return prompt->accessibleName() == expected;
+    };
     for (const auto& format : {QStringLiteral("gif"), QStringLiteral("webp")}) {
         palette()->recordingOutputFormatChanged(format);
-        pumpPreview();
-        require(prompt->accessibleName() ==
-                    QStringLiteral("Format: %1; Microphone disabled; System audio disabled")
-                        .arg(format == QStringLiteral("gif") ? QStringLiteral("GIF")
-                                                             : QStringLiteral("WebP")),
-                "animated formats must show concise names and disabled audio icons");
+        require(
+            waitForPrompt(QStringLiteral("Format: %1; Microphone disabled; System audio disabled")
+                              .arg(format == QStringLiteral("gif") ? QStringLiteral("GIF")
+                                                                   : QStringLiteral("WebP"))),
+            "animated formats must show concise names and disabled audio icons");
         checkStatusColors(false, true);
         checkCentered();
     }
     palette()->recordingOutputFormatChanged(QStringLiteral("mp4"));
-    pumpPreview();
-    require(prompt->accessibleName() ==
-                QStringLiteral("Format: MP4; Microphone enabled; System audio enabled"),
+    require(waitForPrompt(QStringLiteral("Format: MP4; Microphone enabled; System audio enabled")),
             "switching back to video must restore the selected audio status");
     require(settings.setShowStatusPrompts(false), "disable status prompts in storage");
     pumpPreview();

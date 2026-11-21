@@ -605,7 +605,12 @@ class AdModalService final {
     std::optional<AdButton::ButtonStyle> acceptButtonStyle;
     ActionHandler onAccept;
     ActionHandler onReject;
+    std::optional<Qt::WindowModality> windowModality;
   };
+
+  // Prepare a caller-owned modal without presenting it. Lifetime and window ownership
+  // are independent, so callers can finish wiring content and signals before open().
+  static AdModal* create(const Request& request, QObject* lifetimeOwner, QWidget* ownerWindow);
 
   static AdModal* showInfo(const Request& request = {}, QWidget* ownerWindow = nullptr);
   static AdModal* showSuccess(const Request& request = {}, QWidget* ownerWindow = nullptr);

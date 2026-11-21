@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/components/settingspagewidget.h"
+#include "snow_shot/presentation/components/windowconfirmation.h"
 
 #include "snow_shot/presentation/components/pagecontainerwidget.h"
 #include "snow_shot/presentation/apppermissionservice.h"
@@ -967,29 +968,25 @@ class SettingsPageWidget::Impl {
     void confirmItemAction(RuntimeItem& item,
                            const settings::SettingsConfirmationDefinition& confirmation,
                            const std::function<void()>& acceptedAction) {
-        auto* modal = new adqt::widgets::AdModal(&q);
+        auto* modal = snow_shot::presentation::modal_window::createConfirmation(&q, q.window());
         item.modal = modal;
         modal->setObjectName(
             settings::generatedObjectName(QStringLiteral("settings-modal"), item.definition->id));
-        modal->setMode(adqt::widgets::AdModal::Mode::Window);
-        modal->setOwnerWindow(q.window());
-        modal->setPreset(adqt::widgets::AdModal::Preset::Confirm);
+
         modal->setWindowTitle(confirmation.title.translated());
         modal->setText(confirmation.message.translated());
         modal->setAcceptText(confirmation.acceptText.translated());
         modal->setRejectText(confirmation.rejectText.translated());
         modal->setAcceptAccentRole(adqt::widgets::AdButton::AccentRole::Danger);
-        modal->setStandardButtons(adqt::widgets::AdModal::StandardButton::Ok |
-                                  adqt::widgets::AdModal::StandardButton::Cancel);
         QObject::connect(modal, &adqt::widgets::AdModal::accepted, &q, acceptedAction);
-        QObject::connect(modal, &adqt::widgets::AdModal::finished, &q,
-                         [this, itemId = item.definition->id](adqt::widgets::AdModal::DialogCode) {
-                             RuntimeItem* finishedItem = runtimeItem(itemId);
-                             if (finishedItem != nullptr && finishedItem->modal != nullptr) {
-                                 finishedItem->modal->deleteLater();
-                                 finishedItem->modal = nullptr;
-                             }
-                         });
+        QObject::connect(
+            modal, &adqt::widgets::AdModal::finished, &q,
+            [this, modal, itemId = item.definition->id](adqt::widgets::AdModal::DialogCode) {
+                RuntimeItem* finishedItem = runtimeItem(itemId);
+                if (finishedItem != nullptr && finishedItem->modal == modal) {
+                    finishedItem->modal = nullptr;
+                }
+            });
         modal->setOpen(true);
     }
 

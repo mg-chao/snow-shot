@@ -3,7 +3,7 @@
 #include "recordingrenderjob.h"
 #include "recordingrenderdialog.h"
 #include "snow_shot/platform/applicationqos.h"
-#include "snow_shot/presentation/components/screenrecordingmodal.h"
+#include "snow_shot/presentation/components/modalwindow.h"
 #include "widgets/modal.h"
 #include <QCoreApplication>
 #include <QEvent>
@@ -399,7 +399,8 @@ void RecordingRenderJob::detachWindowOwner() {
     // Content, render state, and the saved screen/anchor remain owned by the job.
     const bool reopen = s.modal->isOpen();
     s.modal->close();
-    snow_shot::presentation::configureScreenRecordingModal(*s.modal, nullptr);
+    snow_shot::presentation::modal_window::detach(*s.modal);
+    s.modal->setWindowAlwaysOnTop(true);
     if (reopen)
         s.modal->open();
 }

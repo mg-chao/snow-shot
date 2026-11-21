@@ -466,6 +466,8 @@ class ScreenshotPinnedWindow final : public QWidget {
     void stopLiveSource();
     void executeImageCommand(const QString& id);
     void confirmDestroy();
+    void showCloseConfirmation(snow_shot::storage::PinnedWindowCloseIntent intent);
+    void retranslateCloseConfirmations();
     void rebuildGroupMenu();
     void refreshContextMenuIfVisible();
     void refreshContextMenuForGroup(const QString& groupId);

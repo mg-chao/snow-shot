@@ -23375,6 +23375,14 @@ void pinnedPrintingWithoutToolbarAndDelayedCompletion(bool locked) {
             "printing fixture must apply the requested lock state through its shortcut");
     const QRect geometry = window.currentNativeGeometry();
     QApplication::clipboard()->setText(QStringLiteral("print must not publish"));
+    QWidget independent;
+    independent.show();
+    adqt::widgets::AdModal otherConfirmation(&independent);
+    otherConfirmation.setMode(adqt::widgets::AdModal::Mode::Window);
+    otherConfirmation.open();
+    window.activateWindow();
+    canvas->setFocus();
+    waitForUi(20);
     sendShortcut(*canvas, Qt::Key_P, Qt::ControlModifier);
     sendShortcut(*canvas, Qt::Key_P, Qt::ControlModifier);
     QElapsedTimer timer;
@@ -23382,7 +23390,8 @@ void pinnedPrintingWithoutToolbarAndDelayedCompletion(bool locked) {
     while (starts == 0 && timer.elapsed() < 10000)
         waitForUi(5);
     require(starts == 1 && Access::printPending(window) && !hasToolbar(),
-            "Ctrl+P must print directly once without creating the toolbar");
+            "another window's confirmation must allow this pin to print once via Ctrl+P");
+    otherConfirmation.close();
     sendShortcut(*canvas, Qt::Key_L);
     require(window.persistenceSnapshot().lockedMode == locked &&
                 window.currentNativeGeometry() == geometry,
