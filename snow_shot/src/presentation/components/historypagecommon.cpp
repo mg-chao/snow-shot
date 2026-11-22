@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/components/historypagecommon.h"
+#include "snow_shot/presentation/components/pagecontainerwidget.h"
 
 #include "widgets/button.h"
 #include "widgets/date_picker.h"
@@ -193,6 +194,7 @@ void updateSelectionBar(const SelectionControls& controls, const QSet<QString>& 
                         const QVector<QString>& pageIds, bool canDelete, int availableWidth,
                         const QString& summary, const QString& deletePrompt) {
     const int count = static_cast<int>(selected.size());
+    PageContainerWidget::setStickyWidgetEnabled(controls.bar, count > 0);
     controls.summary->setText(summary);
     controls.bar->setAccessibleName(summary);
     controls.deleteConfirmation->setText(deletePrompt);
@@ -206,7 +208,6 @@ void updateSelectionBar(const SelectionControls& controls, const QSet<QString>& 
     controls.layout->setAlignment(controls.summary, wide ? Qt::AlignVCenter : Qt::AlignLeft);
     controls.layout->setAlignment(controls.actions, wide ? Qt::AlignRight | Qt::AlignVCenter
                                                          : Qt::AlignRight | Qt::AlignTop);
-    controls.bar->setVisible(count > 0);
 }
 
 } // namespace snow_shot::presentation::components::history_page

@@ -4,6 +4,7 @@
 
 #include "widgets/scroll_area.h"
 
+#include <QApplication>
 #include <QEvent>
 #include <QPointer>
 #include <QVariant>
@@ -12,15 +13,19 @@
 #include <algorithm>
 
 namespace {
+constexpr auto kStickyEnabledProperty = "pageStickyEnabled";
+
 // Keep normal-flow geometry in the layout while offsetting the actual widget.
 // QWidgetItem retains Qt's visibility, size-hint and layout invalidation handling;
 // keeping the widget's parent stable also preserves focus and popup anchors.
 class StickyPageItem final : public QObject, public QWidgetItem {
   public:
-    StickyPageItem(QWidget* widget, QWidget* content, QWidget* viewport, int topMargin)
-        : QWidgetItem(widget), m_widget(widget), m_viewport(viewport), m_topMargin(topMargin) {
+    StickyPageItem(QWidget* widget, QWidget* content, adqt::widgets::AdScrollArea* scrollArea,
+                   int topMargin)
+        : QWidgetItem(widget), m_widget(widget), m_scrollArea(scrollArea), m_topMargin(topMargin) {
         content->installEventFilter(this);
-        viewport->installEventFilter(this);
+        scrollArea->viewport()->installEventFilter(this);
+        widget->installEventFilter(this);
     }
 
     void setGeometry(const QRect& rectangle) override {
@@ -34,7 +39,13 @@ class StickyPageItem final : public QObject, public QWidgetItem {
 
   protected:
     bool eventFilter(QObject* watched, QEvent* event) override {
-        if (event->type() == QEvent::Move || event->type() == QEvent::Resize) {
+        if (watched == m_widget) {
+            if (event->type() == QEvent::DynamicPropertyChange &&
+                static_cast<QDynamicPropertyChangeEvent*>(event)->propertyName() ==
+                    kStickyEnabledProperty) {
+                updatePosition();
+            }
+        } else if (event->type() == QEvent::Move || event->type() == QEvent::Resize) {
             updatePosition();
         }
         return QObject::eventFilter(watched, event);
@@ -42,26 +53,36 @@ class StickyPageItem final : public QObject, public QWidgetItem {
 
   private:
     void updatePosition() {
-        if (!m_widget || !m_viewport || m_widget->isHidden() || !m_normalGeometry.isValid()) {
+        if (!m_widget || !m_scrollArea || m_widget->isHidden() || !m_normalGeometry.isValid()) {
             return;
         }
-        const auto* content = m_widget->parentWidget();
-        const int stickyTop = content->mapFrom(m_viewport, QPoint()).y() + m_topMargin;
-        const int bottom = content->height() - content->layout()->contentsMargins().bottom() -
-                           m_normalGeometry.height();
+        const bool enabled = m_widget->property(kStickyEnabledProperty).toBool();
+        const bool wasSticky = m_widget->property("pageSticky").toBool();
         QRect rectangle = m_normalGeometry;
-        rectangle.moveTop(std::min(std::max(rectangle.top(), stickyTop), bottom));
+        if (enabled) {
+            const auto* content = m_widget->parentWidget();
+            const int stickyTop =
+                content->mapFrom(m_scrollArea->viewport(), QPoint()).y() + m_topMargin;
+            const int bottom = content->height() - content->layout()->contentsMargins().bottom() -
+                               rectangle.height();
+            rectangle.moveTop(std::min(std::max(rectangle.top(), stickyTop), bottom));
+        } else if (wasSticky && m_widget->isAncestorOf(QApplication::focusWidget())) {
+            // Keep keyboard input in the list when the focused action scrolls out of view.
+            m_scrollArea->setFocus(Qt::OtherFocusReason);
+        }
         QWidgetItem::setGeometry(rectangle);
-        m_widget->raise();
         const bool sticky = rectangle.top() != m_normalGeometry.top();
-        if (m_widget->property("pageSticky").toBool() != sticky) {
+        if (sticky) {
+            m_widget->raise();
+        }
+        if (wasSticky != sticky) {
             m_widget->setProperty("pageSticky", sticky);
             m_widget->update();
         }
     }
 
     QPointer<QWidget> m_widget;
-    QPointer<QWidget> m_viewport;
+    QPointer<adqt::widgets::AdScrollArea> m_scrollArea;
     int m_topMargin;
     QRect m_normalGeometry;
 };
@@ -108,6 +129,10 @@ QVBoxLayout* PageContainerWidget::contentLayout() const {
 
 void PageContainerWidget::addStickyWidget(QWidget* widget, int topMargin) {
     widget->setParent(m_contentWidget);
-    m_contentLayout->addItem(
-        new StickyPageItem(widget, m_contentWidget, m_scrollArea->viewport(), topMargin));
+    setStickyWidgetEnabled(widget, true);
+    m_contentLayout->addItem(new StickyPageItem(widget, m_contentWidget, m_scrollArea, topMargin));
+}
+
+void PageContainerWidget::setStickyWidgetEnabled(QWidget* widget, bool enabled) {
+    widget->setProperty(kStickyEnabledProperty, enabled);
 }

@@ -26,6 +26,8 @@ class PageContainerWidget final : public QWidget {
     // viewport's top after scrolling past it. The pageSticky property reports
     // when it is affixed.
     void addStickyWidget(QWidget* widget, int topMargin);
+    // Disabling stickiness restores the widget to its normal position in the layout.
+    static void setStickyWidgetEnabled(QWidget* widget, bool enabled);
 
   private:
     adqt::widgets::AdScrollArea* m_scrollArea = nullptr;

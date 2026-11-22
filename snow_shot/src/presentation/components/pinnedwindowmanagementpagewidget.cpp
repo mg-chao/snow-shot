@@ -633,7 +633,6 @@ PinnedWindowManagementPageWidget::PinnedWindowManagementPageWidget(
     selectionActionsLayout->addWidget(m_deselect);
     m_selectionLayout->addWidget(m_selectionActions);
     selectionOuter->addWidget(m_selectionPanel);
-    m_selectionBar->hide();
     container->addStickyWidget(m_selectionBar, metric.marginSM);
 
     m_deleteAllConfirmation = new adqt::widgets::AdPopconfirm(content);
@@ -1256,13 +1255,13 @@ void PinnedWindowManagementPageWidget::updateBatchActions() {
 }
 
 void PinnedWindowManagementPageWidget::updateSelectionBar() {
-    updateBatchActions();
     const int count = static_cast<int>(m_selected.size());
     history_page::updateSelectionBar(
         {m_selectionBar, m_selectionLayout, m_selectionSummary, m_selectionActions, m_selectPage,
          m_deleteSelected, m_deselect, m_deleteSelectedConfirmation},
         m_selected, m_pageIds, true, m_entries->width(), tr("Selected %n item(s)", nullptr, count),
         tr("Delete %n selected item(s)?", nullptr, count));
+    updateBatchActions();
 }
 
 void PinnedWindowManagementPageWidget::clearSelection() {
