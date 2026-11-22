@@ -42,7 +42,13 @@ Delete the backup only after confirming the Homebrew installation works.
 
 Use `brew install --cask --appdir="$HOME/Applications" mg-chao/tap/snow-shot` for
 another application directory (create it first). Use the same desktop account for
-upgrades. Quit Snow Shot and finish recordings before upgrading or uninstalling.
+upgrades. Finish captures and recordings before upgrading or uninstalling.
+
+When the installed cask includes `quit:`, Homebrew asks a running Snow Shot to
+quit and reopens it after a successful upgrade if it was able to quit the app.
+For the first upgrade from a cask without `quit:`, quit Snow Shot before upgrading
+and open it afterward. If Homebrew reports a quit failure during an upgrade,
+quit and reopen the app manually.
 
 Release and recovery details: [Snow Shot macOS documentation](https://github.com/mg-chao/snow-shot/blob/main/docs-macos-build.md).
 

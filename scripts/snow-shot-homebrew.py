@@ -20,6 +20,7 @@ PRODUCTS = {
     'full': ('snow-shot', 'Snow Shot'),
     'mini': ('snow-shot-mini', 'Snow Shot Mini'),
 }
+BUNDLE_IDS = {'full': 'com.snowshot.snow_shot', 'mini': 'com.snowshot.snow_shot_mini'}
 ARCHITECTURES = {'arm64': 'arm64', 'x64': 'x86_64'}
 
 
@@ -160,9 +161,14 @@ def github_digest(release, name):
     return value.split(':', 1)[1].lower()
 
 
-def cask_installation(edition, archive_architecture):
+def cask_installation(edition, archive_architecture, *, quit_application):
     slug, name = PRODUCTS[edition]
     edition_argument = ',\n                   "mini"' if edition == 'mini' else ''
+    uninstall_directives = 'script:'
+    script_indent = ''
+    if quit_application:
+        uninstall_directives = f'quit:   "{BUNDLE_IDS[edition]}",\n            script:'
+        script_indent = ' ' * 10
     return f'''  # Verify the publisher signature before Homebrew places the unchanged app.
   installer script: {{
     executable:   "/bin/bash",
@@ -176,14 +182,14 @@ def cask_installation(edition, archive_architecture):
 
   # Remove any prepared copy; the app artifact removes the installed app.
   # Keep user data and any legacy installer state.
-  uninstall script: {{
-    executable: "/bin/rm",
-    args:       ["-rf", "--", "#{{staged_path}}/{name}.app"],
-    sudo:       false,
-  }}'''
+  uninstall {uninstall_directives} {{
+{script_indent}    executable: "/bin/rm",
+{script_indent}    args:       ["-rf", "--", "#{{staged_path}}/{name}.app"],
+{script_indent}    sudo:       false,
+{script_indent}  }}'''
 
 
-def cask(version, sha256, tag=None, edition='full', architecture='arm64'):
+def cask(version, sha256, tag=None, edition='full', architecture='arm64', *, quit_application=True):
     slug, name = PRODUCTS[edition]
     checksums = sha256 if isinstance(sha256, dict) else {architecture: sha256}
     if not checksums or any(arch not in ARCHITECTURES for arch in checksums):
@@ -218,7 +224,7 @@ def cask(version, sha256, tag=None, edition='full', architecture='arm64'):
 {conflict}{architecture_requirement}  depends_on macos: :sequoia
 
   app "{name}.app"
-{cask_installation(edition, archive_architecture)}
+{cask_installation(edition, archive_architecture, quit_application=quit_application)}
 
   caveats <<~EOS
     {name} preserves the project signature shared by DMG and script installs.
@@ -283,7 +289,8 @@ def migrate_casks(tap):
                 remainder = text.replace(legacy, '', 1)
                 if re.search(r'^  (?:preflight|installer|uninstall)\b', remainder, re.MULTILINE):
                     raise ValueError(f'Conflicting installation artifacts in {token}; no casks were changed.')
-                migrated = text.replace(legacy, cask_installation(edition, architecture), 1)
+                installation = cask_installation(edition, architecture, quit_application=False)
+                migrated = text.replace(legacy, installation, 1)
                 break
             if migrated is None:
                 raise ValueError(f'Unrecognized legacy preflight in {token}; no casks were changed.')
@@ -340,7 +347,8 @@ def package_all(release, source, assets, output, current, edition='full', archit
     if not architectures or len(set(architectures)) != len(architectures) or any(
             architecture not in available for architecture in architectures):
         raise ValueError('Requested macOS architecture is missing from the release.')
-    if current.exists() and not set(published_architectures(current)).issubset(architectures):
+    published = published_architectures(current) if current.exists() else []
+    if not set(published).issubset(architectures):
         raise ValueError('Refusing to remove a published architecture from the Homebrew cask.')
     installer, preflight = package_source(source, version, edition)
     inputs = []
@@ -353,11 +361,18 @@ def package_all(release, source, assets, output, current, edition='full', archit
                 for architecture, name, dmg in inputs]
     checksums = {architecture: digest(archive)
                  for (architecture, _, _), archive in zip(inputs, archives)}
-    generated = cask(version, checksums, release['tag_name'], edition)
+    tag = release['tag_name']
+    quit_application = True
+    if published:
+        # Match the original stanza when retrying or repairing a published version.
+        published_checksums = {arch: checksums[arch] for arch in published}
+        without_quit = cask(version, published_checksums, tag, edition, quit_application=False)
+        quit_application = current.read_text(encoding='utf-8') != without_quit
+    generated = cask(version, checksums, tag, edition, quit_application=quit_application)
     # An explicit repair may only extend a canonical single-architecture cask.
     # Re-rendering its old architecture must reproduce every byte, including its
     # archive checksum, tag URL, installer arguments, and all other metadata.
-    repairs = [cask(version, {arch: checksum}, release['tag_name'], edition)
+    repairs = [cask(version, {arch: checksum}, tag, edition, quit_application=quit_application)
                for arch, checksum in checksums.items()
                if repair_architectures and len(checksums) == 2]
     check_current(current, version, generated, edition, architecture_repairs=repairs)

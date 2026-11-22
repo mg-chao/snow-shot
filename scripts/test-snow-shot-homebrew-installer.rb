@@ -15,17 +15,23 @@ Dir.mktmpdir("snow-homebrew-installer-") do |directory|
   state.write("persistent identity")
 
   %w[snow-shot snow-shot@beta snow-shot-mini snow-shot-mini@beta].each do |token|
-    # Isolate Caskroom metadata as well as the configured app directory. Only the
-    # fixture token changes; Homebrew evaluates and executes the generated DSL.
+    edition = token.start_with?("snow-shot-mini") ? "mini" : "full"
+    bundle_id = edition == "mini" ? "com.snowshot.snow_shot_mini" : "com.snowshot.snow_shot"
+    # Keep fixture metadata and quit events away from real Snow Shot installations.
     fixture_token = "#{token.tr('@', '-')}-installer-fixture-#{Process.pid}"
+    fixture_bundle_id = "com.snowshot.#{fixture_token}"
     source = (fixtures/"#{token}.rb").read.sub("cask \"#{token}\"", "cask \"#{fixture_token}\"")
+    source.sub!(/^(  uninstall quit:\s+")([^"]+)"/) do
+      raise "Wrong quit target for #{token}" unless Regexp.last_match(2) == bundle_id
+
+      "#{Regexp.last_match(1)}#{fixture_bundle_id}\""
+    end
     load_cask = ->(content) { Cask::CaskLoader::FromContentLoader.new(content).load(config: config) }
     cask = load_cask.call(source)
     root = cask.caskroom_path
     raise "Refusing to overwrite an existing Caskroom fixture" if root.exist? || root.symlink?
 
     begin
-      edition = token.start_with?("snow-shot-mini") ? "mini" : "full"
       slug = edition == "mini" ? "snow-shot-mini" : "snow-shot"
       name = edition == "mini" ? "Snow Shot Mini" : "Snow Shot"
 
@@ -60,7 +66,7 @@ Dir.mktmpdir("snow-homebrew-installer-") do |directory|
           <?xml version="1.0" encoding="UTF-8"?>
           <plist version="1.0"><dict>
           <key>CFBundleExecutable</key><string>fixture</string>
-          <key>CFBundleIdentifier</key><string>com.snowshot.installer-fixture</string>
+          <key>CFBundleIdentifier</key><string>#{fixture_bundle_id}</string>
           <key>CFBundlePackageType</key><string>APPL</string>
           <key>CFBundleVersion</key><string>1</string>
           </dict></plist>
@@ -74,7 +80,16 @@ Dir.mktmpdir("snow-homebrew-installer-") do |directory|
       artifacts = cask.artifacts.to_a
       installer = artifacts.find { |artifact| artifact.is_a?(Cask::Artifact::Installer) }
       app = artifacts.find { |artifact| artifact.is_a?(Cask::Artifact::App) }
+      uninstalls = artifacts.grep(Cask::Artifact::Uninstall)
       raise "Missing vendor installer or app artifact" unless installer && app
+      unless uninstalls.one? && uninstalls.first.directives[:quit] == fixture_bundle_id &&
+             uninstalls.first.directives.dig(:script, :executable) == "/bin/rm"
+        raise "Expected the fixture quit and cleanup directives in one uninstall stanza"
+      end
+      receipt_uninstall = Cask::Tab.create(cask).uninstall_artifacts.find { |artifact| artifact.key?(:uninstall) }
+      unless receipt_uninstall&.dig(:uninstall, 0, :quit) == fixture_bundle_id
+        raise "Homebrew receipt did not record the quit directive"
+      end
       raise "Preparation must precede app installation" unless artifacts.index(installer) < artifacts.index(app)
       raise "Preparation must fail on errors without sudo" if !installer.args[:must_succeed] || installer.requires_sudo?
       if artifacts.any? { |artifact| artifact.is_a?(Cask::Artifact::AbstractFlightBlock) }
