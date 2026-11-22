@@ -1074,14 +1074,12 @@ void builtInCatalogIsCompleteAndValid() {
                            })
             : decltype(screenshotSettings->items.cbegin()){};
     require(screenshotSettings != nullptr && shutterItem != screenshotSettings->items.cend() &&
-                std::next(shutterItem) != screenshotSettings->items.cend() &&
-                std::next(shutterItem)->id ==
-                    QStringLiteral("screenshot.screenshot-sound-notification"),
-            "screenshot sound notification must immediately follow the shutter notification");
-    const auto confirmItem = std::next(shutterItem, 2);
+                screenshotSound == nullptr,
+            "screenshot settings must expose only the combined shutter sound field");
+    const auto confirmItem = std::next(shutterItem);
     require(confirmItem != screenshotSettings->items.cend() &&
                 confirmItem->id == QStringLiteral("screenshot.confirm-before-exiting-via-shortcut"),
-            "shortcut exit confirmation must immediately follow the screenshot sound notification");
+            "shortcut exit confirmation must immediately follow the shutter sound notification");
     const auto qrItem = std::next(confirmItem);
     require(qrItem != screenshotSettings->items.cend() &&
                 qrItem->id == QStringLiteral("screenshot.auto-recognize-qr-code") &&
@@ -1094,22 +1092,9 @@ void builtInCatalogIsCompleteAndValid() {
                 shutterSound->title.translated() == QStringLiteral("Shutter sound notification") &&
                 shutterSound->configurationKey ==
                     QStringLiteral("screenshot/shutter_sound_notification") &&
-                std::get<settings::SettingsSwitchDefinition>(shutterSound->payload).binding ==
-                    settings::SettingsSwitchBinding::ScreenshotShutterSoundNotification &&
-                storage::ConfigurationSchema::defaultValue(shutterSound->configurationKey).toBool(),
-            "Function Screenshot settings must expose the enabled shutter notification switch");
-    require(
-        screenshotSound != nullptr &&
-            screenshotSound->title.translated() ==
-                QStringLiteral("Screenshot sound notification") &&
-            screenshotSound->description.translated() ==
-                QStringLiteral("Play a shutter sound when screenshot capture starts") &&
-            screenshotSound->configurationKey ==
-                QStringLiteral("screenshot/screenshot_sound_notification") &&
-            std::get<settings::SettingsSwitchDefinition>(screenshotSound->payload).binding ==
-                settings::SettingsSwitchBinding::ScreenshotSoundNotification &&
-            !storage::ConfigurationSchema::defaultValue(screenshotSound->configurationKey).toBool(),
-        "Function Screenshot settings must expose the disabled screenshot sound switch");
+                std::get<settings::SettingsMultiSelectDefinition>(shutterSound->payload).binding ==
+                    settings::SettingsMultiSelectBinding::ScreenshotShutterSoundNotification,
+            "Function Screenshot settings must expose the shutter notification multi-select");
     require(
         confirmShortcutExit != nullptr &&
             confirmShortcutExit->title.translated() ==

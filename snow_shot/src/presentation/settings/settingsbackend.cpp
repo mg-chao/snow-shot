@@ -1047,10 +1047,6 @@ bool BuiltInSettingsBackend::switchValue(SettingsSwitchBinding binding) const {
         return storage::ScreenshotSettings().showCursor();
     case SettingsSwitchBinding::ScreenshotCaptureUiInScrollingScreenshot:
         return storage::ScreenshotSettings().captureUiInScrollingScreenshot();
-    case SettingsSwitchBinding::ScreenshotShutterSoundNotification:
-        return storage::ScreenshotSettings().shutterSoundNotification();
-    case SettingsSwitchBinding::ScreenshotSoundNotification:
-        return storage::ScreenshotSettings().screenshotSoundNotification();
     case SettingsSwitchBinding::ScreenshotAutoRecognizeQrCode:
 #if SNOW_SHOT_ENABLE_QR_RECOGNITION
         return storage::ScreenshotSettings().autoRecognizeQrCode();
@@ -1356,12 +1352,6 @@ bool BuiltInSettingsBackend::applySwitchValue(SettingsSwitchBinding binding, boo
             emit synchronized();
         return accepted;
     }
-    if (binding == SettingsSwitchBinding::ScreenshotShutterSoundNotification) {
-        return storage::ScreenshotSettings().setShutterSoundNotification(value);
-    }
-    if (binding == SettingsSwitchBinding::ScreenshotSoundNotification) {
-        return storage::ScreenshotSettings().setScreenshotSoundNotification(value);
-    }
     if (binding == SettingsSwitchBinding::ScreenshotAutoRecognizeQrCode) {
 #if SNOW_SHOT_ENABLE_QR_RECOGNITION
         return storage::ScreenshotSettings().setAutoRecognizeQrCode(value);
@@ -1587,8 +1577,6 @@ bool BuiltInSettingsBackend::applySwitchValue(SettingsSwitchBinding binding, boo
     case SettingsSwitchBinding::ScreenshotQuickSelectionModification:
     case SettingsSwitchBinding::ScreenshotShowCursor:
     case SettingsSwitchBinding::ScreenshotCaptureUiInScrollingScreenshot:
-    case SettingsSwitchBinding::ScreenshotShutterSoundNotification:
-    case SettingsSwitchBinding::ScreenshotSoundNotification:
     case SettingsSwitchBinding::ScreenshotAutoRecognizeQrCode:
     case SettingsSwitchBinding::ScreenshotConfirmBeforeExitingViaShortcut:
     case SettingsSwitchBinding::ScreenshotRestoreOriginalScreenColors:
@@ -1760,6 +1748,8 @@ QVariantList BuiltInSettingsBackend::multiSelectValue(SettingsMultiSelectBinding
         for (const auto& value :
              storage::exportTaskIds(storage::ScreenshotSettings().exportTasks(*trigger)))
             values.push_back(value);
+    } else if (binding == SettingsMultiSelectBinding::ScreenshotShutterSoundNotification) {
+        return QVariant(storage::ScreenshotSettings().shutterSoundTargets()).toList();
     } else if (binding == SettingsMultiSelectBinding::FullscreenDisableScope) {
         for (const QString& value : storage::GlobalShortcutSettings().fullscreenDisableScope()) {
             values.push_back(value);
@@ -1787,6 +1777,9 @@ bool BuiltInSettingsBackend::applyMultiSelectValue(SettingsMultiSelectBinding bi
     if (const auto trigger = exportTriggerForBinding(binding))
         return storage::ApplicationStorage::instance().configuration().setValue(
             storage::exportTaskRow(*trigger).key.toString(), QJsonArray::fromStringList(tools));
+    if (binding == SettingsMultiSelectBinding::ScreenshotShutterSoundNotification) {
+        return storage::ScreenshotSettings().setShutterSoundTargets(tools);
+    }
     if (binding == SettingsMultiSelectBinding::FullscreenDisableScope) {
         return storage::GlobalShortcutSettings().setFullscreenDisableScope(tools);
     }
@@ -2936,9 +2929,6 @@ SettingsResetResult BuiltInSettingsBackend::resetSectionWithResults(SettingsSect
                    {QStringLiteral("screenshot/shutter_sound_notification"),
                     storage::ConfigurationSchema::defaultValue(
                         QStringLiteral("screenshot/shutter_sound_notification"))},
-                   {QStringLiteral("screenshot/screenshot_sound_notification"),
-                    storage::ConfigurationSchema::defaultValue(
-                        QStringLiteral("screenshot/screenshot_sound_notification"))},
                    {QStringLiteral("screenshot/auto_recognize_qr_code"),
                     storage::ConfigurationSchema::defaultValue(
                         QStringLiteral("screenshot/auto_recognize_qr_code"))},

@@ -1220,6 +1220,52 @@ void fontPreviewAndFiltering(const settings::SettingsRegistry& registry,
             "resetting General settings visibly selects System default");
 }
 
+void shutterSoundSelection(const settings::SettingsRegistry& registry,
+                           settings::SettingsRuntimeSession& session) {
+    const QString id = QStringLiteral("screenshot.shutter-sound-notification");
+    const QString key = QStringLiteral("screenshot/shutter_sound_notification");
+    SettingsPageWidget page(registry, QStringLiteral("screenshots"), session);
+    page.reveal({QStringLiteral("screenshots"), QStringLiteral("screenshot-settings"), id});
+    auto* select = page.findChild<adqt::widgets::AdMultiSelect*>(
+        settings::generatedObjectName(QStringLiteral("settings-control"), id));
+    const QString direct = QStringLiteral("direct_capture");
+    const QString normal = QStringLiteral("normal_screenshot");
+    require(select && select->selectedValues() == QVariantList{direct},
+            "only focused-window and current-display capture should default to audible");
+    const auto options = select->options();
+    require(options.size() == 2 && options[0].value == direct &&
+                options[0].label == QStringLiteral("Focused window and current display") &&
+                options[1].value == normal &&
+                options[1].label == QStringLiteral("Normal screenshot"),
+            "the shutter sound menu must offer the two capture targets in order");
+    auto& storage = snow_shot::storage::ApplicationStorage::instance();
+    const auto selectAndCheck = [&](const QVariantList& targets) {
+        select->setSelectedValues(targets);
+        drainEvents();
+        require(select->selectedValues() == targets && !session.state(id).busy &&
+                    storage.configuration().value(key) == QJsonArray::fromVariantList(targets),
+                "the shutter sound editor must persist exactly the selected capture targets");
+    };
+    selectAndCheck({direct, normal});
+    selectAndCheck({normal});
+    selectAndCheck({});
+    require(storage.flushNow().success, "persist an empty shutter sound selection");
+    const snow_shot::storage::ConfigurationStore reloaded(
+        QDir(storage.configurationDirectory()).filePath(QStringLiteral("config.json")), true,
+        false);
+    require(reloaded.value(key) == QJsonArray{},
+            "an empty shutter sound selection must survive reload");
+    selectAndCheck({normal});
+    require(session.reset(settings::SettingsSectionReset::ScreenshotCapture) &&
+                select->selectedValues() == QVariantList{normal},
+            "resetting capture compatibility preserves the sound selection");
+    require(session.reset(settings::SettingsSectionReset::ScreenshotSettings),
+            "reset screenshot interaction preferences");
+    drainEvents();
+    require(select->selectedValues() == QVariantList{direct},
+            "resetting screenshot interaction restores the default sound");
+}
+
 void multiSettingsSelectsSearch(const settings::SettingsRegistry& registry,
                                 settings::SettingsRuntimeSession& session) {
     int count = 0;
@@ -1238,10 +1284,11 @@ void multiSettingsSelectsSearch(const settings::SettingsRegistry& registry,
         require(select != nullptr && select->searchEnabled(),
                 "every settings multi-select supports input filtering");
         const auto selected = select->selectedValues();
-        if (field.id == QStringLiteral("screenshot.auto-save-after-execution")) {
-            require(selected.isEmpty() &&
+        if (field.id == QStringLiteral("screenshot.shutter-sound-notification")) {
+            select->setSelectedValues({});
+            require(select->selectedValues().isEmpty() &&
                         select->placeholder() == QStringLiteral("Select scenarios"),
-                    "empty automatic saving selection displays its scenario placeholder");
+                    "empty shutter sound selection displays its scenario placeholder");
             auto& languages = snow_shot::presentation::LanguageManager::instance();
             const QMap<QString, QString> placeholders{
                 {QStringLiteral("zh_CN"), QStringLiteral("选择场景")},
@@ -1250,7 +1297,7 @@ void multiSettingsSelectsSearch(const settings::SettingsRegistry& registry,
             for (auto it = placeholders.cbegin(); it != placeholders.cend(); ++it) {
                 require(languages.setLanguage(it.key()), "load the scenario placeholder language");
                 drainEvents();
-                require(select->placeholder() == it.value() && select->selectedValues() == selected,
+                require(select->placeholder() == it.value() && select->selectedValues().isEmpty(),
                         "language changes update the placeholder while preserving empty selection");
             }
             require(languages.setLanguage(QStringLiteral("en_US")),
@@ -1258,6 +1305,7 @@ void multiSettingsSelectsSearch(const settings::SettingsRegistry& registry,
             drainEvents();
             require(select->placeholder() == QStringLiteral("Select scenarios"),
                     "restoring English updates the existing placeholder");
+            select->setSelectedValues(selected);
         }
         select->setSearchText(QStringLiteral("no-matching-setting-option-1937"));
         require(!hasSelectableOption(select->view()->model()) &&
@@ -2085,6 +2133,11 @@ int main(int argc, char** argv) {
     settings::BuiltInSettingsBackend backend(shortcuts);
     const auto registry = settings::buildBuiltInSettingsRegistry();
     settings::SettingsRuntimeSession session(registry, backend);
+    if (application.arguments().contains(QStringLiteral("--shutter-sound-only"))) {
+        shutterSoundSelection(registry, session);
+        storage.shutdown();
+        return 0;
+    }
     if (application.arguments().contains(QStringLiteral("--pinned-shake-only"))) {
         using Binding = settings::SettingsSwitchBinding;
         using Reset = settings::SettingsSectionReset;

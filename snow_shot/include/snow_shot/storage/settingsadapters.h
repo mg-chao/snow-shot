@@ -254,10 +254,8 @@ class GlobalShortcutSettings final {
 
 class ScreenshotSettings final {
   public:
-    [[nodiscard]] bool shutterSoundNotification() const;
-    bool setShutterSoundNotification(bool enabled) const;
-    [[nodiscard]] bool screenshotSoundNotification() const;
-    bool setScreenshotSoundNotification(bool enabled) const;
+    [[nodiscard]] QStringList shutterSoundTargets() const;
+    bool setShutterSoundTargets(const QStringList& targets) const;
 #if SNOW_SHOT_ENABLE_QR_RECOGNITION
     [[nodiscard]] bool autoRecognizeQrCode() const;
     bool setAutoRecognizeQrCode(bool enabled) const;

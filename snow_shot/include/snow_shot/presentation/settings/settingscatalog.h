@@ -150,8 +150,6 @@ enum class SettingsSwitchBinding {
     ScreenshotQuickSelectionModification,
     ScreenshotShowCursor,
     ScreenshotCaptureUiInScrollingScreenshot,
-    ScreenshotShutterSoundNotification,
-    ScreenshotSoundNotification,
     ScreenshotConfirmBeforeExitingViaShortcut,
     ScreenshotAutoRecognizeQrCode,
     ScreenshotRestoreOriginalScreenColors,
@@ -218,6 +216,7 @@ enum class SettingsMultiSelectBinding {
     DrawingQuickSelectionDisabledTools,
     TrayMenuOptions,
     FullscreenDisableScope,
+    ScreenshotShutterSoundNotification,
     FirstExportTask,
     LastExportTask = static_cast<int>(FirstExportTask) +
         static_cast<int>(storage::exportTaskRows.size()) - 1,

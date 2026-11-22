@@ -1848,7 +1848,10 @@ void ScreenshotController::Impl::createCaptureWorkflow() {
                     m_historyService->resetCaptureNavigation();
                 }
             },
-            []() { return snow_shot::storage::ScreenshotSettings().screenshotSoundNotification(); },
+            []() {
+                return snow_shot::storage::ScreenshotSettings().shutterSoundTargets().contains(
+                    QStringLiteral("normal_screenshot"));
+            },
             []() { playCameraShutterSound(); },
 #ifdef Q_OS_MACOS
             [this](bool visible) { m_sessionFocus->begin(visible); },

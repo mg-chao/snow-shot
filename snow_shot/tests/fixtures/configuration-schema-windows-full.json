@@ -5086,24 +5086,19 @@
       "valueKind": "Boolean"
     },
     {
-      "allowedStringValues": [],
-      "defaultJsonType": 1,
+      "allowedStringValues": [
+        "direct_capture",
+        "normal_screenshot"
+      ],
+      "defaultJsonType": 4,
       "defaultStringIsNull": false,
-      "defaultValue": true,
+      "defaultValue": [
+        "direct_capture"
+      ],
       "integerRange": null,
       "key": "screenshot/shutter_sound_notification",
       "maximumListItems": -1,
-      "valueKind": "Boolean"
-    },
-    {
-      "allowedStringValues": [],
-      "defaultJsonType": 1,
-      "defaultStringIsNull": false,
-      "defaultValue": false,
-      "integerRange": null,
-      "key": "screenshot/screenshot_sound_notification",
-      "maximumListItems": -1,
-      "valueKind": "Boolean"
+      "valueKind": "StringList"
     },
     {
       "allowedStringValues": [],

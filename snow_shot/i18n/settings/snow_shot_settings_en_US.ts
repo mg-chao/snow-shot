@@ -2198,6 +2198,10 @@
             <translation>Choose when recognized text can be selected on pinned screenshots</translation>
         </message>
         <message>
+            <source>Choose when to play the shutter sound</source>
+            <translation>Choose when to play the shutter sound</translation>
+        </message>
+        <message>
             <source>Choose where images are written for automatic save and copy-file actions</source>
             <translation>Choose where images are written for automatic save and copy-file actions</translation>
         </message>
@@ -2914,6 +2918,10 @@
             <translation>Focused window</translation>
         </message>
         <message>
+            <source>Focused window and current display</source>
+            <translation>Focused window and current display</translation>
+        </message>
+        <message>
             <source>Follow mouse movement</source>
             <translation>Follow mouse movement</translation>
         </message>
@@ -3566,6 +3574,10 @@
             <translation>Normal</translation>
         </message>
         <message>
+            <source>Normal screenshot</source>
+            <translation>Normal screenshot</translation>
+        </message>
+        <message>
             <source>Notify after export completes</source>
             <translation>Notify after export completes</translation>
         </message>
@@ -3816,14 +3828,6 @@
         <message>
             <source>Play / pause</source>
             <translation>Play / pause</translation>
-        </message>
-        <message>
-            <source>Play a shutter sound when capturing the focused window or current display</source>
-            <translation>Play a shutter sound when capturing the focused window or current display</translation>
-        </message>
-        <message>
-            <source>Play a shutter sound when screenshot capture starts</source>
-            <translation>Play a shutter sound when screenshot capture starts</translation>
         </message>
         <message>
             <source>Play saved GIF, APNG, and WebP recordings repeatedly</source>
@@ -4398,10 +4402,6 @@
             <translation>Screenshot shortcuts and actions</translation>
         </message>
         <message>
-            <source>Screenshot sound notification</source>
-            <translation>Screenshot sound notification</translation>
-        </message>
-        <message>
             <source>Screenshot toolbar</source>
             <translation>Screenshot toolbar</translation>
         </message>
@@ -4436,6 +4436,10 @@
         <message>
             <source>Select image save directory</source>
             <translation>Select image save directory</translation>
+        </message>
+        <message>
+            <source>Select scenarios</source>
+            <translation>Select scenarios</translation>
         </message>
         <message>
             <source>Select skin image</source>

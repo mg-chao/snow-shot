@@ -525,6 +525,10 @@ constexpr SchemaString kSchemaStrings21[] = {u"Ctrl+F1"};
 constexpr SchemaString kSchemaStrings22[] = {u"F3"};
 constexpr SchemaString kSchemaStrings23[] = {u"Ctrl+F3"};
 constexpr SchemaString kSchemaStrings24[] = {u"all_windows", u"game_windows"};
+constexpr SchemaString kDefaultShutterSoundTargets[] = {u"direct_capture"};
+constexpr SchemaString kShutterSoundTargets[] = {u"direct_capture", u"normal_screenshot"};
+constexpr SchemaAllowedValues kShutterSoundTargetsAllowed = {kShutterSoundTargets,
+                                                             std::size(kShutterSoundTargets)};
 constexpr SchemaString kDefaultFullscreenDisableScope[] = {u"global_shortcuts"};
 constexpr SchemaString kFullscreenDisableScopeValues[] = {u"global_shortcuts", u"global_mouse"};
 constexpr SchemaAllowedValues kFullscreenDisableScopeAllowed = {
@@ -1661,10 +1665,8 @@ constexpr SchemaEntryDescriptor kEntryDescriptors[] = {
     {u"screenshot/capture_cursor", booleanDefault(false), ConfigurationValueKind::Boolean},
     {u"screenshot/capture_ui_in_scrolling_screenshot", booleanDefault(true),
      ConfigurationValueKind::Boolean},
-    {u"screenshot/shutter_sound_notification", booleanDefault(true),
-     ConfigurationValueKind::Boolean},
-    {u"screenshot/screenshot_sound_notification", booleanDefault(false),
-     ConfigurationValueKind::Boolean},
+    {u"screenshot/shutter_sound_notification", stringsDefault(kDefaultShutterSoundTargets),
+     ConfigurationValueKind::StringList, nullptr, &kShutterSoundTargetsAllowed},
 #if SNOW_SHOT_ENABLE_QR_RECOGNITION
     {u"screenshot/auto_recognize_qr_code", booleanDefault(true), ConfigurationValueKind::Boolean},
 #endif
@@ -3072,6 +3074,18 @@ bool ConfigurationSchema::parseIntegerVersion(const QJsonValue& value, int* vers
 
 QMap<QString, QJsonValue>
 ConfigurationSchema::migrateLegacyValues(QMap<QString, QJsonValue> values) {
+    const QString shutterKey = QStringLiteral("screenshot/shutter_sound_notification");
+    const auto directSound = values.value(shutterKey);
+    const auto normalSound =
+        values.take(QStringLiteral("screenshot/screenshot_sound_notification"));
+    if (!directSound.isArray() && (directSound.isBool() || normalSound.isBool())) {
+        QJsonArray targets;
+        if (directSound.toBool(true))
+            targets.append(QStringLiteral("direct_capture"));
+        if (normalSound.toBool())
+            targets.append(QStringLiteral("normal_screenshot"));
+        values.insert(shutterKey, targets);
+    }
     const QString smartSelectionKey = QStringLiteral("screenshot_selection/smart_selection");
     const QJsonValue legacyTarget =
         values.take(QStringLiteral("screenshot_selection/selection_target"));
