@@ -2198,6 +2198,10 @@
             <translation>選擇何時可以在固定到螢幕的截圖上選取辨識出的文字</translation>
         </message>
         <message>
+            <source>Choose when to play the shutter sound</source>
+            <translation>選擇在哪些截圖情境播放快門聲</translation>
+        </message>
+        <message>
             <source>Choose where images are written for automatic save and copy-file actions</source>
             <translation>選擇自動儲存和複製檔案操作寫入影像的位置</translation>
         </message>
@@ -2914,6 +2918,10 @@
             <translation>焦點視窗</translation>
         </message>
         <message>
+            <source>Focused window and current display</source>
+            <translation>焦點視窗和目前顯示器</translation>
+        </message>
+        <message>
             <source>Follow mouse movement</source>
             <translation>跟隨滑鼠移動</translation>
         </message>
@@ -3566,6 +3574,10 @@
             <translation>正常</translation>
         </message>
         <message>
+            <source>Normal screenshot</source>
+            <translation>一般截圖</translation>
+        </message>
+        <message>
             <source>Notify after export completes</source>
             <translation>匯出完成後通知</translation>
         </message>
@@ -3816,14 +3828,6 @@
         <message>
             <source>Play / pause</source>
             <translation>播放 / 暫停</translation>
-        </message>
-        <message>
-            <source>Play a shutter sound when capturing the focused window or current display</source>
-            <translation>擷取焦點視窗或目前顯示器時播放快門聲音</translation>
-        </message>
-        <message>
-            <source>Play a shutter sound when screenshot capture starts</source>
-            <translation>開始截圖時播放快門聲音</translation>
         </message>
         <message>
             <source>Play saved GIF, APNG, and WebP recordings repeatedly</source>
@@ -4398,10 +4402,6 @@
             <translation>截圖快速鍵和操作</translation>
         </message>
         <message>
-            <source>Screenshot sound notification</source>
-            <translation>截圖聲音通知</translation>
-        </message>
-        <message>
             <source>Screenshot toolbar</source>
             <translation>截圖工具列</translation>
         </message>
@@ -4436,6 +4436,10 @@
         <message>
             <source>Select image save directory</source>
             <translation>選擇影像儲存目錄</translation>
+        </message>
+        <message>
+            <source>Select scenarios</source>
+            <translation>選擇場景</translation>
         </message>
         <message>
             <source>Select skin image</source>

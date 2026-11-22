@@ -1920,23 +1920,23 @@ SettingsItemDefinition screenshotCaptureUiInScrollingScreenshotItem() {
 }
 
 SettingsItemDefinition screenshotShutterSoundNotificationItem() {
-    return switchItem(
+    SettingsMultiSelectDefinition payload;
+    payload.binding = SettingsMultiSelectBinding::ScreenshotShutterSoundNotification;
+    payload.placeholder = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Select scenarios"));
+    payload.options = {
+        {QStringLiteral("direct_capture"),
+         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Focused window and current display"))},
+        {QStringLiteral("normal_screenshot"),
+         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Normal screenshot"))},
+    };
+    return {
         QStringLiteral("screenshot.shutter-sound-notification"),
-        QT_TRANSLATE_NOOP("SettingsCatalog", "Shutter sound notification"),
-        QT_TRANSLATE_NOOP(
-            "SettingsCatalog",
-            "Play a shutter sound when capturing the focused window or current display"),
+        settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Shutter sound notification")),
+        settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Choose when to play the shutter sound")),
+        {},
         QStringLiteral("screenshot/shutter_sound_notification"),
-        SettingsSwitchBinding::ScreenshotShutterSoundNotification);
-}
-
-SettingsItemDefinition screenshotSoundNotificationItem() {
-    return switchItem(
-        QStringLiteral("screenshot.screenshot-sound-notification"),
-        QT_TRANSLATE_NOOP("SettingsCatalog", "Screenshot sound notification"),
-        QT_TRANSLATE_NOOP("SettingsCatalog", "Play a shutter sound when screenshot capture starts"),
-        QStringLiteral("screenshot/screenshot_sound_notification"),
-        SettingsSwitchBinding::ScreenshotSoundNotification);
+        std::move(payload),
+    };
 }
 
 #if SNOW_SHOT_ENABLE_QR_RECOGNITION
@@ -4353,7 +4353,6 @@ constexpr CatalogItemFactory catalogPageScreenshotsSectionScreenshotSettingsItem
     {hiDpiImageScalingItem},
     {nullptr, &catalogItemScreenshotKeepAnnotationsEditableAfterPinningToScreen},
     {screenshotShutterSoundNotificationItem},
-    {screenshotSoundNotificationItem},
     {screenshotConfirmBeforeExitingViaShortcutItem},
 #if SNOW_SHOT_ENABLE_QR_RECOGNITION
     {screenshotAutoRecognizeQrCodeItem},
@@ -6600,12 +6599,6 @@ QStringList SettingsCatalog::validationErrors() const {
                         expectedKey =
                             QStringLiteral("screenshot/capture_ui_in_scrolling_screenshot");
                         break;
-                    case SettingsSwitchBinding::ScreenshotShutterSoundNotification:
-                        expectedKey = QStringLiteral("screenshot/shutter_sound_notification");
-                        break;
-                    case SettingsSwitchBinding::ScreenshotSoundNotification:
-                        expectedKey = QStringLiteral("screenshot/screenshot_sound_notification");
-                        break;
                     case SettingsSwitchBinding::ScreenshotConfirmBeforeExitingViaShortcut:
                         expectedKey =
                             QStringLiteral("screenshot/confirm_before_exiting_via_shortcut");
@@ -6774,6 +6767,9 @@ QStringList SettingsCatalog::validationErrors() const {
                     default:
                         if (const auto trigger = exportTriggerForBinding(multi->binding))
                             expectedKey = storage::exportTaskRow(*trigger).key.toString();
+                        break;
+                    case SettingsMultiSelectBinding::ScreenshotShutterSoundNotification:
+                        expectedKey = QStringLiteral("screenshot/shutter_sound_notification");
                         break;
                     case SettingsMultiSelectBinding::FullscreenDisableScope:
                         expectedKey = QStringLiteral("global_shortcuts/fullscreen_disable_scope");

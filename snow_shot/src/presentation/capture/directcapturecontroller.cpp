@@ -203,7 +203,8 @@ class DirectCaptureController::Impl {
             result.captureBackend = capture::nativeBackendForNormalScreenshot(
                 capture::screenshotApiModeFromValue(settings.apiMode().toLatin1().constData()));
         }
-        result.shutterSoundNotification = settings.shutterSoundNotification();
+        result.shutterSoundNotification =
+            settings.shutterSoundTargets().contains(QStringLiteral("direct_capture"));
         result.restoreOriginalScreenColors = settings.restoreOriginalScreenColors();
         result.requestedAt = QDateTime::currentDateTime();
         auto tasks = ScreenshotExportTasks::capture(storage::ExportTrigger::ScreenshotCopy);

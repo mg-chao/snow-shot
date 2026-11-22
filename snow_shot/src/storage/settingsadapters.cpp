@@ -1050,20 +1050,16 @@ bool GlobalShortcutSettings::setFullscreenDisableScope(const QStringList& scope)
                             QJsonArray::fromStringList(scope));
 }
 
-bool ScreenshotSettings::shutterSoundNotification() const {
-    return cache().value(QStringLiteral("screenshot/shutter_sound_notification")).toBool();
+QStringList ScreenshotSettings::shutterSoundTargets() const {
+    return cache()
+        .value(QStringLiteral("screenshot/shutter_sound_notification"))
+        .toVariant()
+        .toStringList();
 }
 
-bool ScreenshotSettings::setShutterSoundNotification(bool enabled) const {
-    return cache().setValue(QStringLiteral("screenshot/shutter_sound_notification"), enabled);
-}
-
-bool ScreenshotSettings::screenshotSoundNotification() const {
-    return cache().value(QStringLiteral("screenshot/screenshot_sound_notification")).toBool();
-}
-
-bool ScreenshotSettings::setScreenshotSoundNotification(bool enabled) const {
-    return cache().setValue(QStringLiteral("screenshot/screenshot_sound_notification"), enabled);
+bool ScreenshotSettings::setShutterSoundTargets(const QStringList& targets) const {
+    return cache().setValue(QStringLiteral("screenshot/shutter_sound_notification"),
+                            QJsonArray::fromStringList(targets));
 }
 
 #if SNOW_SHOT_ENABLE_QR_RECOGNITION

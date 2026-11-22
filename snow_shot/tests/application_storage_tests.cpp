@@ -3362,6 +3362,41 @@ void smartSelectionAccessorAndSignal() {
     QObject::disconnect(connection);
 }
 
+void legacyShutterSoundSettingsMigrate() {
+    const QString key = QStringLiteral("screenshot/shutter_sound_notification");
+    const QString obsolete = QStringLiteral("screenshot_sound_notification");
+    const QString direct = QStringLiteral("direct_capture");
+    const QString normal = QStringLiteral("normal_screenshot");
+    QTemporaryDir temporary;
+    require(temporary.isValid(), "create isolated shutter sound migration storage");
+    const QString path = temporary.filePath(QStringLiteral("config.json"));
+    const auto verify = [&](QJsonValue shutter, QJsonValue screenshot, QJsonArray expected) {
+        const QJsonObject group{{QStringLiteral("shutter_sound_notification"), shutter},
+                                {obsolete, screenshot}};
+        writeBytes(path,
+                   QJsonDocument(QJsonObject{{QStringLiteral("storage"),
+                                              QJsonObject{{QStringLiteral("schema_version"), 7}}},
+                                             {QStringLiteral("screenshot"), group}})
+                       .toJson());
+        storage::ConfigurationStore store(path, true, true, 60000);
+        require(store.value(key) == expected && store.flushNow().success,
+                "migrated shutter sound must preserve the two effective preferences");
+        const auto saved = readObject(path).value(QStringLiteral("screenshot")).toObject();
+        require(saved.value(QStringLiteral("shutter_sound_notification")) == expected &&
+                    !saved.contains(obsolete),
+                "only the combined sound preference must remain on disk");
+    };
+    const auto missing = QJsonValue(QJsonValue::Undefined);
+    verify(true, false, {direct});
+    verify(false, true, {normal});
+    verify(true, true, {direct, normal});
+    verify(false, false, {});
+    verify(missing, true, {direct, normal});
+    verify(false, missing, {});
+    verify(QJsonArray{QStringLiteral("disabled")}, missing, {});
+    verify(QJsonArray{normal}, false, {normal});
+}
+
 void smartSelectionLegacyValuesMigrate() {
     const QString key = QStringLiteral("screenshot_selection/smart_selection");
     const QString targetKey = QStringLiteral("screenshot_selection/selection_target");
@@ -4664,6 +4699,10 @@ int main(int argc, char** argv) {
         checkpointRevalidatesStorageAfterSnapshot();
         return 0;
     }
+    if (application.arguments().contains(QStringLiteral("--shutter-sound-only"))) {
+        legacyShutterSoundSettingsMigrate();
+        return 0;
+    }
     if (application.arguments().contains(QStringLiteral("--smart-selection-only"))) {
         QCoreApplication::setOrganizationName(QStringLiteral("SnowShotTests"));
         QCoreApplication::setApplicationName(QStringLiteral("smart-selection-storage-tests"));
@@ -4852,6 +4891,7 @@ int main(int argc, char** argv) {
     missingOcrModelConfigurationDefaultsToSmallWithoutAMigration();
     smartSelectionAccessorAndSignal();
     smartSelectionLegacyValuesMigrate();
+    legacyShutterSoundSettingsMigrate();
     unknownFieldsArePreserved();
     malformedConfigurationIsCopiedAndReplaced();
     futureVersionIsReadOnly();
