@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import plistlib
 import re
 import shutil
 import subprocess
@@ -64,7 +65,7 @@ class HomebrewTests(unittest.TestCase):
         self.assertIn('app "Snow Shot.app"', cask)
         self.assertIn('staged_path.join("prepare-snow-shot-homebrew.sh")', cask)
         self.assertIn('installer script:', cask)
-        self.assertIn('uninstall script:', cask)
+        self.assertRegex(cask, r'uninstall quit:\s+"com\.snowshot\.snow_shot",\n\s+script:')
         self.assertIn('["-rf", "--", "#{staged_path}/Snow Shot.app"]', cask)
         for forbidden in ('/main/', '/latest/', 'sha256 :no_check', 'zap ', 'preflight', '/Applications/'):
             self.assertNotIn(forbidden, cask)
@@ -72,6 +73,16 @@ class HomebrewTests(unittest.TestCase):
         self.assertEqual(first, archive.read_bytes())
         if shutil.which('ruby'):
             subprocess.run(['ruby', '-c', str(self.output / 'Casks/snow-shot.rb')], check=True, capture_output=True)
+
+    def test_stable_and_beta_casks_quit_the_packaged_bundle(self):
+        packaging = Path(__file__).resolve().parent.parent / 'snow_shot/packaging/macos'
+        for edition, plist in (('full', 'Info.plist.in'), ('mini', 'Info-mini.plist.in')):
+            bundle_id = plistlib.loads((packaging / plist).read_bytes())['CFBundleIdentifier']
+            for version in ('1.2.3', '1.2.3-beta.2'):
+                with self.subTest(edition=edition, version=version):
+                    cask = brew.cask(version, self.sha, edition=edition)
+                    self.assertEqual(re.findall(r'^  uninstall quit:\s+"([^"]+)"', cask, re.MULTILINE),
+                                     [bundle_id])
 
     @unittest.skipUnless(shutil.which('ruby'), 'Requires Ruby for installer metadata')
     def test_installer_passes_versioned_local_paths_and_requires_success(self):
@@ -203,10 +214,30 @@ load ARGV[0]
             self.package()
 
     def test_identical_cask_retry_and_new_version(self):
-        self.current_version('1.2.2')
+        self.current.parent.mkdir(parents=True)
+        self.current.write_text(brew.cask('1.2.2', '0' * 64, quit_application=False))
         archive, generated = self.package()
+        self.assertIn('uninstall quit:', generated)
         self.current.write_text(generated)
         self.assertEqual(self.package(), (archive, generated))
+
+    def test_published_cask_without_quit_can_be_retried_and_repaired(self):
+        archive, _ = self.package()
+        self.current.parent.mkdir(parents=True)
+        published = brew.cask('1.2.3', brew.digest(archive), quit_application=False)
+        self.current.write_text(published)
+        self.assertEqual(self.package(), (archive, published))
+
+        self.add_intel()
+        archives, repaired = brew.package_all(self.release, self.source, self.assets,
+                                               self.output, self.current, repair_architectures=True)
+        self.assertIn('arch arm: "arm64", intel: "x86_64"', repaired)
+        self.assertIn('uninstall script:', repaired)
+        self.assertNotIn('uninstall quit:', repaired)
+        self.assertEqual(self.current.read_text(), published)
+        self.current.write_text(repaired)
+        self.assertEqual(brew.package_all(self.release, self.source, self.assets,
+                                          self.output, self.current), (archives, repaired))
 
     def legacy_cask(self, edition='full', architecture='dual', beta=False):
         fixture = Path(__file__).resolve().parent.parent / 'homebrew/test-support/legacy-snow-shot.rb'
@@ -241,7 +272,8 @@ load ARGV[0]
                     path.write_text(self.legacy_cask(edition, architecture, beta))
                     checksums = {'arm64': '0' * 64, 'x64': '1' * 64} if architecture == 'dual' else '0' * 64
                     native_arch = 'x64' if architecture == 'x86_64' else 'arm64'
-                    expected = brew.cask(version, checksums, edition=edition, architecture=native_arch)
+                    expected = brew.cask(version, checksums, edition=edition, architecture=native_arch,
+                                         quit_application=False)
                     # A historical hook-only migration keeps its original local
                     # signing caveat; it cannot change archived installer bytes.
                     old_caveat = self.legacy_cask(edition, architecture, beta).split('  caveats <<~EOS', 1)[1]
