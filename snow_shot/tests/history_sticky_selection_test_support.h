@@ -10,6 +10,7 @@
 #include <QDir>
 #include <QEvent>
 #include <QImage>
+#include <QLabel>
 #include <QScrollBar>
 
 namespace history_sticky_test {
@@ -28,9 +29,17 @@ void verifySelection(QWidget& page, const QString& prefix, adqt::widgets::AdChec
     auto* bar = page.findChild<QWidget*>(prefix + QStringLiteral("SelectionBar"));
     auto* panel = page.findChild<QWidget*>(prefix + QStringLiteral("SelectionPanel"));
     auto* entries = page.findChild<QWidget*>(prefix + QStringLiteral("Entries"));
+    auto* summary = page.findChild<QLabel*>(prefix + QStringLiteral("SelectionSummary"));
+    auto* selectAll =
+        page.findChild<adqt::widgets::AdButton*>(prefix + QStringLiteral("SelectAll"));
+    auto* batchActions =
+        page.findChild<adqt::widgets::AdButton*>(prefix + QStringLiteral("BatchActions"));
+    auto* deleteSelected =
+        page.findChild<adqt::widgets::AdButton*>(prefix + QStringLiteral("DeleteSelected"));
     auto* deselect =
         page.findChild<adqt::widgets::AdButton*>(prefix + QStringLiteral("DeselectAll"));
-    require(area && bar && panel && entries && checkbox && deselect,
+    require(area && bar && panel && entries && checkbox && summary && selectAll && batchActions &&
+                deleteSelected && deselect,
             "sticky selection fixture exposes the page controls");
     const auto* originalRow = checkbox->parentWidget()->parentWidget();
     const QString originalName = originalRow->objectName();
@@ -57,18 +66,33 @@ void verifySelection(QWidget& page, const QString& prefix, adqt::widgets::AdChec
                     "save sticky selection review");
         }
     };
-    require(!bar->isVisible() && scroll->maximum() > 500,
-            "a scrollable page starts without a selection panel");
-    const int entriesWithoutSelection = entries->y();
-    checkbox->setChecked(true);
-    settleLayout();
+    require(bar->isVisible() && panel->isVisible() && scroll->maximum() > 500 &&
+                summary->text() == QStringLiteral("Selected 0 items") && selectAll->isEnabled() &&
+                batchActions->isVisible() && !batchActions->isEnabled() &&
+                !deleteSelected->isEnabled() && !deselect->isEnabled(),
+            "a scrollable page starts with an inline panel and only Select all enabled");
     const int normalTop = bar->mapTo(viewport, QPoint()).y();
-    const int contentEntryTop = entries->y();
+    const QRect entryGeometry = entries->geometry();
     const int maximum = scroll->maximum();
     const int wideHeight = bar->height();
-    require(bar->isVisible() && topMargin > 0 && normalTop > topMargin &&
-                contentEntryTop - entriesWithoutSelection == bar->height(),
-            "selection reserves exactly one panel height at its normal position");
+    require(topMargin > 0 && normalTop > topMargin, "the panel starts below the page filters");
+    scroll->setValue(normalTop + wideHeight + 20);
+    settleLayout();
+    require(bar->mapTo(viewport, QPoint()).y() == normalTop - scroll->value() &&
+                bar->mapTo(viewport, bar->rect().bottomLeft()).y() < 0 &&
+                !bar->property("pageSticky").toBool(),
+            "the empty panel scrolls fully out of view without overlaying the entries");
+    scroll->setValue(0);
+    settleLayout();
+    checkbox = currentCheckbox();
+    require(checkbox, "returning to the start materializes the first record");
+    const QPoint rowPosition = checkbox->mapTo(viewport, QPoint());
+    checkbox->setChecked(true);
+    settleLayout();
+    require(bar->mapTo(viewport, QPoint()).y() == normalTop && bar->height() == wideHeight &&
+                entries->geometry() == entryGeometry && scroll->value() == 0 &&
+                scroll->maximum() == maximum && checkbox->mapTo(viewport, QPoint()) == rowPosition,
+            "selecting the first record keeps the panel and list geometry stable");
 
     scroll->setValue(normalTop / 2);
     settleLayout();
@@ -76,8 +100,8 @@ void verifySelection(QWidget& page, const QString& prefix, adqt::widgets::AdChec
             "the selection panel scrolls normally before reaching the top");
     scroll->setValue(normalTop + 80);
     settleLayout();
-    require(bar->mapTo(viewport, QPoint()).y() == topMargin && entries->y() == contentEntryTop &&
-                scroll->maximum() == maximum,
+    require(bar->mapTo(viewport, QPoint()).y() == topMargin &&
+                entries->geometry() == entryGeometry && scroll->maximum() == maximum,
             "the panel preserves its top margin without changing content layout or scroll range");
     const QPoint hitPoint = deselect->mapTo(viewport, deselect->rect().center());
     QWidget* hit = viewport->childAt(hitPoint);
@@ -110,6 +134,33 @@ void verifySelection(QWidget& page, const QString& prefix, adqt::widgets::AdChec
                 deselect->mapTo(panel, deselect->rect().bottomRight()).y() < panel->height(),
             "a sticky panel follows narrow layout width and reserves its wrapped height");
     saveReview(QStringLiteral("-narrow"));
+    const QRect narrowEntries = entries->geometry();
+    const int narrowHeight = bar->height();
+    const int narrowMaximum = scroll->maximum();
+    const int scrolled = scroll->value();
+    deselect->click();
+    settleLayout();
+    require(bar->isVisible() && !bar->property("pageSticky").toBool() &&
+                bar->mapTo(viewport, QPoint()).y() == normalTop - scroll->value(),
+            "clearing a sticky selection restores the inline panel");
+    require(bar->height() == narrowHeight && entries->geometry() == narrowEntries &&
+                scroll->maximum() == narrowMaximum,
+            "clearing a sticky selection preserves the narrow layout and scroll range");
+    require(scroll->value() == scrolled,
+            "clearing a focused sticky action preserves scroll position");
+
+    scroll->setValue(0);
+    settleLayout();
+    checkbox = currentCheckbox();
+    require(checkbox && !checkbox->isChecked(),
+            "clearing a sticky selection also unchecks a rematerialized entry");
+    scroll->setValue(scrolled);
+    checkbox->setChecked(true);
+    settleLayout();
+    require(bar->mapTo(viewport, QPoint()).y() == topMargin &&
+                entries->geometry() == narrowEntries && scroll->value() == scrolled,
+            "selecting while already scrolled immediately restores the sticky panel");
+
     page.resize(980, 640);
     settleLayout();
     require(bar->height() == wideHeight && bar->width() == entries->width(),
@@ -126,31 +177,8 @@ void verifySelection(QWidget& page, const QString& prefix, adqt::widgets::AdChec
             "selection actions remain available at the end of the page");
     scroll->setValue(0);
     settleLayout();
-    // Scrolling recycles offscreen cards. Find the same record's current checkbox.
-    checkbox = currentCheckbox();
-    require(checkbox, "returning to the start materializes the original selected record");
-    require(bar->mapTo(viewport, QPoint()).y() == normalTop && entries->y() == contentEntryTop,
+    require(bar->mapTo(viewport, QPoint()).y() == normalTop && entries->geometry() == entryGeometry,
             "scrolling back restores the normal panel position without layout drift");
-    scroll->setValue(normalTop + 80);
-    settleLayout();
-    deselect->click();
-    settleLayout();
-    require(!bar->isVisible(), "clearing a sticky selection hides the panel");
-    require(entries->y() == entriesWithoutSelection,
-            "clearing a sticky selection removes its reserved space");
-    // Hiding the focused action can scroll Qt's next focus target into view.
-    // Start the next selection explicitly below the sticky threshold.
-    scroll->setValue(0);
-    settleLayout();
-    checkbox = currentCheckbox();
-    require(checkbox && !checkbox->isChecked(),
-            "clearing a sticky selection also unchecks a rematerialized entry");
-    scroll->setValue(normalTop + 80);
-    checkbox->setChecked(true);
-    settleLayout();
-    require(bar->isVisible() && bar->mapTo(viewport, QPoint()).y() == topMargin &&
-                entries->y() == contentEntryTop,
-            "selecting while already scrolled immediately restores the sticky panel");
 }
 
 } // namespace history_sticky_test

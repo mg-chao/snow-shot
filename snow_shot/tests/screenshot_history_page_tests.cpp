@@ -768,9 +768,13 @@ void entriesUseBordersAndSupportCrossPageSelection() {
                 selectAll != nullptr && batchActions != nullptr && deselectAll != nullptr &&
                 pagination != nullptr && sourceFilter != nullptr && dateFilter != nullptr,
             "history selection controls must be discoverable");
-    require(!selectionBar->isVisible(), "selection bar must be hidden before selection");
-    require(!batchActions->isVisible(),
-            "Batch Actions must be hidden when no history entry is selected");
+    const auto selectionIsEmpty = [&] {
+        return selectionBar->isVisible() && summary->text() == QStringLiteral("Selected 0 items") &&
+               batchActions->isVisible() && !batchActions->isEnabled() &&
+               !deleteSelected->isEnabled() && !deselectAll->isEnabled();
+    };
+    require(selectionIsEmpty() && selectAll->isEnabled(),
+            "the inline selection bar starts with only Select all enabled");
     QWidget* firstEntry = checkboxes.first()->parentWidget()->parentWidget();
     require(verticalLayoutGap(page, filters, firstEntry) > 0,
             "history entries must retain a gap below the filters when selection is empty");
@@ -883,22 +887,21 @@ void entriesUseBordersAndSupportCrossPageSelection() {
     deselectAll->click();
     flushEvents();
     checkboxes = entryCheckboxes(page);
-    require(!selectionBar->isVisible() &&
+    require(selectionIsEmpty() &&
                 std::none_of(checkboxes.cbegin(), checkboxes.cend(),
                              [](const auto* checkbox) { return checkbox->isChecked(); }),
             "Deselect all must clear the complete cross-page selection");
-    require(!batchActions->isVisible(), "clearing history selection hides Batch Actions");
 
     entryCheckboxes(page).first()->click();
     sourceFilter->setCurrentValues({QStringLiteral("clipboard")});
     flushEvents();
-    require(!selectionBar->isVisible(), "changing the source filter must clear selection");
+    require(selectionIsEmpty(), "changing the source filter must clear selection");
     sourceFilter->setCurrentValues({});
     flushEvents();
     entryCheckboxes(page).first()->click();
     dateFilter->setRange(QDate::currentDate(), QDate::currentDate());
     flushEvents();
-    require(!selectionBar->isVisible(), "changing the date filter must clear selection");
+    require(selectionIsEmpty(), "changing the date filter must clear selection");
 
     dateFilter->clear();
     flushEvents();
@@ -954,8 +957,7 @@ void entriesUseBordersAndSupportCrossPageSelection() {
         require(dataSource.removedBatches.first()[index] == records[index].id,
                 "bulk deletion IDs must follow deterministic repository order");
     }
-    require(!selectionBar->isVisible(),
-            "an accepted bulk deletion request must clear the selection bar");
+    require(selectionIsEmpty(), "an accepted bulk deletion request must clear selection");
 }
 
 void emptyStateRemainsVisibleAfterFilteringEmptyHistory() {

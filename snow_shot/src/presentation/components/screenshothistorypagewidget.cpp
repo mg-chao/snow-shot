@@ -1109,7 +1109,6 @@ ScreenshotHistoryPageWidget::ScreenshotHistoryPageWidget(
     selectionActionsLayout->addWidget(m_deselectAllButton);
     m_selectionBarLayout->addWidget(m_selectionActions, 0, Qt::AlignRight | Qt::AlignVCenter);
     selectionBarOuterLayout->addWidget(m_selectionPanel);
-    m_selectionBar->hide();
     pageContainer->addStickyWidget(m_selectionBar, metric.marginSM);
 
     m_deleteAllConfirmation = new adqt::widgets::AdPopconfirm(content);
@@ -1729,7 +1728,6 @@ void ScreenshotHistoryPageWidget::updateSelectionBar() {
         return;
     }
 
-    updateBatchActions();
     const int selectionCount = static_cast<int>(m_selectedRecordIds.size());
     const auto status = storage::ApplicationStorage::instance().status();
     const int availableWidth = m_entriesHost != nullptr ? m_entriesHost->width() : width();
@@ -1740,6 +1738,7 @@ void ScreenshotHistoryPageWidget::updateSelectionBar() {
         m_selectedRecordIds, m_pageRecordIds, m_dataSource != nullptr && status.writeAvailable,
         availableWidth, tr("Selected %n item(s)", nullptr, selectionCount),
         tr("Delete %n selected item(s)?", nullptr, selectionCount));
+    updateBatchActions();
 }
 
 void ScreenshotHistoryPageWidget::requestDeleteSelected() {

@@ -270,6 +270,12 @@ class SkinBackdrop final : public QWidget {
 };
 
 void selectionPanelSticksWhileScrolling() {
+    QTranslator englishTranslator;
+    require(englishTranslator.load(QStringLiteral(":/i18n/snow_shot_en_US.qm")),
+            "load the English application translations");
+    QCoreApplication::installTranslator(&englishTranslator);
+    const auto removeTranslator =
+        qScopeGuard([&] { QCoreApplication::removeTranslator(&englishTranslator); });
     Fixture fixture;
     for (int index = 0; index < 55; ++index) {
         storage::PinnedWindowSummary item;
@@ -812,8 +818,8 @@ void pinnedImageStitchingSelectionKeepsRecordOrder() {
                 batchActions->parentWidget()->layout()->indexOf(batchActions) + 1 ==
                     batchActions->parentWidget()->layout()->indexOf(selectAll),
             "pinned Collage is a link action immediately before Select all");
-    require(!batchActions->isVisible() && !batchActions->isEnabled(),
-            "pinned Collage is unavailable before selection");
+    require(batchActions->isVisible() && !batchActions->isEnabled() && selectAll->isEnabled(),
+            "pinned Batch Actions stays visible and disabled before selection");
     QStringList requested;
     int requests = 0;
     QObject::connect(&page, &PinnedWindowManagementPageWidget::stitchImagesRequested, &page,
@@ -866,8 +872,7 @@ void pinnedImageStitchingSelectionKeepsRecordOrder() {
     deselect->click();
     const int previousRequests = requests;
     batchActions->click();
-    require(!batchActions->isVisible() && !batchActions->isEnabled() &&
-                requests == previousRequests,
+    require(batchActions->isVisible() && !batchActions->isEnabled() && requests == previousRequests,
             "deselecting every pin disables collage dispatch");
     selectAll->click();
     triggerBatchStitch(batchActions);
@@ -883,7 +888,7 @@ void pinnedImageStitchingSelectionKeepsRecordOrder() {
             "pinned selection actions fit within a narrow management page");
     page.findChild<adqt::widgets::AdSelect*>()->setCurrentValues(
         {static_cast<int>(storage::PinnedWindowCreationSource::Clipboard)});
-    require(!batchActions->isVisible() && !batchActions->isEnabled(),
+    require(batchActions->isVisible() && !batchActions->isEnabled(),
             "changing the source filter clears the collage selection");
     require(fixture.fullImageRequests == 0 && fixture.removed.isEmpty() && fixture.shown.isEmpty(),
             "selection dispatch neither decodes images nor mutates or opens saved pins");
