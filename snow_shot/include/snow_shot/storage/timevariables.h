@@ -7,6 +7,7 @@
 
 namespace snow_shot::storage {
 [[nodiscard]] bool containsTimeVariables(const QString& text);
+[[nodiscard]] QString formatTimeVariable(QString format, const QDateTime& timestamp);
 [[nodiscard]] QString expandTimeVariables(const QString& text, const QDateTime& timestamp);
 } // namespace snow_shot::storage
 

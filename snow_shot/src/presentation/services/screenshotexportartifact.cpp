@@ -465,7 +465,7 @@ struct ScreenshotExportArtifact::Impl final {
     quint64 pngUseSerial = 0;
     const QString diagnosticId = QUuid::createUuid().toString(QUuid::Id128);
     mutable QMutex mutex;
-    snow_shot::storage::ScreenshotWindowNames windowNames;
+    snow_shot::storage::ScreenshotExportContext exportContext;
     const DeliveryCancellation cancelled = std::make_shared<std::atomic_bool>(false);
     RequestPhase imagePhase = RequestPhase::Empty;
     QImage image;
@@ -655,16 +655,16 @@ void ScreenshotExportArtifact::assertOwnerThread() const {
     Q_ASSERT(!QCoreApplication::instance() || thread() == QCoreApplication::instance()->thread());
 }
 
-void ScreenshotExportArtifact::setWindowNames(snow_shot::storage::ScreenshotWindowNames names) {
+void ScreenshotExportArtifact::setExportContext(snow_shot::storage::ScreenshotExportContext names) {
     assertOwnerThread();
     QMutexLocker lock(&m_impl->mutex);
-    m_impl->windowNames = std::move(names);
+    m_impl->exportContext = std::move(names);
 }
 
-snow_shot::storage::ScreenshotWindowNames ScreenshotExportArtifact::windowNames() const {
+snow_shot::storage::ScreenshotExportContext ScreenshotExportArtifact::exportContext() const {
     assertOwnerThread();
     QMutexLocker lock(&m_impl->mutex);
-    return m_impl->windowNames;
+    return m_impl->exportContext;
 }
 
 QString ScreenshotExportArtifact::diagnosticId() const {
@@ -1723,8 +1723,8 @@ bool ScreenshotExportArtifact::requestQuickSave(QObject* receiver,
         requestedAt = QDateTime::currentDateTime();
     return requestAutomaticSave(
         receiver,
-        {snow_shot::storage::expandScreenshotExportVariables(directory, requestedAt,
-                                                             windowNames())},
+        {snow_shot::storage::expandScreenshotExportDirectory(directory, requestedAt,
+                                                             exportContext())},
         ScreenshotImageFileService::formatForKey(settings.imageFormat()),
         settings.autoSaveFilenameFormat(),
         snow_shot::presentation::screenshotEncodingOptions(settings), std::move(callback),
@@ -2232,7 +2232,7 @@ ScreenshotExportArtifact::FileSourceCallback ScreenshotExportArtifact::makeFileS
     const QPointer<QObject> target(receiver);
     if (!requestedAt.isValid())
         requestedAt = QDateTime::currentDateTime();
-    const auto names = windowNames();
+    const auto names = exportContext();
     return [guarded, deliveryCancelled, target, destination = std::move(destination), format, pdf,
             priority, requestedAt, names, retainFile, filenameFormat = std::move(filenameFormat),
             callback = std::move(callback)](std::shared_ptr<FileSource> source,

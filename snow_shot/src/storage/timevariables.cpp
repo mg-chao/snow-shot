@@ -12,23 +12,28 @@ const QRegularExpression& placeholderPattern() {
 } // namespace
 
 bool containsTimeVariables(const QString& text) {
-    return placeholderPattern().match(text).hasMatch();
+    return text.contains(u'{') && placeholderPattern().match(text).hasMatch();
+}
+
+QString formatTimeVariable(QString format, const QDateTime& timestamp) {
+    format.replace(QStringLiteral("YYYY"), QStringLiteral("yyyy"));
+    format.replace(QStringLiteral("YY"), QStringLiteral("yy"));
+    format.replace(QStringLiteral("DD"), QStringLiteral("dd"));
+    return timestamp.toString(format);
 }
 
 QString expandTimeVariables(const QString& text, const QDateTime& timestamp) {
     QString result = text.trimmed();
+    if (!result.contains(u'{'))
+        return result;
     QList<QRegularExpressionMatch> matches;
     auto iterator = placeholderPattern().globalMatch(result);
     while (iterator.hasNext()) {
         matches.push_back(iterator.next());
     }
     for (auto match = matches.crbegin(); match != matches.crend(); ++match) {
-        QString dateTimeFormat = match->captured(1);
-        dateTimeFormat.replace(QStringLiteral("YYYY"), QStringLiteral("yyyy"));
-        dateTimeFormat.replace(QStringLiteral("YY"), QStringLiteral("yy"));
-        dateTimeFormat.replace(QStringLiteral("DD"), QStringLiteral("dd"));
         result.replace(match->capturedStart(), match->capturedLength(),
-                       timestamp.toString(dateTimeFormat));
+                       formatTimeVariable(match->captured(1), timestamp));
     }
     return result;
 }

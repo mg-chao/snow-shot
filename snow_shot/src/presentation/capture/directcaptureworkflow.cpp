@@ -17,14 +17,14 @@ QString queueError() {
 
 void DirectCaptureRequest::snapshotWindowNames(const QString& directory,
                                                const QPointF& monitorCursor) {
-    windowNames = {};
+    exportContext = {};
     const auto fields = storage::screenshotWindowNameFields(directory, filenameFormat);
     if (!fields.any())
         return;
     if (target == DirectCaptureTarget::FocusedWindow && window != 0)
-        windowNames = platform::screenshotWindowNamesForWindow(window, fields);
+        exportContext = platform::screenshotWindowNamesForWindow(window, fields);
     else if (target == DirectCaptureTarget::CurrentMonitor && !monitorName.isEmpty())
-        windowNames = platform::screenshotWindowNamesAtPoint(monitorCursor, {}, fields);
+        exportContext = platform::screenshotWindowNamesAtPoint(monitorCursor, {}, fields);
 }
 
 DirectCaptureWorkflow::DirectCaptureWorkflow(DirectCapturePorts ports, QObject* parent)

@@ -5,10 +5,10 @@
 
 namespace snow_shot::platform::detail {
 template <typename ApplicationNameLookup, typename WindowNameLookup>
-storage::ScreenshotWindowNames readScreenshotWindowNames(storage::ScreenshotWindowNameFields fields,
-                                                         ApplicationNameLookup applicationName,
-                                                         WindowNameLookup windowName) {
-    storage::ScreenshotWindowNames result;
+storage::ScreenshotExportContext
+readScreenshotWindowNames(storage::ScreenshotWindowNameFields fields,
+                          ApplicationNameLookup applicationName, WindowNameLookup windowName) {
+    storage::ScreenshotExportContext result;
     // Snapshot the mutable title before potentially slower application metadata reads.
     if (fields.windowName)
         result.windowName = windowName();

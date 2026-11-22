@@ -46,7 +46,7 @@ void saveEncodedExport(QObject* owner, ScreenshotEncodedExport file,
         owner, ScreenshotExportCoordinator::Priority::Background,
         [file = std::move(file), directory = tasks.directory, name = tasks.options.filenameFormat,
          at = tasks.requestedAt,
-         names = tasks.windowNames](const ScreenshotExportCancellation& cancel) {
+         names = tasks.exportContext](const ScreenshotExportCancellation& cancel) {
             const auto cancelled = [&cancel] { return cancel.isCancellationRequested(); };
             const auto directories =
                 ScreenshotImageFileService::automaticDirectories(directory, at, names);
@@ -111,8 +111,10 @@ void ScreenshotExportTasks::run(QObject* owner, Artifact image, ScreenshotEncode
     if (!guard || !selected)
         return;
     if (image)
-        image->setWindowNames(windowNames);
-    const auto upload = [guard, config = cloud, options = options](
+        image->setExportContext(exportContext);
+    auto uploadOptions = options;
+    uploadOptions.sourceScreen = exportContext.screen;
+    const auto upload = [guard, config = cloud, options = std::move(uploadOptions)](
                             const Artifact& source, ScreenshotEncodedExport encoded) {
         if (!guard || !config)
             return;

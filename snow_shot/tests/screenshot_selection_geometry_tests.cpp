@@ -39,6 +39,15 @@ void require(bool condition, const char* message) {
 }
 
 void exportWindowLookupUsesSelectionCenter() {
+    const QList<QRect> bounds{{-700, 120, 500, 400}, {0, 0, 800, 600}};
+    require(screenshotScreenNameForRegion(QRect(-230, 200, 30, 20), bounds) ==
+                    QStringLiteral("Display-1") &&
+                screenshotScreenNameForRegion(QRect(0, 200, 30, 20), bounds) ==
+                    QStringLiteral("Display-2") &&
+                screenshotScreenNameForRegion(QRect(-201, 200, 202, 20), bounds) ==
+                    QStringLiteral("Multi") &&
+                screenshotScreenNameForRegion(QRect(-200, 200, 200, 20), bounds).isEmpty(),
+            "screen names respect negative origins, exact edges, gaps and spanning selections");
     ScreenshotDisplaySession displays;
     CapturedDisplayModel display;
     display.active = true;
@@ -53,8 +62,8 @@ void exportWindowLookupUsesSelectionCenter() {
     int windowNameReads = 0;
     QPointF hit;
     snow_shot::storage::ScreenshotWindowNameFields requestedFields;
-    const snow_shot::storage::ScreenshotWindowNames expected{QStringLiteral("App"),
-                                                             QStringLiteral("Title")};
+    const snow_shot::storage::ScreenshotExportContext expected{QStringLiteral("App"),
+                                                               QStringLiteral("Title")};
     const auto lookup = [&](const QPointF& point, std::span<const std::uintptr_t> ids,
                             snow_shot::storage::ScreenshotWindowNameFields fields) {
         ++calls;
@@ -74,11 +83,11 @@ void exportWindowLookupUsesSelectionCenter() {
             });
     };
     const QRect selection(200, 100, 400, 200);
-    require(screenshotWindowNamesForExport({}, QStringLiteral("{YYYY}"), selection, displays,
-                                           geometry, excluded,
-                                           lookup) == snow_shot::storage::ScreenshotWindowNames{} &&
+    require(screenshotWindowNamesForExport({}, QStringLiteral("{HOME}/{SCREEN}-{YYYY}"), selection,
+                                           displays, geometry, excluded, lookup) ==
+                    snow_shot::storage::ScreenshotExportContext{} &&
                 calls == 0 && applicationNameReads == 0 && windowNameReads == 0,
-            "ordinary date-only exports must perform no window lookup");
+            "templates without window variables must perform no window lookup");
     const auto names =
         screenshotWindowNamesForExport(QStringLiteral("/{AN}"), QStringLiteral("{WN}-{AN}"),
                                        selection, displays, geometry, excluded, lookup);
@@ -89,7 +98,7 @@ void exportWindowLookupUsesSelectionCenter() {
     displays.displayAt(0).canvasUsesPoints = true;
     require(screenshotWindowNamesForExport({}, QStringLiteral("{WN}"), selection, displays,
                                            geometry, excluded, lookup) ==
-                    snow_shot::storage::ScreenshotWindowNames{{}, expected.windowName} &&
+                    snow_shot::storage::ScreenshotExportContext{{}, expected.windowName} &&
                 hit == QPointF(-600, -500) &&
                 requestedFields == snow_shot::storage::ScreenshotWindowNameFields{false, true} &&
                 applicationNameReads == 1 && windowNameReads == 2,
@@ -97,30 +106,30 @@ void exportWindowLookupUsesSelectionCenter() {
     require(
         screenshotWindowNamesForExport(QStringLiteral("/{AN}/{AN}"), {}, selection, displays,
                                        geometry, excluded, lookup) ==
-                snow_shot::storage::ScreenshotWindowNames{expected.applicationName, {}} &&
+                snow_shot::storage::ScreenshotExportContext{expected.applicationName, {}} &&
             requestedFields == snow_shot::storage::ScreenshotWindowNameFields{true, false} &&
             applicationNameReads == 2 && windowNameReads == 2,
         "application-only directories must read the application once without reading the title");
     require(screenshotWindowNamesForExport(QStringLiteral("/{WN}"), QStringLiteral("{WN}-{WN}"),
                                            selection, displays, geometry, excluded, lookup) ==
-                    snow_shot::storage::ScreenshotWindowNames{{}, expected.windowName} &&
+                    snow_shot::storage::ScreenshotExportContext{{}, expected.windowName} &&
                 applicationNameReads == 2 && windowNameReads == 3,
             "repeated title variables across both templates must share one title read");
     const int before = calls;
     require(screenshotWindowNamesForExport({}, QStringLiteral("{an}-{wn}-{YYYY}"), selection,
-                                           displays, geometry, excluded,
-                                           lookup) == snow_shot::storage::ScreenshotWindowNames{} &&
+                                           displays, geometry, excluded, lookup) ==
+                    snow_shot::storage::ScreenshotExportContext{} &&
                 calls == before,
             "lowercase lookalikes must not request native metadata");
     require(screenshotWindowNamesForExport({}, QStringLiteral("{AN}"), QRect(2000, 0, 20, 20),
-                                           displays, geometry, excluded,
-                                           lookup) == snow_shot::storage::ScreenshotWindowNames{} &&
+                                           displays, geometry, excluded, lookup) ==
+                    snow_shot::storage::ScreenshotExportContext{} &&
                 calls == before,
             "a selection center outside displays must not select a nearby window");
     displays.setImageSources({display});
     require(screenshotWindowNamesForExport({}, QStringLiteral("{AN}"), selection, displays,
-                                           geometry, excluded,
-                                           lookup) == snow_shot::storage::ScreenshotWindowNames{} &&
+                                           geometry, excluded, lookup) ==
+                    snow_shot::storage::ScreenshotExportContext{} &&
                 calls == before,
             "restored history must never query the current desktop");
     displays.clear();

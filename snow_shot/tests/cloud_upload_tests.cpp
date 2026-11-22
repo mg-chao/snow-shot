@@ -326,6 +326,10 @@ void uploadContracts() {
         options.format = format;
         if (format == ScreenshotImageFileFormat::Png)
             options.filenameFormat = QString::fromUtf8("文😀").repeated(100);
+        else {
+            options.filenameFormat = QStringLiteral("{SCREEN}");
+            options.sourceScreen = QStringLiteral("Multi");
+        }
         auto* job = ScreenshotCloudUploadService::upload(
             std::make_shared<ScreenshotExportArtifact>(ScreenshotExportSource::fromImage(image)),
             config, options, &receiver);
@@ -346,6 +350,9 @@ void uploadContracts() {
         require(server.headers.startsWith("PUT /root/images/screenshots/") &&
                     !server.headers.toLower().contains("x-amz-acl"),
                 "PUT existing bucket without changing access policy");
+        if (format != ScreenshotImageFileFormat::Png)
+            require(result.url.fileName().startsWith(QStringLiteral("Multi-")),
+                    "uploaded file names use the frozen screen");
         const auto mime =
             format == ScreenshotImageFileFormat::Pdf ? QByteArray("application/pdf")
             : format == ScreenshotImageFileFormat::Jpeg

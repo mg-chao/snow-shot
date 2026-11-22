@@ -9,14 +9,17 @@
 namespace snow_shot::presentation::recording {
 [[nodiscard]] QStringList
 screenRecordingDirectories(const QDateTime& timestamp = QDateTime::currentDateTime(),
-                           const storage::ScreenshotWindowNames& names = {});
+                           const storage::ScreenshotExportContext& names = {});
+[[nodiscard]] QStringList
+screenRecordingDirectories(const QString& directoryTemplate, const QDateTime& timestamp,
+                           const storage::ScreenshotExportContext& context);
 [[nodiscard]] QString
 screenRecordingDirectory(const QDateTime& timestamp = QDateTime::currentDateTime(),
-                         const storage::ScreenshotWindowNames& names = {});
+                         const storage::ScreenshotExportContext& names = {});
 // The caller snapshots and expands the filename format before any worker handoff.
 [[nodiscard]] QString screenRecordingOutputPath(const QStringList& directories,
                                                 const QString& baseName, const QString& extension);
-[[nodiscard]] bool openScreenRecordingFolder(const storage::ScreenshotWindowNames& names = {});
+[[nodiscard]] bool openScreenRecordingFolder(const storage::ScreenshotExportContext& names = {});
 [[nodiscard]] bool revealScreenRecordingFile(const QString& path);
 } // namespace snow_shot::presentation::recording
 

@@ -8,6 +8,7 @@
 #include "snow_shot/presentation/settings/settingsbackend.h"
 #include "snow_shot/presentation/settings/settingsruntimesession.h"
 #include "snow_shot/presentation/settings/settingsformfield.h"
+#include "widgets/descriptions.h"
 #include "widgets/modal.h"
 #include "snow_shot/presentation/styles/thememanager.h"
 #include "snow_shot/presentation/screenshotclipboardcontent.h"
@@ -582,18 +583,8 @@ class TestTranslator final : public QTranslator {
 
 void variableDescriptionLinks(const settings::SettingsRegistry& registry,
                               settings::SettingsRuntimeSession& session) {
-    class HelpTranslator final : public QTranslator {
-      public:
-        bool isEmpty() const override {
-            return false;
-        }
-        QString translate(const char* context, const char* source, const char*,
-                          int) const override {
-            return qstrcmp(context, "SettingsVariableHelp") == 0
-                       ? QStringLiteral("Translated: ") + QString::fromUtf8(source)
-                       : QString();
-        }
-    } translator;
+    using adqt::widgets::AdDescriptions;
+    auto& language = snow_shot::presentation::LanguageManager::instance();
     QWidget owner;
     auto* layout = new QVBoxLayout(&owner);
     owner.resize(880, 760);
@@ -657,24 +648,86 @@ void variableDescriptionLinks(const settings::SettingsRegistry& registry,
             QStringLiteral("settingsVariableDescriptionModal"));
         require(modal && modal->isOpen() && modal->centered() &&
                     modal->standardButtons() == adqt::widgets::AdModal::StandardButton::Ok &&
-                    modal->text().startsWith(QStringLiteral("{YYYY}: Current time")),
-                "keyboard activation must open a centered modal with the variable description and "
-                "one button");
-        require(modal->text().contains(QStringLiteral("{AN}: Application Name")) &&
-                    modal->text().contains(QStringLiteral("{WN}: Window Name")) &&
-                    !modal->text().contains(QStringLiteral("Unknown")),
-                "window variable help must be available for screenshot and recording templates");
-        const QString snapshot = qEnvironmentVariable("SNOW_VARIABLE_HELP_SNAPSHOT");
-        if (field == fields.constFirst() && !snapshot.isEmpty())
-            require(owner.grab().save(snapshot), "help modal snapshot must save");
-        require(QCoreApplication::installTranslator(&translator), "help translator must install");
-        drainEvents();
+                    modal->contentWidget(),
+                "keyboard activation must open a centered help modal with one button");
+        const bool directory = qobject_cast<DirectoryPathInput*>(field->editor()) != nullptr;
+        const auto groups = modal->contentWidget()->findChildren<AdDescriptions*>();
+        require(groups.size() == (directory ? 2 : 1),
+                "only directory templates include the system folders group");
+        auto* scroll = qobject_cast<adqt::widgets::AdScrollArea*>(modal->contentWidget());
         require(
-            modal->windowTitle() == QStringLiteral("Translated: Variable description") &&
-                modal->text().startsWith(QStringLiteral("Translated: {YYYY}: Current time")) &&
-                description->text().contains(QStringLiteral("Translated: Variable description")),
-            "open modal and inline link must follow language changes");
-        QCoreApplication::removeTranslator(&translator);
+            scroll && scroll->viewport()->height() == scroll->contentWidget()->height(),
+            "help must fit the reference without scrolling or excess space at the default size");
+        const auto entries = [](AdDescriptions* group) {
+            QMap<QString, QString> result;
+            for (int i = 0; i < group->count(); ++i) {
+                const auto item = group->itemAt(i);
+                result.insert(item.label, item.content);
+            }
+            return result;
+        };
+        require(entries(groups.first()) ==
+                    QMap<QString, QString>{
+                        {QStringLiteral("{YYYY-MM-DD}"), QStringLiteral("Date and time")},
+                        {QStringLiteral("{AN}"), QStringLiteral("Application name")},
+                        {QStringLiteral("{WN}"), QStringLiteral("Window name")},
+                        {QStringLiteral("{SCREEN}"),
+                         QStringLiteral("Source display (Display-1, Display-2, or Multi)")}},
+                "each capture variable must be paired with its meaning");
+        if (directory) {
+            auto* folders = groups.last();
+            require(entries(folders) ==
+                            QMap<QString, QString>{
+                                {QStringLiteral("{HOME}"), QStringLiteral("Home")},
+                                {QStringLiteral("{DESKTOP}"), QStringLiteral("Desktop")},
+                                {QStringLiteral("{PICTURES}"), QStringLiteral("Pictures")},
+                                {QStringLiteral("{DOCUMENTS}"), QStringLiteral("Documents")},
+                                {QStringLiteral("{VIDEOS}"), QStringLiteral("Videos")},
+                                {QStringLiteral("{DOWNLOADS}"), QStringLiteral("Downloads")}} &&
+                        folders->extra() == QStringLiteral("Path prefix only") &&
+                        folders->effectiveColumn() == 2,
+                    "the system folders group must identify all six path prefixes");
+            modal->setPreferredWidth(400);
+            drainEvents();
+            require(folders->effectiveColumn() == 1,
+                    "system folders must reflow to one column in a narrow dialog");
+            modal->setPreferredWidth(520);
+            drainEvents();
+            const QSize originalSize = owner.size();
+            owner.resize(owner.width(), 316);
+            drainEvents();
+            auto* bar = scroll->verticalScrollBar();
+            bar->setValue(bar->maximum());
+            require(bar->value() > 0 &&
+                        scroll->viewport()->rect().contains(
+                            folders->mapTo(scroll->viewport(), folders->rect().bottomLeft())) &&
+                        owner.rect().contains(modal->acceptButton()->mapTo(
+                            &owner, modal->acceptButton()->rect().bottomRight())),
+                    "a short window must scroll to the last folder and keep OK in view");
+            owner.resize(originalSize);
+            drainEvents();
+        }
+        require(language.setLanguage(field == fields.constFirst() ? QStringLiteral("zh_CN")
+                                                                  : QStringLiteral("zh_TW")),
+                "switch open help to Chinese");
+        drainEvents();
+        const auto translated = modal->contentWidget()->findChildren<AdDescriptions*>();
+        const QString title =
+            QCoreApplication::translate("SettingsVariableHelp", "Variable description");
+        const QString dateAndTime =
+            QCoreApplication::translate("SettingsVariableHelp", "Date and time");
+        require(
+            title != QStringLiteral("Variable description") && modal->windowTitle() == title &&
+                description->text().contains(title) && translated.size() == groups.size() &&
+                dateAndTime != QStringLiteral("Date and time") &&
+                entries(translated.first()).value(QStringLiteral("{YYYY-MM-DD}")) == dateAndTime,
+            "open help must translate its title, link and meanings while keeping literal tokens");
+        const QString snapshot = qEnvironmentVariable("SNOW_VARIABLE_HELP_SNAPSHOT");
+        if (field == fields.constFirst() && !snapshot.isEmpty()) {
+            auto* panel = owner.findChild<QWidget*>(QStringLiteral("ad-modal-panel"));
+            require(panel && panel->grab().save(snapshot), "help modal snapshot must save");
+        }
+        require(language.setLanguage(QStringLiteral("en_US")), "restore the settings language");
         drainEvents();
         modal->acceptButton()->click();
         drainEvents();

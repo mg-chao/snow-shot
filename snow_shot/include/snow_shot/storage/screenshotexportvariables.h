@@ -15,12 +15,17 @@ struct ScreenshotWindowNameFields {
                            const ScreenshotWindowNameFields&) = default;
 };
 
-struct ScreenshotWindowNames {
+struct ScreenshotExportContext {
     QString applicationName;
     QString windowName;
-    friend bool operator==(const ScreenshotWindowNames&, const ScreenshotWindowNames&) = default;
+    QString screen{};
+    friend bool operator==(const ScreenshotExportContext&,
+                           const ScreenshotExportContext&) = default;
 };
 
+[[nodiscard]] QString expandScreenshotExportDirectory(const QString& text,
+                                                      const QDateTime& timestamp,
+                                                      const ScreenshotExportContext& context = {});
 [[nodiscard]] bool containsScreenshotWindowVariables(const QString& text);
 [[nodiscard]] ScreenshotWindowNameFields screenshotWindowNameFields(const QString& directory,
                                                                     const QString& filename);
@@ -28,5 +33,5 @@ struct ScreenshotWindowNames {
 // (extension, collision index, etc.) with composeExportFileName().
 [[nodiscard]] QString expandScreenshotExportVariables(const QString& text,
                                                       const QDateTime& timestamp,
-                                                      const ScreenshotWindowNames& names = {});
+                                                      const ScreenshotExportContext& names = {});
 } // namespace snow_shot::storage

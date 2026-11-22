@@ -59,7 +59,7 @@ QString applicationName(DWORD pid) {
 #endif
 
 namespace snow_shot::platform {
-storage::ScreenshotWindowNames
+storage::ScreenshotExportContext
 screenshotWindowNamesForWindow(std::uintptr_t windowId,
                                storage::ScreenshotWindowNameFields fields) {
 #ifdef Q_OS_WIN
@@ -86,7 +86,7 @@ screenshotWindowNamesForWindow(std::uintptr_t windowId,
 #endif
 }
 
-storage::ScreenshotWindowNames
+storage::ScreenshotExportContext
 screenshotWindowNamesAtPoint(const QPointF& point, std::span<const std::uintptr_t> excludedWindows,
                              storage::ScreenshotWindowNameFields fields) {
     if (!fields.any())

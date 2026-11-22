@@ -26,7 +26,7 @@ class RecordingTrimSession final : public QObject {
     ~RecordingTrimSession() override;
     void open(const QString& sourcePath, const QString& outputPath,
               const SnowRecordingClipOptions& options, bool deferred, bool saveWhenReady,
-              snow_shot::storage::ScreenshotWindowNames windowNames);
+              snow_shot::storage::ScreenshotExportContext exportContext);
     void exportClip(bool save);
     void detach();
     void prepareForSessionEnd();
@@ -98,7 +98,7 @@ class RecordingTrimSession final : public QObject {
     Selection m_pendingSelection;
     QString m_sourcePath;
     QString m_outputPath;
-    snow_shot::storage::ScreenshotWindowNames m_windowNames;
+    snow_shot::storage::ScreenshotExportContext m_exportContext;
     QString m_cachePath;
     QString m_pendingPath;
     QString m_destination;
