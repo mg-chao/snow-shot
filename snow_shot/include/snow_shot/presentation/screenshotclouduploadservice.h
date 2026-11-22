@@ -11,6 +11,7 @@ struct ScreenshotCloudUploadOptions {
     ScreenshotPdfOptions pdf;
     QString filenameFormat;
     int transferTimeoutMs = 60000;
+    QString sourceScreen{};
 };
 // A completed encoding. Temporary exports retain their directory through every reader.
 struct ScreenshotEncodedExport {

@@ -126,8 +126,11 @@ void ScreenshotCloudUploadJob::prepare() {
                   tr("The cloud upload configuration or image is unavailable")});
         return;
     }
+    snow_shot::storage::ScreenshotExportContext context;
+    context.screen = m_impl->options.sourceScreen;
     const QString filename = snow_shot::storage::composeExportFileName(
-        ScreenshotImageFileService::suggestedBaseName(m_impl->options.filenameFormat),
+        ScreenshotImageFileService::suggestedBaseName(m_impl->options.filenameFormat,
+                                                      QDateTime::currentDateTime(), context),
         u'-' + QUuid::createUuid().toString(QUuid::WithoutBraces) + u'.' +
             ScreenshotImageFileService::extension(m_impl->options.format));
     QString prefix = m_impl->config.keyPrefix;

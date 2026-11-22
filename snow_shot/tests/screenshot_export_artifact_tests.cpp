@@ -1377,7 +1377,7 @@ void windowNamesSurviveAsynchronousFileExports() {
             "window variable settings must initialize");
     const auto shutdown = qScopeGuard([&] { storage.shutdown(); });
     const snow_shot::storage::ScreenshotSettings settings;
-    const QString folder = directory.filePath(QStringLiteral("{AN}/{YYYY}"));
+    const QString folder = directory.filePath(QStringLiteral("{AN}/{SCREEN}/{YYYY}"));
     const QString filename = QStringLiteral("{WN}_{HH-mm-ss}");
     require(settings.setImageSaveDirectory(folder) && settings.setAutoSaveFilenameFormat(filename),
             "window templates must persist");
@@ -1391,7 +1391,8 @@ void windowNamesSurviveAsynchronousFileExports() {
                 deliver = std::move(callback);
                 return true;
             }));
-        artifact.setWindowNames({QStringLiteral("Browser"), QStringLiteral("Tab {YYYY}/A")});
+        artifact.setExportContext({QStringLiteral("Browser"), QStringLiteral("Tab {YYYY}/A"),
+                                   QStringLiteral("Display-2")});
         std::optional<ScreenshotExportTaskResult> result;
         const auto complete = [&](ScreenshotExportTaskResult value) { result = std::move(value); };
         require(quick ? artifact.requestQuickSave(&receiver, complete, timestamp)
@@ -1400,19 +1401,19 @@ void windowNamesSurviveAsynchronousFileExports() {
                             complete, {}, timestamp),
                 "window metadata export must be accepted");
         // A pending save owns its names even if its artifact is reused before image delivery.
-        artifact.setWindowNames({QStringLiteral("Changed"), QStringLiteral("Changed")});
+        artifact.setExportContext({QStringLiteral("Changed"), QStringLiteral("Changed")});
         processUntil([&] { return static_cast<bool>(deliver); });
         deliver(testImage());
         processUntil([&] { return result.has_value(); });
         require(result->succeeded() &&
-                    result->savedPath.contains(QStringLiteral("/Browser/2026/")) &&
+                    result->savedPath.contains(QStringLiteral("/Browser/Display-2/2026/")) &&
                     QFileInfo(result->savedPath)
                         .fileName()
                         .startsWith(QStringLiteral("Tab {YYYY}_A_12-34-56")),
                 "automatic and quick saves must keep request metadata and literal title braces");
     }
     ScreenshotExportArtifact clipboard(ScreenshotExportSource::fromImage(testImage()));
-    clipboard.setWindowNames({QStringLiteral("App"), QStringLiteral("Window")});
+    clipboard.setExportContext({QStringLiteral("App"), QStringLiteral("Window")});
     bool copied = false;
     require(clipboard.requestClipboardFile(
                 &receiver, ScreenshotImageFileFormat::Png, QStringLiteral("{AN}_{WN}"), {},
@@ -1426,7 +1427,7 @@ void windowNamesSurviveAsynchronousFileExports() {
                     copied = true;
                 }),
             "clipboard request must be accepted");
-    clipboard.setWindowNames({QStringLiteral("Changed"), QStringLiteral("Changed")});
+    clipboard.setExportContext({QStringLiteral("Changed"), QStringLiteral("Changed")});
     processUntil([&] { return copied; });
     ScreenshotExportArtifact later(ScreenshotExportSource::fromImage(testImage()));
     std::optional<ScreenshotExportTaskResult> result;
@@ -1435,8 +1436,8 @@ void windowNamesSurviveAsynchronousFileExports() {
                 timestamp),
             "an export without live metadata must still save");
     processUntil([&] { return result.has_value(); });
-    require(result->succeeded() &&
-                result->savedPath.endsWith(QStringLiteral("/Unknown/2026/Unknown_12-34-56.png")),
+    require(result->succeeded() && result->savedPath.endsWith(QStringLiteral(
+                                       "/Unknown/Unknown/2026/Unknown_12-34-56.png")),
             "later exports must use Unknown rather than current desktop names");
 }
 

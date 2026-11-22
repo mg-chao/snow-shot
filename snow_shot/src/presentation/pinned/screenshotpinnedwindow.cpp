@@ -7220,7 +7220,7 @@ void ScreenshotPinnedWindow::quickSave() {
         const snow_shot::storage::ScreenshotSettings settings;
         const QDateTime timestamp = QDateTime::currentDateTime();
         saveRecognitionSnapshot(*fileSnapshot,
-                                snow_shot::storage::expandScreenshotExportVariables(
+                                snow_shot::storage::expandScreenshotExportDirectory(
                                     settings.imageSaveDirectory(), timestamp),
                                 ScreenshotImageFileService::suggestedBaseName(
                                     settings.autoSaveFilenameFormat(), timestamp),

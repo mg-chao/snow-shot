@@ -67,18 +67,18 @@ class ScreenshotImageFileService final {
     [[nodiscard]] static QString
     suggestedBaseName(const QString& filenameFormat,
                       const QDateTime& timestamp = QDateTime::currentDateTime(),
-                      const snow_shot::storage::ScreenshotWindowNames& names = {});
+                      const snow_shot::storage::ScreenshotExportContext& names = {});
     [[nodiscard]] static QString dialogFilter(ScreenshotImageFileFormat format);
     [[nodiscard]] static QString saveDialogFilter();
     [[nodiscard]] static QStringList automaticDirectories();
     [[nodiscard]] static QStringList
     automaticDirectories(const QString& configuredDirectory,
                          const QDateTime& timestamp = QDateTime::currentDateTime(),
-                         const snow_shot::storage::ScreenshotWindowNames& names = {});
+                         const snow_shot::storage::ScreenshotExportContext& names = {});
     [[nodiscard]] static QString
     saveDialogDirectory(const QString& lastDirectory, const QString& configuredDirectory,
                         const QDateTime& timestamp = QDateTime::currentDateTime(),
-                        const snow_shot::storage::ScreenshotWindowNames& names = {});
+                        const snow_shot::storage::ScreenshotExportContext& names = {});
     [[nodiscard]] static QString extension(ScreenshotImageFileFormat format);
     [[nodiscard]] static ScreenshotImageFileFormat formatForKey(const QString& key);
     [[nodiscard]] static QString formatKey(ScreenshotImageFileFormat format);
@@ -108,19 +108,19 @@ class ScreenshotImageFileService final {
     saveEncodedBytesAutomatically(const QByteArray& bytes, const QStringList& directories,
                                   ScreenshotImageFileFormat format, const QString& filenameFormat,
                                   const QDateTime& timestamp, std::function<bool()> cancelled = {},
-                                  const snow_shot::storage::ScreenshotWindowNames& names = {},
+                                  const snow_shot::storage::ScreenshotExportContext& names = {},
                                   bool retainFile = false);
     [[nodiscard]] static ScreenshotImageFileSaveResult
     saveEncodedAutomatically(const QString& encodedFile, const QStringList& candidateDirectories,
                              ScreenshotImageFileFormat format, const QString& filenameFormat,
                              const QDateTime& timestamp, std::function<bool()> cancelled = {},
-                             const snow_shot::storage::ScreenshotWindowNames& names = {},
+                             const snow_shot::storage::ScreenshotExportContext& names = {},
                              bool retainFile = false, QByteArray sourceSha256 = {});
     [[nodiscard]] static ScreenshotImageFileSaveResult savePdfAutomatically(
         const screenshot_pdf::Payload& payload, const QStringList& candidateDirectories,
         const QString& filenameFormat, const QDateTime& timestamp, ScreenshotPdfOptions options,
         std::function<bool()> cancelled = {},
-        const snow_shot::storage::ScreenshotWindowNames& names = {}, bool retainFile = false);
+        const snow_shot::storage::ScreenshotExportContext& names = {}, bool retainFile = false);
     [[nodiscard]] static ScreenshotImageFileSaveResult
     write(const snow_shot::storage::PreparedPngImage& png, const QString& path,
           std::function<bool()> cancelled = {}, bool retainFile = false);
@@ -145,20 +145,20 @@ class ScreenshotImageFileService final {
                       ScreenshotImageFileFormat format, const QString& filenameFormat,
                       const QDateTime& timestamp = QDateTime::currentDateTime(),
                       ScreenshotPdfOptions pdf = {}, ScreenshotImageEncodingOptions encoding = {},
-                      const snow_shot::storage::ScreenshotWindowNames& names = {},
+                      const snow_shot::storage::ScreenshotExportContext& names = {},
                       bool retainFile = false);
     [[nodiscard]] static ScreenshotImageFileSaveResult saveAutomatically(
         const ScreenshotImageRowSource& source, const QStringList& candidateDirectories,
         ScreenshotImageFileFormat format, const QString& filenameFormat,
         const QDateTime& timestamp = QDateTime::currentDateTime(), ScreenshotPdfOptions pdf = {},
         ScreenshotImageEncodingOptions encoding = {},
-        const snow_shot::storage::ScreenshotWindowNames& names = {}, bool retainFile = false);
+        const snow_shot::storage::ScreenshotExportContext& names = {}, bool retainFile = false);
     [[nodiscard]] static bool publishFileToClipboard(QClipboard* clipboard, const QString& path);
     [[nodiscard]] static ScreenshotImageFileSaveResult saveAutomatically(
         const snow_shot::storage::PreparedPngImage& png, const QStringList& candidateDirectories,
         const QString& filenameFormat, const QDateTime& timestamp = QDateTime::currentDateTime(),
         std::function<bool()> cancelled = {},
-        const snow_shot::storage::ScreenshotWindowNames& names = {}, bool retainFile = false);
+        const snow_shot::storage::ScreenshotExportContext& names = {}, bool retainFile = false);
 };
 
 #endif // SNOW_SHOT_PRESENTATION_SCREENSHOTIMAGEFILESERVICE_H

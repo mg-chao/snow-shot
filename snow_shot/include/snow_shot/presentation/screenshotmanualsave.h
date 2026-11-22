@@ -46,7 +46,7 @@ struct ScreenshotManualSaveDefaults final {
 
 [[nodiscard]] inline ScreenshotManualSaveDefaults
 screenshotManualSaveDefaults(const QDateTime& timestamp = QDateTime::currentDateTime(),
-                             const snow_shot::storage::ScreenshotWindowNames& names = {}) {
+                             const snow_shot::storage::ScreenshotExportContext& names = {}) {
     const snow_shot::storage::ScreenshotSettings settings;
     const QString directory = ScreenshotImageFileService::saveDialogDirectory(
         settings.lastManualSaveDirectory(), settings.imageSaveDirectory(), timestamp, names);

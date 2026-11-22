@@ -39,7 +39,7 @@ Destination destination(Operation operation) {
     const auto timestamp = QDateTime::currentDateTime();
     const bool quick = operation == Operation::QuickSave;
     return {
-        quick ? storage::expandScreenshotExportVariables(settings.imageSaveDirectory(), timestamp)
+        quick ? storage::expandScreenshotExportDirectory(settings.imageSaveDirectory(), timestamp)
               : ScreenshotImageFileService::saveDialogDirectory(settings.lastManualSaveDirectory(),
                                                                 settings.imageSaveDirectory()),
         ScreenshotImageFileService::suggestedBaseName(quick ? settings.autoSaveFilenameFormat()

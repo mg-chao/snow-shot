@@ -5,7 +5,7 @@
 #include "snow_shot/presentation/directcapturebudget.h"
 #include "snow_shot/presentation/capture/screenshotcapturepolicy.h"
 #include "snow_shot/presentation/screenshotencodingsettings.h"
-#include "snow_shot/presentation/screenshotgeometry.h"
+#include "snow_shot/presentation/screenshotexportnaming.h"
 
 #include "directcapturenative.h"
 #include "snow_shot/platform/screenshotnative.h"
@@ -62,7 +62,12 @@ class DirectCaptureController::Impl {
                                   [](ScreenshotExportArtifact* finished) {
                                       finished->deleteLater();
                                   });
-                              artifact->setWindowNames(request.windowNames);
+                              auto context = request.exportContext;
+                              if (request.nameSourceScreen)
+                                  context.screen = screenshotScreenNameForNativeRegion(
+                                      frame.logicalBounds.isEmpty() ? frame.physicalBounds
+                                                                    : frame.logicalBounds);
+                              artifact->setExportContext(std::move(context));
                           }
                           done(std::move(frame));
                       });
@@ -204,7 +209,8 @@ class DirectCaptureController::Impl {
         auto tasks = ScreenshotExportTasks::capture(storage::ExportTrigger::ScreenshotCopy);
         result.filenameFormat = tasks.options.filenameFormat;
         result.snapshotWindowNames(tasks.directory, monitorCursor);
-        tasks.windowNames = result.windowNames;
+        result.nameSourceScreen =
+            tasks.directory.contains(u"{SCREEN}") || result.filenameFormat.contains(u"{SCREEN}");
         if (tasks.selected) {
             tasks.reportError = [this](QString error) { emit owner.operationFailed(error, true); };
             result.afterCopy = [this, tasks](const DirectCaptureFrame& frame) mutable {
@@ -213,6 +219,7 @@ class DirectCaptureController::Impl {
                         emit owner.pinRequested(image, bounds);
                     };
                 }
+                tasks.exportContext = artifact->exportContext();
                 tasks.run(&owner, artifact, clipboardFile);
             };
         }

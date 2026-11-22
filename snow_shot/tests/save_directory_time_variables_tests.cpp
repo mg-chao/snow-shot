@@ -10,6 +10,7 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QTemporaryDir>
+#include <QStandardPaths>
 #include <QTimeZone>
 
 #include <cstdlib>
@@ -26,10 +27,58 @@ void require(bool condition, const char* message) {
     }
 }
 
+void exportVariables(const QTemporaryDir& temporary) {
+    const QDateTime timestamp(QDate(2026, 11, 22), QTime(12, 34, 56), QTimeZone::UTC);
+    const storage::ScreenshotExportContext context{
+        {}, QStringLiteral("{HOME}"), QStringLiteral("Display-2")};
+    using Path = QStandardPaths;
+    const std::pair<QString, Path::StandardLocation> roots[] = {
+        {QStringLiteral("{HOME}"), Path::HomeLocation},
+        {QStringLiteral("{PICTURES}"), Path::PicturesLocation},
+        {QStringLiteral("{VIDEOS}"), Path::MoviesLocation},
+        {QStringLiteral("{DESKTOP}"), Path::DesktopLocation},
+        {QStringLiteral("{DOCUMENTS}"), Path::DocumentsLocation},
+        {QStringLiteral("{DOWNLOADS}"), Path::DownloadLocation},
+    };
+    for (const auto& [token, location] : roots) {
+        const QString root = Path::writableLocation(location);
+        require(storage::expandScreenshotExportDirectory(token, timestamp) == root,
+                "each root must use its own system location");
+        if (!root.isEmpty())
+            require(storage::expandScreenshotExportDirectory(
+                        token + QStringLiteral("/{YYYY}/{SCREEN}/{WN}"), timestamp, context) ==
+                        QDir(root).filePath(QStringLiteral("2026/Display-2/{HOME}")),
+                    "system paths and capture metadata must expand in one pass");
+        require(storage::expandScreenshotExportVariables(token, timestamp) == token,
+                "a filename cannot inject an absolute path");
+    }
+    const auto plain = temporary.filePath(QStringLiteral("截图/plain-name"));
+    require(storage::expandScreenshotExportDirectory(plain, timestamp).constData() ==
+                    plain.constData() &&
+                storage::expandScreenshotExportVariables(plain, timestamp).constData() ==
+                    plain.constData(),
+            "plain templates must reuse their QString storage");
+    const QString retired = QStringLiteral("{WIDTH}x{HEIGHT}");
+    const QString timeOnly = storage::expandTimeVariables(retired, timestamp);
+    require(storage::expandScreenshotExportVariables(retired, timestamp, context) == timeOnly &&
+                storage::expandScreenshotExportDirectory(retired, timestamp, context) == timeOnly,
+            "retired size placeholders must follow ordinary time-format handling");
+    require(storage::expandScreenshotExportVariables(QStringLiteral("{SCREEN}"), timestamp) ==
+                QStringLiteral("Unknown"),
+            "unavailable metadata has a stable printable fallback");
+    QImage image(32, 19, QImage::Format_RGB32);
+    image.fill(Qt::red);
+    const auto saved = ScreenshotImageFileService::saveAutomatically(
+        image, {temporary.path()}, ScreenshotImageFileFormat::Png, QStringLiteral("{SCREEN}"),
+        timestamp, {}, {}, context);
+    require(saved.succeeded() &&
+                QFileInfo(saved.path).fileName() == QStringLiteral("Display-2.png"),
+            "automatic saves must use the source screen");
+}
 void windowVariables(const QTemporaryDir& temporary) {
     const QDateTime timestamp(QDate(2026, 10, 16), QTime(12, 34, 56), QTimeZone::UTC);
-    const storage::ScreenshotWindowNames names{QStringLiteral("Google Chrome"),
-                                               QStringLiteral("文档: A/B")};
+    const storage::ScreenshotExportContext names{QStringLiteral("Google Chrome"),
+                                                 QStringLiteral("文档: A/B")};
     require(storage::containsScreenshotWindowVariables(QStringLiteral("/{AN}/image")) &&
                 storage::containsScreenshotWindowVariables(QStringLiteral("{WN}")) &&
                 !storage::containsScreenshotWindowVariables(QStringLiteral("{an}-{wn}-{YYYY}")),
@@ -245,7 +294,7 @@ void longWindowNames(const QTemporaryDir& temporary) {
             "bounding directory components must preserve drive and UNC separators");
     int index = 0;
     for (const QString& title : {QString(300, u'x'), QString::fromUtf8("文😀").repeated(100)}) {
-        const storage::ScreenshotWindowNames names{title, title};
+        const storage::ScreenshotExportContext names{title, title};
         const QString directory =
             temporary.filePath(QStringLiteral("long-%1/prefix-{AN}-{WN}-suffix/{WN}").arg(index++));
         const QString filename = QStringLiteral("{AN}_{WN}_{YYYY}");
@@ -304,6 +353,7 @@ int main(int argc, char** argv) {
     require(temporary.isValid() &&
                 appStorage.initialize({temporary.path(), temporary.path(), 60000}).success,
             "isolated settings must initialize");
+    exportVariables(temporary);
     timeDirectories(temporary);
     windowVariables(temporary);
     longWindowNames(temporary);

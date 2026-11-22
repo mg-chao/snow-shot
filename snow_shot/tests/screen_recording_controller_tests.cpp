@@ -244,7 +244,7 @@ int windowNameLookups = 0;
 QPointF windowNameLookupPoint;
 snow_shot::storage::ScreenshotWindowNameFields windowNameLookupFields;
 std::vector<std::uintptr_t> windowNameLookupExclusions;
-snow_shot::storage::ScreenshotWindowNames desktopWindowNames;
+snow_shot::storage::ScreenshotExportContext desktopWindowNames;
 QString recordingOutputPath;
 std::shared_future<void> clipDestroyGate;
 std::atomic<bool> clipDestroyEntered = false;
@@ -3628,7 +3628,7 @@ int nativeEffectsPreviewCapture() {
 } // namespace
 
 namespace snow_shot::platform {
-storage::ScreenshotWindowNames
+storage::ScreenshotExportContext
 screenshotWindowNamesAtPoint(const QPointF& point, std::span<const std::uintptr_t> excludedWindows,
                              storage::ScreenshotWindowNameFields fields) {
     require(QThread::currentThread() == qApp->thread(),

@@ -7,24 +7,106 @@
 #include "snow_shot/storage/configurationschema.h"
 #include "snow_shot/storage/timevariables.h"
 #include "snow_shot/storage/screenshotexportvariables.h"
+#include "theme/theme.h"
+#include "widgets/descriptions.h"
 #include "widgets/radio.h"
 #include "widgets/modal.h"
+#include "widgets/scroll_area.h"
 
 #include <QEvent>
 #include <QFileDialog>
+#include <QFontDatabase>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QLabel>
+#include <QResizeEvent>
 #include <QSignalBlocker>
 #include <QStandardItemModel>
 #include <QStyle>
 #include <QTimer>
+#include <QVBoxLayout>
 
 #include <algorithm>
 #include <type_traits>
 
 namespace snow_shot::presentation::settings {
 namespace fields = components::form_fields;
+
+namespace {
+using adqt::widgets::AdDescriptions;
+
+AdDescriptions* addVariableSection(QVBoxLayout* layout) {
+    auto* section = new AdDescriptions(layout->parentWidget());
+    section->setBordered(true);
+    section->setSize(AdDescriptions::Size::Small);
+    section->setColumn(1);
+    AdDescriptions::ComponentTokens tokens;
+    tokens.metrics.titleMarginBottom = 8;
+    section->setComponentTokens(tokens);
+    section->setSemanticStyleResolver([section](const AdDescriptions::ComponentTokenContext&) {
+        const auto theme = adqt::theme::ThemeManager::instance().resolve(section).theme;
+        AdDescriptions::SemanticStyles styles;
+        QFont code = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+        code.setStyleHint(QFont::Monospace);
+        code.setPixelSize(qRound(theme.metrics.fontSize));
+        styles.label.font = code;
+        styles.label.textColor = theme.palette.colorText;
+        styles.root.backgroundColor = theme.palette.colorBgElevated;
+        QFont heading = theme.appFont;
+        heading.setPixelSize(qRound(theme.metrics.fontSize));
+        heading.setWeight(QFont::DemiBold);
+        styles.title.font = heading;
+        styles.extra.textColor = theme.palette.colorTextSecondary;
+        return styles;
+    });
+    layout->addWidget(section);
+    return section;
+}
+
+class VariableHelpContent final : public QWidget {
+    Q_DECLARE_TR_FUNCTIONS(SettingsVariableHelp)
+
+  public:
+    VariableHelpContent(adqt::widgets::AdScrollArea* scroll, bool directory)
+        : QWidget(scroll->viewport()), m_scroll(scroll) {
+        auto* layout = new QVBoxLayout(this);
+        layout->setContentsMargins(0, 4, 0, 4);
+        layout->setSpacing(20);
+        auto* capture = addVariableSection(layout);
+        capture->addItem(QStringLiteral("{YYYY-MM-DD}"), tr("Date and time"));
+        capture->addItem(QStringLiteral("{AN}"), tr("Application name"));
+        capture->addItem(QStringLiteral("{WN}"), tr("Window name"));
+        capture->addItem(QStringLiteral("{SCREEN}"),
+                         tr("Source display (Display-1, Display-2, or Multi)"));
+        if (directory) {
+            capture->setTitle(tr("Time and source"));
+            auto* folders = addVariableSection(layout);
+            folders->setColumn(2);
+            folders->setTitle(tr("System folders"));
+            folders->setExtra(tr("Path prefix only"));
+            folders->addItem(QStringLiteral("{HOME}"), tr("Home"));
+            folders->addItem(QStringLiteral("{DESKTOP}"), tr("Desktop"));
+            folders->addItem(QStringLiteral("{PICTURES}"), tr("Pictures"));
+            folders->addItem(QStringLiteral("{DOCUMENTS}"), tr("Documents"));
+            folders->addItem(QStringLiteral("{VIDEOS}"), tr("Videos"));
+            folders->addItem(QStringLiteral("{DOWNLOADS}"), tr("Downloads"));
+            const int twoColumnWidth = folders->minimumSizeHint().width();
+            folders->setResponsiveColumns({{0, 1}, {twoColumnWidth, 2}});
+        }
+    }
+
+  protected:
+    void resizeEvent(QResizeEvent* event) override {
+        QWidget::resizeEvent(event);
+        // AdScrollArea fits its content to the viewport width. Cap the viewport at that
+        // natural height so short references do not leave empty space above the footer.
+        m_scroll->setMaximumHeight(event->size().height());
+    }
+
+  private:
+    adqt::widgets::AdScrollArea* m_scroll;
+};
+} // namespace
 
 struct SettingsFormField::Impl {
     Impl(SettingsFormField& owner, const SettingsFieldDescriptor& fieldDescriptor,
@@ -227,7 +309,7 @@ struct SettingsFormField::Impl {
                                                         ScreenshotImageDirectory ||
                                          payload.binding == SettingsDirectoryPathBinding::
                                                                 ScreenRecordingVideoDirectory
-                                     ? storage::expandScreenshotExportVariables(
+                                     ? storage::expandScreenshotExportDirectory(
                                            current, QDateTime::currentDateTime())
                                      : storage::expandTimeVariables(current,
                                                                     QDateTime::currentDateTime())));
@@ -309,28 +391,14 @@ struct SettingsFormField::Impl {
         variableModal->setWindowTitle(
             QCoreApplication::translate("SettingsVariableHelp", "Variable description"));
         variableModal->setAcceptText(QCoreApplication::translate("SettingsVariableHelp", "OK"));
-        QString text = QCoreApplication::translate("SettingsVariableHelp", "%1: Current time")
-                           .arg(QStringLiteral("{YYYY}"));
-        const auto* directory =
-            std::get_if<SettingsDirectoryPathDefinition>(&descriptor.definition->payload);
-        const auto* filename = std::get_if<SettingsTextDefinition>(&descriptor.definition->payload);
-        const bool windowVariables =
-            (directory &&
-             (directory->binding == SettingsDirectoryPathBinding::ScreenshotImageDirectory ||
-              directory->binding == SettingsDirectoryPathBinding::ScreenRecordingVideoDirectory)) ||
-            (filename &&
-             (filename->binding == SettingsTextBinding::ScreenshotManualFilenameFormat ||
-              filename->binding == SettingsTextBinding::ScreenshotAutoFilenameFormat ||
-              filename->binding == SettingsTextBinding::ScreenRecordingVideoFilenameFormat));
-        if (windowVariables) {
-            text += QLatin1Char('\n') +
-                    QCoreApplication::translate("SettingsVariableHelp", "%1: Application name")
-                        .arg(QStringLiteral("{AN}"));
-            text += QLatin1Char('\n') +
-                    QCoreApplication::translate("SettingsVariableHelp", "%1: Window name")
-                        .arg(QStringLiteral("{WN}"));
-        }
-        variableModal->setText(text);
+        auto* scroll = new adqt::widgets::AdScrollArea;
+        auto* body =
+            new VariableHelpContent(scroll, std::holds_alternative<SettingsDirectoryPathDefinition>(
+                                                descriptor.definition->payload));
+        scroll->setContentWidget(body);
+        scroll->viewport()->setAutoFillBackground(false);
+        body->setAutoFillBackground(false);
+        variableModal->setContentWidget(scroll);
     }
 
     void showVariableDescription() {
@@ -342,7 +410,7 @@ struct SettingsFormField::Impl {
         modal->setMode(adqt::widgets::AdModal::Mode::Overlay);
         modal->setOwnerWindow(field->viewWidget()->window());
         modal->setCentered(true);
-        modal->setPreferredWidth(480);
+        modal->setPreferredWidth(520);
         modal->setPreset(adqt::widgets::AdModal::Preset::Plain);
         modal->setStandardButtons(adqt::widgets::AdModal::StandardButton::Ok);
         QObject::connect(modal, &adqt::widgets::AdModal::finished, &q,

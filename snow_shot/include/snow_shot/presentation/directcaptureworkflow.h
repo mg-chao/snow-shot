@@ -52,7 +52,8 @@ struct DirectCaptureRequest {
     std::function<bool(QSize)> admitRaster;
     QString hiDpiImageScaling = QStringLiteral("disabled");
     QVector<ScreenshotHiDpiDisplay> scalingDisplays;
-    storage::ScreenshotWindowNames windowNames;
+    storage::ScreenshotExportContext exportContext;
+    bool nameSourceScreen = false;
 
     void snapshotWindowNames(const QString& directory, const QPointF& monitorCursor);
 };

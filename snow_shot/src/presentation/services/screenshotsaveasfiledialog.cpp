@@ -69,9 +69,10 @@ class SaveContent final : public ImageExportEditor {
                 ScreenshotSaveAsFileDialog::BeforeWrite beforeWrite, bool retainFile,
                 const QDateTime& timestamp = QDateTime::currentDateTime())
         : ImageExportEditor(
-              ScreenshotSaveDialogState::initial({}, timestamp, artifact->windowNames()), true),
+              ScreenshotSaveDialogState::initial({}, timestamp, artifact->exportContext()), true),
           m_modal(modal), m_saved(std::move(saved)), m_beforeWrite(std::move(beforeWrite)),
-          m_retainFile(retainFile), m_windowNames(artifact->windowNames()), m_timestamp(timestamp) {
+          m_retainFile(retainFile), m_exportContext(artifact->exportContext()),
+          m_timestamp(timestamp) {
         m_artifact = std::move(artifact);
         setObjectName(QStringLiteral("saveDialogContent"));
         setMinimumHeight(240);
@@ -391,9 +392,9 @@ class SaveContent final : public ImageExportEditor {
             m_shortcutsLayout->addWidget(group);
         };
         add(tr("App directory"),
-            snow_shot::storage::expandScreenshotExportVariables(
+            snow_shot::storage::expandScreenshotExportDirectory(
                 snow_shot::storage::ScreenshotSettings().imageSaveDirectory(), m_timestamp,
-                m_windowNames),
+                m_exportContext),
             -2);
         add(tr("Desktop"), QStandardPaths::writableLocation(QStandardPaths::DesktopLocation), -1);
         for (int index = 0; index < m_shortcuts.size(); ++index)
@@ -629,7 +630,7 @@ class SaveContent final : public ImageExportEditor {
     QString m_lastSavedPath;
     ScreenshotSaveFooter* m_footer = nullptr;
     ScreenshotSaveResult* m_result = nullptr;
-    const snow_shot::storage::ScreenshotWindowNames m_windowNames;
+    const snow_shot::storage::ScreenshotExportContext m_exportContext;
     const QDateTime m_timestamp;
     QString m_savePath;
     ScreenshotExportJobHandle m_saveJob;
@@ -670,11 +671,11 @@ class SaveContent final : public ImageExportEditor {
 
 ScreenshotSaveDialogState
 ScreenshotSaveDialogState::initial(QSize size, const QDateTime& timestamp,
-                                   const snow_shot::storage::ScreenshotWindowNames& names) {
+                                   const snow_shot::storage::ScreenshotExportContext& names) {
     ScreenshotSaveDialogState result;
     const snow_shot::storage::ScreenshotSettings settings;
     const QFileInfo remembered(settings.lastManualSaveDirectory());
-    const QString configured = snow_shot::storage::expandScreenshotExportVariables(
+    const QString configured = snow_shot::storage::expandScreenshotExportDirectory(
         settings.imageSaveDirectory(), timestamp, names);
     if (remembered.isDir() && remembered.isReadable() && remembered.isWritable())
         result.directory = remembered.absoluteFilePath();

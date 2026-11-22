@@ -5452,24 +5452,64 @@
     <context>
         <name>SettingsVariableHelp</name>
         <message>
-            <source>%1: Application name</source>
-            <translation>%1：應用程式名稱</translation>
+            <source>Application name</source>
+            <translation>應用程式名稱</translation>
         </message>
         <message>
-            <source>%1: Current time</source>
-            <translation>%1：目前時間</translation>
+            <source>Date and time</source>
+            <translation>日期和時間</translation>
         </message>
         <message>
-            <source>%1: Window name</source>
-            <translation>%1：視窗名稱</translation>
+            <source>Desktop</source>
+            <translation>桌面</translation>
+        </message>
+        <message>
+            <source>Documents</source>
+            <translation>文件</translation>
+        </message>
+        <message>
+            <source>Downloads</source>
+            <translation>下載</translation>
+        </message>
+        <message>
+            <source>Home</source>
+            <translation>個人目錄</translation>
         </message>
         <message>
             <source>OK</source>
             <translation>確定</translation>
         </message>
         <message>
+            <source>Path prefix only</source>
+            <translation>僅用於路徑開頭</translation>
+        </message>
+        <message>
+            <source>Pictures</source>
+            <translation>圖片</translation>
+        </message>
+        <message>
+            <source>Source display (Display-1, Display-2, or Multi)</source>
+            <translation>來源顯示器（Display-1、Display-2 或 Multi）</translation>
+        </message>
+        <message>
+            <source>System folders</source>
+            <translation>系統目錄</translation>
+        </message>
+        <message>
+            <source>Time and source</source>
+            <translation>時間與來源</translation>
+        </message>
+        <message>
             <source>Variable description</source>
             <translation>變數說明</translation>
+        </message>
+        <message>
+            <source>Videos</source>
+            <translation>影片</translation>
+        </message>
+        <message>
+            <source>Window name</source>
+            <translation>視窗名稱</translation>
         </message>
     </context>
     <context>

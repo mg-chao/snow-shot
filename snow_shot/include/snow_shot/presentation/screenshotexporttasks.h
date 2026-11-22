@@ -21,7 +21,7 @@ struct ScreenshotExportTasks {
     ScreenshotCloudUploadOptions options;
     QString directory;
     QDateTime requestedAt;
-    snow_shot::storage::ScreenshotWindowNames windowNames;
+    snow_shot::storage::ScreenshotExportContext exportContext;
     bool clipboardFile = false;
     ScreenshotClipboardService::PublicationId clipboardPublication = 0;
     std::optional<snow_shot::CloudUploadConfiguration> cloud;

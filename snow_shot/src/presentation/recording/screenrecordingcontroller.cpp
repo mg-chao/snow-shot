@@ -31,7 +31,7 @@
 #include "snow_shot/presentation/components/screenrecordingsettingsdialog.h"
 #include "widgets/modal.h"
 #include "snow_shot/presentation/screenshotimagefileservice.h"
-#include "snow_shot/presentation/screenshotgeometry.h"
+#include "snow_shot/presentation/screenshotexportnaming.h"
 #include "snow_shot/presentation/screenrecordingareawindow.h"
 #include "snow_shot/presentation/screenrecordingtoolbarwindow.h"
 #include "snow_shot/presentation/screenshotcanvastoolstyles.h"
@@ -1404,7 +1404,7 @@ struct ScreenRecordingController::Impl {
         // Earlier retained sources remain on disk; earlier exports cease being
         // eligible for this recording's Copy action.
         retainedSourcePath.clear();
-        sessionWindowNames = {};
+        sessionExportContext = {};
         finalizedOutputPath.clear();
         finalizedDurationMilliseconds = 0;
         automationError.clear();
@@ -1676,13 +1676,11 @@ struct ScreenRecordingController::Impl {
                          std::chrono::duration<double>(3.0 / config.capture_fps)));
             sessionLoopAnimatedImages = config.loop_animated_images != 0;
             const QDateTime outputTimestamp = QDateTime::currentDateTime();
-            sessionWindowNames =
-                exportWindowNames(settings.videoSaveDirectory(), settings.videoFilenameFormat());
-            const QString baseName = snow_shot::storage::expandScreenshotExportVariables(
-                settings.videoFilenameFormat(), outputTimestamp, sessionWindowNames);
-            const QStringList directories =
-                snow_shot::presentation::recording::screenRecordingDirectories(outputTimestamp,
-                                                                               sessionWindowNames);
+            const QString directoryTemplate = settings.videoSaveDirectory();
+            const QString filenameTemplate = settings.videoFilenameFormat();
+            sessionExportContext = captureExportContext(directoryTemplate, filenameTemplate);
+            if (directoryTemplate.contains(u"{SCREEN}") || filenameTemplate.contains(u"{SCREEN}"))
+                sessionExportContext.screen = screenshotScreenNameForNativeRegion(captureRegion);
             const QString extension = sessionOutputSettings.extension;
             const bool keyboard = showKeyboard || recordMouseClicks || recordMouseScrolling;
             const QString requestedPath =
@@ -1695,7 +1693,8 @@ struct ScreenRecordingController::Impl {
             startFuture = std::async(
                 std::launch::async,
                 snow_shot::runtime::trackRuntimeWork(
-                    [config, excludedWindowIds, directories, baseName, extension, keyboard,
+                    [config, excludedWindowIds, directoryTemplate, filenameTemplate,
+                     outputTimestamp, context = sessionExportContext, extension, keyboard,
                      keyboardFont, requestedPath, previewRetirement, deferred = sessionDeferred,
                      overlay, barColor, recovery = startupRecovery, webcamLease = webcam,
                      areaHistory = pendingAreaHistory]() mutable -> StartAttemptResult {
@@ -1706,11 +1705,18 @@ struct ScreenRecordingController::Impl {
                         StartAttemptResult result;
                         result.session.get_deleter().activity =
                             snow_shot::runtime::RuntimeActivityTracker::shared().acquire();
-                        result.outputPath =
-                            requestedPath.isEmpty()
-                                ? snow_shot::presentation::recording::screenRecordingOutputPath(
-                                      directories, baseName, extension)
-                                : requestedPath;
+                        result.outputPath = requestedPath;
+                        if (result.outputPath.isEmpty()) {
+                            const auto directories =
+                                snow_shot::presentation::recording::screenRecordingDirectories(
+                                    directoryTemplate, outputTimestamp, context);
+                            const auto baseName =
+                                snow_shot::storage::expandScreenshotExportVariables(
+                                    filenameTemplate, outputTimestamp, context);
+                            result.outputPath =
+                                snow_shot::presentation::recording::screenRecordingOutputPath(
+                                    directories, baseName, extension);
+                        }
                         // The recording exporter owns its private staging file and
                         // publishes only after finalization. Reserving the destination
                         // here would make that publication reject our own empty file.
@@ -1983,7 +1989,7 @@ struct ScreenRecordingController::Impl {
                                                        settings.useHardwareEncoder ? 1u : 0u,
                                                        sessionLoopAnimatedImages ? 1u : 0u};
                 trimSession->open(sourcePath, pendingOutputPath, options, sessionDeferred,
-                                  trimSaveWhenReady, sessionWindowNames);
+                                  trimSaveWhenReady, sessionExportContext);
             }
             return;
         }
@@ -2093,7 +2099,7 @@ struct ScreenRecordingController::Impl {
 
     void openFolder() {
         static_cast<void>(
-            snow_shot::presentation::recording::openScreenRecordingFolder(sessionWindowNames));
+            snow_shot::presentation::recording::openScreenRecordingFolder(sessionExportContext));
     }
 
     void offerRecovery() {
@@ -2177,8 +2183,8 @@ struct ScreenRecordingController::Impl {
         notice->open();
     }
 
-    snow_shot::storage::ScreenshotWindowNames exportWindowNames(const QString& directory,
-                                                                const QString& filename) const {
+    snow_shot::storage::ScreenshotExportContext
+    captureExportContext(const QString& directory, const QString& filename) const {
         const auto fields = snow_shot::storage::screenshotWindowNameFields(directory, filename);
         if (!fields.any())
             return {};
@@ -3079,7 +3085,7 @@ struct ScreenRecordingController::Impl {
         ScreenshotToolPalette::RecordingSessionStatus::idle();
     qint64 durationMilliseconds = 0;
     QString pendingOutputPath;
-    snow_shot::storage::ScreenshotWindowNames sessionWindowNames;
+    snow_shot::storage::ScreenshotExportContext sessionExportContext;
     bool webcamEnabled = false;
     bool followMouse = false;
     bool followMouseSmoothMovement = true;

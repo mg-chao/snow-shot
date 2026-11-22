@@ -222,8 +222,8 @@ class ScreenshotExportArtifact final : public QObject {
     ScreenshotExportArtifact& operator=(const ScreenshotExportArtifact&) = delete;
 
     // Set before starting a live capture export; never persisted with image content.
-    void setWindowNames(snow_shot::storage::ScreenshotWindowNames names);
-    [[nodiscard]] snow_shot::storage::ScreenshotWindowNames windowNames() const;
+    void setExportContext(snow_shot::storage::ScreenshotExportContext names);
+    [[nodiscard]] snow_shot::storage::ScreenshotExportContext exportContext() const;
 
     [[nodiscard]] bool requestImage(QObject* receiver, ImageCallback callback);
     using RowSourceCallback = std::function<void(ScreenshotImageRowSource, QString)>;

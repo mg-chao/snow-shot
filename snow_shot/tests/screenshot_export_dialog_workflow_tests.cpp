@@ -1770,8 +1770,8 @@ void windowNameDefaultsAndShortcut(QWidget& owner, const QTemporaryDir& temp) {
     require(settings.setImageSaveDirectory(pattern) && settings.setLastManualSaveDirectory({}) &&
                 settings.setManualSaveFilenameFormat(QStringLiteral("{WN}_{YYYY}")),
             "window dialog templates must persist");
-    const storage::ScreenshotWindowNames names{QStringLiteral("Browser"),
-                                               QStringLiteral("Title {AN}/文档")};
+    const storage::ScreenshotExportContext names{QStringLiteral("Browser"),
+                                                 QStringLiteral("Title {AN}/文档")};
     const QDateTime timestamp =
         QDateTime::fromString(QStringLiteral("2026-10-16T12:34:56"), Qt::ISODate);
     const auto state = ScreenshotSaveDialogState::initial(QSize(160, 100), timestamp, names);
@@ -1780,7 +1780,7 @@ void windowNameDefaultsAndShortcut(QWidget& owner, const QTemporaryDir& temp) {
             "custom dialog defaults must expand both variables once");
     auto artifact =
         std::make_shared<ScreenshotExportArtifact>(ScreenshotExportSource::fromImage(fixture()));
-    artifact->setWindowNames(names);
+    artifact->setExportContext(names);
     require(ScreenshotSaveAsFileDialog::open(&owner, &owner, artifact),
             "window-name dialog must open");
     auto* modal = owner.findChild<AdModal*>(QStringLiteral("screenshotSaveAsFileModal"));
@@ -1843,7 +1843,7 @@ void dottedWindowNameDefaultsAndSaves(QWidget& owner, const QTemporaryDir& temp)
             "set a filename template whose title ends in an image extension");
     auto artifact =
         std::make_shared<ScreenshotExportArtifact>(ScreenshotExportSource::fromImage(fixture()));
-    artifact->setWindowNames({{}, QStringLiteral("image.png")});
+    artifact->setExportContext({{}, QStringLiteral("image.png")});
     QString savedPath;
     require(ScreenshotSaveAsFileDialog::open(&owner, &owner, artifact,
                                              [&](const QString& path) { savedPath = path; }),
