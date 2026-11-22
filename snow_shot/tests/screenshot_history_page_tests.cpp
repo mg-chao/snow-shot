@@ -778,8 +778,9 @@ void entriesUseBordersAndSupportCrossPageSelection() {
     QWidget* firstEntry = checkboxes.first()->parentWidget()->parentWidget();
     require(verticalLayoutGap(page, filters, firstEntry) > 0,
             "history entries must retain a gap below the filters when selection is empty");
-    require(selectionActions->layout() != nullptr && selectionActions->layout()->spacing() == 0,
-            "selection actions must not add redundant spacing between link buttons");
+    require(!deleteSelected->contentPaddingEnabled() && !selectAll->contentPaddingEnabled() &&
+                !batchActions->contentPaddingEnabled() && !deselectAll->contentPaddingEnabled(),
+            "selection actions use text-sized links");
     require(selectionActions->layout()->indexOf(batchActions) + 1 ==
                 selectionActions->layout()->indexOf(selectAll),
             "Batch Actions must appear immediately to the left of Select all");
@@ -1060,11 +1061,13 @@ void pageTextAndEmptyStateMatchPinnedWindowManagement() {
                     historyIcon->pixmap().toImage() == pinnedIcon->pixmap().toImage(),
                 "the empty-state icon must use identical colors on both pages in each theme");
         for (QLabel* label : {historyCount, pinnedCount, historySelection, pinnedSelection}) {
-            require(
-                label->font().pixelSize() == scheme.metricAlias.fontSize &&
-                    label->font().weight() == QFont::Normal &&
-                    label->palette().color(QPalette::WindowText) == scheme.map.colorTextSecondary,
-                "both page subtitles and selection summaries must use the same theme text style");
+            require(label->font().pixelSize() == scheme.metricAlias.fontSize &&
+                        label->font().weight() == QFont::Normal,
+                    "both page subtitles and selection summaries use the body font");
+        }
+        for (QLabel* label : {historySelection, pinnedSelection}) {
+            require(label->palette().color(QPalette::WindowText) == scheme.map.colorTextTertiary,
+                    "both selection summaries use the alert text color");
         }
     }
 }

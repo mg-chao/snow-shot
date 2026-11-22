@@ -106,6 +106,7 @@ void configureSelectionAction(adqt::widgets::AdButton* button, bool destructive)
     button->setButtonStyle(adqt::widgets::AdButton::ButtonStyle::Link);
     button->setAccentRole(destructive ? adqt::widgets::AdButton::AccentRole::Danger
                                       : adqt::widgets::AdButton::AccentRole::Primary);
+    button->setContentPaddingEnabled(false);
 }
 
 void configureDeleteConfirmation(adqt::widgets::AdPopconfirm* confirmation) {
@@ -128,10 +129,11 @@ void applyTextTheme(const TextControls& controls, const styles::ThemeColorScheme
 
     setColor(controls.title, scheme.map.colorText);
     setFont(controls.title, scheme.metricAlias.fontSizeHeading4, QFont::DemiBold);
-    for (QLabel* label : {controls.count, controls.selectionSummary}) {
-        setColor(label, scheme.map.colorTextSecondary);
-        setFont(label, scheme.metricAlias.fontSize, QFont::Normal);
-    }
+    setColor(controls.count, scheme.map.colorTextSecondary);
+    setFont(controls.count, scheme.metricAlias.fontSize, QFont::Normal);
+    setColor(controls.selectionSummary, scheme.map.colorTextTertiary);
+    setFont(controls.selectionSummary, scheme.metricAlias.fontSize, QFont::Normal);
+    controls.selectionSummary->setMinimumHeight(scheme.metricMap.font.fontHeight);
     setColor(controls.emptyTitle, scheme.map.colorText);
     setFont(controls.emptyTitle, scheme.metricAlias.fontSizeLG, QFont::DemiBold);
     setColor(controls.emptyDescription, scheme.map.colorTextSecondary);
