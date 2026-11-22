@@ -4,9 +4,11 @@
 #include "snow_shot/presentation/screenshotpdfexport.h"
 #include "snow_shot/presentation/screenshotimagefileservice.h"
 #include "snow_shot/presentation/screenshothidpiimagescaling.h"
+#include "snow_shot/storage/screenshotexportvariables.h"
 #include <QDateTime>
 #include <QImage>
 #include <QObject>
+#include <QPointF>
 #include <QRect>
 #include <QSize>
 #include <QStringList>
@@ -50,6 +52,9 @@ struct DirectCaptureRequest {
     std::function<bool(QSize)> admitRaster;
     QString hiDpiImageScaling = QStringLiteral("disabled");
     QVector<ScreenshotHiDpiDisplay> scalingDisplays;
+    storage::ScreenshotWindowNames windowNames;
+
+    void snapshotWindowNames(const QString& directory, const QPointF& monitorCursor);
 };
 
 struct DirectCaptureFrame {

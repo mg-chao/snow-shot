@@ -62,6 +62,7 @@ class DirectCaptureController::Impl {
                                   [](ScreenshotExportArtifact* finished) {
                                       finished->deleteLater();
                                   });
+                              artifact->setWindowNames(request.windowNames);
                           }
                           done(std::move(frame));
                       });
@@ -191,11 +192,9 @@ class DirectCaptureController::Impl {
                    : artifact->requestClipboard(&owner, prepared);
     }
 
-    DirectCaptureRequest request(DirectCaptureTarget target) {
+    void enqueue(DirectCaptureRequest result, const QPointF& monitorCursor = {}) {
         const storage::ScreenshotSettings settings;
-        DirectCaptureRequest result;
-        result.target = target;
-        if (target == DirectCaptureTarget::CurrentMonitor) {
+        if (result.target == DirectCaptureTarget::CurrentMonitor) {
             result.captureBackend = capture::nativeBackendForNormalScreenshot(
                 capture::screenshotApiModeFromValue(settings.apiMode().toLatin1().constData()));
         }
@@ -203,6 +202,9 @@ class DirectCaptureController::Impl {
         result.restoreOriginalScreenColors = settings.restoreOriginalScreenColors();
         result.requestedAt = QDateTime::currentDateTime();
         auto tasks = ScreenshotExportTasks::capture(storage::ExportTrigger::ScreenshotCopy);
+        result.filenameFormat = tasks.options.filenameFormat;
+        result.snapshotWindowNames(tasks.directory, monitorCursor);
+        tasks.windowNames = result.windowNames;
         if (tasks.selected) {
             tasks.reportError = [this](QString error) { emit owner.operationFailed(error, true); };
             result.afterCopy = [this, tasks](const DirectCaptureFrame& frame) mutable {
@@ -225,7 +227,6 @@ class DirectCaptureController::Impl {
                 .value(QStringLiteral("capture_history/compression_level"))
                 .toString());
         result.pdf.pageSize = screenshot_pdf::pageSizeForKey(settings.pdfPageSize());
-        result.filenameFormat = settings.autoSaveFilenameFormat();
         result.hiDpiImageScaling = settings.hiDpiImageScaling();
         if (result.hiDpiImageScaling == QStringLiteral("auto")) {
             for (QScreen* screen : QGuiApplication::screens()) {
@@ -234,7 +235,7 @@ class DirectCaptureController::Impl {
                     {QRectF(display.canvasRect), screen->devicePixelRatio()});
             }
         }
-        return result;
+        workflow.enqueue(std::move(result));
     }
 
     void shutdown() {
@@ -279,7 +280,8 @@ bool DirectCaptureController::blocksApplicationUpdate() const {
 }
 
 void DirectCaptureController::captureFocusedWindow() {
-    auto request = m_impl->request(DirectCaptureTarget::FocusedWindow);
+    DirectCaptureRequest request;
+    request.target = DirectCaptureTarget::FocusedWindow;
 #if defined(Q_OS_WIN)
     HWND target = GetForegroundWindow();
     if (target != nullptr) {
@@ -290,11 +292,12 @@ void DirectCaptureController::captureFocusedWindow() {
 #ifdef Q_OS_MACOS
     request.window = platform::screenshotFocusedWindow();
 #endif
-    m_impl->workflow.enqueue(std::move(request));
+    m_impl->enqueue(std::move(request));
 }
 
 void DirectCaptureController::captureCurrentMonitor() {
-    auto request = m_impl->request(DirectCaptureTarget::CurrentMonitor);
+    DirectCaptureRequest request;
+    QPointF monitorCursor;
 #if defined(Q_OS_WIN)
     POINT cursor{};
     MONITORINFOEXW info{};
@@ -302,14 +305,15 @@ void DirectCaptureController::captureCurrentMonitor() {
     if (GetCursorPos(&cursor) && GetMonitorInfoW(MonitorFromPoint(cursor, MONITOR_DEFAULTTONULL),
                                                  reinterpret_cast<MONITORINFO*>(&info))) {
         request.monitorName = QString::fromWCharArray(info.szDevice);
+        monitorCursor = QPointF(cursor.x, cursor.y);
     }
 #endif
 #ifdef Q_OS_MACOS
-    const quint32 id = platform::screenshotDisplayAtCursor();
+    const quint32 id = platform::screenshotDisplayAtCursor(&monitorCursor);
     if (id)
         request.monitorName = QStringLiteral("display:%1").arg(id);
 #endif
-    m_impl->workflow.enqueue(std::move(request));
+    m_impl->enqueue(std::move(request), monitorCursor);
 }
 
 bool DirectCaptureController::mcpCapture(

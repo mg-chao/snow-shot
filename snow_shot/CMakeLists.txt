@@ -4357,6 +4357,7 @@ if(SNOW_SHOT_BUILD_TESTS)
         "${CMAKE_CURRENT_SOURCE_DIR}/include")
     target_link_libraries(snow-shot-direct-capture-workflow-tests PRIVATE
         snow_shot_image_codec
+        snow_shot_storage
         Qt6::Gui
     )
     add_test(NAME snow-shot-direct-capture-workflow-tests

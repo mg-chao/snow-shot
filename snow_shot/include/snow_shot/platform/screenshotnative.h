@@ -26,7 +26,7 @@ void configureScreenshotToolbarWindow(QWidget* widget);
 // Desktop tools receive content drags; an explicitly visible capture tool must
 // temporarily stay above its capture overlay instead.
 void configureFloatingToolbarWindow(QWidget* widget, bool captureActive = false);
-quint32 screenshotDisplayAtCursor();
+quint32 screenshotDisplayAtCursor(QPointF* cursor = nullptr);
 quint32 screenshotFocusedWindow();
 QRectF screenshotFocusedWindowBounds();
 bool screenshotScrollPermission();

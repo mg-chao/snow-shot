@@ -765,12 +765,14 @@ void configureFloatingToolbarWindow(QWidget* widget, bool captureActive) {
                                           : CaptureFamily::DesktopToolbar);
 }
 
-quint32 screenshotDisplayAtCursor() {
+quint32 screenshotDisplayAtCursor(QPointF* cursor) {
     CGEventRef event = CGEventCreate(nullptr);
     if (!event)
         return 0;
     const CGPoint point = CGEventGetLocation(event);
     CFRelease(event);
+    if (cursor)
+        *cursor = QPointF(point.x, point.y);
     CGDirectDisplayID display = 0;
     uint32_t count = 0;
     return CGGetDisplaysWithPoint(point, 1, &display, &count) == kCGErrorSuccess && count ? display
