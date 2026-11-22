@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/directcaptureworkflow.h"
+#include "snow_shot/platform/screenshotwindownames.h"
 
 #include <QCoreApplication>
 #include <QPointer>
@@ -13,6 +14,18 @@ QString queueError() {
                                        "The capture operation could not be queued");
 }
 } // namespace
+
+void DirectCaptureRequest::snapshotWindowNames(const QString& directory,
+                                               const QPointF& monitorCursor) {
+    windowNames = {};
+    const auto fields = storage::screenshotWindowNameFields(directory, filenameFormat);
+    if (!fields.any())
+        return;
+    if (target == DirectCaptureTarget::FocusedWindow && window != 0)
+        windowNames = platform::screenshotWindowNamesForWindow(window, fields);
+    else if (target == DirectCaptureTarget::CurrentMonitor && !monitorName.isEmpty())
+        windowNames = platform::screenshotWindowNamesAtPoint(monitorCursor, {}, fields);
+}
 
 DirectCaptureWorkflow::DirectCaptureWorkflow(DirectCapturePorts ports, QObject* parent)
     : QObject(parent), m_ports(std::move(ports)) {}

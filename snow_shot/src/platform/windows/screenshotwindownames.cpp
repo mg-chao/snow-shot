@@ -60,6 +60,33 @@ QString applicationName(DWORD pid) {
 
 namespace snow_shot::platform {
 storage::ScreenshotWindowNames
+screenshotWindowNamesForWindow(std::uintptr_t windowId,
+                               storage::ScreenshotWindowNameFields fields) {
+#ifdef Q_OS_WIN
+    if (windowId == 0 || !fields.any())
+        return {};
+    const auto window = reinterpret_cast<HWND>(windowId);
+    return detail::readScreenshotWindowNames(
+        fields,
+        [window] {
+            DWORD pid = 0;
+            GetWindowThreadProcessId(window, &pid);
+            return applicationName(pid);
+        },
+        [window] {
+            // GetWindowText reads another process's caption without messaging its UI thread.
+            std::vector<wchar_t> title(static_cast<size_t>(GetWindowTextLengthW(window)) + 1);
+            const int length = GetWindowTextW(window, title.data(), static_cast<int>(title.size()));
+            return QString::fromWCharArray(title.data(), length);
+        });
+#else
+    Q_UNUSED(windowId);
+    Q_UNUSED(fields);
+    return {};
+#endif
+}
+
+storage::ScreenshotWindowNames
 screenshotWindowNamesAtPoint(const QPointF& point, std::span<const std::uintptr_t> excludedWindows,
                              storage::ScreenshotWindowNameFields fields) {
     if (!fields.any())
@@ -86,20 +113,7 @@ screenshotWindowNamesAtPoint(const QPointF& point, std::span<const std::uintptr_
         if (SUCCEEDED(DwmGetWindowAttribute(window, DWMWA_CLOAKED, &cloaked, sizeof(cloaked))) &&
             cloaked)
             continue;
-        return detail::readScreenshotWindowNames(
-            fields,
-            [window] {
-                DWORD pid = 0;
-                GetWindowThreadProcessId(window, &pid);
-                return applicationName(pid);
-            },
-            [window] {
-                // GetWindowText reads another process's caption without messaging its UI thread.
-                std::vector<wchar_t> title(static_cast<size_t>(GetWindowTextLengthW(window)) + 1);
-                const int length =
-                    GetWindowTextW(window, title.data(), static_cast<int>(title.size()));
-                return QString::fromWCharArray(title.data(), length);
-            });
+        return screenshotWindowNamesForWindow(id, fields);
     }
 #else
     Q_UNUSED(point);

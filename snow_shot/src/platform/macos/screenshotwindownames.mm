@@ -9,9 +9,17 @@ screenshotWindowNamesAtPoint(const QPointF& point, std::span<const std::uintptr_
                              storage::ScreenshotWindowNameFields fields) {
     if (!fields.any() || QGuiApplication::platformName() != QStringLiteral("cocoa"))
         return {};
-    const CGWindowID hit = detail::selectorWindowAtDesktopPoint(point, excludedWindows);
-    if (!hit)
+    return screenshotWindowNamesForWindow(
+        detail::selectorWindowAtDesktopPoint(point, excludedWindows), fields);
+}
+
+storage::ScreenshotWindowNames
+screenshotWindowNamesForWindow(std::uintptr_t windowId,
+                               storage::ScreenshotWindowNameFields fields) {
+    if (windowId == 0 || !fields.any() ||
+        QGuiApplication::platformName() != QStringLiteral("cocoa"))
         return {};
+    const auto hit = static_cast<CGWindowID>(windowId);
     CFArrayRef windows = CGWindowListCopyWindowInfo(kCGWindowListOptionIncludingWindow, hit);
     const auto target = detail::recaptureWindowTarget(windows, hit);
     storage::ScreenshotWindowNames result;

@@ -110,6 +110,8 @@ int main(int argc, char** argv) {
     require(snow_shot::platform::screenshotWindowNamesAtPoint(point, {}, both).windowName ==
                 overlay.windowTitle(),
             "the frontmost window must own the target point");
+    require(snow_shot::platform::screenshotWindowNamesForWindow(nativeId(target), both) == original,
+            "focused capture must read the specified window even when another window covers it");
     const std::uintptr_t excluded[] = {nativeId(overlay)};
     require(snow_shot::platform::screenshotWindowNamesAtPoint(point, excluded, both) == original,
             "excluding a capture overlay must reveal the same underlying window");
