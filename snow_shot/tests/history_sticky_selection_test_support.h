@@ -55,9 +55,10 @@ void verifySelection(QWidget& page, const QString& prefix, adqt::widgets::AdChec
     };
     auto* viewport = area->viewport();
     auto* scroll = area->verticalScrollBar();
-    const int topMargin = snow_shot::presentation::styles::ThemeManager::instance()
-                              .themeColorScheme()
-                              .metricAlias.marginSM;
+    const auto scheme =
+        snow_shot::presentation::styles::ThemeManager::instance().themeColorScheme();
+    const auto& metric = scheme.metricAlias;
+    const int topMargin = metric.marginSM;
     const auto saveReview = [&](const QString& suffix) {
         const QString directory = qEnvironmentVariable("SNOW_STICKY_SELECTION_REVIEW_DIR");
         if (!directory.isEmpty()) {
@@ -71,6 +72,15 @@ void verifySelection(QWidget& page, const QString& prefix, adqt::widgets::AdChec
                 batchActions->isVisible() && !batchActions->isEnabled() &&
                 !deleteSelected->isEnabled() && !deselect->isEnabled(),
             "a scrollable page starts with an inline panel and only Select all enabled");
+    require(panel->width() == entries->width() &&
+                panel->height() == scheme.metricMap.font.fontHeight + 2 * metric.paddingSM &&
+                bar->height() - panel->height() == metric.margin,
+            "the wide selection panel spans the list and follows the alert spacing tokens");
+    require(summary->mapTo(panel, QPoint()).x() == metric.paddingLG &&
+                deselect->mapTo(panel, QPoint(deselect->width(), 0)).x() ==
+                    panel->width() - metric.paddingLG &&
+                batchActions->x() - deleteSelected->x() - deleteSelected->width() == metric.margin,
+            "selection text and compact action links follow the horizontal spacing tokens");
     const int normalTop = bar->mapTo(viewport, QPoint()).y();
     const QRect entryGeometry = entries->geometry();
     const int maximum = scroll->maximum();

@@ -1071,13 +1071,13 @@ ScreenshotHistoryPageWidget::ScreenshotHistoryPageWidget(
     m_selectionBar->setObjectName(QStringLiteral("screenshotHistorySelectionBar"));
     m_selectionBar->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     auto* selectionBarOuterLayout = new QVBoxLayout(m_selectionBar);
-    selectionBarOuterLayout->setContentsMargins(0, 0, 0, metric.marginSM);
+    selectionBarOuterLayout->setContentsMargins(0, 0, 0, metric.margin);
     selectionBarOuterLayout->setSpacing(0);
     m_selectionPanel = new HistorySelectionBar(m_selectionBar);
     m_selectionPanel->setObjectName(QStringLiteral("screenshotHistorySelectionPanel"));
     m_selectionPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     m_selectionBarLayout = new QBoxLayout(QBoxLayout::LeftToRight, m_selectionPanel);
-    m_selectionBarLayout->setContentsMargins(metric.paddingMD, metric.paddingSM, metric.paddingMD,
+    m_selectionBarLayout->setContentsMargins(metric.paddingLG, metric.paddingSM, metric.paddingLG,
                                              metric.paddingSM);
     m_selectionBarLayout->setSpacing(metric.marginXS);
     m_selectionSummary = new QLabel(m_selectionPanel);
@@ -1090,7 +1090,7 @@ ScreenshotHistoryPageWidget::ScreenshotHistoryPageWidget(
     m_selectionActions->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     auto* selectionActionsLayout = new QHBoxLayout(m_selectionActions);
     selectionActionsLayout->setContentsMargins(0, 0, 0, 0);
-    selectionActionsLayout->setSpacing(0);
+    selectionActionsLayout->setSpacing(metric.margin);
     m_deleteSelectedButton = new adqt::widgets::AdButton(m_selectionActions);
     m_deleteSelectedButton->setObjectName(QStringLiteral("screenshotHistoryDeleteSelected"));
     history_page::configureSelectionAction(m_deleteSelectedButton, true);

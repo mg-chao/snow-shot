@@ -598,12 +598,12 @@ PinnedWindowManagementPageWidget::PinnedWindowManagementPageWidget(
     m_selectionBar->setObjectName(QStringLiteral("pinnedManagementSelectionBar"));
     m_selectionBar->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     auto* selectionOuter = new QVBoxLayout(m_selectionBar);
-    selectionOuter->setContentsMargins(0, 0, 0, metric.marginSM);
+    selectionOuter->setContentsMargins(0, 0, 0, metric.margin);
     m_selectionPanel = new HistorySelectionBar(m_selectionBar);
     m_selectionPanel->setObjectName(QStringLiteral("pinnedManagementSelectionPanel"));
     m_selectionPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     m_selectionLayout = new QBoxLayout(QBoxLayout::LeftToRight, m_selectionPanel);
-    m_selectionLayout->setContentsMargins(metric.paddingMD, metric.paddingSM, metric.paddingMD,
+    m_selectionLayout->setContentsMargins(metric.paddingLG, metric.paddingSM, metric.paddingLG,
                                           metric.paddingSM);
     m_selectionLayout->setSpacing(metric.marginXS);
     m_selectionSummary = new QLabel(m_selectionPanel);
@@ -614,7 +614,7 @@ PinnedWindowManagementPageWidget::PinnedWindowManagementPageWidget(
     m_selectionActions->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     auto* selectionActionsLayout = new QHBoxLayout(m_selectionActions);
     selectionActionsLayout->setContentsMargins(0, 0, 0, 0);
-    selectionActionsLayout->setSpacing(0);
+    selectionActionsLayout->setSpacing(metric.margin);
     m_deleteSelected = new adqt::widgets::AdButton(m_selectionActions);
     m_deleteSelected->setObjectName(QStringLiteral("pinnedManagementDeleteSelected"));
     history_page::configureSelectionAction(m_deleteSelected, true);

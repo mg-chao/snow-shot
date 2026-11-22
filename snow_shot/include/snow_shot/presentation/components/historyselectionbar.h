@@ -14,10 +14,11 @@ class HistorySelectionBar final : public QWidget {
     using QWidget::QWidget;
 
     void applyTheme(const snow_shot::presentation::styles::ThemeColorScheme& scheme) {
-        m_background = scheme.map.colorFillQuaternary;
+        m_background = scheme.map.colorTextBase;
+        m_background.setAlphaF(0.02f);
         m_surface = scheme.map.colorBgLayout;
         m_surface.setAlpha(255);
-        m_radius = scheme.metricAlias.borderRadiusLG;
+        m_radius = scheme.metricAlias.borderRadius;
         update();
     }
 
