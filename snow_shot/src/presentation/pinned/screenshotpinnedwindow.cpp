@@ -33,6 +33,7 @@
 #include "snow_shot/presentation/automationrevision.h"
 #include "snow_shot/app/mcp/mcpstylepatch.h"
 #include "screenshotpinnedhidetotopcontroller.h"
+#include "screenshotpinnedopacity.h"
 #include "screenshotpinnedshakegesture.h"
 #include "screenshotpinneddragexport.h"
 #include "screenshotpinnedclickthroughgeometry.h"
@@ -306,8 +307,8 @@ constexpr int kThumbnailSize = 83;
 constexpr int kThumbnailAnimationDurationMs = 150;
 constexpr int kMinimumScalePercent = 10;
 constexpr int kMaximumScalePercent = 500;
-constexpr int kMinimumOpacityPercent = 25;
-constexpr int kMaximumOpacityPercent = 100;
+using screenshot_pinned_opacity::kMaximumOpacityPercent;
+using screenshot_pinned_opacity::kMinimumOpacityPercent;
 const QColor kDefaultPinnedBorderColor(219, 219, 219, 255);
 const QColor kDefaultPinnedLockedBorderColor(250, 173, 20, 255);
 const QColor kDefaultPinnedBorderActiveColor(105, 177, 255, 255);
@@ -327,9 +328,9 @@ QRect pinnedOuterResizeBounds(const QRect& content, qreal dpr) {
 
 QColor pinnedTransparentInputFill(int opacityPercent) {
 #ifdef Q_OS_WIN
-    // Qt supplies an 8-bit window opacity to the layered-window blend. Keep the
-    // blended alpha at one by reaching its round-up threshold of 128/255.
-    const int nativeOpacity = qRound(255.0 * opacityPercent / 100.0);
+    // QWidget truncates opacity to 8 bits when creating the native window.
+    // Reach the layered blend's 128/255 round-up threshold even at that value.
+    const int nativeOpacity = 255 * opacityPercent / 100;
     return QColor(0, 0, 0, qCeil(128.0 / nativeOpacity));
 #else
     Q_UNUSED(opacityPercent);
@@ -2023,8 +2024,8 @@ void ScreenshotPinnedWindow::restorePersistentState(const Config& config) {
     // The scale value is not restored state: it derives from the restored
     // physical geometry alone, so the monitor DPI never influences it.
     m_hideToTop->setAccentIndex(config.persistedHideToTopAccentIndex);
-    m_opacityPercent =
-        qBound(config.persistedHideToTopMode ? 25 : 1, config.persistedOpacityPercent, 100);
+    m_opacityPercent = qBound(config.persistedHideToTopMode ? kMinimumOpacityPercent : 1,
+                              config.persistedOpacityPercent, kMaximumOpacityPercent);
     updateBorderOutline();
     applyEffectiveOpacity();
     m_imageTransform = config.persistedImageTransform;

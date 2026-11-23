@@ -6951,10 +6951,9 @@ void pinnedImageProcessingShortcuts() {
     require(Access::opacity(window) == 60, "opacity increase must add ten percentage points");
     sendShortcut(*canvas, Qt::Key_BracketLeft);
     require(Access::opacity(window) == 50, "opacity decrease must subtract ten percentage points");
-    Access::setGeneralOpacity(window, 30);
+    Access::setGeneralOpacity(window, 15);
     sendShortcut(*canvas, Qt::Key_BracketLeft);
-    sendShortcut(*canvas, Qt::Key_BracketLeft);
-    require(Access::opacity(window) == 25, "opacity must clamp at 25 percent");
+    require(Access::opacity(window) == 10, "opacity must clamp at 10 percent");
     Access::setGeneralOpacity(window, 95);
     sendShortcut(*canvas, Qt::Key_BracketRight);
     sendShortcut(*canvas, Qt::Key_BracketRight);
@@ -10925,12 +10924,11 @@ void pinnedWheelStepsFollowPreferences() {
             require(Access::opacity(window) == 60 + step,
                     "opacity wheel uses the new step immediately");
             wheel(-240, Qt::ControlModifier);
-            require(Access::opacity(window) == std::max(25, 60 - step) &&
+            require(Access::opacity(window) == 60 - step &&
                         window.currentNativeGeometry() == beforeOpacity,
                     "multiple opacity notches use every configured step without resizing");
             wheel(-120 * 100, Qt::ControlModifier);
-            require(Access::opacity(window) == 25,
-                    "custom opacity steps clamp at twenty-five percent");
+            require(Access::opacity(window) == 10, "custom opacity steps clamp at ten percent");
             wheel(120 * 100, Qt::ControlModifier);
             require(Access::opacity(window) == 100,
                     "custom opacity steps clamp at one hundred percent");
@@ -11897,6 +11895,9 @@ void pinnedHideToTopIntegration(bool native) {
     require(opacityWheel.isAccepted() && controller.active() &&
                 window.persistenceSnapshot().opacityPercent == 55,
             "Ctrl+wheel must change configured opacity without leaving hide-to-top");
+    ScreenshotPinnedWindowTestAccess::setGeneralOpacity(window, 10);
+    require(qAbs(window.windowOpacity() - 0.10) <= 1.0 / 255.0,
+            "revealed hide-to-top windows must use the minimum configured opacity");
     hoverHandle(false);
     require(!window.isVisible(), "leaving the real window must hide it after the delay");
     hoverHandle(true);
@@ -11973,6 +11974,14 @@ void pinnedHideToTopIntegration(bool native) {
     require(settings.setDoubleClickAction(oldDouble) &&
                 settings.setMiddleMouseButtonAction(oldMiddle),
             "restore mouse action settings");
+    config.persistedHideToTopMode = true;
+    config.persistedOpacityPercent = 5;
+    if (!native) {
+        ScreenshotPinnedWindow restored;
+        ScreenshotPinnedWindowTestAccess::restoreOffscreen(restored, config);
+        require(restored.persistenceSnapshot().opacityPercent == 10,
+                "restoring a hide-to-top window clamps legacy opacity to ten percent");
+    }
     if (native) {
 #ifdef Q_OS_WIN
         const QPoint away = monitor.workArea.bottomRight() - QPoint(20, 20);
@@ -11980,7 +11989,6 @@ void pinnedHideToTopIntegration(bool native) {
                 "move cursor away before hidden restore");
 #endif
         ScreenshotPinnedWindow restored;
-        config.persistedHideToTopMode = true;
         config.persistedHideToTopHandleNativeGeometry =
             enteringSnapshot.hideToTopHandleNativeGeometry;
         config.persistedHideToTopAccentIndex = enteringSnapshot.hideToTopAccentIndex;
@@ -14127,7 +14135,7 @@ void pinnedTransparentLayerNativeHitTesting() {
     translation_tests::waitUntil([&] { return hits(window, hole) && hits(window, opaque); },
                                  "the nearly transparent fill must hit the pin");
     require(window.windowHandle()->mask().isEmpty(), "leaving pixel passthrough clears the mask");
-    Access::setGeneralOpacity(window, 25);
+    Access::setGeneralOpacity(window, 10);
     translation_tests::waitUntil([&] { return hits(window, hole); },
                                  "the fill must still hit the pin at minimum menu opacity");
 #ifdef Q_OS_WIN
@@ -27428,9 +27436,9 @@ void pinnedShadowStateAndMarginsOffscreen() {
                     !Access::decorationResizeHandle(window, edge + outward),
                 "the six-DIP paint and resize boundaries must match");
     }
-    Access::setGeneralOpacity(window, 25);
+    Access::setGeneralOpacity(window, 10);
     const QImage dimmed = renderWholeWidget(window);
-    require(dimmed.pixelColor(resizePoint) == QColor(0, 0, 0, 2) &&
+    require(dimmed.pixelColor(resizePoint) == QColor(0, 0, 0, 6) &&
                 dimmed.pixelColor(outsidePoint).alpha() == 0,
             "minimum opacity must compensate alpha only in the resize band");
     Access::setGeneralOpacity(window, 100);
