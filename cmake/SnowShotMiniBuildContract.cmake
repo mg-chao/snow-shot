@@ -46,7 +46,7 @@ function(snow_shot_mini_filter_sources output)
     list(FILTER _sources EXCLUDE REGEX "(^|/)(qrc_snow_shot_microtex\\.cpp|snow_shot_microtex\\.qrc)$")
     # Qt also attaches generated .qm inputs as header-only target sources. Do
     # not copy these, or building Mini still invokes Full's lrelease commands.
-    list(FILTER _sources EXCLUDE REGEX "(^|/)snow_shot_(en_US|zh_CN|zh_TW)\\.qm$")
+    list(FILTER _sources EXCLUDE REGEX "(^|/)snow_shot_(en_US|zh_CN|zh_TW|ru)\\.qm$")
     set(${output} "${_sources}" PARENT_SCOPE)
 endfunction()
 
@@ -81,7 +81,7 @@ function(snow_shot_assert_mini_build_contract root)
                     if(_source MATCHES "${SNOW_SHOT_MINI_EXCLUDED_SOURCE_PATTERN}" OR
                             _source MATCHES "qrc_snow_shot_translations\\.cpp$|/snow_shot_translations\\.qrc$" OR
                             _source MATCHES "(^|/)(qrc_snow_shot_microtex\\.cpp|snow_shot_microtex\\.qrc)$" OR
-                            (_source MATCHES "(^|/)snow_shot_(en_US|zh_CN|zh_TW)\\.qm$" AND
+                            (_source MATCHES "(^|/)snow_shot_(en_US|zh_CN|zh_TW|ru)\\.qm$" AND
                                 NOT _source MATCHES "(^|/)i18n/mini/snow_shot_[^/]+\\.qm$"))
                         message(FATAL_ERROR "Mini build includes Full-only source: ${_source} (${_target})")
                     endif()

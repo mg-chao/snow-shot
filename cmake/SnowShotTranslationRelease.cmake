@@ -5,7 +5,7 @@ function(snow_shot_release_translation_catalogs target catalog_dir output_dir ou
     if(_qt_translation_dir STREQUAL "")
         set(_qt_translation_dir "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_TRANSLATIONS}")
     endif()
-    foreach(_locale IN ITEMS zh_CN zh_TW)
+    foreach(_locale IN ITEMS zh_CN zh_TW ru)
         if(NOT EXISTS "${_qt_translation_dir}/qtbase_${_locale}.qm")
             message(FATAL_ERROR
                 "The selected Qt kit is missing qtbase_${_locale}.qm. "
@@ -24,7 +24,7 @@ function(snow_shot_release_translation_catalogs target catalog_dir output_dir ou
         QM_OUTPUT_DIRECTORY "${output_dir}"
         OPTIONS -fail-on-unfinished -removeidentical)
     qt_add_lrelease(
-        TS_FILES "${catalog_dir}/snow_shot_zh_CN.ts" "${catalog_dir}/snow_shot_zh_TW.ts"
+        TS_FILES "${catalog_dir}/snow_shot_zh_CN.ts" "${catalog_dir}/snow_shot_zh_TW.ts" "${catalog_dir}/snow_shot_ru.ts"
         LRELEASE_TARGET ${target}_localized
         QM_FILES_OUTPUT_VARIABLE _localized_qm_files
         QM_OUTPUT_DIRECTORY "${output_dir}"

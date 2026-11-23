@@ -10,6 +10,7 @@
   !insertmacro MUI_LANGUAGE "English"
   !insertmacro MUI_LANGUAGE "SimpChinese"
   !insertmacro MUI_LANGUAGE "TradChinese"
+  !insertmacro MUI_LANGUAGE "Russian"
 !macroend
 
 ; Match CPack's registry context before language selection and upgrade prompts.
@@ -31,6 +32,7 @@
   Delete "${Folder}\${SnowShotUninstallShortcut1033}.lnk"
   Delete "${Folder}\${SnowShotUninstallShortcut2052}.lnk"
   Delete "${Folder}\${SnowShotUninstallShortcut1028}.lnk"
+  Delete "${Folder}\${SnowShotUninstallShortcut1049}.lnk"
   Delete "${Folder}\Uninstall.lnk"
 !macroend
 !endif
