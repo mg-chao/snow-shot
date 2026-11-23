@@ -78,6 +78,7 @@ class ImageEditingWindowCoordinator final : public QObject {
                               platform::SelectedFileTarget target);
     void presentHistory(const storage::CaptureHistoryRecord& record);
     void presentSource(ScreenshotExportSource source);
+    bool presentDocument(ImageEditingSource source, std::function<void(bool)> completion);
     void presentPinnedRecord(const QString& id);
     void confirmShutdown(std::function<void(bool)> completion);
     // Owner-thread final admission only: commit current drafts without prompting.

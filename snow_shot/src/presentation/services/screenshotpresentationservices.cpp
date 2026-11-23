@@ -298,7 +298,7 @@ void ScreenshotPresentationServices::reloadConfiguredShortcuts() {
         m_configuredShortcuts.reset();
         return;
     }
-    m_configuredShortcuts = snow_shot::storage::ScreenshotShortcutSettings().allShortcuts();
+    m_configuredShortcuts = snow_shot::storage::ScreenshotShortcutSettings().activeShortcuts();
     if (m_state->initialized)
         updateOverlayState();
 }

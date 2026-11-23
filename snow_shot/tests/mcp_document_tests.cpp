@@ -2056,6 +2056,8 @@ void documentWorkflows() {
             return;
         }
         McpDocumentService::Source source;
+        source.presentInImageEditing =
+            request.params.value(QStringLiteral("source")).toString() == u"history";
         source.image = image;
         source.originalContent.text = QStringLiteral("Original text");
         source.originalContent.html = QStringLiteral("<b>Original text</b>");
@@ -2078,6 +2080,18 @@ void documentWorkflows() {
         return true;
     };
     ports.present = [&](McpDocumentService::Source source, auto completion) {
+        if (source.presentInImageEditing) {
+            SnowCanvasRuntime restored;
+            require(source.images.size() == 1 && source.images.front().image == image &&
+                        source.canvasBounds == image.rect() &&
+                        restored.restoreDocumentSession(source.documentSession) &&
+                        restored.hasDocumentContent(),
+                    "flat presentation keeps the base image and the background document's editable "
+                    "annotations");
+            ++presentations;
+            completion(true);
+            return true;
+        }
         require(!source.images.isEmpty() && !source.documentSession.isEmpty() &&
                     !source.documentHistory.isEmpty() && source.selection.has_value(),
                 "handoff carries editable private snapshot and history");
@@ -2206,6 +2220,12 @@ void documentWorkflows() {
             "visible snapshot ownership transfers explicitly");
     require(call(QStringLiteral("document_pin")).ok && pins == 1,
             "pin hands off a full editable document with user ownership");
+    require(call(QStringLiteral("document_recapture"),
+                 {{QStringLiteral("source"), QStringLiteral("history")},
+                  {QStringLiteral("source_id"), QStringLiteral("flat")}})
+                    .ok &&
+                call(QStringLiteral("document_present")).ok && presentations == 2,
+            "a results-only background document hands edits to Image editing");
     const auto filter = [&] {
         return call(QStringLiteral("document_auto_filter"),
                     {{QStringLiteral("categories"), QJsonArray{QStringLiteral("text")}}});

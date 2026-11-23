@@ -1179,12 +1179,14 @@ bool SettingsRuntimeSession::isPending(const SettingsFieldDescriptor& descriptor
                 payload.binding == SettingsIntegerBinding::HistoryMaxEntries ||
                 payload.binding == SettingsIntegerBinding::HistoryMaxDiskMiB);
     }
+    if (const auto* select = std::get_if<SettingsSelectDefinition>(&descriptor.definition->payload))
+        return status.historyPolicyUpdating &&
+               select->binding == SettingsSelectBinding::HistoryRetentionMode;
     if (std::holds_alternative<SettingsSwitchDefinition>(descriptor.definition->payload)) {
         const auto binding =
             std::get<SettingsSwitchDefinition>(descriptor.definition->payload).binding;
         return status.historyPolicyUpdating &&
-               (binding == SettingsSwitchBinding::HistoryEnabled ||
-                binding == SettingsSwitchBinding::HistoryKeepPermanently);
+               binding == SettingsSwitchBinding::HistoryKeepPermanently;
     }
     return false;
 }

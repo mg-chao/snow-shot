@@ -832,7 +832,8 @@ ScreenshotController::Impl::Impl(ScreenshotController& controller,
                     synchronizeQrToolbar();
                 } else if (key.startsWith(QStringLiteral("screenshot_ui/"))) {
                     reloadUiPreferences();
-                } else if (key.startsWith(QStringLiteral("screenshot_shortcuts/")) &&
+                } else if ((key == QStringLiteral("capture_history/retention_mode") ||
+                            key.startsWith(QStringLiteral("screenshot_shortcuts/"))) &&
                            m_presentationServices != nullptr) {
                     m_presentationServices->reloadConfiguredShortcuts();
                     if (!m_interaction.inactive()) {
@@ -2168,6 +2169,9 @@ void ScreenshotController::Impl::createOverlayInputPipeline() {
                 toolbar->suppressRememberedDrawingTool();
             }
         },
+    };
+    actions.canNavigateHistoryPrevious = [this] {
+        return m_historyService && m_historyService->canNavigatePrevious();
     };
     actions.currentLogicalCursorPosition = [this] {
         return m_displaySession.logicalCursorPosition();
@@ -4018,8 +4022,7 @@ void ScreenshotController::Impl::pinHistoryRecord(const QString& recordId) {
                 const auto appearance =
                     snow_shot::presentation::historySelectionBorderAppearance(record);
                 const std::optional<bool> checkerboardEnabled =
-                    record.contentKind ==
-                            snow_shot::storage::CaptureHistoryContentKind::ScreenshotSession
+                    record.contentKind != snow_shot::storage::CaptureHistoryContentKind::Image
                         ? std::optional<bool>(screenshotSelectionNeedsCheckerboard(appearance))
                         : std::nullopt;
                 const auto fit = snow_shot::presentation::fitPinnedImageOnScreen(
@@ -4898,7 +4901,7 @@ void ScreenshotController::Impl::printSelection() {
                 {{QStringLiteral("request_kind"), QStringLiteral("capture")},
                  {QStringLiteral("operation"), QString::number(epoch)},
                  {QStringLiteral("stage"), !snapshotSucceeded ? QStringLiteral("export_image")
-                                           : !printer ? QStringLiteral("service_destroyed")
+                                           : !printer         ? QStringLiteral("service_destroyed")
                                                       : QStringLiteral("service_rejected")}},
                 QtWarningMsg);
             finished({ScreenshotPrintService::Status::Failed,

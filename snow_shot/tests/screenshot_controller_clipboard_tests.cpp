@@ -1153,7 +1153,8 @@ void capturePinKeepsEditableAnnotations() {
                 "configure editable pin and associated outputs");
         QGuiApplication::clipboard()->setText(QStringLiteral("editable pin clipboard sentinel"));
         auto policy = storage.captureHistory().policy();
-        policy.enabled = !redoOnly;
+        policy.mode = redoOnly ? snow_shot::storage::CaptureHistoryMode::Disabled
+                               : snow_shot::storage::CaptureHistoryMode::Full;
         require(storage.requestCaptureHistoryPolicy(policy),
                 "configure screenshot history independently");
         ScreenshotSelectionParams selection;
@@ -1333,7 +1334,7 @@ void capturePinCommitsPendingText() {
             "enable pending text transfer");
     auto& storage = snow_shot::storage::ApplicationStorage::instance();
     auto policy = storage.captureHistory().policy();
-    policy.enabled = false;
+    policy.mode = snow_shot::storage::CaptureHistoryMode::Disabled;
     require(storage.requestCaptureHistoryPolicy(policy),
             "disable screenshot history for pending text transfer");
     ScreenshotController controller;
@@ -1384,7 +1385,7 @@ void capturePinSamplesOnlyCroppedImage() {
             "enable sampling annotation transfer");
     auto& storage = snow_shot::storage::ApplicationStorage::instance();
     auto policy = storage.captureHistory().policy();
-    policy.enabled = false;
+    policy.mode = snow_shot::storage::CaptureHistoryMode::Disabled;
     require(storage.requestCaptureHistoryPolicy(policy),
             "disable capture history to verify pin source ownership");
     const auto normalize = [](const QImage& value) {
@@ -1847,6 +1848,13 @@ void scrollingMcpExportCompletesWhenSnapshotIsCancelled() {
 }
 
 void scrollingCopyUsesHiDpiScalingWithEveryFileOption() {
+    auto& storage = snow_shot::storage::ApplicationStorage::instance();
+    const auto originalPolicy = storage.captureHistoryPolicy();
+    auto policy = originalPolicy;
+    policy.mode = snow_shot::storage::CaptureHistoryMode::ResultsOnly;
+    require(storage.requestCaptureHistoryPolicyAsync(policy).get().success,
+            "select results-only history");
+
     const snow_shot::storage::ScreenshotSettings settings;
     QTemporaryDir output;
     require(output.isValid() && settings.setImageSaveDirectory(output.path()) &&
@@ -1866,6 +1874,7 @@ void scrollingCopyUsesHiDpiScalingWithEveryFileOption() {
         ScreenshotControllerTestAccess::prepareSelection(controller, fixture(), selection);
         ScreenshotControllerTestAccess::setDisplayScale(controller, 2.0);
         const auto snapshot = scrollingSnapshot(fixture());
+        const auto before = storage.captureHistory().recordsSnapshot().revision;
         ScreenshotControllerTestAccess::prepareScrollingSnapshot(controller, snapshot);
         ScreenshotControllerTestAccess::commands(controller).copySelectionToClipboard();
         require(settings.setHiDpiImageScaling(QStringLiteral("disabled")),
@@ -1875,6 +1884,15 @@ void scrollingCopyUsesHiDpiScalingWithEveryFileOption() {
         const auto [copied, path] = captureClipboardOutput();
         require(copied.size() == QSize(60, 40) && snapshot.rowSource().size == QSize(120, 80),
                 "plain and file scrolling copies scale once without changing the source");
+        waitUntil([&] { return storage.captureHistory().recordsSnapshot().revision > before; },
+                  "scrolling copy publishes its results-only record");
+        const auto record = storage.captureHistory().records().front();
+        require(record.contentKind == snow_shot::storage::CaptureHistoryContentKind::ResultOnly &&
+                    record.scrolling == true && record.result &&
+                    record.result->imageSize == copied.size() &&
+                    record.selection.rectangle == selection.selection &&
+                    record.displays.isEmpty() && record.canvasBytes == 0,
+                "the flat scrolling result retains output dimensions and the original viewport");
         if (flags & 2)
             require(!path.isEmpty() && QImage(path).size() == QSize(60, 40),
                     "scrolling clipboard file uses the same scale");
@@ -1888,6 +1906,8 @@ void scrollingCopyUsesHiDpiScalingWithEveryFileOption() {
     require(settings.setCopyImageFileToClipboard(false) &&
                 settings.setExportTasks(ExportTrigger::ScreenshotCopy, {}),
             "reset scrolling copy settings");
+    require(storage.requestCaptureHistoryPolicyAsync(originalPolicy).get().success,
+            "restore history policy");
 }
 
 void hiDpiScalingAffectsOnlyCopiedAndSavedOutputs() {
@@ -2355,7 +2375,7 @@ void userExportTasks() {
             "configure three independent post-save tasks");
     auto& appStorage = storage::ApplicationStorage::instance();
     auto policy = appStorage.captureHistory().policy();
-    policy.enabled = false;
+    policy.mode = snow_shot::storage::CaptureHistoryMode::Disabled;
     require(appStorage.requestCaptureHistoryPolicy(policy), "isolate disk outputs");
     ScreenshotController controller;
     ScreenshotSelectionParams selection;

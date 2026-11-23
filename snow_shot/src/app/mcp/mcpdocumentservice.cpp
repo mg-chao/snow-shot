@@ -226,6 +226,7 @@ qint64 sourceAuxiliaryBytes(const McpDocumentService::Source& source) {
 }
 struct Document {
     quint64 owner = 0;
+    bool presentInImageEditing = false;
     QString id;
     quint64 revision = 1;
     QList<CanvasExportSource> sources;
@@ -439,6 +440,7 @@ class DocumentWorker final : public QObject {
         document->canvasBounds = source.canvasBounds;
         document->sourceBytes = bytes;
         document->historyCharge = inputCharge;
+        document->presentInImageEditing = source.presentInImageEditing;
         document->metadata = std::move(source.metadata);
         document->originalContent = std::move(source.originalContent);
         document->recognitionResults = std::move(source.recognitionResults);
@@ -513,6 +515,7 @@ class DocumentWorker final : public QObject {
             reservation->consumed = true;
         document.sourceBytes = bytes;
         document.sources = std::move(source.images);
+        document.presentInImageEditing = source.presentInImageEditing;
         document.metadata = std::move(source.metadata);
         document.originalContent = std::move(source.originalContent);
         document.recognitionResults = {};
@@ -661,6 +664,7 @@ class DocumentWorker final : public QObject {
         if (method == QStringLiteral("snow_shot_document_present") ||
             method == QStringLiteral("snow_shot_document_pin")) {
             McpDocumentService::Source source;
+            source.presentInImageEditing = document.presentInImageEditing;
             source.images = document.sources;
             source.canvasBounds = document.canvasBounds;
             source.documentSession = document.runtime.serializeDocumentSession();
@@ -888,6 +892,7 @@ class DocumentWorker final : public QObject {
             McpDocumentService::Source input;
             input.images = source->sources;
             input.canvasBounds = source->canvasBounds;
+            input.presentInImageEditing = source->presentInImageEditing;
             input.metadata = source->metadata;
             input.originalContent = source->originalContent;
             input.recognitionResults = source->recognitionResults;

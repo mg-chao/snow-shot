@@ -300,8 +300,7 @@ class ApplicationStorageHistoryDataSource final : public ScreenshotHistoryPageDa
                                                         request.initialWindowSize, request.screen)
                 : std::nullopt;
         std::optional<ScreenshotClipboardAppearance> appearance;
-        if (record.contentKind == storage::CaptureHistoryContentKind::ScreenshotSession &&
-            record.result) {
+        if (record.contentKind != storage::CaptureHistoryContentKind::Image && record.result) {
             appearance.emplace();
             appearance->rasterSize = record.result->imageSize;
             appearance->borderAppearance =
@@ -604,15 +603,22 @@ class HistoryEntryWidget final : public HistoryEntryCard {
 
         const QRect selection = record.selection.rectangle;
         auto* summary = summaryLabel();
-        summary->setText(HistoryEntryWidget::tr("%1 x %2 px  ·  %3 display(s)")
-                             .arg(selection.width())
-                             .arg(selection.height())
-                             .arg(record.displays.size()));
+        if (record.contentKind == storage::CaptureHistoryContentKind::ResultOnly && record.result)
+            summary->setText(HistoryEntryWidget::tr("%1 x %2 px")
+                                 .arg(record.result->imageSize.width())
+                                 .arg(record.result->imageSize.height()));
+        else
+            summary->setText(HistoryEntryWidget::tr("%1 x %2 px  ·  %3 display(s)")
+                                 .arg(selection.width())
+                                 .arg(selection.height())
+                                 .arg(record.displays.size()));
         summary->setObjectName(QStringLiteral("screenshotHistoryEntrySummary"));
         auto* metadata = metadataLabel();
+        const QPoint origin =
+            record.desktopGeometry ? record.desktopGeometry->canvasOrigin : QPoint();
         metadata->setText(HistoryEntryWidget::tr("Position %1, %2  ·  %3")
-                              .arg(selection.x())
-                              .arg(selection.y())
+                              .arg(qint64(selection.x()) + origin.x())
+                              .arg(qint64(selection.y()) + origin.y())
                               .arg(formattedBytes(record.totalBytes)));
         metadata->setObjectName(QStringLiteral("screenshotHistoryEntryMetadata"));
 

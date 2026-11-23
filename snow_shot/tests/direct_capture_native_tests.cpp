@@ -233,7 +233,9 @@ int main() {
                 "window PNG must preserve straight colors and alpha");
     }
     require(leases == 0, "premultiplied image lease leaked");
-    for (const bool history : {false, true}) {
+    for (const auto mode : {snow_shot::storage::CaptureHistoryMode::Full,
+                            snow_shot::storage::CaptureHistoryMode::ResultsOnly,
+                            snow_shot::storage::CaptureHistoryMode::Disabled}) {
         for (const auto target :
              {DirectCaptureTarget::CurrentMonitor, DirectCaptureTarget::FocusedWindow}) {
             for (const auto backend : {SNOW_CAPTURE_BACKEND_AUTO, SNOW_CAPTURE_BACKEND_GDI,
@@ -242,10 +244,14 @@ int main() {
                 request.target = target;
                 request.window = 123;
                 request.monitorName = QStringLiteral("device-B");
-                request.historyEnabled = history;
+                request.historyMode = mode;
                 request.captureBackend = static_cast<quint8>(backend);
                 const auto result = captureDirectTarget(request);
                 require(result.isValid(), "backend preference capture failed");
+                if (mode == snow_shot::storage::CaptureHistoryMode::ResultsOnly)
+                    require(result.displays.size() ==
+                                (target == DirectCaptureTarget::CurrentMonitor ? 1 : 0),
+                            "results-only acquisition must request only the native target");
                 require(capturedBackend == (target == DirectCaptureTarget::CurrentMonitor
                                                 ? backend
                                                 : SNOW_CAPTURE_BACKEND_AUTO),
@@ -260,7 +266,7 @@ int main() {
          {DirectCaptureTarget::FocusedWindow, DirectCaptureTarget::CurrentMonitor}) {
         DirectCaptureRequest request;
         request.target = target;
-        request.historyEnabled = true;
+        request.historyMode = snow_shot::storage::CaptureHistoryMode::Full;
         request.window = 123;
         request.monitorName = QStringLiteral("device-B");
         {
@@ -340,7 +346,7 @@ int main() {
         request.target = target;
         request.window = 123;
         request.monitorName = QStringLiteral("device-B");
-        request.historyEnabled = false;
+        request.historyMode = snow_shot::storage::CaptureHistoryMode::Disabled;
         request.captureCursor = true;
         request.restoreOriginalScreenColors = true;
         const int beforeDesktop = desktopCaptures;

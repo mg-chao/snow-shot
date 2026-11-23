@@ -9,40 +9,52 @@ storage::CaptureHistoryDraft
 directCaptureHistoryDraft(const DirectCaptureRequest& request, const DirectCaptureFrame& frame,
                           std::optional<storage::PreparedPngImage> png) {
     storage::CaptureHistoryDraft draft;
-    if (!frame.isValid() || frame.displays.isEmpty())
+    if (!frame.isValid() || request.historyMode == storage::CaptureHistoryMode::Disabled)
         return draft;
     draft.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     draft.createdUtc = request.requestedAt.toUTC();
     draft.selection.shadowColor = QColor(Qt::black);
-    // Direct capture owns a complete snapshot without consulting the live editor.
-    SnowCanvasRuntime emptyDocument;
-    draft.canvasHistory = emptyDocument.serializeDocumentHistory();
-    for (const auto& display : frame.displays) {
-        if (display.image.isNull() || display.physicalBounds.size() != display.image.size())
+    const QRect targetBounds =
+        frame.logicalBounds.isEmpty() ? frame.physicalBounds : frame.logicalBounds;
+    if (request.historyMode == storage::CaptureHistoryMode::ResultsOnly) {
+        draft.contentKind = storage::CaptureHistoryContentKind::ResultOnly;
+        draft.canvasBounds = QRect(QPoint(), targetBounds.size());
+        draft.selection.rectangle = draft.canvasBounds;
+        draft.desktopGeometry = storage::CaptureHistoryDesktopGeometry{
+            targetBounds.topLeft(), !frame.logicalBounds.isEmpty()};
+    } else {
+        if (frame.displays.isEmpty())
             return {};
-        const bool points = !display.logicalBounds.isEmpty();
-        const QRect bounds = points ? display.logicalBounds : display.physicalBounds;
-        draft.canvasBounds = draft.canvasBounds.united(bounds);
-        draft.displays.push_back({display.stableId, display.name, display.image, bounds.topLeft(),
-                                  points ? std::optional<QRect>(bounds) : std::nullopt, points,
-                                  points
-                                      ? std::max(display.image.width() / double(bounds.width()),
-                                                 display.image.height() / double(bounds.height()))
-                                      : 0.0,
-                                  display.nativeDisplayId});
-    }
-    // The editor uses captured coordinates relative to the complete desktop's top-left.
-    const QPoint canvasOffset = -draft.canvasBounds.topLeft();
-    draft.desktopGeometry = storage::CaptureHistoryDesktopGeometry{
-        draft.canvasBounds.topLeft(), !frame.displays.front().logicalBounds.isEmpty()};
-    draft.canvasBounds.translate(canvasOffset);
-    draft.selection.rectangle =
-        (frame.logicalBounds.isEmpty() ? frame.physicalBounds : frame.logicalBounds)
-            .translated(canvasOffset);
-    for (auto& display : draft.displays) {
-        *display.sourceCanvasOrigin += canvasOffset;
-        if (display.sourceCanvasRect)
-            display.sourceCanvasRect->translate(canvasOffset);
+        // Direct capture owns a complete snapshot without consulting the live editor.
+        SnowCanvasRuntime emptyDocument;
+        draft.canvasHistory = emptyDocument.serializeDocumentHistory();
+        for (const auto& display : frame.displays) {
+            if (display.image.isNull() || display.physicalBounds.size() != display.image.size())
+                return {};
+            const bool points = !display.logicalBounds.isEmpty();
+            const QRect bounds = points ? display.logicalBounds : display.physicalBounds;
+            draft.canvasBounds = draft.canvasBounds.united(bounds);
+            draft.displays.push_back(
+                {display.stableId, display.name, display.image, bounds.topLeft(),
+                 points ? std::optional<QRect>(bounds) : std::nullopt, points,
+                 points ? std::max(display.image.width() / double(bounds.width()),
+                                   display.image.height() / double(bounds.height()))
+                        : 0.0,
+                 display.nativeDisplayId});
+        }
+        // The editor uses captured coordinates relative to the complete desktop's top-left.
+        const QPoint canvasOffset = -draft.canvasBounds.topLeft();
+        draft.desktopGeometry = storage::CaptureHistoryDesktopGeometry{
+            draft.canvasBounds.topLeft(), !frame.displays.front().logicalBounds.isEmpty()};
+        draft.canvasBounds.translate(canvasOffset);
+        draft.selection.rectangle =
+            (frame.logicalBounds.isEmpty() ? frame.physicalBounds : frame.logicalBounds)
+                .translated(canvasOffset);
+        for (auto& display : draft.displays) {
+            *display.sourceCanvasOrigin += canvasOffset;
+            if (display.sourceCanvasRect)
+                display.sourceCanvasRect->translate(canvasOffset);
+        }
     }
     // A prepared export may be downscaled while the source capture remains native-sized.
     if (!png || !png->isValid() || png->pixelSize() == frame.image.size())

@@ -59,7 +59,10 @@ enum class PinnedTextType { RecognitionResults, TranslationResults };
 enum class PinnedTransparentLayerMode { ClickThrough, KeepTransparent, Checkerboard };
 
 // These limits govern ignored records only.
-using PinnedWindowPolicy = CaptureHistoryPolicy;
+struct PinnedWindowPolicy : HistoryRetentionLimits {
+    bool enabled = true;
+    friend bool operator==(const PinnedWindowPolicy&, const PinnedWindowPolicy&) = default;
+};
 
 struct PinnedWindowRecord final {
     PinnedSourceIdentity sourceIdentity;

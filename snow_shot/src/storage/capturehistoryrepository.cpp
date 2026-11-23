@@ -37,7 +37,7 @@ constexpr qint64 kMaximumCanvasBytes = 16 * kMiB;
 constexpr qint64 kMaximumPixelsPerImage = 64'000'000;
 constexpr qint64 kMaximumPixelsPerRecord = 128'000'000;
 constexpr int kMaximumDisplays = 32;
-constexpr int kIndexVersion = 3;
+constexpr int kIndexVersion = 4;
 // Bounds arithmetic on persisted sizes without consulting payload files.
 constexpr qint64 kMaximumStoredBytes = 1LL << 40;
 constexpr auto kWorkerIdleTimeout = std::chrono::seconds(5);
@@ -160,18 +160,22 @@ QJsonObject recordJson(const StoredRecord& stored) {
                      {QStringLiteral("width"), record.canvasBounds.width()},
                      {QStringLiteral("height"), record.canvasBounds.height()}}},
         {QStringLiteral("selection"), persistedSelectionToJson(record.selection)},
-        {QStringLiteral("canvas_history_file"), stored.canvasFileName},
-        {QStringLiteral("canvas_byte_size"), record.canvasBytes},
-        {QStringLiteral("total_record_size"), record.totalBytes},
-        {QStringLiteral("displays"), displays}};
-    object.insert(QStringLiteral("cursor_visible"), record.cursorVisible);
-    object.insert(QStringLiteral("cursor_available"), record.cursorAvailable);
+        {QStringLiteral("total_record_size"), record.totalBytes}};
+    if (record.contentKind != CaptureHistoryContentKind::ResultOnly) {
+        object.insert(QStringLiteral("canvas_history_file"), stored.canvasFileName);
+        object.insert(QStringLiteral("canvas_byte_size"), record.canvasBytes);
+        object.insert(QStringLiteral("displays"), displays);
+        object.insert(QStringLiteral("cursor_visible"), record.cursorVisible);
+        object.insert(QStringLiteral("cursor_available"), record.cursorAvailable);
+    }
     if (record.result.has_value()) {
         object.insert(QStringLiteral("result"),
                       imageJson(record.result->imageSize, record.result->encodedBytes,
                                 *stored.resultFileName));
     }
-    if (record.contentKind == CaptureHistoryContentKind::Image) {
+    if (record.contentKind == CaptureHistoryContentKind::ResultOnly) {
+        object.insert(QStringLiteral("content_kind"), QStringLiteral("result_only"));
+    } else if (record.contentKind == CaptureHistoryContentKind::Image) {
         object.insert(QStringLiteral("content_kind"), QStringLiteral("image"));
     }
     if (record.scrolling.has_value()) {
@@ -217,9 +221,12 @@ bool parseRecord(const QJsonObject& object, StoredRecord* stored) {
     record.cursorAvailable = object.value(QStringLiteral("cursor_available")).toBool();
     const QJsonValue contentKind = object.value(QStringLiteral("content_kind"));
     if (!contentKind.isUndefined()) {
-        if (contentKind.toString() != QStringLiteral("image"))
+        if (contentKind.toString() == QStringLiteral("result_only"))
+            record.contentKind = CaptureHistoryContentKind::ResultOnly;
+        else if (contentKind.toString() == QStringLiteral("image"))
+            record.contentKind = CaptureHistoryContentKind::Image;
+        else
             return false;
-        record.contentKind = CaptureHistoryContentKind::Image;
     }
     const QJsonValue scrolling = object.value(QStringLiteral("scrolling"));
     if (!scrolling.isUndefined()) {
@@ -247,9 +254,11 @@ bool parseRecord(const QJsonObject& object, StoredRecord* stored) {
     const QString date = object.value(QStringLiteral("created_utc")).toString();
     record.createdUtc = QDateTime::fromString(date, Qt::ISODateWithMs);
     if (!validUuid(record.id) || !date.endsWith(u'Z') || !record.createdUtc.isValid() ||
-        object.value(QStringLiteral("canvas_history_file")).toString() != stored->canvasFileName ||
-        !integer(object.value(QStringLiteral("canvas_byte_size")), 1, kMaximumCanvasBytes,
-                 &record.canvasBytes) ||
+        (record.contentKind != CaptureHistoryContentKind::ResultOnly &&
+         (object.value(QStringLiteral("canvas_history_file")).toString() !=
+              stored->canvasFileName ||
+          !integer(object.value(QStringLiteral("canvas_byte_size")), 1, kMaximumCanvasBytes,
+                   &record.canvasBytes))) ||
         !integer(object.value(QStringLiteral("total_record_size")), 1, kMaximumStoredBytes,
                  &record.totalBytes)) {
         return false;
@@ -296,6 +305,11 @@ bool parseRecord(const QJsonObject& object, StoredRecord* stored) {
         record.result = image;
         bytes += image.encodedBytes;
     }
+    if (record.contentKind == CaptureHistoryContentKind::ResultOnly)
+        return record.result && record.desktopGeometry && record.totalBytes == bytes &&
+               !object.contains(QStringLiteral("canvas_history_file")) &&
+               !object.contains(QStringLiteral("canvas_byte_size")) &&
+               !object.contains(QStringLiteral("displays"));
     const QJsonArray displays = object.value(QStringLiteral("displays")).toArray();
     if (displays.isEmpty() || displays.size() > kMaximumDisplays) {
         return false;
@@ -443,6 +457,11 @@ QImage decodeImage(const QString& path) {
 }
 
 bool encodeDraft(const CaptureHistoryDraft& draft, qint64 quota, EncodedDraft* result) {
+    const bool resultOnly = draft.contentKind == CaptureHistoryContentKind::ResultOnly;
+    if (resultOnly &&
+        (!draft.desktopGeometry || (!draft.resultImage && !draft.preparedResultImage) ||
+         !draft.canvasHistory.isEmpty() || !draft.displays.isEmpty()))
+        return false;
     if (draft.contentKind == CaptureHistoryContentKind::Image &&
         (draft.displays.size() != 1 || (!draft.resultImage && !draft.preparedResultImage)))
         return false;
@@ -455,7 +474,7 @@ bool encodeDraft(const CaptureHistoryDraft& draft, qint64 quota, EncodedDraft* r
         !draft.selection.borderColor.isValid() ||
         (draft.selection.borderType != ScreenshotSelectionBorderType::Shadow &&
          draft.selection.borderType != ScreenshotSelectionBorderType::Border) ||
-        !validCanvas(draft.canvasHistory) || draft.displays.isEmpty() ||
+        (!resultOnly && (!validCanvas(draft.canvasHistory) || draft.displays.isEmpty())) ||
         draft.displays.size() > kMaximumDisplays || sourceText(draft.source).isEmpty()) {
         return false;
     }
@@ -473,7 +492,8 @@ bool encodeDraft(const CaptureHistoryDraft& draft, qint64 quota, EncodedDraft* r
     record.cursorAvailable = draft.cursorAvailable;
     record.canvasBytes = draft.canvasHistory.size();
     record.totalBytes = record.canvasBytes;
-    result->files.insert(stored.canvasFileName, draft.canvasHistory);
+    if (!resultOnly)
+        result->files.insert(stored.canvasFileName, draft.canvasHistory);
     qint64 pixels = 0;
     const auto addImage = [&](const QSize& size, const QString& name,
                               const std::function<QByteArray()>& encode) -> qint64 {
@@ -592,12 +612,8 @@ class CaptureHistoryRepositoryImpl final : public CaptureHistoryRepository {
         if (!m_options.clock)
             m_options.clock = []() { return QDateTime::currentDateTimeUtc(); };
         loadIndex();
-        if (m_options.writeAvailable && m_indexHealthy &&
-            (!m_snapshot.pendingDeletions.isEmpty() || hasExpired())) {
-            Command command;
-            command.kind = Kind::Maintenance;
-            enqueue(std::move(command));
-        }
+        if (m_indexHealthy)
+            requestExpiryCleanup();
     }
 
     ~CaptureHistoryRepositoryImpl() override {
@@ -656,7 +672,8 @@ class CaptureHistoryRepositoryImpl final : public CaptureHistoryRepository {
     std::shared_future<CaptureHistoryPublishResult> publish(CaptureHistoryDraft draft) override {
         {
             std::lock_guard lock(m_stateMutex);
-            if (!m_options.writeAvailable || !m_indexHealthy || !m_policy.enabled) {
+            if (!m_options.writeAvailable || !m_indexHealthy ||
+                m_policy.mode == CaptureHistoryMode::Disabled) {
                 return readyFuture(
                     CaptureHistoryPublishResult{StorageResult::failure(QStringLiteral(
                                                     "Capture-history publication is unavailable")),
@@ -724,7 +741,7 @@ class CaptureHistoryRepositoryImpl final : public CaptureHistoryRepository {
     std::optional<CaptureHistoryPayload> load(const CaptureHistoryRecord& record) const override {
         std::shared_lock access(m_relocationMutex);
         const auto stored = find(record);
-        if (!stored)
+        if (!stored || record.contentKind != CaptureHistoryContentKind::ScreenshotSession)
             return std::nullopt;
         const QDir directory(recordPath(record.id));
         const QString canvasPath = directory.filePath(stored->canvasFileName);
@@ -849,6 +866,14 @@ class CaptureHistoryRepositoryImpl final : public CaptureHistoryRepository {
         Command command;
         command.kind = Kind::Clear;
         return submit(std::move(command));
+    }
+
+    void requestExpiryCleanup() override {
+        if (!m_options.writeAvailable || !needsMaintenance())
+            return;
+        Command command;
+        command.kind = Kind::Maintenance;
+        enqueue(std::move(command));
     }
 
     void suspendWrites(bool suspended) override {
@@ -1015,7 +1040,8 @@ class CaptureHistoryRepositoryImpl final : public CaptureHistoryRepository {
         if (file.error() != QFileDevice::NoError || !document.isObject() ||
             (object.value(QStringLiteral("format_version")).toInteger() != kIndexVersion &&
              object.value(QStringLiteral("format_version")).toInteger() != 1 &&
-             object.value(QStringLiteral("format_version")).toInteger() != 2) ||
+             object.value(QStringLiteral("format_version")).toInteger() != 2 &&
+             object.value(QStringLiteral("format_version")).toInteger() != 3) ||
             !object.value(QStringLiteral("records")).isArray() ||
             !object.value(QStringLiteral("pending_deletions")).isArray()) {
             indexFailed();
@@ -1060,19 +1086,21 @@ class CaptureHistoryRepositoryImpl final : public CaptureHistoryRepository {
         fail(QStringLiteral("Unable to read the capture-history index; clear history to reset it"));
     }
 
-    bool hasExpired() const {
+    bool needsMaintenance() const {
+        const auto currentSnapshot = snapshot();
+        if (!currentSnapshot.pendingDeletions.isEmpty())
+            return true;
         const auto current = policy();
-        if (!current.enabled || current.keepPermanently)
+        if (current.keepPermanently)
             return false;
         const auto cutoff = m_options.clock().toUTC().addDays(-current.retentionDays);
-        const auto currentSnapshot = snapshot();
         return std::any_of(currentSnapshot.records.cbegin(), currentSnapshot.records.cend(),
                            [&](const auto& record) { return record.record.createdUtc < cutoff; });
     }
 
     void prune(Snapshot& next, bool capacity, const QString& protectedId = {}) const {
         const auto current = policy();
-        if (!current.enabled || current.keepPermanently)
+        if (current.keepPermanently)
             return;
         const auto cutoff = m_options.clock().toUTC().addDays(-current.retentionDays);
         qint64 bytes = 0;
@@ -1119,8 +1147,9 @@ class CaptureHistoryRepositoryImpl final : public CaptureHistoryRepository {
         return success;
     }
 
-    CaptureHistoryPublishResult publishNow(const CaptureHistoryDraft& draft) {
-        if (!policy().enabled)
+    CaptureHistoryPublishResult publishNow(CaptureHistoryDraft& draft) {
+        const auto current = policy();
+        if (current.mode == CaptureHistoryMode::Disabled)
             return {fail(QStringLiteral("Capture history is disabled")), {}};
         Snapshot next = snapshot();
         if (next.pendingDeletions.contains(draft.id) ||
@@ -1128,8 +1157,14 @@ class CaptureHistoryRepositoryImpl final : public CaptureHistoryRepository {
                         [&](const auto& r) { return r.record.id == draft.id; })) {
             return {fail(QStringLiteral("The capture-history ID already exists")), {}};
         }
+        if (current.mode == CaptureHistoryMode::ResultsOnly) {
+            draft.contentKind = CaptureHistoryContentKind::ResultOnly;
+            draft.canvasHistory.clear();
+            draft.displays.clear();
+            draft.cursorVisible = false;
+            draft.cursorAvailable = false;
+        }
         EncodedDraft encoded;
-        const auto current = policy();
         const qint64 quota = current.keepPermanently
                                  ? kMaximumStoredBytes
                                  : static_cast<qint64>(current.maxDiskMiB) * kMiB;
@@ -1295,6 +1330,12 @@ class CaptureHistoryRepositoryImpl final : public CaptureHistoryRepository {
                 return;
             }
         }
+        // Capture admission changes immediately, even if an earlier write occupies the worker.
+        // Limit changes and expiry maintenance still complete in queue order.
+        if (command.kind == Kind::Policy) {
+            std::lock_guard stateLock(m_stateMutex);
+            m_policy.mode = command.policy.mode;
+        }
         if (command.kind == Kind::ReadFailure)
             m_failedReads.insert(command.record.id);
         if (command.kind == Kind::Publish)
@@ -1362,18 +1403,11 @@ class CaptureHistoryRepositoryImpl final : public CaptureHistoryRepository {
                         }
                         break;
                     case Kind::Policy: {
-                        const auto previous = policy();
                         {
                             std::lock_guard lock(m_stateMutex);
-                            m_policy = command.policy;
+                            static_cast<HistoryRetentionLimits&>(m_policy) = command.policy;
                         }
-                        if (command.policy.enabled &&
-                            (!previous.enabled ||
-                             previous.keepPermanently != command.policy.keepPermanently ||
-                             previous.retentionDays != command.policy.retentionDays))
-                            result = maintenance();
-                        else if (!cleanup())
-                            result = StorageResult::failure(lastError());
+                        result = maintenance();
                         break;
                     }
                     }

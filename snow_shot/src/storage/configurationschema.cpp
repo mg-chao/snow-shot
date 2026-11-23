@@ -466,7 +466,7 @@ constexpr SchemaString kFloatingToolbarDropBehaviors[] = {u"pin_to_screen", u"im
                                                           u"image_splitting", u"image_editing"};
 constexpr SchemaAllowedValues kFloatingToolbarDropBehaviorValues = {
     kFloatingToolbarDropBehaviors, std::size(kFloatingToolbarDropBehaviors)};
-constexpr int kConfigurationSchemaVersion = 8;
+constexpr int kConfigurationSchemaVersion = 9;
 constexpr ConfigurationIntegerRange kSchemaRange1{kConfigurationSchemaVersion,
                                                   kConfigurationSchemaVersion, 1};
 constexpr SchemaString kSchemaStrings4[] = {u"system", u"light", u"dark"};
@@ -791,6 +791,8 @@ constexpr SchemaString kSchemaStrings120[] = {u"quick.screenshot",
 constexpr SchemaAllowedValues kSchemaAllowed51 = {kSchemaStrings120, std::size(kSchemaStrings120)};
 constexpr SchemaString kSchemaStrings121[] = {u"rectangle", u"polyline", u"curve", u"freehand"};
 constexpr SchemaAllowedValues kSchemaAllowed52 = {kSchemaStrings121, std::size(kSchemaStrings121)};
+constexpr SchemaString kHistoryModes[] = {u"full", u"results_only", u"disabled"};
+constexpr SchemaAllowedValues kAllowedHistoryModes{kHistoryModes, std::size(kHistoryModes)};
 constexpr SchemaString kSchemaStrings122[] = {u"window_sub_element", u"window", u"disabled"};
 constexpr SchemaAllowedValues kSchemaAllowed53 = {kSchemaStrings122, std::size(kSchemaStrings122)};
 constexpr ConfigurationIntegerRange kSchemaRange17{0, ScreenshotLayoutCompaction::maximumSpacing,
@@ -1751,7 +1753,8 @@ constexpr SchemaEntryDescriptor kEntryDescriptors[] = {
      ConfigurationValueKind::String},
     {u"screenshot_selection/selection_rect_presets", emptyArrayDefault(),
      ConfigurationValueKind::Structured},
-    {u"capture_history/enabled", booleanDefault(true), ConfigurationValueKind::Boolean},
+    {u"capture_history/retention_mode", stringDefault(u"full"), ConfigurationValueKind::String,
+     nullptr, &kAllowedHistoryModes},
     {u"capture_history/keep_permanently", booleanDefault(false), ConfigurationValueKind::Boolean},
     {u"capture_history/compression_level", stringDefault(u"medium"), ConfigurationValueKind::String,
      nullptr, &kSchemaAllowed69},
@@ -3086,6 +3089,11 @@ ConfigurationSchema::migrateLegacyValues(QMap<QString, QJsonValue> values) {
             targets.append(QStringLiteral("normal_screenshot"));
         values.insert(shutterKey, targets);
     }
+    const auto legacyHistory = values.take(QStringLiteral("capture_history/enabled"));
+    const auto modeKey = QStringLiteral("capture_history/retention_mode");
+    if (!values.contains(modeKey) && legacyHistory.isBool())
+        values.insert(modeKey,
+                      legacyHistory.toBool() ? QStringLiteral("full") : QStringLiteral("disabled"));
     const QString smartSelectionKey = QStringLiteral("screenshot_selection/smart_selection");
     const QJsonValue legacyTarget =
         values.take(QStringLiteral("screenshot_selection/selection_target"));

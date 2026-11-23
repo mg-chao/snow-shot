@@ -1996,7 +1996,7 @@ std::optional<ScreenshotClipboardContentSnapshot> historyClipboardSnapshot() {
 
 void historyCopiesPreservePositionAndAppearance() {
     auto& repository = storage::ApplicationStorage::instance().captureHistory();
-    for (int mode : {0, 1, 2}) {
+    for (int mode : {0, 1, 2, 3}) {
         storage::CaptureHistoryDraft draft;
         draft.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
         draft.createdUtc = QDateTime::currentDateTimeUtc();
@@ -2022,6 +2022,11 @@ void historyCopiesPreservePositionAndAppearance() {
         const ScreenshotResultStyle style{12, 8, Qt::black};
         draft.resultImage =
             ScreenshotResultCompositor::compose(display.copy(draft.selection.rectangle), style);
+        if (mode == 3) {
+            draft.contentKind = storage::CaptureHistoryContentKind::ResultOnly;
+            draft.canvasHistory.clear();
+            draft.displays.clear();
+        }
         const auto published = repository.publish(draft).get();
         require(published.storage.success, "publish clipboard history fixture");
         const auto stored = repository.loadResultPng(published.record);

@@ -155,7 +155,7 @@ void pointGeometryRoundTripsAndLegacyIndexRemainsReadable() {
     require(file.open(QIODevice::WriteOnly), "legacy index write failed");
     file.write(QJsonDocument(index).toJson());
     file.close();
-    for (int version : {1, 2}) {
+    for (int version : {1, 2, 3}) {
         index.insert(QStringLiteral("format_version"), version);
         auto legacyRecords = index.value(QStringLiteral("records")).toArray();
         auto legacyRecord = legacyRecords[0].toObject();
@@ -278,8 +278,8 @@ void cursorPatchesRoundTripWithoutChangingDesktopPixels() {
                     repository->usage().entryCount == 0,
                 "removing history must delete cursor assets and release their accounted bytes");
     }
-    require(readObject(indexPath(directory.path())).value(QStringLiteral("format_version")) == 3,
-            "new history must use format version 3");
+    require(readObject(indexPath(directory.path())).value(QStringLiteral("format_version")) == 4,
+            "new history must use format version 4");
     for (const QRect invalid : {QRect(-1, 0, 4, 5), QRect(30, 20, 4, 5), QRect(2, 3, 5, 5)}) {
         QTemporaryDir malformed;
         draft.displays.front().cursorPixelRect = invalid;
@@ -441,7 +441,7 @@ void publicationAndRecovery() {
         const QJsonObject manifest = firstRecord(temporary.path());
         require(readObject(indexPath(temporary.path()))
                             .value(QStringLiteral("format_version"))
-                            .toInt() == 3 &&
+                            .toInt() == 4 &&
                     manifest.value(QStringLiteral("id")).toString() == published.id &&
                     manifest.value(QStringLiteral("source")).toString() ==
                         QStringLiteral("pinned_to_screen") &&
@@ -658,20 +658,112 @@ void policyBoundariesAndDisabledPreservation() {
     require(repository->publish(draftAt(now.addSecs(-2))).get().storage.success &&
                 repository->publish(draftAt(now.addSecs(-1))).get().storage.success,
             "failed to publish count-policy fixtures");
-    policy.enabled = false;
+    policy.mode = snow_shot::storage::CaptureHistoryMode::Disabled;
     policy.maxEntries = 1;
     require(repository->updatePolicy(policy).get().success && repository->records().size() == 3,
             "disabling history pruned existing records");
     require(!repository->publish(draftAt(now)).get().storage.success &&
                 repository->records().size() == 3,
             "disabled history accepted a persistent draft");
-    policy.enabled = true;
+    policy.mode = snow_shot::storage::CaptureHistoryMode::Full;
     require(repository->updatePolicy(policy).get().success && repository->records().size() == 3,
             "re-enabling history enforced capacity before an addition");
     const auto added = repository->publish(draftAt(now)).get();
     require(added.storage.success && repository->records().size() == 1 &&
                 repository->records().first().id == added.record.id,
             "addition did not enforce capacity oldest-first");
+}
+
+void queuedPublicationsHonorModeChanges() {
+    for (auto mode :
+         {storage::CaptureHistoryMode::ResultsOnly, storage::CaptureHistoryMode::Disabled}) {
+        QTemporaryDir directory;
+        std::promise<void> started, release;
+        const auto released = release.get_future().share();
+        std::once_flag first;
+        storage::CaptureHistoryRepositoryOptions options;
+        options.operationObserved = [&](auto operation) {
+            if (operation == storage::CaptureHistoryOperation::WorkerStarted)
+                std::call_once(first, [&] {
+                    started.set_value();
+                    released.wait();
+                });
+        };
+        auto repository = storage::makeCaptureHistoryRepository(directory.path(), options);
+        auto draft = draftAt(QDateTime::currentDateTimeUtc());
+        draft.resultImage = draft.displays.front().image;
+        draft.desktopGeometry = storage::CaptureHistoryDesktopGeometry{};
+        auto publication = repository->publish(std::move(draft));
+        started.get_future().wait();
+        auto policy = repository->policy();
+        policy.mode = mode;
+        auto change = repository->updatePolicy(policy);
+        release.set_value();
+        const auto record = publication.get();
+        require(change.get().success, "queued retention mode update must succeed");
+        if (mode == storage::CaptureHistoryMode::Disabled)
+            require(!record.storage.success && repository->records().isEmpty(),
+                    "disabling history must suppress a queued publication");
+        else
+            require(record.storage.success &&
+                        record.record.contentKind ==
+                            storage::CaptureHistoryContentKind::ResultOnly &&
+                        record.record.displays.isEmpty(),
+                    "downgrading an enqueued capture must discard the session");
+    }
+}
+
+void mixedRetentionModes() {
+    QTemporaryDir directory;
+    auto now = QDateTime::currentDateTimeUtc();
+    storage::CaptureHistoryRepositoryOptions options;
+    options.clock = [&now] { return now; };
+    auto repository = storage::makeCaptureHistoryRepository(directory.path(), options);
+    const auto full = repository->publish(draftAt(now)).get();
+    auto policy = repository->policy();
+    policy.mode = storage::CaptureHistoryMode::ResultsOnly;
+    require(full.storage.success && repository->updatePolicy(policy).get().success,
+            "prepare mixed history");
+    auto draft = draftAt(now.addSecs(1));
+    draft.desktopGeometry = storage::CaptureHistoryDesktopGeometry{QPoint(-120, 15), true};
+    draft.resultImage = QImage(17, 92, QImage::Format_RGBA8888);
+    draft.resultImage->fill(Qt::green);
+    draft.scrolling = true;
+    const auto flat = repository->publish(draft).get();
+    require(flat.storage.success &&
+                flat.record.contentKind == storage::CaptureHistoryContentKind::ResultOnly &&
+                flat.record.result && flat.record.result->imageSize == draft.resultImage->size() &&
+                flat.record.canvasBytes == 0 &&
+                flat.record.totalBytes == flat.record.result->encodedBytes &&
+                flat.record.displays.isEmpty(),
+            "results-only policy must strip queued session payloads");
+    const auto payload = repository->revealPath(flat.record.id);
+    require(payload && QFileInfo(*payload).dir().entryList(QDir::Files) ==
+                           QStringList{QStringLiteral("capture_result.png")},
+            "a flat record must contain exactly one image");
+    policy.mode = storage::CaptureHistoryMode::Disabled;
+    options.policy = policy;
+    repository.reset();
+    repository = storage::makeCaptureHistoryRepository(directory.path(), options);
+    require(
+        repository->records().size() == 2 && repository->records().front() == flat.record &&
+            repository->load(full.record) && !repository->load(flat.record) &&
+            equalPixels(repository->loadResultImagePreservingRecord(flat.record).value_or(QImage()),
+                        *draft.resultImage),
+        "reopening mixed history preserves both kinds and their metadata");
+    require(!repository->publish(draftAt(now)).get().storage.success,
+            "disabled rejects new records");
+    now = now.addDays(policy.retentionDays).addMSecs(1);
+    repository->requestExpiryCleanup();
+    repository->drain();
+    require(repository->records().size() == 1 && repository->records().front() == flat.record,
+            "disabled history expires records at the age cutoff without new captures");
+    policy.keepPermanently = true;
+    require(repository->updatePolicy(policy).get().success, "enable permanent history");
+    now = now.addDays(1);
+    repository->requestExpiryCleanup();
+    repository->drain();
+    require(repository->records().size() == 1, "permanent retention suspends disabled-mode expiry");
 }
 
 void publicationQueueCapacity() {
@@ -1055,6 +1147,43 @@ void pendingDeletionResumesWithoutScanningOrphans() {
             "pending cleanup failed or scanned unrelated payloads");
 }
 
+#ifdef Q_OS_WIN
+void expiryCleanupRetriesLockedPayload() {
+    QTemporaryDir directory;
+    auto now = QDateTime::currentDateTimeUtc();
+    storage::CaptureHistoryRepositoryOptions options;
+    options.clock = [&now] { return now; };
+    auto repository = storage::makeCaptureHistoryRepository(directory.path(), options);
+    auto draft = draftAt(now);
+    draft.resultImage = draft.displays.front().image;
+    const auto published = repository->publish(draft).get();
+    const auto path = repository->revealPath(draft.id);
+    require(published.storage.success && path.has_value(),
+            "failed to publish expiry retry fixture");
+
+    QFile reader(*path);
+    require(reader.open(QIODevice::ReadOnly), "failed to lock the PNG against deletion");
+    now = now.addDays(options.policy.retentionDays + 1);
+    repository->requestExpiryCleanup();
+    repository->drain();
+    const auto expiredRevision = repository->recordsSnapshot().revision;
+    require(repository->records().isEmpty() && QFileInfo::exists(*path) &&
+                repository->usage().pendingDeletionBytes == published.record.totalBytes,
+            "expiry must remove the record and retain the locked payload for retry");
+
+    reader.close();
+    repository->requestExpiryCleanup();
+    repository->drain();
+    require(!QFileInfo::exists(*path) && repository->usage().pendingDeletionBytes == 0 &&
+                repository->recordsSnapshot().revision == expiredRevision &&
+                readObject(indexPath(directory.path()))
+                    .value(QStringLiteral("pending_deletions"))
+                    .toArray()
+                    .isEmpty(),
+            "expiry must retry the pending payload and persist its removal");
+}
+#endif
+
 void startupExpiresAgeButDoesNotEnforceCapacity() {
     QTemporaryDir temporary;
     const auto now = QDateTime::currentDateTimeUtc();
@@ -1366,6 +1495,8 @@ int main(int argc, char** argv) {
                 "history clear and shutdown must drain their activity reservations");
         return 0;
     }
+    mixedRetentionModes();
+    queuedPublicationsHonorModeChanges();
     revisionCheckedMutations();
     if (application.arguments().contains(QStringLiteral("--revision-only"))) {
         failedCommitPreservesPublishedHistory();
@@ -1396,6 +1527,9 @@ int main(int argc, char** argv) {
     failedPayloadWriteDoesNotPublishPartialHistory();
     failedCommitPreservesPublishedHistory();
     pendingDeletionResumesWithoutScanningOrphans();
+#ifdef Q_OS_WIN
+    expiryCleanupRetriesLockedPayload();
+#endif
     startupExpiresAgeButDoesNotEnforceCapacity();
     batchRemovalCommitsAndNotifiesOnce();
     permanentHistoryBypassesLimitsAndAllowsManualDeletion();
