@@ -1135,15 +1135,9 @@ SettingsItemDefinition memoryOptimizationPolicyItem() {
     return {
         QStringLiteral("system.memory-optimization-policy"),
         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Memory optimization policy")),
-#ifdef Q_OS_MACOS
         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
                                        "Smart control releases unused heap memory while the app is "
                                        "idle. Active captures and pinned images are kept")),
-#else
-        settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
-                                       "Smart control trims resident memory while the app is idle. "
-                                       "The next use may briefly take longer")),
-#endif
         {},
         QStringLiteral("system/memory_optimization_policy"),
         payload,

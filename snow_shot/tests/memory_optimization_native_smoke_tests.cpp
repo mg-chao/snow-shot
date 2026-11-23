@@ -5,14 +5,18 @@
 #include <QJsonObject>
 #include <QProcess>
 #include <qt_windows.h>
+#include <psapi.h>
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <iostream>
 #include <stdexcept>
 
 namespace {
 namespace runtime = snow_shot::runtime;
-constexpr std::size_t kAllocationBytes = 64U * 1024U * 1024U;
+constexpr std::size_t kSampleStride = 1024U * 1024U;
+constexpr std::size_t kAllocationBytes = 64U * kSampleStride;
 constexpr std::uint64_t kChecksumSeed = 1469598103934665603ULL;
 constexpr std::uint64_t kChecksumPrime = 1099511628211ULL;
 
@@ -24,6 +28,19 @@ void require(bool condition, const char* message) {
 QJsonObject memoryJson(const runtime::ProcessMemorySample& sample) {
     return {{QStringLiteral("private_working_set_bytes"), static_cast<qint64>(sample.memoryBytes)},
             {QStringLiteral("page_fault_count"), static_cast<qint64>(sample.pageFaultCount)}};
+}
+
+std::size_t residentSampleCount(void* allocation) {
+    std::array<PSAPI_WORKING_SET_EX_INFORMATION, kAllocationBytes / kSampleStride> pages{};
+    auto* address = static_cast<unsigned char*>(allocation);
+    for (auto& page : pages) {
+        page.VirtualAddress = address;
+        address += kSampleStride;
+    }
+    require(QueryWorkingSetEx(GetCurrentProcess(), pages.data(), sizeof(pages)) != FALSE,
+            "query residency of pages from the live allocation");
+    return static_cast<std::size_t>(std::ranges::count_if(
+        pages, [](const auto& page) { return page.VirtualAttributes.Valid != 0; }));
 }
 
 int runChild() {
@@ -48,35 +65,39 @@ int runChild() {
     }
     const auto before = options.sample();
     require(before.has_value(), "sample the child's touched allocation");
-    require(before->memoryBytes >= kAllocationBytes,
-            "private working set includes the touched allocation");
+    const auto pressureBefore = options.lowMemory();
+    const auto residentBefore = residentSampleCount(data);
     const auto started = std::chrono::steady_clock::now();
     const auto trimmed = options.trim();
     const double trimMs =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started)
             .count();
-    // Sample before examining the allocation: checksum reads intentionally fault it back in.
+    // Query residency before checksum reads can bring any evicted pages back in.
     const auto after = options.sample();
-    require(trimmed.succeeded && after.has_value(), "trim and sample the isolated child");
-    require(after->memoryBytes < before->memoryBytes,
-            "EmptyWorkingSet must reduce the touched child's private working set");
+    require(trimmed.succeeded && trimmed.error == 0 && after.has_value(),
+            "optimize the heap and sample the isolated child");
+    const auto residentAfter = residentSampleCount(data);
+    // The OS can evict pages independently under memory pressure. Allow some
+    // sampling drift while checking for a forced working-set drop when memory is available.
+    if (pressureBefore == false && options.lowMemory() == false) {
+        require(residentBefore > 0 && residentAfter >= (residentBefore + 1) / 2,
+                "heap optimization must preserve live non-heap residency when memory is available");
+    }
     const volatile std::uint64_t* retained = data;
     std::uint64_t checksum = kChecksumSeed;
     for (std::size_t index = 0; index < count; ++index)
         checksum = (checksum ^ retained[index]) * kChecksumPrime;
-    const auto refaulted = options.sample();
-    require(checksum == expectedChecksum && refaulted.has_value(),
-            "every byte of the child's allocation remains readable and unchanged after trimming");
-    require(refaulted->pageFaultCount > after->pageFaultCount,
-            "reading the retained allocation must demonstrate its page refaults");
-    require(refaulted->memoryBytes > after->memoryBytes,
-            "reading the retained allocation restores private resident pages");
+    const auto afterChecksum = options.sample();
+    require(checksum == expectedChecksum && afterChecksum.has_value(),
+            "verify each byte of the live allocation after heap optimization");
     const QJsonObject report{
         {QStringLiteral("child_process_id"), static_cast<qint64>(GetCurrentProcessId())},
         {QStringLiteral("allocation_bytes"), static_cast<qint64>(kAllocationBytes)},
         {QStringLiteral("before"), memoryJson(*before)},
         {QStringLiteral("after_trim_before_checksum"), memoryJson(*after)},
-        {QStringLiteral("after_checksum"), memoryJson(*refaulted)},
+        {QStringLiteral("after_checksum"), memoryJson(*afterChecksum)},
+        {QStringLiteral("resident_samples_before"), static_cast<qint64>(residentBefore)},
+        {QStringLiteral("resident_samples_after"), static_cast<qint64>(residentAfter)},
         {QStringLiteral("trim_ms"), trimMs},
         {QStringLiteral("checksum_ok"), true},
         {QStringLiteral("checksum"), QString::number(checksum, 16)},

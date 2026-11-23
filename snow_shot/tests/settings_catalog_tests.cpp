@@ -4094,21 +4094,19 @@ void memoryOptimizationPolicyCatalog() {
                 item != nullptr && item->configurationKey == key &&
                 item->title.translated() == QStringLiteral("Memory optimization policy"),
             "supported platforms expose memory policy last in Application performance");
+    require(item->description.translated() ==
+                QStringLiteral("Smart control releases unused heap memory while the app is "
+                               "idle. Active captures and pinned images are kept"),
+            "supported platforms describe idle heap reclamation");
 #ifdef Q_OS_MACOS
     require(section->items.size() == 2 &&
-                section->items.first().id == QStringLiteral("system.application-qos") &&
-                item->description.translated() ==
-                    QStringLiteral("Smart control releases unused heap memory while the app is "
-                                   "idle. Active captures and pinned images are kept"),
-            "macOS exposes memory policy after QoS with heap reclamation guidance");
+                section->items.first().id == QStringLiteral("system.application-qos"),
+            "macOS exposes memory policy after QoS");
 #else
     require(section->items.size() == 3 &&
                 section->items.first().id == QStringLiteral("system.application-priority") &&
-                section->items.at(1).id == QStringLiteral("system.power-qos") &&
-                item->description.translated() ==
-                    QStringLiteral("Smart control trims resident memory while the app is idle. "
-                                   "The next use may briefly take longer"),
-            "Windows exposes memory policy after Power QoS with resident memory guidance");
+                section->items.at(1).id == QStringLiteral("system.power-qos"),
+            "Windows exposes memory policy after Power QoS");
 #endif
     const auto* select = std::get_if<settings::SettingsSelectDefinition>(&item->payload);
     require(select != nullptr &&

@@ -4798,10 +4798,6 @@
             <translation>智能控制会在应用空闲时释放未使用的堆内存。正在进行的捕获和已固定到屏幕的图像会保留</translation>
         </message>
         <message>
-            <source>Smart control trims resident memory while the app is idle. The next use may briefly take longer</source>
-            <translation>智能控制会在应用空闲时缩减驻留内存。下次使用时可能会短暂增加响应时间</translation>
-        </message>
-        <message>
             <source>Smart merge</source>
             <translation>智能合并</translation>
         </message>

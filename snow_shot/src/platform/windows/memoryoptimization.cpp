@@ -73,7 +73,9 @@ MemoryOptimizationController::Options nativeMemoryOptimizationOptions() {
     options.lowMemory = [backend] { return backend->lowMemory(); };
     options.sample = [backend] { return backend->sample(); };
     options.trim = [] {
-        const bool succeeded = EmptyWorkingSet(GetCurrentProcess()) != FALSE;
+        HEAP_OPTIMIZE_RESOURCES_INFORMATION information{HEAP_OPTIMIZE_RESOURCES_CURRENT_VERSION, 0};
+        const bool succeeded = HeapSetInformation(nullptr, HeapOptimizeResources, &information,
+                                                  sizeof(information)) != FALSE;
         return MemoryTrimResult{succeeded, succeeded ? 0U : GetLastError()};
     };
     options.report = [](const MemoryTrimReport& report) {

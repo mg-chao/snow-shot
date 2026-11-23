@@ -162,7 +162,7 @@ QJsonObject runComparison(const QString& name, int pairs, int warmups, Scenario 
                                              .count()
                                        : 0.0;
             const auto afterTrim = sample(options);
-            require(result.succeeded, "the controlled native working-set trim must succeed");
+            require(result.succeeded, "the controlled native heap optimization must succeed");
             QElapsedTimer operation;
             operation.start();
             scenario.perform();
