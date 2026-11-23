@@ -715,9 +715,9 @@ Both editions expose **Memory Optimization Policy** under **General > Applicatio
 performance**. **Smart Control** is the default; **Disabled** stops automatic
 reclamation immediately. On macOS, Smart Control calls
 `malloc_zone_pressure_relief(nullptr, 0)` to return unused allocator pages to the
-system. Live images, capture data, and other allocations retain their contents.
-This is best-effort reclamation and may release zero bytes; it does not evict
-live process pages like Windows `EmptyWorkingSet`.
+system. On Windows, Smart Control uses `HeapOptimizeResources` to reclaim unused
+low-fragmentation heap pages. Both operations are best-effort and may release
+zero bytes.
 
 The controller waits for background idle time, blocks reclamation during active
 work or UI interaction, and limits attempts to one per idle period with a
