@@ -309,7 +309,7 @@ int runOcrLifecycleChild() {
             QDataStream output(&ready, QIODevice::WriteOnly);
             output.setByteOrder(QDataStream::LittleEndian);
             output << quint8(1) << quint32(0) << quint32(5);
-            output.writeRawData("1.3.0", 5);
+            output.writeRawData("1.4.0", 5);
             output << quint32(8);
             reply(2, 0, ready);
         } else if (kind == 19) {

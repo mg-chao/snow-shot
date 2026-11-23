@@ -2,24 +2,24 @@
   "schema": 2,
   "default_model": "small",
   "runtime": {
-    "version": "1.3.0",
+    "version": "1.4.0",
     "platform": "windows-arm64",
     "archive": {
-      "name": "snow-ocr-runtime-1.3.0-windows-arm64.zip",
-      "size": 8899440,
-      "sha256": "8856cbc073715f9538e539ed1abb72986851bb9dac48d00481d5bde373c287b9",
-      "url": "https://www.modelscope.cn/models/mgchao/SnowShotOCR/resolve/master/runtime/1.3.0/windows-arm64/snow-ocr-runtime-1.3.0-windows-arm64.zip"
+      "name": "snow-ocr-runtime-1.4.0-windows-arm64.zip",
+      "size": 8905662,
+      "sha256": "9aed126063daa08b051f8f94277b7e47cfe2a19c35d26d2fca7b8f7cc355dde7",
+      "url": "https://www.modelscope.cn/models/mgchao/SnowShotOCR/resolve/master/runtime/1.4.0/windows-arm64/snow-ocr-runtime-1.4.0-windows-arm64.zip"
     },
     "files": [
       {
-        "name": "snow-ocr-process-1.3.0-windows-arm64.exe",
-        "size": 11487232,
-        "sha256": "16b657a266db3f25994556d30f930f1ce3d50fbc0c8d9358cd94b82598f54d4c"
+        "name": "snow-ocr-process-1.4.0-windows-arm64.exe",
+        "size": 11499520,
+        "sha256": "5783dcbc8a73fecdb794c7cb7ea91f9e95791527bc2d1fe9f5093cf653c43c3e"
       },
       {
         "name": "runtime-manifest.json",
         "size": 296,
-        "sha256": "68e75a96a26372e14f5739e551a70fb34d40b8d047406c709a3ac8ce45c79849"
+        "sha256": "7a0c7d7596f1ce1e3b58fc5e43568534e550f3b2c1b63be695a0d5ceb0006a60"
       }
     ]
   },
@@ -107,13 +107,13 @@
     }
   ],
   "paragraph_model": {
-    "id": "line2para-1-c8cede9",
+    "id": "line2para-1-2-956253e",
     "files": [
       {
-        "name": "line2para_1.onnx",
-        "size": 3062018,
-        "sha256": "c8cede9a564d9da10cf72d2ca9fe70d1d83ac947566d8cbc546b1ea36402d922",
-        "url": "https://www.modelscope.cn/models/mgchao/SnowShotOCR/resolve/master/line2para/line2para_1.onnx?download=true"
+        "name": "line2para_1_2-epoch12-signed-1.625.onnx",
+        "size": 3061303,
+        "sha256": "956253efb9eefe81692b5ba88b2923f1a012427933768acd5657c509b7363ac5",
+        "url": "https://www.modelscope.cn/models/mgchao/SnowShotOCR/resolve/master/line2para/line2para_1_2-epoch12-signed-1.625.onnx?download=true"
       }
     ]
   }

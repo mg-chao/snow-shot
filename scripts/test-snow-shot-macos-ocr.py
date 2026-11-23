@@ -35,15 +35,15 @@ class MacOSOcrAssets(unittest.TestCase):
         ocr.atomic_json(self.model / '.complete.json', dict(schema=1, component='small-id'))
         paragraph = self.runtime / 'assets/ocr/models/paragraph-id'
         paragraph.mkdir()
-        (paragraph / 'line2para_1.onnx').write_bytes(b'paragraph')
+        (paragraph / 'line2para_1_2-epoch12-signed-1.625.onnx').write_bytes(b'paragraph')
         self.source['paragraph_model'] = dict(id='paragraph-id', files=[
-            dict(ocr.descriptor(paragraph / 'line2para_1.onnx'), url='https://example.invalid/paragraph')])
+            dict(ocr.descriptor(paragraph / 'line2para_1_2-epoch12-signed-1.625.onnx'), url='https://example.invalid/paragraph')])
         ocr.atomic_json(paragraph / '.complete.json', dict(schema=1, component='paragraph-id'))
         self.run = patch.object(ocr, 'run', return_value='snow-ocr-process 1.2.0 macos-aarch64 protocol 8').start()
         self.addCleanup(patch.stopall)
         original_fetch = ocr.fetch
         def fixture_fetch(item, destination):
-            if item['name'] == 'line2para_1.onnx':
+            if item['name'] == 'line2para_1_2-epoch12-signed-1.625.onnx':
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 destination.write_bytes(b'paragraph')
                 return
@@ -168,7 +168,7 @@ class MacOSOcrAssets(unittest.TestCase):
         ocr.finalize(self.source, self.runtime)
         for path in (self.runtime / 'snow-ocr-process', self.model / 'det.onnx',
                      self.model / 'rec.onnx', self.model / 'dict.txt',
-                     self.runtime / 'assets/ocr/models/paragraph-id/line2para_1.onnx'):
+                     self.runtime / 'assets/ocr/models/paragraph-id/line2para_1_2-epoch12-signed-1.625.onnx'):
             with self.subTest(file=path.name):
                 original = path.read_bytes()
                 path.write_bytes(original[:-1] + bytes([original[-1] ^ 1]))

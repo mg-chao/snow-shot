@@ -1,7 +1,7 @@
 # OCR runtime and V6 models
 
 Snow Shot uses CPU inference and optional GPU acceleration through the `simd-paddle-ocr-rs` Git submodule.
-Runtime **1.3.0** uses protocol **8**. Initialize submodules before building;
+Runtime **1.4.0** uses protocol **8**. Initialize submodules before building;
 the worker alone uses the library's pinned `nightly-2026-09-08` compiler.
 Other Rust packages keep their existing toolchain. The runtime takes verified
 local model paths, borrows child-owned BGR pixels, and returns owned text,
@@ -74,7 +74,7 @@ Windows x64 and ARM64 ZIPs contain exactly the versioned worker executable and
 `runtime-manifest.json`. There are no inference DLLs. The trusted descriptors in
 this directory are generated from the actual built bytes, including archive and
 entry hashes. Preparation creates local artifacts; publication is a release step.
-Keep all earlier published archives unchanged. Publish the exact pinned 1.3.0
+Keep all earlier published archives unchanged. Publish the exact pinned 1.4.0
 archives before distributing this application revision.
 
 ```powershell
@@ -115,10 +115,10 @@ Supply verified models as `<model-root>/<cache-id>/<filename>` for real inferenc
 $env:SNOW_TEST_OCR_TEXT_FIXTURE = (Resolve-Path snow_shot/tests/baselines/ocr-model-versions.png).Path
 $test = 'build/windows-msvc-debug/snow_shot/test-bin/Debug/snow-shot-ocr-recognition-service-tests.exe'
 $modelRoot = (Resolve-Path build/ocr-versioned-models).Path
-$worker = (Resolve-Path artifacts/snow-ocr-runtime-1.3.0/snow-ocr-process-1.3.0-windows-x64.exe).Path
+$worker = (Resolve-Path artifacts/snow-ocr-runtime-1.4.0/snow-ocr-process-1.4.0-windows-x64.exe).Path
 & $test "--model-root=$modelRoot" "--worker=$worker"
 & $test "--model-root=$modelRoot" "--worker=$worker" --resident-models
-& $test "--downloaded-runtime=$((Resolve-Path artifacts/snow-ocr-runtime-1.3.0-windows-x64.zip).Path)"
+& $test "--downloaded-runtime=$((Resolve-Path artifacts/snow-ocr-runtime-1.4.0-windows-x64.zip).Path)"
 ```
 
 The downloaded-runtime check copies the prepared archive and models through the
@@ -133,7 +133,8 @@ preset; do not use Debug or packaging presets for benchmarks.
 ## On-demand paragraphs
 
 `paragraph_model` is separate from the three OCR model selections. Its pinned
-`line2para_1.onnx` (3,062,018 bytes) lives in `models/line2para-1-c8cede9`, with the
+`line2para_1_2-epoch12-signed-1.625.onnx` (3,061,303 bytes) lives in
+`models/line2para-1-2-956253e`, with the
 same verified publication and completion-marker policy as OCR weights. Online
 and Mini packages include only its descriptor; offline, portable and development
 payloads include the weights. The macOS runtime-only package excludes them.
@@ -147,7 +148,7 @@ automatic grouping retries. Failure uses the original unmerged lines and one
 Message, without action buttons. Translation-only source indices survive saving;
 older saved translations remain readable without running the model.
 
-The published export declares checkpoint `3180f1a5` and connected-component
-partitioning at logit 0. The paragraph loader supports that export as well as the
-upstream epoch-15 evidence decoder, validating the checkpoint and declared policy
-together. Do not substitute epoch-15 metadata or decoding rules for this model.
+The published export uses five ONNX inputs and the epoch-12 EMA checkpoint
+`5e5f3cda`. Its signed decoder uses threshold `1.625`, veto `-0.5` and support
+`-0.65`. The worker validates the input signature, checkpoint and policy
+together. Explicitly supplied legacy exports retain their own decoders.

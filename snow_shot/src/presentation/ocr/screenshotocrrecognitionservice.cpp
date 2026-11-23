@@ -148,7 +148,7 @@ class ScreenshotOcrRecognitionService::Impl final {
         }
         if (!options.processPath.isEmpty() && !options.paragraphModelPath.isEmpty()) {
             m_paragraphAssets.runtimeVersion = QString::fromLatin1(kRuntimeVersion);
-            m_paragraphAssets.modelId = QStringLiteral("line2para-1-c8cede9");
+            m_paragraphAssets.modelId = QStringLiteral("line2para-1-2-956253e");
             m_paragraphAssets.processPath = options.processPath;
             m_paragraphAssets.runtimeDirectory = QFileInfo(options.processPath).absolutePath();
             m_paragraphAssets.paragraphModelPath = options.paragraphModelPath;
