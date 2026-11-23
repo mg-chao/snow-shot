@@ -137,7 +137,7 @@ function Invoke-SnowNativePackageProbe {
         foreach ($directory in $models) {
             if ($directory.Name -ceq $assets.paragraph_model.id) {
                 $files = @($assets.paragraph_model.files)
-                if ($files.Count -ne 1 -or $files[0].name -cne 'line2para_1.onnx') {
+                if ($files.Count -ne 1 -or $files[0].name -cne 'line2para_1_2-epoch12-signed-1.625.onnx') {
                     throw 'Packaged paragraph model has an invalid pinned file list.'
                 }
                 $path = Join-Path $directory.FullName $files[0].name

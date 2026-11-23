@@ -952,12 +952,12 @@ class ScreenshotOcrAssets::Impl final {
             const auto object = descriptor->paragraphModel;
             paragraph.id = object.value(QStringLiteral("id")).toString();
             const auto files = object.value(QStringLiteral("files")).toArray();
-            if (paragraph.id != QStringLiteral("line2para-1-c8cede9") || files.size() != 1) {
+            if (paragraph.id != QStringLiteral("line2para-1-2-956253e") || files.size() != 1) {
                 *error = QStringLiteral("invalid paragraph model descriptor");
                 return false;
             }
             auto file = parseFile(files.first().toObject(), true, error);
-            if (!file || file->name != QStringLiteral("line2para_1.onnx"))
+            if (!file || file->name != QStringLiteral("line2para_1_2-epoch12-signed-1.625.onnx"))
                 return false;
             paragraph.files.push_back(std::move(*file));
             paragraph.paragraph = true;

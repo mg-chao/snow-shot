@@ -172,10 +172,10 @@ try {
     $assetManifest = Join-Path $assets 'asset-manifest.json'
     $paragraph = Join-Path $assets 'models/fixture-paragraph'
     $null = New-Item -ItemType Directory -Path $paragraph
-    $paragraphPath = Join-Path $paragraph 'line2para_1.onnx'
+    $paragraphPath = Join-Path $paragraph 'line2para_1_2-epoch12-signed-1.625.onnx'
     [IO.File]::WriteAllText($paragraphPath, 'paragraph fixture')
     $packagedAssets.paragraph_model = @{ id = 'fixture-paragraph'; files = @(@{
-        name = 'line2para_1.onnx'; size = (Get-Item -LiteralPath $paragraphPath).Length
+        name = 'line2para_1_2-epoch12-signed-1.625.onnx'; size = (Get-Item -LiteralPath $paragraphPath).Length
         sha256 = (Get-FileHash -LiteralPath $paragraphPath -Algorithm SHA256).Hash.ToLowerInvariant()
     }) }
     $packagedAssets | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $assetManifest -Encoding utf8NoBOM

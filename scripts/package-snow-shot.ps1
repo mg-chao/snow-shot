@@ -1199,7 +1199,7 @@ foreach ($model in $ocrModels) {
 }
 
 $paragraphModel = (Get-Content -LiteralPath $ocrAssetManifestPath -Raw | ConvertFrom-Json).paragraph_model
-if ($paragraphModel.id -cne 'line2para-1-c8cede9' -or $paragraphModel.files.Count -ne 1) {
+if ($paragraphModel.id -cne 'line2para-1-2-956253e' -or $paragraphModel.files.Count -ne 1) {
     throw 'The trusted paragraph model descriptor is missing or invalid.'
 }
 $paragraphModelCache = Join-Path $artifactRoot "ocr-models-$($paragraphModel.id)"
@@ -1404,7 +1404,7 @@ $expectedOfflineFiles = @(
     "asset-manifest.json",
     "models\$ocrDefaultModelId\.complete.json",
     "models\$($paragraphModel.id)\.complete.json",
-    "models\$($paragraphModel.id)\line2para_1.onnx",
+    "models\$($paragraphModel.id)\line2para_1_2-epoch12-signed-1.625.onnx",
     "models\$ocrDefaultModelId\$($defaultOcrModel.Detector)",
     "models\$ocrDefaultModelId\$($defaultOcrModel.Recognizer)",
     "models\$ocrDefaultModelId\$($defaultOcrModel.Dictionary)",
