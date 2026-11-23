@@ -551,6 +551,12 @@ void pinnedRasterPreparationUsesExpandedGeometry() {
             "deferred pin source reports rendered size and retains naming metadata");
     requirePixels(exportPixels(source.source), full.image,
                   "deferred and worker-side pin rendering share identical pixels");
+    auto hiddenRecord = record;
+    hiddenRecord.hideToTopMode = true;
+    hiddenRecord.opacityPercent = 5;
+    const auto dimmed = renderScreenshotPinnedImageRecord(hiddenRecord, preparation);
+    require(dimmed.succeeded() && qAbs(dimmed.image.pixelColor(40, 40).alpha() - 26) <= 1,
+            "persisted hide-to-top records render at the ten percent opacity floor");
     record.thumbnailMode = true;
     record.preThumbnailNativeGeometry = record.nativeGeometry;
     record.nativeGeometry.setSize(QSize(16, 12));

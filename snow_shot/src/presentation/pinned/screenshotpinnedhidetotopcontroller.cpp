@@ -1,5 +1,6 @@
 #include "snow_shot/presentation/pinnedgeometry.h"
 #include "screenshotpinnedhidetotopcontroller.h"
+#include "screenshotpinnedopacity.h"
 #include "screenshotpinnedpointerpresence.h"
 #include "pinnedwindowplatform.h"
 
@@ -428,7 +429,10 @@ void ScreenshotPinnedHideToTopController::refreshOpacity() {
             m_restoring || m_state == State::Hidden
                 ? 0.0
                 : (m_state == State::Entering ? 1.0 - m_animation.currentValue().toReal() : 1.0);
-        m_owner->setWindowOpacity(qBound(25, m_hooks.opacity(), 100) / 100.0 * factor);
+        const int percent =
+            qBound(screenshot_pinned_opacity::kMinimumOpacityPercent, m_hooks.opacity(),
+                   screenshot_pinned_opacity::kMaximumOpacityPercent);
+        m_owner->setWindowOpacity(percent / 100.0 * factor);
     }
 }
 

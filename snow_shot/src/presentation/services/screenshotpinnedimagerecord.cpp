@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "../pinned/screenshotpinnedcropgeometry.h"
+#include "../pinned/screenshotpinnedopacity.h"
 #include "screenshotpinnedrenderbytes_p.h"
 #include "snow_shot/presentation/screenshotpinnedrenderpreparation.h"
 #include "snow_shot/presentation/screenshotpinnedrecognition.h"
@@ -131,8 +132,10 @@ preparePinnedImageRecord(storage::PinnedWindowRecord record,
             width > std::numeric_limits<int>::max() || height > std::numeric_limits<int>::max())
             return prepared;
         result.contentPixelSize = {std::max(1, qRound(width)), std::max(1, qRound(height))};
-        result.outputOpacity =
-            qBound(record.hideToTopMode ? 25 : 1, record.opacityPercent, 100) / 100.0;
+        using namespace screenshot_pinned_opacity;
+        result.outputOpacity = qBound(record.hideToTopMode ? kMinimumOpacityPercent : 1,
+                                      record.opacityPercent, kMaximumOpacityPercent) /
+                               100.0;
     }
     if (!std::isfinite(scale) || scale <= 0)
         return prepared;
