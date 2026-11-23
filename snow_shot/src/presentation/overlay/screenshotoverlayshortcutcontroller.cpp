@@ -120,7 +120,8 @@ struct ScreenshotOverlayShortcutController::Impl {
             QObject::connect(&storage.configuration(),
                              &snow_shot::storage::ConfigurationStore::valueChanged, &q,
                              [this](const QString& key, const QJsonValue&) {
-                                 if (key.startsWith(QStringLiteral("screenshot_shortcuts/")) ||
+                                 if (key == QStringLiteral("capture_history/retention_mode") ||
+                                     key.startsWith(QStringLiteral("screenshot_shortcuts/")) ||
                                      key.startsWith(QStringLiteral("drawing_shortcuts/"))) {
                                      reloadConfiguredShortcuts();
                                  }
@@ -163,6 +164,8 @@ struct ScreenshotOverlayShortcutController::Impl {
     }
 
     bool navigateHistory(bool previous) {
+        if (previous && !actions.canNavigateHistoryPrevious())
+            return false;
         if (interaction.manualSelecting()) {
             if (interaction.dragging()) {
                 interaction.cancelDrag();
@@ -524,20 +527,20 @@ struct ScreenshotOverlayShortcutController::Impl {
     }
 
     void reloadConfiguredShortcuts() {
-        const snow_shot::storage::ScreenshotShortcutSettings screenshotSettings;
+        const auto screenshotSettings =
+            snow_shot::storage::ScreenshotShortcutSettings().activeShortcuts();
         static_cast<void>(shortcutManager.setShortcuts(
-            regionMoveBinding,
-            screenshotSettings.shortcuts(QStringLiteral("move_entire_selection"))));
+            regionMoveBinding, screenshotSettings.value(QStringLiteral("move_entire_selection"))));
         for (auto binding = screenshotBindings.cbegin(); binding != screenshotBindings.cend();
              ++binding) {
             static_cast<void>(shortcutManager.setShortcuts(
-                binding.value(), screenshotSettings.shortcuts(binding.key())));
+                binding.value(), screenshotSettings.value(binding.key())));
         }
 
         for (auto binding = externalBindings.cbegin(); binding != externalBindings.cend();
              ++binding) {
             static_cast<void>(shortcutManager.setShortcuts(
-                binding.value(), screenshotSettings.shortcuts(binding.key())));
+                binding.value(), screenshotSettings.value(binding.key())));
         }
 
         const snow_shot::storage::DrawingShortcutSettings drawingSettings;

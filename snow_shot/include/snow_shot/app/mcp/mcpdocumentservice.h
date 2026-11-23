@@ -43,6 +43,7 @@ class McpDocumentService final : public QObject {
         ScreenshotClipboardOriginalContent originalContent;
         ScreenshotRecognitionResults recognitionResults;
         QString tool = QStringLiteral("select");
+        bool presentInImageEditing = false;
     };
     struct Ports {
         // Defaults to the native clipboard adapter.

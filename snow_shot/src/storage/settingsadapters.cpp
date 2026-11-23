@@ -1686,6 +1686,15 @@ shortcuts::ShortcutBindingMap ScreenshotShortcutSettings::allShortcuts() const {
     return result;
 }
 
+shortcuts::ShortcutBindingMap ScreenshotShortcutSettings::activeShortcuts() const {
+    auto result = allShortcuts();
+    if (ApplicationStorage::instance().captureHistoryPolicy().mode != CaptureHistoryMode::Full) {
+        result[QStringLiteral("previous_screenshot_history")].clear();
+        result[QStringLiteral("next_screenshot_history")].clear();
+    }
+    return result;
+}
+
 bool ScreenshotShortcutSettings::setAllShortcutsAtomic(
     const shortcuts::ShortcutBindingMap& shortcutsByAction) const {
     return setAllLocalShortcutsAtomic(QStringLiteral("screenshot_shortcuts/"),

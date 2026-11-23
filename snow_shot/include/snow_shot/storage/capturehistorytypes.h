@@ -1,6 +1,7 @@
 #ifndef SNOW_SHOT_STORAGE_CAPTUREHISTORYTYPES_H
 #define SNOW_SHOT_STORAGE_CAPTUREHISTORYTYPES_H
 
+#include "snow_shot/storage/capturehistorymode.h"
 #include "snow_shot/storage/storageresult.h"
 #include "snow_shot/image/screenshotlayoutcompaction.h"
 #include "snow_shot/storage/preparedpngimage.h"
@@ -20,7 +21,7 @@
 #include <optional>
 
 namespace snow_shot::storage {
-enum class CaptureHistoryContentKind { ScreenshotSession, Image };
+enum class CaptureHistoryContentKind { ScreenshotSession, Image, ResultOnly };
 enum class CaptureHistorySource {
     CopiedToClipboard,
     SavedToFile,
@@ -223,7 +224,7 @@ struct CaptureHistoryPayload {
     QVector<QImage> cursorPatches;
 };
 
-struct CaptureHistoryPolicy {
+struct HistoryRetentionLimits {
     static constexpr int MinimumRetentionDays = 1;
     static constexpr int MaximumRetentionDays = 365;
     static constexpr int MinimumEntries = 1;
@@ -231,7 +232,6 @@ struct CaptureHistoryPolicy {
     static constexpr int MinimumDiskMiB = 128;
     static constexpr int MaximumDiskMiB = 10240;
 
-    bool enabled = true;
     int retentionDays = 7;
     int maxEntries = 100;
     int maxDiskMiB = 1024;
@@ -243,11 +243,12 @@ struct CaptureHistoryPolicy {
                maxDiskMiB >= MinimumDiskMiB && maxDiskMiB <= MaximumDiskMiB;
     }
 
-    friend bool operator==(const CaptureHistoryPolicy& first, const CaptureHistoryPolicy& second) {
-        return first.enabled == second.enabled && first.retentionDays == second.retentionDays &&
-               first.maxEntries == second.maxEntries && first.maxDiskMiB == second.maxDiskMiB &&
-               first.keepPermanently == second.keepPermanently;
-    }
+    friend bool operator==(const HistoryRetentionLimits&, const HistoryRetentionLimits&) = default;
+};
+
+struct CaptureHistoryPolicy : HistoryRetentionLimits {
+    CaptureHistoryMode mode = CaptureHistoryMode::Full;
+    friend bool operator==(const CaptureHistoryPolicy&, const CaptureHistoryPolicy&) = default;
 };
 
 struct CaptureHistoryUsage {

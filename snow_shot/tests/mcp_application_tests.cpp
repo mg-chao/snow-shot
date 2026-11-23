@@ -650,14 +650,13 @@ void runMcpApplicationTests() {
     }
     const auto historyField =
         std::find_if(registry.fields().cbegin(), registry.fields().cend(), [](const auto& item) {
-            return item.configurationKey == u"capture_history/enabled";
+            return item.configurationKey == u"capture_history/retention_mode";
         });
     require(historyField != registry.fields().cend(), "history runtime setting exists");
     const auto policyWrite =
         call(QStringLiteral("settings_update"),
              {{QStringLiteral("values"),
-               QJsonObject{
-                   {historyField->id, !session.state(historyField->id).acceptedValue.toBool()}}}},
+               QJsonObject{{historyField->id, QStringLiteral("results_only")}}}},
              configuration.revision());
     const auto policyJob = policyWrite.result.value(QStringLiteral("job_id")).toString();
     require(policyWrite.ok && !policyJob.isEmpty() &&
@@ -678,6 +677,9 @@ void runMcpApplicationTests() {
                     QStringLiteral("completed") &&
                 !session.state(historyField->id).busy,
             "history policy job reports the committed runtime value");
+    require(!session.state(QStringLiteral("history.compression-level")).enabled &&
+                session.state(historyField->id).acceptedValue == QStringLiteral("results_only"),
+            "results-only history disables original display compression");
     const auto policyReset = call(QStringLiteral("settings_reset"),
                                   {{QStringLiteral("page_id"), historyField->pageId},
                                    {QStringLiteral("section_id"), historyField->sectionId}},
@@ -780,10 +782,11 @@ void runMcpApplicationTests() {
                                      archivedTheme == u"dark" ? QStringLiteral("light")
                                                               : QStringLiteral("dark")),
             "set a different runtime theme before import");
-    const bool archivedHistoryEnabled =
-        archive.values.value(QStringLiteral("capture_history/enabled")).toBool();
-    require(session.applySwitchValue(settings::SettingsSwitchBinding::HistoryEnabled,
-                                     !archivedHistoryEnabled),
+    const QString archivedHistoryMode =
+        archive.values.value(QStringLiteral("capture_history/retention_mode")).toString();
+    require(session.applySelectValue(settings::SettingsSelectBinding::HistoryRetentionMode,
+                                     archivedHistoryMode == u"full" ? QStringLiteral("disabled")
+                                                                    : QStringLiteral("full")),
             "set a different asynchronous history policy before import");
     translation_tests::waitUntil([&] { return !storage.status().historyPolicyUpdating; },
                                  "pre-import history policy commits");
@@ -799,13 +802,14 @@ void runMcpApplicationTests() {
         QCoreApplication::processEvents();
         QThread::msleep(1);
     }
-    require(jobs.get(71, jobId)->value(QStringLiteral("status")) == QStringLiteral("completed") &&
-                session.selectValue(settings::SettingsSelectBinding::Theme).toString() ==
-                    archivedTheme &&
-                !storage.status().historyPolicyUpdating &&
-                session.switchValue(settings::SettingsSwitchBinding::HistoryEnabled) ==
-                    archivedHistoryEnabled,
-            "configuration import waits for runtime theme and asynchronous history policy");
+    require(
+        jobs.get(71, jobId)->value(QStringLiteral("status")) == QStringLiteral("completed") &&
+            session.selectValue(settings::SettingsSelectBinding::Theme).toString() ==
+                archivedTheme &&
+            !storage.status().historyPolicyUpdating &&
+            session.selectValue(settings::SettingsSelectBinding::HistoryRetentionMode).toString() ==
+                archivedHistoryMode,
+        "configuration import waits for runtime theme and asynchronous history policy");
     for (auto it = receivingDirectories.cbegin(); it != receivingDirectories.cend(); ++it) {
         require(configuration.value(it.key()) == it.value(),
                 "MCP imports must preserve receiving directories omitted from the archive");
@@ -818,7 +822,7 @@ void runMcpApplicationTests() {
                 .errorCode == QStringLiteral("invalid_cursor"),
         "history cursor validated");
     auto historyPolicy = storage.captureHistory().policy();
-    historyPolicy.enabled = true;
+    historyPolicy.mode = storage::CaptureHistoryMode::Full;
     require(storage.captureHistory().updatePolicy(historyPolicy).get().success,
             "enable history image fixture publication");
     QImage historyImage(23, 17, QImage::Format_RGBA8888);
@@ -901,8 +905,7 @@ void runMcpApplicationTests() {
     translationRetries(call, translation, jobs, provider, selectionCaptures);
     require(call(QStringLiteral("updates_action"),
                  {{QStringLiteral("action"), QStringLiteral("download")}})
-                    .errorCode ==
-                QStringLiteral("invalid_state"),
+                    .errorCode == QStringLiteral("invalid_state"),
             "download requires an available update");
     ScreenshotMcpRequest updateRequest;
     updateRequest.connectionId = 71;
@@ -994,10 +997,8 @@ void runMcpApplicationTests() {
             request.params = {{QStringLiteral("action"), QStringLiteral("check")}};
         } else if (variant == 1) {
             request.method = QStringLiteral("snow_shot_settings_update");
-            request.params = {
-                {QStringLiteral("values"),
-                 QJsonObject{
-                     {historyField->id, !session.state(historyField->id).acceptedValue.toBool()}}}};
+            request.params = {{QStringLiteral("values"),
+                               QJsonObject{{historyField->id, QStringLiteral("results_only")}}}};
             request.expectedRevision = configuration.revision();
         } else {
             const QString directory =

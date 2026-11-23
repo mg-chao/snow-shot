@@ -50,6 +50,7 @@ class ScreenshotHistoryService final : public QObject {
     [[nodiscard]] std::optional<ScreenshotHistoryEntry> snapshotCurrent(bool persistent) const;
     void commit(ScreenshotHistoryEntry entry);
     [[nodiscard]] bool navigateToRecord(const QString& recordId);
+    [[nodiscard]] bool canNavigatePrevious();
     [[nodiscard]] bool navigatePrevious();
     [[nodiscard]] bool navigateNext();
     [[nodiscard]] bool returnToCurrentScreenshot();

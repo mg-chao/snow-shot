@@ -325,7 +325,8 @@ int main(int argc, char** argv) {
         request.target = snow_shot::presentation::DirectCaptureTarget::FocusedWindow;
         request.window = focused;
         for (const bool historyEnabled : {false, true}) {
-            request.historyEnabled = historyEnabled;
+            request.historyMode = historyEnabled ? snow_shot::storage::CaptureHistoryMode::Full
+                                                 : snow_shot::storage::CaptureHistoryMode::Disabled;
             const auto direct = snow_shot::presentation::captureDirectTarget(request);
             if (!direct.isValid() || direct.displays.isEmpty() == historyEnabled) {
                 std::cerr << "direct focused capture failed (history=" << historyEnabled

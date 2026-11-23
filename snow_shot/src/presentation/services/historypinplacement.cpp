@@ -39,7 +39,7 @@ bool applyNativeMonitorRect(CapturedDisplayModel& display, const QScreen& screen
 
 std::optional<snow_shot::storage::PinnedBorderAppearance>
 historySelectionBorderAppearance(const snow_shot::storage::CaptureHistoryRecord& record) {
-    if (record.contentKind != snow_shot::storage::CaptureHistoryContentKind::ScreenshotSession ||
+    if (record.contentKind == snow_shot::storage::CaptureHistoryContentKind::Image ||
         !record.result || record.result->imageSize.isEmpty()) {
         return {};
     }
@@ -80,7 +80,7 @@ historySelectionBorderAppearance(const snow_shot::storage::CaptureHistoryRecord&
 
 bool historyRecordSupportsSelectionPin(const snow_shot::storage::CaptureHistoryRecord& record) {
     // Legacy canvas coordinates alone cannot recover an absolute desktop position.
-    return record.contentKind == snow_shot::storage::CaptureHistoryContentKind::ScreenshotSession &&
+    return record.contentKind != snow_shot::storage::CaptureHistoryContentKind::Image &&
            record.result.has_value() && record.scrolling == false && record.desktopGeometry &&
            record.selection.rectangle.width() >= 1 && record.selection.rectangle.height() >= 1;
 }

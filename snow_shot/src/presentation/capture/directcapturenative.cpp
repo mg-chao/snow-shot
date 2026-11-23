@@ -29,7 +29,9 @@ DirectCaptureFrame captureDirectTarget(const DirectCaptureRequest& request) {
     config.pixel_format = SNOW_CAPTURE_PIXEL_FORMAT_BGRA8;
     const std::unique_ptr<SnowCaptureDesktopSession,
                           decltype(&snow_capture_desktop_session_destroy)>
-        session(request.historyEnabled ? snow_capture_desktop_session_create(&config) : nullptr,
+        session(request.historyMode == storage::CaptureHistoryMode::Full
+                    ? snow_capture_desktop_session_create(&config)
+                    : nullptr,
                 snow_capture_desktop_session_destroy);
     SnowCaptureScreenshotRequest nativeRequest{};
     nativeRequest.version = SNOW_CAPTURE_SCREENSHOT_REQUEST_VERSION;
@@ -81,7 +83,7 @@ DirectCaptureFrame captureDirectTarget(const DirectCaptureRequest& request) {
     }
     const std::unique_ptr<SnowCaptureScreenshotResult,
                           decltype(&snow_capture_screenshot_result_destroy)>
-        snapshot(!request.historyEnabled
+        snapshot(request.historyMode != storage::CaptureHistoryMode::Full
                      ? snow_capture_target_screenshot(&targetRequest)
                      : (session
                             ? snow_capture_desktop_session_capture(session.get(), &nativeRequest)
@@ -145,7 +147,8 @@ DirectCaptureFrame captureDirectTarget(const DirectCaptureRequest& request) {
             break;
         result.displays.push_back(std::move(display));
     }
-    if (((request.historyEnabled || request.target == DirectCaptureTarget::CurrentMonitor) &&
+    if (((request.historyMode == storage::CaptureHistoryMode::Full ||
+          request.target == DirectCaptureTarget::CurrentMonitor) &&
          result.displays.isEmpty()) ||
         static_cast<size_t>(result.displays.size()) != count) {
         result.image = {};

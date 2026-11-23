@@ -106,6 +106,7 @@ enum class SettingsSelectBinding {
     ScreenRecordingEncodingPreset,
     ScreenshotImageFormat,
     ScreenshotCompressionLevel,
+    HistoryRetentionMode,
     HistoryCompressionLevel,
     PinnedHistoryCompressionLevel,
     ScreenshotPdfPageSize,
@@ -133,7 +134,6 @@ struct SettingsSelectDefinition {
 };
 
 enum class SettingsSwitchBinding {
-    HistoryEnabled,
     PinnedHistoryEnabled,
     HistoryKeepPermanently,
     PinnedHistoryKeepPermanently,
@@ -195,7 +195,7 @@ enum class SettingsSwitchBinding {
 };
 
 struct SettingsSwitchDefinition {
-    SettingsSwitchBinding binding = SettingsSwitchBinding::HistoryEnabled;
+    SettingsSwitchBinding binding = SettingsSwitchBinding::HistoryKeepPermanently;
 };
 
 enum class SettingsIntegerBinding {
@@ -218,8 +218,8 @@ enum class SettingsMultiSelectBinding {
     FullscreenDisableScope,
     ScreenshotShutterSoundNotification,
     FirstExportTask,
-    LastExportTask = static_cast<int>(FirstExportTask) +
-        static_cast<int>(storage::exportTaskRows.size()) - 1,
+    LastExportTask =
+        static_cast<int>(FirstExportTask) + static_cast<int>(storage::exportTaskRows.size()) - 1,
 };
 
 constexpr SettingsMultiSelectBinding exportTaskBinding(storage::ExportTrigger trigger) {

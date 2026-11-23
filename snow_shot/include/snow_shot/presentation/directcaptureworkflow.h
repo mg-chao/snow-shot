@@ -5,6 +5,7 @@
 #include "snow_shot/presentation/screenshotimagefileservice.h"
 #include "snow_shot/presentation/screenshothidpiimagescaling.h"
 #include "snow_shot/storage/screenshotexportvariables.h"
+#include "snow_shot/storage/capturehistorymode.h"
 #include <QDateTime>
 #include <QImage>
 #include <QObject>
@@ -38,7 +39,7 @@ struct DirectCaptureRequest {
     QDateTime requestedAt;
     std::function<void(const DirectCaptureFrame&)> afterCopy;
     bool copyFile = false;
-    bool historyEnabled = false;
+    storage::CaptureHistoryMode historyMode = storage::CaptureHistoryMode::Disabled;
     QString imageFormat;
     ScreenshotImageEncodingOptions encoding;
     ScreenshotCompressionLevel historyDisplayCompressionLevel = ScreenshotCompressionLevel::Medium;

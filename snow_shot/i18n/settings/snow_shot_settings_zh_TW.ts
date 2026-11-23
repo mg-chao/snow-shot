@@ -2210,6 +2210,10 @@
             <translation>選擇錄製輸出檔案的儲存位置</translation>
         </message>
         <message>
+            <source>Choose whether to keep editable screenshot sessions, only final images, or no new history</source>
+            <translation>選擇保留可編輯的螢幕擷取工作階段、僅保留最終影像或停用新歷史記錄</translation>
+        </message>
+        <message>
             <source>Choose which fullscreen windows trigger automatic disabling</source>
             <translation>選擇哪些全螢幕視窗會觸發自動停用</translation>
         </message>
@@ -3226,6 +3230,10 @@
             <translation>保留已關閉視窗以便還原；停用不會刪除現有記錄</translation>
         </message>
         <message>
+            <source>Keep full history</source>
+            <translation>保留完整歷史記錄</translation>
+        </message>
+        <message>
             <source>Keep group main buttons visible</source>
             <translation>保持顯示群組主按鈕</translation>
         </message>
@@ -3234,12 +3242,12 @@
             <translation>永久保留記錄</translation>
         </message>
         <message>
-            <source>Keep screenshot annotations editable with undo and redo history. Pinned images retain the original layout without layout compaction</source>
-            <translation>保留螢幕擷取標註的可編輯狀態及復原、重做記錄。固定的影像保留原始版面配置，不使用緊湊配置</translation>
+            <source>Keep results only</source>
+            <translation>僅保留結果</translation>
         </message>
         <message>
-            <source>Keep screenshots available after the application closes</source>
-            <translation>關閉應用程式後仍保留可用的截圖</translation>
+            <source>Keep screenshot annotations editable with undo and redo history. Pinned images retain the original layout without layout compaction</source>
+            <translation>保留螢幕擷取標註的可編輯狀態及復原、重做記錄。固定的影像保留原始版面配置，不使用緊湊配置</translation>
         </message>
         <message>
             <source>Keep selection width and height consistent</source>
@@ -3722,10 +3730,6 @@
             <translation>權限狀態與授權</translation>
         </message>
         <message>
-            <source>Persistent screenshot history</source>
-            <translation>持久化截圖歷史</translation>
-        </message>
-        <message>
             <source>Pin clipboard content to screen</source>
             <translation>將剪貼簿內容固定到螢幕</translation>
         </message>
@@ -4124,6 +4128,10 @@
         <message>
             <source>Retain closed windows</source>
             <translation>保留已關閉視窗</translation>
+        </message>
+        <message>
+            <source>Retain screenshot history</source>
+            <translation>保留螢幕擷取歷史記錄</translation>
         </message>
         <message>
             <source>Retention limits apply only to closed windows; retained windows are always protected</source>

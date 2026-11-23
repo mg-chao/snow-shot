@@ -278,9 +278,6 @@ storage::CaptureHistoryPolicy defaultHistoryPolicy() {
     policy.keepPermanently = storage::ConfigurationSchema::defaultValue(
                                  QStringLiteral("capture_history/keep_permanently"))
                                  .toBool();
-    policy.enabled =
-        storage::ConfigurationSchema::defaultValue(QStringLiteral("capture_history/enabled"))
-            .toBool();
     policy.retentionDays =
         storage::ConfigurationSchema::defaultValue(QStringLiteral("capture_history/retention_days"))
             .toInt();
@@ -522,6 +519,9 @@ QString BuiltInSettingsBackend::selectOptionsError(SettingsSelectBinding binding
 }
 
 bool BuiltInSettingsBackend::selectEnabled(SettingsSelectBinding binding) const {
+    if (binding == SettingsSelectBinding::HistoryCompressionLevel)
+        return storage::ApplicationStorage::instance().captureHistoryPolicy().mode !=
+               storage::CaptureHistoryMode::ResultsOnly;
     if (app::distribution::isStoreManaged() && binding == SettingsSelectBinding::UpdateMode)
         return false;
 #if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
@@ -654,6 +654,9 @@ QVariant BuiltInSettingsBackend::selectValue(SettingsSelectBinding binding) cons
         return storage::ScreenshotSettings().apiMode();
     case SettingsSelectBinding::ScreenRecordingApiMode:
         return storage::RecordingSettings().apiMode();
+    case SettingsSelectBinding::HistoryRetentionMode:
+        return storage::captureHistoryModeId(
+            storage::ApplicationStorage::instance().captureHistoryPolicy().mode);
     case SettingsSelectBinding::SmartSelection:
         return smartSelectionModeId(storage::ApplicationStorage::instance().smartSelectionMode());
     case SettingsSelectBinding::WindowElementApi:
@@ -915,6 +918,16 @@ bool BuiltInSettingsBackend::applySelectValue(SettingsSelectBinding binding,
         return storage::ScreenshotSettings().setApiMode(value.toString());
     case SettingsSelectBinding::ScreenRecordingApiMode:
         return storage::RecordingSettings().setApiMode(value.toString());
+    case SettingsSelectBinding::HistoryRetentionMode: {
+        const auto normalized = storage::ConfigurationSchema::normalize(
+            QStringLiteral("capture_history/retention_mode"), QJsonValue::fromVariant(value));
+        if (!normalized.valid)
+            return false;
+        auto& appStorage = storage::ApplicationStorage::instance();
+        auto policy = appStorage.captureHistoryPolicy();
+        policy.mode = storage::captureHistoryModeFromId(normalized.value.toString());
+        return appStorage.requestCaptureHistoryPolicy(policy);
+    }
     case SettingsSelectBinding::SmartSelection: {
         const auto normalized = storage::ConfigurationSchema::normalize(
             QStringLiteral("screenshot_selection/smart_selection"), QJsonValue::fromVariant(value));
@@ -1009,8 +1022,6 @@ bool BuiltInSettingsBackend::switchValue(SettingsSwitchBinding binding) const {
             .configuration()
             .value(QStringLiteral("text_recognition/hardware_acceleration"))
             .toBool();
-    case SettingsSwitchBinding::HistoryEnabled:
-        return storage::ApplicationStorage::instance().captureHistoryPolicy().enabled;
     case SettingsSwitchBinding::PinnedHistoryEnabled:
         return storage::ApplicationStorage::instance().pinnedWindowPolicy().enabled;
     case SettingsSwitchBinding::HistoryKeepPermanently:
@@ -1547,9 +1558,6 @@ bool BuiltInSettingsBackend::applySwitchValue(SettingsSwitchBinding binding, boo
 
     auto policy = storage::ApplicationStorage::instance().captureHistoryPolicy();
     switch (binding) {
-    case SettingsSwitchBinding::HistoryEnabled:
-        policy.enabled = value;
-        break;
     case SettingsSwitchBinding::PinnedHistoryEnabled: {
         auto pinnedPolicy = storage::ApplicationStorage::instance().pinnedWindowPolicy();
         pinnedPolicy.enabled = value;

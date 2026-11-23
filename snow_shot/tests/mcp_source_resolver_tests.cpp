@@ -8,6 +8,7 @@
 #include <QSemaphore>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QUuid>
 #include <QThread>
 #include <atomic>
 #include <cstdlib>
@@ -162,8 +163,7 @@ void sourceFidelity() {
     display.sourceCanvasRect = draft.canvasBounds;
     draft.displays.append(display);
     draft.resultImage = image;
-    require(history->publish(std::move(draft)).get().storage.success,
-            "publish isolated history source");
+    require(history->publish(draft).get().storage.success, "publish isolated history source");
     int pinReads = 0;
     int snapshots = 0;
     bool useLivePin = false;
@@ -248,6 +248,29 @@ void sourceFidelity() {
                 historic.images.size() == 1 && equalPixels(historic.images.front().image, image) &&
                 historic.images.front().canvasRect == QRectF(10, 20, 4, 3),
             "history keeps document bytes, original display pixels and source coordinates");
+    for (auto kind : {snow_shot::storage::CaptureHistoryContentKind::Image,
+                      snow_shot::storage::CaptureHistoryContentKind::ResultOnly}) {
+        draft.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        draft.contentKind = kind;
+        draft.resultImage = QImage(7, 12, QImage::Format_RGB32);
+        draft.resultImage->fill(Qt::red);
+        if (kind == snow_shot::storage::CaptureHistoryContentKind::ResultOnly) {
+            draft.displays.clear();
+            draft.canvasHistory.clear();
+            draft.desktopGeometry =
+                snow_shot::storage::CaptureHistoryDesktopGeometry{QPoint(-100, 0), false};
+        }
+        require(history->publish(draft).get().storage.success, "publish flat history fixture");
+        auto flatRequest = request(QStringLiteral("history"), draft.id);
+        flatRequest.params.insert(QStringLiteral("source_id"), draft.id);
+        const auto flat = resolve(flatRequest);
+        require(flat.presentInImageEditing && flat.images.isEmpty() &&
+                    flat.image.size() == QSize(7, 12) && flat.image.pixelColor(0, 0) == Qt::red &&
+                    flat.selection && flat.selection->selection == flat.image.rect() &&
+                    flat.canvasBounds == flat.image.rect() && flat.documentHistory.isEmpty(),
+                "flat document opens the entire composited result in image-local coordinates");
+    }
+
     bool rejected = false;
     useLivePin = false;
     resolver.resolve(

@@ -383,6 +383,7 @@ class ScreenshotShortcutSettings final {
     [[nodiscard]] shortcuts::ShortcutBindingList shortcuts(const QString& actionId) const;
     bool setShortcuts(const QString& actionId,
                       const shortcuts::ShortcutBindingList& bindings) const;
+    [[nodiscard]] shortcuts::ShortcutBindingMap activeShortcuts() const;
     [[nodiscard]] shortcuts::ShortcutBindingMap allShortcuts() const;
     bool setAllShortcutsAtomic(const shortcuts::ShortcutBindingMap& shortcutsByAction) const;
 };

@@ -225,8 +225,7 @@ class DirectCaptureController::Impl {
             };
         }
         result.copyFile = tasks.clipboardFile;
-        result.historyEnabled =
-            storage::ApplicationStorage::instance().captureHistory().policy().enabled;
+        result.historyMode = storage::ApplicationStorage::instance().captureHistoryPolicy().mode;
         result.imageFormat = settings.imageFormat();
         result.encoding = screenshotEncodingOptions(settings);
         result.historyDisplayCompressionLevel = ScreenshotImageFileService::compressionLevelForKey(

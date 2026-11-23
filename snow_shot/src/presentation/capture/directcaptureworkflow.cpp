@@ -109,7 +109,7 @@ void DirectCaptureWorkflow::copy() {
 }
 
 void DirectCaptureWorkflow::publishHistory() {
-    if (!m_queue.front().historyEnabled) {
+    if (m_queue.front().historyMode == storage::CaptureHistoryMode::Disabled) {
         finish();
         return;
     }

@@ -424,6 +424,7 @@ void directCaptureHistoryUsesTheEditorCoordinateSystem() {
             captured.image = captured.displays[1].image.copy(
                 captured.physicalBounds.translated(-physicalRects[1].topLeft()));
             DirectCaptureRequest request;
+            request.historyMode = snow_shot::storage::CaptureHistoryMode::Full;
             request.target = target;
             request.requestedAt = QDateTime::currentDateTimeUtc();
             auto draft = directCaptureHistoryDraft(request, captured);
@@ -459,6 +460,20 @@ void directCaptureHistoryUsesTheEditorCoordinateSystem() {
                                               intelligent,
                                               [&]() { presenter.applyDisplayModels(displays); }},
                                              *repository);
+            if (storedFormat == 2) {
+                require(!history.navigateToRecord(published.record.id),
+                        "legacy target-only sessions cannot be restored");
+                const auto result = repository->loadResultImagePreservingRecord(published.record);
+                require(result && result->size() == captured.image.size(),
+                        "legacy history retains its final image");
+                for (int y = 0; y < result->height(); ++y) {
+                    for (int x = 0; x < result->width(); ++x) {
+                        require(result->pixelColor(x, y) == captured.image.pixelColor(x, y),
+                                "legacy history retains the composited pixels");
+                    }
+                }
+                continue;
+            }
             require(history.navigateToRecord(published.record.id),
                     "history rendering navigation failed");
             QElapsedTimer timer;
@@ -477,12 +492,8 @@ void directCaptureHistoryUsesTheEditorCoordinateSystem() {
                 overlays[i]->setScreenshotMaskVisible(false);
                 const QImage rendered = renderCanvas(*overlays[i]->canvas());
                 const QColor actual = rendered.pixelColor(30, 30);
-                if (storedFormat != 2) {
-                    pixelsMatch &= rendered.convertToFormat(QImage::Format_RGB32) ==
-                                   captured.displays[i].image;
-                } else if (i == 1) {
-                    pixelsMatch &= actual == colors[i];
-                }
+                pixelsMatch &=
+                    rendered.convertToFormat(QImage::Format_RGB32) == captured.displays[i].image;
                 std::cout << "history display " << i << " pixel=" << actual.name().toStdString()
                           << " expected=" << colors[i].name().toStdString() << '\n';
             }

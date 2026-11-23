@@ -53,12 +53,16 @@ int main(int argc, char** argv) {
     QTimer::singleShot(0, &app, [&]() {
         const bool historyEnabled = app.arguments().contains(QStringLiteral("--with-history"));
         DirectCaptureRequest windowRequest;
-        windowRequest.historyEnabled = historyEnabled;
+        windowRequest.historyMode = historyEnabled
+                                        ? snow_shot::storage::CaptureHistoryMode::Full
+                                        : snow_shot::storage::CaptureHistoryMode::Disabled;
         windowRequest.target = DirectCaptureTarget::FocusedWindow;
         windowRequest.window = fixture.winId();
         const auto window = captureDirectTarget(windowRequest);
         DirectCaptureRequest monitorRequest;
-        monitorRequest.historyEnabled = historyEnabled;
+        monitorRequest.historyMode = historyEnabled
+                                         ? snow_shot::storage::CaptureHistoryMode::Full
+                                         : snow_shot::storage::CaptureHistoryMode::Disabled;
         MONITORINFOEXW monitorInfo{};
         monitorInfo.cbSize = sizeof(monitorInfo);
         const auto nativeMonitor =

@@ -15,6 +15,10 @@
     <context>
         <name>HistoryEntryWidget</name>
         <message>
+            <source>%1 x %2 px</source>
+            <translation>%1 × %2 像素</translation>
+        </message>
+        <message>
             <source>%1 x %2 px  ·  %3 display(s)</source>
             <translation>%1 x %2 像素  ·  %3 個顯示器</translation>
         </message>

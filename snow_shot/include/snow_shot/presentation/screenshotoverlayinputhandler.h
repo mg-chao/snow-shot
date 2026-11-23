@@ -146,6 +146,7 @@ struct ScreenshotOverlayInputActions {
     std::function<void(int minDx, int minDy, int maxDx, int maxDy)> adjustSelectionFromToolbar =
         [](int, int, int, int) {};
     std::function<bool()> selectNextPreviousSelection = [] { return false; };
+    std::function<bool()> canNavigateHistoryPrevious = [] { return true; };
 };
 
 struct ScreenshotOverlayInputHandlerContext {

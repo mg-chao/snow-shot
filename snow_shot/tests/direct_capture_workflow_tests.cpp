@@ -152,7 +152,7 @@ void outputsKeepRawPixelsAndProcessEveryRequest() {
         require(result.image == frame().image, "follow-up tasks lost the captured pixels");
         f.events << "tasks";
     };
-    first.historyEnabled = true;
+    first.historyMode = snow_shot::storage::CaptureHistoryMode::Full;
     first.encoding.quality = 35;
     first.encoding.compressionLevel = ScreenshotCompressionLevel::High;
     first.filenameFormat = QStringLiteral("first");
@@ -196,7 +196,7 @@ void tasksRequireAConfirmedCopy() {
             DirectCaptureRequest request;
             request.target = target;
             request.afterCopy = [&](const auto&) { f.events << "tasks"; };
-            request.historyEnabled = true;
+            request.historyMode = snow_shot::storage::CaptureHistoryMode::Full;
             f.acceptCopy = outcome != 0;
             f.workflow.enqueue(request);
             f.workflow.enqueue({});
@@ -219,7 +219,7 @@ void fileCopyHistoryFailureAndLateCallbacks() {
     Fixture f;
     DirectCaptureRequest request;
     request.copyFile = true;
-    request.historyEnabled = true;
+    request.historyMode = snow_shot::storage::CaptureHistoryMode::Full;
     f.workflow.enqueue(request);
     auto oldAcquired = f.acquired;
     f.acquired(frame());
@@ -249,7 +249,7 @@ void rejectedOperationsFinishAndDestroyedReceiversIgnoreResults() {
         f.acceptHistory = stage != 2;
         DirectCaptureRequest request;
         request.copyFile = true;
-        request.historyEnabled = true;
+        request.historyMode = snow_shot::storage::CaptureHistoryMode::Full;
         f.workflow.enqueue(request);
         if (stage > 0)
             f.acquired(frame());
@@ -273,7 +273,7 @@ void queuedRequestsRetainTargetsAndOutputSettings() {
     request.window = 8765;
     request.requestedAt = QDateTime::fromMSecsSinceEpoch(123456).toUTC();
     request.copyFile = true;
-    request.historyEnabled = true;
+    request.historyMode = snow_shot::storage::CaptureHistoryMode::Full;
     request.imageFormat = QStringLiteral("pdf");
     request.encoding.quality = 42;
     request.encoding.compressionLevel = ScreenshotCompressionLevel::High;
@@ -293,7 +293,8 @@ void queuedRequestsRetainTargetsAndOutputSettings() {
         const auto& queued = f.requests.back();
         require(queued.target == DirectCaptureTarget::FocusedWindow &&
                     queued.window == static_cast<quintptr>(8765 + i) && queued.copyFile &&
-                    queued.historyEnabled && queued.requestedAt.toMSecsSinceEpoch() == 123456 &&
+                    queued.historyMode == snow_shot::storage::CaptureHistoryMode::Full &&
+                    queued.requestedAt.toMSecsSinceEpoch() == 123456 &&
                     queued.imageFormat == QStringLiteral("pdf") && queued.encoding.quality == 42 &&
                     queued.encoding.compressionLevel == ScreenshotCompressionLevel::High &&
                     queued.pdf.pageSize == ScreenshotPdfPageSize::LandscapeA4 &&
@@ -376,7 +377,7 @@ void shutdownDuringNotificationsStopsOutputs() {
         Fixture f;
         f.stopOnReport = true;
         DirectCaptureRequest request;
-        request.historyEnabled = true;
+        request.historyMode = snow_shot::storage::CaptureHistoryMode::Full;
         f.workflow.enqueue(request);
         f.workflow.enqueue({});
         if (stage == 0)

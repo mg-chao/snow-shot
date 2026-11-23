@@ -1251,15 +1251,24 @@ SettingsItemDefinition windowElementApiItem() {
 
 #endif
 
-SettingsItemDefinition historyEnabledItem() {
+SettingsItemDefinition historyRetentionModeItem() {
     return {
         QStringLiteral("history.enabled"),
-        settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Persistent screenshot history")),
+        settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Retain screenshot history")),
         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
-                                       "Keep screenshots available after the application closes")),
+                                       "Choose whether to keep editable screenshot "
+                                       "sessions, only final images, or no new history")),
         {settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Save history"))},
-        QStringLiteral("capture_history/enabled"),
-        SettingsSwitchDefinition{},
+        QStringLiteral("capture_history/retention_mode"),
+        SettingsSelectDefinition{
+            SettingsSelectBinding::HistoryRetentionMode,
+            SettingsSelectSource::Fixed,
+            {{QStringLiteral("full"),
+              settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Keep full history"))},
+             {QStringLiteral("results_only"),
+              settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Keep results only"))},
+             {QStringLiteral("disabled"),
+              settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Disabled"))}}},
     };
 }
 
@@ -4992,7 +5001,7 @@ constexpr CatalogRelatedLinkRecord catalogPageDesktopToolsLinks[] = {
 };
 
 constexpr CatalogItemFactory catalogPageFilesHistorySectionHistoryItems[] = {
-    {historyEnabledItem},
+    {historyRetentionModeItem},
     {nullptr, &catalogItemHistoryKeepPermanently},
     {nullptr, &catalogItemHistoryCompressionLevel},
     {nullptr, &catalogItemHistoryRetentionDays},
@@ -6459,6 +6468,9 @@ QStringList SettingsCatalog::validationErrors() const {
                     case SettingsSelectBinding::ScreenshotCompressionLevel:
                         expectedKey = QStringLiteral("screenshot/compression_level");
                         break;
+                    case SettingsSelectBinding::HistoryRetentionMode:
+                        expectedKey = QStringLiteral("capture_history/retention_mode");
+                        break;
                     case SettingsSelectBinding::HistoryCompressionLevel:
                         expectedKey = QStringLiteral("capture_history/compression_level");
                         break;
@@ -6541,9 +6553,6 @@ QStringList SettingsCatalog::validationErrors() const {
                         std::get_if<SettingsSwitchDefinition>(&itemDefinition.payload)) {
                     QString expectedKey;
                     switch (switchDefinition->binding) {
-                    case SettingsSwitchBinding::HistoryEnabled:
-                        expectedKey = QStringLiteral("capture_history/enabled");
-                        break;
                     case SettingsSwitchBinding::PinnedHistoryEnabled:
                         expectedKey = QStringLiteral("pinned_history/enabled");
                         break;

@@ -2208,6 +2208,16 @@ void ImageEditingWindowCoordinator::presentHistory(const storage::CaptureHistory
     if (auto* window = createWindow())
         window->presentHistory(record);
 }
+bool ImageEditingWindowCoordinator::presentDocument(ImageEditingSource source,
+                                                    std::function<void(bool)> completion) {
+    auto* window = createWindow();
+    if (!window)
+        return false;
+    connect(window, &ImageEditingWindow::loaded, window, std::move(completion),
+            Qt::SingleShotConnection);
+    window->present(std::move(source));
+    return true;
+}
 void ImageEditingWindowCoordinator::presentSource(ScreenshotExportSource source) {
     if (auto* window = createWindow())
         window->presentSource(std::move(source));

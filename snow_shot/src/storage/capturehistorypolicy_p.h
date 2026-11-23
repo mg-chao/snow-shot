@@ -10,19 +10,18 @@
 namespace snow_shot::storage {
 inline CaptureHistoryPolicy
 captureHistoryPolicyFromConfiguration(const ConfigurationStore& configuration) {
-    return {
-        configuration.value(QStringLiteral("capture_history/enabled")).toBool(true),
-        configuration.value(QStringLiteral("capture_history/retention_days")).toInt(7),
-        configuration.value(QStringLiteral("capture_history/max_entries")).toInt(100),
-        configuration.value(QStringLiteral("capture_history/max_disk_mib")).toInt(1024),
-        configuration.value(QStringLiteral("capture_history/keep_permanently")).toBool(false),
-    };
+    return {{configuration.value(QStringLiteral("capture_history/retention_days")).toInt(7),
+             configuration.value(QStringLiteral("capture_history/max_entries")).toInt(100),
+             configuration.value(QStringLiteral("capture_history/max_disk_mib")).toInt(1024),
+             configuration.value(QStringLiteral("capture_history/keep_permanently")).toBool(false)},
+            captureHistoryModeFromId(
+                configuration.value(QStringLiteral("capture_history/retention_mode")).toString())};
 }
 
 inline QMap<QString, QJsonValue>
 captureHistoryPolicyConfigurationValues(const CaptureHistoryPolicy& policy) {
     return {
-        {QStringLiteral("capture_history/enabled"), policy.enabled},
+        {QStringLiteral("capture_history/retention_mode"), captureHistoryModeId(policy.mode)},
         {QStringLiteral("capture_history/keep_permanently"), policy.keepPermanently},
         {QStringLiteral("capture_history/retention_days"), policy.retentionDays},
         {QStringLiteral("capture_history/max_entries"), policy.maxEntries},

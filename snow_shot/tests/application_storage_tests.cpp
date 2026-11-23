@@ -1,6 +1,7 @@
 #include "snow_shot/presentation/globalmousetypes.h"
 #include "snow_shot/app/distribution.h"
 #include "snow_shot/app/edition.h"
+#include "snow_shot/shortcuts/annotationoptionshortcut.h"
 #include "snow_shot/storage/applicationstorage.h"
 #include "snow_shot/storage/configurationschema.h"
 #include "snow_shot/storage/configurationstore.h"
@@ -772,7 +773,8 @@ void defaultsAndTypedRoundTrip() {
                         .toObject()
                         .value(QStringLiteral("smart_selection")) ==
                     QStringLiteral("window_sub_element") &&
-                history.value(QStringLiteral("enabled")).toBool() &&
+                history.value(QStringLiteral("retention_mode")) == QStringLiteral("full") &&
+                !history.contains(QStringLiteral("enabled")) &&
                 history.value(QStringLiteral("retention_days")).toInt() == 7 &&
                 history.value(QStringLiteral("max_entries")).toInt() == 100 &&
                 history.value(QStringLiteral("max_disk_mib")).toInt() == 1024 &&
@@ -3170,7 +3172,7 @@ void settingsAdaptersRoundTripAndRejectInvalidValues() {
 
     const shortcuts::ShortcutBindingMap defaults = drawingShortcuts.allShortcuts();
     require(
-        defaults.size() == 18 && defaults.contains(QStringLiteral("line")) &&
+        defaults.size() == 19 && defaults.contains(QStringLiteral("line")) &&
             defaults.value(QStringLiteral("line")).isEmpty() &&
             defaults.contains(QStringLiteral("spotlight")) &&
             defaults.value(QStringLiteral("spotlight")).isEmpty() &&
@@ -3188,9 +3190,11 @@ void settingsAdaptersRoundTripAndRejectInvalidValues() {
                 QStringList{QStringLiteral("9")} &&
             portable(defaults.value(QStringLiteral("reset_canvas"))) ==
                 QStringList{QStringLiteral("Ctrl+Shift+Z")} &&
+            portable(defaults.value(shortcuts::kCycleAnnotationToolOptions)) ==
+                QStringList{QStringLiteral("Tab")} &&
             drawingShortcuts.shortcuts(QStringLiteral("unsupported")).isEmpty() &&
             !drawingShortcuts.setShortcuts(QStringLiteral("unsupported"), {QStringLiteral("Q")}),
-        "drawing shortcut adapter must expose seventeen tools and the canvas reset default");
+        "drawing shortcut adapter must expose the default tools and commands");
 
     require(drawingShortcuts.setSelect({QStringLiteral("Ctrl+Shift+V")}) &&
                 portable(drawingShortcuts.select()) == QStringList{QStringLiteral("Ctrl+Shift+V")},
@@ -3442,6 +3446,44 @@ void smartSelectionLegacyValuesMigrate() {
     verify(QStringLiteral("disabled"), QStringLiteral("window"), QStringLiteral("disabled"));
     verify(QStringLiteral("window_sub_element"), QStringLiteral("window"),
            QStringLiteral("window_sub_element"));
+}
+
+void historyRetentionMigration() {
+    QTemporaryDir temporary;
+    const auto key = QStringLiteral("capture_history/retention_mode");
+    const auto legacy = QStringLiteral("capture_history/enabled");
+    const auto path = temporary.filePath(QStringLiteral("settings.json"));
+    constexpr int previousSchemaVersion = 8;
+    const int currentSchemaVersion = storage::ConfigurationSchema::currentVersion();
+    require(currentSchemaVersion > previousSchemaVersion,
+            "history retention mode requires a new configuration schema version");
+    for (const bool enabled : {false, true}) {
+        const QString mode = enabled ? QStringLiteral("full") : QStringLiteral("disabled");
+        const QJsonObject version{{QStringLiteral("schema_version"), previousSchemaVersion}};
+        const QJsonObject history{{QStringLiteral("enabled"), enabled}};
+        writeBytes(path, QJsonDocument(QJsonObject{{QStringLiteral("storage"), version},
+                                                   {QStringLiteral("capture_history"), history}})
+                             .toJson());
+        storage::ConfigurationStore store(path, true, true, 60000);
+        require(store.value(key) == mode && store.flushNow().success,
+                "legacy screenshot history must retain its enabled state on upgrade");
+        const auto document = readObject(path);
+        require(document.value(QStringLiteral("storage"))
+                        .toObject()
+                        .value(QStringLiteral("schema_version")) == currentSchemaVersion,
+                "migration must persist the new schema version for older readers");
+        const auto group = document.value(QStringLiteral("capture_history")).toObject();
+        require(group.value(QStringLiteral("retention_mode")) == mode &&
+                    !group.contains(QStringLiteral("enabled")),
+                "migration persists the dropdown and retires the boolean");
+        const auto imported =
+            storage::ConfigurationSchema::migrateLegacyValues({{legacy, enabled}});
+        const auto both = storage::ConfigurationSchema::migrateLegacyValues(
+            {{legacy, enabled}, {key, QStringLiteral("results_only")}});
+        require(imported.value(key) == mode && both.value(key) == QStringLiteral("results_only") &&
+                    !imported.contains(legacy) && !both.contains(legacy),
+                "imports migrate the boolean and prefer an explicit mode");
+    }
 }
 
 void unknownFieldsArePreserved() {
@@ -4703,6 +4745,10 @@ int main(int argc, char** argv) {
         legacyShutterSoundSettingsMigrate();
         return 0;
     }
+    if (application.arguments().contains(QStringLiteral("--history-retention-only"))) {
+        historyRetentionMigration();
+        return 0;
+    }
     if (application.arguments().contains(QStringLiteral("--smart-selection-only"))) {
         QCoreApplication::setOrganizationName(QStringLiteral("SnowShotTests"));
         QCoreApplication::setApplicationName(QStringLiteral("smart-selection-storage-tests"));
@@ -4892,6 +4938,7 @@ int main(int argc, char** argv) {
     smartSelectionAccessorAndSignal();
     smartSelectionLegacyValuesMigrate();
     legacyShutterSoundSettingsMigrate();
+    historyRetentionMigration();
     unknownFieldsArePreserved();
     malformedConfigurationIsCopiedAndReplaced();
     futureVersionIsReadOnly();

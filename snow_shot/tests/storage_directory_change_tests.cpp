@@ -673,7 +673,9 @@ void preparationClosesStorageAdmission() {
     const auto oldHistoryPolicy = app.captureHistoryPolicy();
     const auto oldPinnedPolicy = app.pinnedWindowPolicy();
     auto historyPolicy = oldHistoryPolicy;
-    historyPolicy.enabled = !historyPolicy.enabled;
+    historyPolicy.mode = oldHistoryPolicy.mode == storage::CaptureHistoryMode::Full
+                             ? storage::CaptureHistoryMode::Disabled
+                             : storage::CaptureHistoryMode::Full;
     auto pinnedPolicy = oldPinnedPolicy;
     pinnedPolicy.enabled = !pinnedPolicy.enabled;
     int pinRequests = 0;

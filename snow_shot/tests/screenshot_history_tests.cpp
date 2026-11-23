@@ -8,6 +8,8 @@
 #include "snow_shot/presentation/screenshotregionpreferences.h"
 #include "snow_shot/shortcuts/screenshotregiontypeshortcut.h"
 #include "snow_shot/presentation/screenshothistoryservice.h"
+#include "snow_shot/presentation/screenshotshortcuthints.h"
+#include "snow_shot/shortcuts/annotationoptionshortcut.h"
 #include "snow_shot/presentation/directcapturehistory.h"
 #include "snowimageqtcodec.h"
 
@@ -601,6 +603,7 @@ void directImagesPersistWithoutTouchingTheEditor(
     const QRect& physicalBounds, bool legacy = false) {
     using namespace snow_shot::presentation;
     DirectCaptureRequest request;
+    request.historyMode = snow_shot::storage::CaptureHistoryMode::Full;
     request.target = target;
     request.requestedAt = QDateTime::currentDateTimeUtc();
     request.encoding = {35, ScreenshotCompressionLevel::High};
@@ -609,6 +612,17 @@ void directImagesPersistWithoutTouchingTheEditor(
     DirectCaptureFrame frame{image, physicalBounds, QStringLiteral("target:123"), 2, {}};
     const QByteArray png = snow_shot::image_codec::encodePng(image, 9);
     frame.displays.push_back({image, physicalBounds, frame.identity, frame.identity});
+    auto targetRequest = request;
+    targetRequest.historyMode = storage::CaptureHistoryMode::ResultsOnly;
+    auto targetFrame = frame;
+    targetFrame.displays.clear();
+    const auto resultOnly = directCaptureHistoryDraft(targetRequest, targetFrame);
+    require(resultOnly.contentKind == storage::CaptureHistoryContentKind::ResultOnly &&
+                resultOnly.displays.isEmpty() && resultOnly.canvasHistory.isEmpty() &&
+                resultOnly.desktopGeometry &&
+                resultOnly.desktopGeometry->canvasOrigin == physicalBounds.topLeft() &&
+                resultOnly.selection.rectangle == image.rect() && resultOnly.resultImage == image,
+            "target-only direct capture must retain its true desktop position without a session");
     QString id;
     {
         auto repository = storage::makeCaptureHistoryRepository(root);
@@ -687,46 +701,12 @@ void directImagesPersistWithoutTouchingTheEditor(
     ScreenshotIntelligentSelectionModel intelligent;
     ScreenshotHistoryService history({displays, runtime, selection, interaction, intelligent},
                                      *repository);
-    require(history.navigateToRecord(id), "direct image history could not be opened");
-    // A publication during the asynchronous load must not invalidate its target index.
-    request.requestedAt = request.requestedAt.addSecs(1);
-    request.target = DirectCaptureTarget::CurrentMonitor;
-    require(repository->publish(directCaptureHistoryDraft(request, frame)).get().storage.success,
-            "second direct capture failed to publish");
-    history.refreshMetadata();
-    waitForNavigation(history, "direct image navigation timed out");
-    const QRect expectedBounds = legacy ? QRect(QPoint(-100, -50), image.size()) : physicalBounds;
-    require(selection.pixelSelection() == expectedBounds, "direct image selection was misplaced");
-    for (int i = 0; i < 2; ++i) {
-        require(equalPixels(displays.displayAt(i).image, image) &&
-                    displays.displayAt(i).imageSourceCanvasRect == expectedBounds,
-                "direct image pixels and selection use different canvas origins");
-    }
-    const QRect editedSelection = expectedBounds.adjusted(3, 3, -3, -3);
-    selection.setSelectionRect(editedSelection);
-    interaction.confirmSelection();
-    auto edited = takeSnapshot(history.snapshotCurrent(true), "direct history could not be edited");
-    const QString editedId = edited.id;
-    history.commit(std::move(edited));
-    history.drainPendingWrites();
-    require(history.returnToCurrentScreenshot(),
-            "direct image history lost the live editor endpoint");
-    require(selection.pixelSelection() == liveSelection && displays.displayAt(0).image == liveImage,
-            "direct image history changed the live editor");
-    require(history.navigateToRecord(editedId), "edited direct history could not be reopened");
-    waitForNavigation(history, "edited direct image navigation timed out");
-    require(selection.pixelSelection() == editedSelection,
-            "edited direct history lost the selection");
-    for (int i = 0; i < 2; ++i) {
-        require(displays.displayAt(i).imageSourceCanvasRect == expectedBounds,
-                "saving an edited direct capture lost its image origin");
-    }
-    const auto& restoredDisplay = displays.displayAt(0);
-    const QImage rendered =
-        runtime.renderToImage(editedSelection, editedSelection.size(),
-                              {{restoredDisplay.image, restoredDisplay.imageSourceCanvasRect}});
-    require(equalPixels(rendered, image.copy(QRect(QPoint(3, 3), editedSelection.size()))),
-            "edited direct capture exported pixels from the wrong region");
+    require(!history.navigateToRecord(id) && !history.navigatePrevious() &&
+                selection.pixelSelection() == liveSelection &&
+                displays.displayAt(0).image == liveImage,
+            "legacy target-only records must leave the screenshot window unchanged");
+    require(repository->loadResultImagePreservingRecord(records.front()).has_value(),
+            "the legacy result must remain available for Image editing");
 }
 
 void editorHistoryUsesConfiguredDisplayCompression(const QString& root) {
@@ -850,6 +830,7 @@ void snapshotsRetainTheLiveDesktopGeometry() {
         auto entry = takeSnapshot(history.snapshotCurrent(true), "desktop snapshot failed");
         const storage::CaptureHistoryDesktopGeometry expected{QPoint(-1920, -1080), points};
         snow_shot::presentation::DirectCaptureRequest request;
+        request.historyMode = snow_shot::storage::CaptureHistoryMode::Full;
         request.requestedAt = QDateTime::currentDateTimeUtc();
         snow_shot::presentation::DirectCaptureFrame frame;
         frame.image = solidImage(QSize(200, 120), qRgb(10, 20, 30));
@@ -898,6 +879,7 @@ void explicitHistoryEditSeesExternalPublications(const QString& root) {
     ScreenshotHistoryService history({displays, runtime, selection, interaction, intelligent},
                                      *repository);
     DirectCaptureRequest request;
+    request.historyMode = snow_shot::storage::CaptureHistoryMode::Full;
     request.requestedAt = QDateTime::currentDateTimeUtc();
     DirectCaptureFrame frame{solidImage(QSize(80, 60), qRgb(40, 50, 60)),
                              QRect(20, 30, 80, 60),
@@ -927,6 +909,7 @@ void directCaptureRetainsTheWholeDesktop(const QString& root) {
          {DirectCaptureTarget::FocusedWindow, DirectCaptureTarget::CurrentMonitor}) {
         const QString directory = QDir(root).filePath(QString::number(static_cast<int>(target)));
         DirectCaptureRequest request;
+        request.historyMode = snow_shot::storage::CaptureHistoryMode::Full;
         request.target = target;
         request.requestedAt = QDateTime::currentDateTimeUtc();
         DirectCaptureFrame frame;
@@ -1001,6 +984,7 @@ void directCaptureRetainsTheWholeDesktop(const QString& root) {
                 "direct history could not be edited beyond the original capture target");
     }
     DirectCaptureRequest request;
+    request.historyMode = snow_shot::storage::CaptureHistoryMode::Full;
     DirectCaptureFrame incomplete;
     incomplete.image = capturedDisplays.front().image;
     incomplete.physicalBounds = capturedDisplays.front().physicalBounds;
@@ -1682,6 +1666,43 @@ void selectionHistoryRestartsAfterEditsAndModeChanges(const QString& root) {
             "a synchronous capture reset must not reinstall an obsolete browse position");
 }
 
+void resultsOnlySelectionAndNavigation(const QString& root) {
+    SelectionHistoryFixture fixture(root);
+    const auto old =
+        fixture.entry(selectionHistoryParams(QRect(10, 10, 20, 20), 0, 0, Qt::black), 0);
+    fixture.commit(old);
+    auto policy = fixture.repository->policy();
+    policy.mode = storage::CaptureHistoryMode::ResultsOnly;
+    require(fixture.repository->updatePolicy(policy).get().success, "set results-only policy");
+    const auto params = selectionHistoryParams(QRect(60, 25, 40, 20), 3, 0, Qt::black);
+    auto flat = fixture.entry(params, 1);
+    require(flat.displays.isEmpty() && flat.canvasHistory.isEmpty() &&
+                flat.contentKind == storage::CaptureHistoryContentKind::ResultOnly,
+            "a results-only snapshot must not retain desktop pixels or serialize a canvas");
+    flat.desktopGeometry = storage::CaptureHistoryDesktopGeometry{QPoint(-100, 0), false};
+    flat.resultImage = solidImage(QSize(40, 72), qRgb(1, 2, 3));
+    fixture.commit(std::move(flat));
+    for (const auto mode :
+         {storage::CaptureHistoryMode::Disabled, storage::CaptureHistoryMode::Full}) {
+        policy.mode = mode;
+        require(fixture.repository->updatePolicy(policy).get().success,
+                "apply changed retention mode");
+        const auto before = fixture.selection.pixelSelection();
+        require(!fixture.history->navigatePrevious() &&
+                    fixture.selection.pixelSelection() == before &&
+                    !fixture.history->navigationInProgress(),
+                "history navigation must stop before the flat record");
+        auto expected = params;
+        expected.selection.translate(-10, 0);
+        require(
+            fixture.history->latestSelectionParams(fixture.target(QPoint(-90, 0))) == expected,
+            "flat-record selection uses desktop coordinates independently of output dimensions");
+    }
+    require(fixture.history->navigateToRecord(old.id),
+            "explicitly opening an older full record must work");
+    waitForNavigation(*fixture.history, "explicit full history open timed out");
+}
+
 void selectionHistoryMapsCoordinatesAndSkipsUnavailableRecords(const QString& root) {
     SelectionHistoryFixture fixture(root);
     auto legacy = selectionHistoryParams(QRect(10, 15, 40, 25), 5, 6, QColor(10, 20, 30));
@@ -1758,7 +1779,7 @@ void selectionHistorySharesRepositoryLifecycle(const QString& root) {
     const auto target = fixture.target();
     const auto apply = [&](const auto& params) { return fixture.apply(params); };
     auto policy = fixture.repository->policy();
-    policy.enabled = false;
+    policy.mode = snow_shot::storage::CaptureHistoryMode::Disabled;
     require(fixture.repository->updatePolicy(policy).get().success &&
                 !fixture.history->snapshotCurrent(true) &&
                 fixture.history->latestSelectionParams(target) == newest &&
@@ -1775,7 +1796,7 @@ void selectionHistorySharesRepositoryLifecycle(const QString& root) {
                 !fixture.history->browseNextSelection(target, apply),
             "clearing screenshot history must clear available previous selections");
 
-    policy.enabled = true;
+    policy.mode = snow_shot::storage::CaptureHistoryMode::Full;
     policy.maxEntries = 1;
     require(fixture.repository->updatePolicy(policy).get().success,
             "could not enable constrained selection history");
@@ -1869,6 +1890,7 @@ void selectionHistoryBrowserTests(const QString& root) {
     const QDir directory(root);
     selectionHistoryBrowsesRegionsAndEffects(directory.filePath(QStringLiteral("regions")));
     selectionHistoryRestartsAfterEditsAndModeChanges(directory.filePath(QStringLiteral("edits")));
+    resultsOnlySelectionAndNavigation(directory.filePath(QStringLiteral("results-only")));
     selectionHistoryMapsCoordinatesAndSkipsUnavailableRecords(
         directory.filePath(QStringLiteral("coordinates")));
     selectionHistorySharesRepositoryLifecycle(directory.filePath(QStringLiteral("lifecycle")));
@@ -4026,6 +4048,35 @@ void configuredSelectionShortcutsRouteTabHistoryAndColorActions(bool targetSwitc
                 dispatchShortcut(shortcutWindow, Qt::Key_U) && previousHistoryCalls == 2 &&
                 nextHistoryCalls == 2,
             "remapped history shortcuts did not replace comma and period");
+    const auto originalPolicy = appStorage.captureHistoryPolicy();
+    for (const auto mode :
+         {storage::CaptureHistoryMode::ResultsOnly, storage::CaptureHistoryMode::Disabled}) {
+        auto policy = originalPolicy;
+        policy.mode = mode;
+        require(appStorage.requestCaptureHistoryPolicyAsync(policy).get().success &&
+                    !dispatchShortcut(shortcutWindow, Qt::Key_Y) &&
+                    !dispatchShortcut(shortcutWindow, Qt::Key_U) &&
+                    shortcutSettings.allShortcuts().value(
+                        QStringLiteral("previous_screenshot_history")) ==
+                        remapped.value(QStringLiteral("previous_screenshot_history")) &&
+                    !shortcutSettings.activeShortcuts()
+                         .value(QStringLiteral("select_previously_selected_area"))
+                         .isEmpty(),
+                "suspending screenshot history retains stored bindings and selection commands");
+        ScreenshotShortcutHintContext hints;
+        hints.activeTool = ScreenshotActiveTool::Move;
+        hints.captureMode = interaction.mode();
+        hints.configuredShortcuts = shortcutSettings.activeShortcuts();
+        const auto rows = screenshotShortcutHintRows(hints);
+        require(
+            std::none_of(rows.cbegin(), rows.cend(),
+                         [](const auto& row) { return row.label == u"Switch screenshot history"; }),
+            "suspended history shortcuts must disappear from the screenshot hints");
+    }
+    require(appStorage.requestCaptureHistoryPolicyAsync(originalPolicy).get().success &&
+                dispatchShortcut(shortcutWindow, Qt::Key_Y) &&
+                dispatchShortcut(shortcutWindow, Qt::Key_U),
+            "returning to full history immediately reactivates both custom bindings");
 
     interaction.setMoveTool(true, false);
     selection.setSelectionRect(QRectF(10, 10, 40, 20));
@@ -5761,6 +5812,12 @@ void selectionStagesActivateEveryToolbarShortcut() {
                             preparations == 0,
                         "text input must suppress selection-stage toolbar shortcuts");
                 inputAllowed = true;
+                if (drawing && id == snow_shot::shortcuts::kCycleAnnotationToolOptions) {
+                    require(!dispatchShortcut(receiver, Qt::Key_J, Qt::AltModifier) &&
+                                preparations == 0,
+                            "cycling options requires an active annotation tool");
+                    continue;
+                }
                 require(dispatchShortcut(receiver, Qt::Key_J, Qt::AltModifier) &&
                             activations == 1 && preparations == 1 && confirmations == 1 &&
                             automaticActions == 0 && !intelligent.pressActive(),

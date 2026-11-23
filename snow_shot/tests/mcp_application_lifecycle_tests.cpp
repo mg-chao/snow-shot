@@ -5,6 +5,9 @@
 #include "snow_shot/app/mcp/mcpjobregistry.h"
 #include "snow_shot/app/mcp/mcpruntimegraph.h"
 #include "snow_shot/presentation/languagemanager.h"
+#include "snow_shot/presentation/imageeditingwindow.h"
+#include "snow_shot/storage/capturehistoryrepository.h"
+#include <QUuid>
 #include "snow_shot/presentation/mainwindow.h"
 #include "snow_shot/presentation/components/aboutpagewidget.h"
 #include "snow_shot/presentation/screenshotexportcoordinator.h"
@@ -464,6 +467,42 @@ int runMcpApplicationLifecycleTests(int argc, char** argv) try {
             if (auto* window = qobject_cast<MainWindow*>(widget))
                 mainWindow = window;
         require(mainWindow, "isolated main window exposes the real ingress signal bindings");
+        for (const auto kind : {storage::CaptureHistoryContentKind::ResultOnly,
+                                storage::CaptureHistoryContentKind::Image}) {
+            storage::CaptureHistoryDraft record;
+            record.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            record.contentKind = kind;
+            record.createdUtc = QDateTime::currentDateTimeUtc();
+            record.canvasBounds = QRect(0, 0, 40, 30);
+            record.selection.rectangle = QRect(1, 3, 6, 7);
+            record.selection.shadowColor = Qt::black;
+            record.desktopGeometry =
+                storage::CaptureHistoryDesktopGeometry{QPoint(-100, 12), false};
+            QImage result(12, 27, QImage::Format_RGBA8888);
+            result.fill(Qt::red);
+            record.resultImage = result;
+            if (kind == storage::CaptureHistoryContentKind::Image) {
+                record.canvasHistory = QByteArrayLiteral("{}");
+                auto target = result;
+                target.fill(Qt::blue);
+                record.displays.append(
+                    {QStringLiteral("target"), QStringLiteral("Target"), target});
+            }
+            require(storage.captureHistory().publish(record).get().storage.success,
+                    "persist history-card fixture");
+            mainWindow->screenshotHistoryEditRequested(record.id);
+            auto* editors = controller.findChild<presentation::ImageEditingWindowCoordinator*>();
+            require(editors && editors->windows().size() == 1,
+                    "history Edit must open Image editing");
+            auto window = editors->windows().front();
+            await([&] { return !window->loading(); });
+            require(window->document()->image().size() == result.size() &&
+                        window->document()->image().pixelColor(0, 0) == Qt::red,
+                    "history Edit uses the full composite as its base regardless of original "
+                    "selection or legacy target");
+            window->requestClose();
+            await([&] { return editors->windows().isEmpty(); });
+        }
         storage::PinnedWindowRecord protectedPin;
         protectedPin.id = QStringLiteral("22222222-2222-4222-8222-222222222222");
         protectedPin.image = QImage(8, 8, QImage::Format_RGBA8888);

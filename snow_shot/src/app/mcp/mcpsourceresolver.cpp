@@ -381,12 +381,7 @@ struct McpSourceResolver::Impl {
                 for (const auto& record : history.records()) {
                     if (record.id != params.value(QStringLiteral("source_id")).toString())
                         continue;
-                    qint64 historyBytes =
-                        record.canvasBytes >= 0 && record.canvasBytes <= 64 * 1024 * 1024
-                            ? 8 * record.canvasBytes
-                            : -1;
-                    if (!budget(historyBytes))
-                        return result;
+                    qint64 historyBytes = 0;
                     const auto addImage = [&](QSize size, qint64 encodedBytes) {
                         const auto bytes = rasterBytes(size);
                         if (bytes < 0 || encodedBytes < 0 || encodedBytes > 256 * 1024 * 1024)
@@ -394,13 +389,31 @@ struct McpSourceResolver::Impl {
                         historyBytes += bytes + 2 * encodedBytes;
                         return budget(historyBytes);
                     };
+                    if (record.contentKind !=
+                        storage::CaptureHistoryContentKind::ScreenshotSession) {
+                        if (!record.result ||
+                            !addImage(record.result->imageSize, record.result->encodedBytes))
+                            return result;
+                        result.image =
+                            history.loadResultImagePreservingRecord(record).value_or(QImage());
+                        result.presentInImageEditing = true;
+                        result.canvasBounds = result.image.rect();
+                        ScreenshotSelectionParams selection;
+                        selection.selection = result.image.rect();
+                        result.selection = selection;
+                        return result;
+                    }
+                    historyBytes = record.canvasBytes >= 0 && record.canvasBytes <= 64 * 1024 * 1024
+                                       ? 8 * record.canvasBytes
+                                       : -1;
+                    if (!budget(historyBytes))
+                        return result;
                     for (const auto& display : record.displays) {
-                        if (!addImage(display.imageSize, display.encodedBytes))
+                        if (!addImage(display.imageSize, display.encodedBytes) ||
+                            (display.cursor && !addImage(display.cursor->pixelRect.size(),
+                                                         display.cursor->encodedBytes)))
                             return result;
                     }
-                    if (record.result &&
-                        !addImage(record.result->imageSize, record.result->encodedBytes))
-                        return result;
                     const auto payload = history.load(record);
                     if (!payload)
                         return result;
@@ -412,6 +425,8 @@ struct McpSourceResolver::Impl {
                         selected.shadowWidth,     selected.shadowColor,
                         selected.lockAspectRatio, selected.lockDragAspectRatio,
                         selected.region};
+                    result.selection->layoutCompaction = selected.layoutCompaction;
+                    result.selection->backgroundOpacityPercent = selected.backgroundOpacityPercent;
                     result.selection->borderType = selected.borderType;
                     result.selection->borderWidth = selected.borderWidth;
                     result.selection->borderColor = selected.borderColor;
@@ -424,8 +439,6 @@ struct McpSourceResolver::Impl {
                             QRect(display.sourceCanvasOrigin.value_or(QPoint()), image.size()));
                         result.images.append({image, QRectF(bounds)});
                     }
-                    if (result.images.isEmpty())
-                        result.image = history.loadResultImage(record).value_or(QImage());
                     return result;
                 }
                 return result;
