@@ -21,14 +21,14 @@ class ScreenshotOcrTextLayout final {
         qreal height;
         qreal firstLineIndent;
         qreal lineAdvance;
-        qreal minimumSingleLineScale;
         std::optional<ScreenshotOcrSourceTextMetrics> source;
         bool operator==(const TranslationLayout&) const = default;
     };
 
     struct SmartMergeLayout {
         QSizeF box;
-        qreal inkCap;
+        // Determines spacing and supplies a size estimate when the fitted source font is unknown.
+        qreal sourceInkThickness;
         std::optional<qreal> sourceFontSize;
         QVector<qreal> sourceCenters;
         qreal sourceAdvance;
@@ -82,6 +82,7 @@ class ScreenshotOcrTextLayout final {
     };
     bool fitSourceRows(qreal aspectRatio);
     void fitSmartMerge(const SmartMergeLayout& geometry);
+    void positionVerticalColumns(const QVector<qreal>& lefts, qreal columnWidth);
     void updateGlyphRasterCacheability();
 
     struct VerticalGlyph {

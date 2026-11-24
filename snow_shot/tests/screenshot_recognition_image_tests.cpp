@@ -79,7 +79,8 @@ void translationsNeverExceedTheirSourceFontSize() {
                     "short-text regression must exercise enlargement in the uncapped fitter");
             require(std::abs(fittedFontSize(translated[0]) - baseline) < 0.0001,
                     "a short translation can retain the source baseline without filling its box");
-            translated[0].text = original.text.repeated(4);
+            // A vertical box can accommodate several columns before the source size must drop.
+            translated[0].text = original.text.repeated(16);
             require(fittedFontSize(translated[0]) < baseline,
                     "long translations may shrink below the cap");
         }
