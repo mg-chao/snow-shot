@@ -1603,19 +1603,48 @@ void drawCrossMarker(QPainter& painter, const QPointF& point, double size) {
                      QPointF(point.x() + half, point.y() - half));
 }
 
-void drawTickMarker(QPainter& painter, const QPointF& point, SnowSnapGuideAxis axis, double size) {
+void drawSnapGuideStroke(QPainter& painter, QPen pen, QPointF start, QPointF end) {
+    const QTransform device = painter.deviceTransform();
+    const qreal scale = device.m11();
+    const bool vertical = start.x() == end.x();
+    if ((vertical || start.y() == end.y()) && device.type() <= QTransform::TxScale &&
+        scale > 0.0 && scale == device.m22() && pen.widthF() > 0.0) {
+        // Align both edges of axis-aligned strokes to the physical pixel grid.
+        const qreal scaledWidth = pen.widthF() * scale;
+        const qreal pixelWidth = std::max(1.0, std::round(scaledWidth));
+        const QPointF mapped = device.map(start);
+        const qreal center = vertical ? mapped.x() : mapped.y();
+        const qreal halfWidth = pixelWidth / 2.0;
+        const qreal alignedCenter = std::floor(center - halfWidth + 0.5) + halfWidth;
+        const qreal shift = (alignedCenter - center) / scale;
+        const QPointF offset = vertical ? QPointF(shift, 0) : QPointF(0, shift);
+        start += offset;
+        end += offset;
+
+        if (pen.style() == Qt::CustomDashLine) {
+            // Qt measures dash lengths in pen widths.
+            auto pattern = pen.dashPattern();
+            for (auto& length : pattern) {
+                length *= scaledWidth / pixelWidth;
+            }
+            pen.setDashPattern(pattern);
+        }
+        pen.setWidthF(pixelWidth);
+        pen.setCosmetic(true);
+    }
+    painter.setPen(pen);
+    painter.drawLine(start, end);
+}
+
+void drawTickMarker(QPainter& painter, const QPen& pen, const QPointF& point,
+                    SnowSnapGuideAxis axis, double size) {
     if (size <= 0.0) {
         return;
     }
 
     const double half = size / 2.0;
-    if (axis == SNOW_SNAP_GUIDE_HORIZONTAL) {
-        painter.drawLine(QPointF(point.x(), point.y() - half),
-                         QPointF(point.x(), point.y() + half));
-    } else {
-        painter.drawLine(QPointF(point.x() - half, point.y()),
-                         QPointF(point.x() + half, point.y()));
-    }
+    const QPointF offset = axis == SNOW_SNAP_GUIDE_HORIZONTAL ? QPointF(0, half) : QPointF(half, 0);
+    drawSnapGuideStroke(painter, pen, point - offset, point + offset);
 }
 
 void drawGapLabel(QPainter& painter, SnowSnapGuideAxis axis, const QPointF& start,
@@ -1649,6 +1678,7 @@ void drawSnapGuide(QPainter& painter, const OverlayDisplayInfo& displayInfo,
     const QPointF end = canvasToView(projection, item.snap_end_x, item.snap_end_y);
 
     painter.save();
+    painter.setRenderHint(QPainter::Antialiasing);
 
     QPen pen(toQColor(item.snap_color), item.snap_line_width);
     pen.setCapStyle(Qt::RoundCap);
@@ -1659,8 +1689,8 @@ void drawSnapGuide(QPainter& painter, const OverlayDisplayInfo& displayInfo,
         pen.setDashPattern({static_cast<qreal>(item.snap_gap_dash_length),
                             static_cast<qreal>(item.snap_gap_dash_gap)});
     }
+    drawSnapGuideStroke(painter, pen, start, end);
     painter.setPen(pen);
-    painter.drawLine(start, end);
 
     const double markerSize = item.snap_marker_size;
     const std::uint8_t markerCount = qMin<std::uint8_t>(item.snap_marker_count, 2);
@@ -1671,8 +1701,8 @@ void drawSnapGuide(QPainter& painter, const OverlayDisplayInfo& displayInfo,
 
     if (markerCount == 0) {
         if (item.snap_guide_kind == SNOW_SNAP_GUIDE_GAP) {
-            drawTickMarker(painter, start, item.snap_guide_axis, markerSize * 1.5);
-            drawTickMarker(painter, end, item.snap_guide_axis, markerSize * 1.5);
+            drawTickMarker(painter, pen, start, item.snap_guide_axis, markerSize * 1.5);
+            drawTickMarker(painter, pen, end, item.snap_guide_axis, markerSize * 1.5);
         } else {
             drawCrossMarker(painter, start, markerSize);
             drawCrossMarker(painter, end, markerSize);
@@ -1680,7 +1710,8 @@ void drawSnapGuide(QPainter& painter, const OverlayDisplayInfo& displayInfo,
     } else {
         for (std::uint8_t index = 0; index < markerCount; ++index) {
             if (item.snap_guide_kind == SNOW_SNAP_GUIDE_GAP) {
-                drawTickMarker(painter, markers[index], item.snap_guide_axis, markerSize * 1.5);
+                drawTickMarker(painter, pen, markers[index], item.snap_guide_axis,
+                               markerSize * 1.5);
             } else {
                 drawCrossMarker(painter, markers[index], markerSize);
             }

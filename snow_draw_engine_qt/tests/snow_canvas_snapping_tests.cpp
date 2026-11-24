@@ -16,6 +16,52 @@ void require(bool condition, const char* message) {
     }
 }
 
+void guideStrokesCoverWholeDevicePixels() {
+    SnowCanvasSnapConfig config;
+    config.markerSize = 0.0;
+    for (const qreal dpr : {1.0, 1.25, 1.5, 1.75, 2.0}) {
+        for (const qreal pan : {0.0, 0.25, 0.5, 0.75}) {
+            const QTransform view(1.25, 0, 0, 1.25, pan, pan);
+            for (const bool vertical : {false, true}) {
+                const QPointF along = vertical ? QPointF(0, 1) : QPointF(1, 0);
+                const QPoint across = vertical ? QPoint(1, 0) : QPoint(0, 1);
+                for (const bool gap : {false, true}) {
+                    SnowCanvasSnapGuide guide;
+                    guide.vertical = vertical;
+                    guide.gap = gap;
+                    guide.start = {8, 8};
+                    guide.end = guide.start + along * 48;
+                    QImage image(QSize(80, 80) * dpr, QImage::Format_ARGB32_Premultiplied);
+                    image.setDevicePixelRatio(dpr);
+                    image.fill(Qt::transparent);
+                    QTransform device;
+                    {
+                        QPainter painter(&image);
+                        painter.translate(0.25, 0.5);
+                        device = painter.deviceTransform();
+                        snowCanvasPaintSnapGuides(painter, {guide}, view,
+                                                  QRegion(QRect(0, 0, 80, 80)), config);
+                    }
+                    const QPointF start = view.map(guide.start);
+                    for (const qreal distance : {2.0, 6.0, 10.0, 14.0}) {
+                        const QPoint center = device.map(start + along * distance).toPoint();
+                        int covered = 0;
+                        for (int offset = -3; offset <= 3; ++offset) {
+                            const int alpha = qAlpha(image.pixel(center + across * offset));
+                            require(alpha == 0 || alpha == 255,
+                                    "guide stroke edges must fall on device pixel boundaries");
+                            covered += alpha != 0;
+                        }
+                        const bool dashGap = gap && (distance == 6.0 || distance == 14.0);
+                        require(covered == (dashGap ? 0 : qRound(dpr)),
+                                "point and gap guides must have a uniform device pixel width");
+                    }
+                }
+            }
+        }
+    }
+}
+
 void guideRenderingMatchesCanvas() {
     SnowCanvasSnapConfig config;
     config.showGapSize = true;
@@ -83,6 +129,7 @@ int main(int argc, char** argv) {
             !snowCanvasSnapMove(QRectF(0, 0, 40, 40),
                                 {QRectF(std::numeric_limits<qreal>::quiet_NaN(), 0, 40, 40)}, 1),
         "invalid inputs fail without a snap");
+    guideStrokesCoverWholeDevicePixels();
     guideRenderingMatchesCanvas();
     std::cout << "Snapping bridge and guide rendering tests passed\n";
 }
