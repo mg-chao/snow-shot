@@ -17,20 +17,29 @@ void pinnedMenuActionLifetime() {
         require(menu && Access::applyCropAction(window) == menu->findChild<QAction*>(QStringLiteral(
                                                                "screenshotPinnedApplyCropAction")),
                 "the crop action belongs to the current popup");
+        require(Access::cancelCropAction(window) &&
+                    Access::cancelCropAction(window) == menu->findChild<QAction*>(QStringLiteral(
+                                                            "screenshotPinnedCancelCropAction")) &&
+                    menu->actions().indexOf(Access::cancelCropAction(window)) ==
+                        menu->actions().indexOf(Access::applyCropAction(window)) + 1,
+                "Cancel crop follows Apply crop in the current popup");
         return menu;
     };
     const auto retire = [&](QPointer<adqt::widgets::AdContextMenu>& menu) {
         QPointer<QAction> action = Access::applyCropAction(window);
-        require(action, "the popup owns a crop action before retirement");
+        QPointer<QAction> cancel = Access::cancelCropAction(window);
+        require(action && cancel, "the popup owns a crop action before retirement");
         menu->dismissPopup();
         drainRetiredMenus();
-        require(!menu && !action, "closing the popup deletes its menu and crop action");
-        require(Access::applyCropAction(window) == nullptr,
+        require(!menu && !action && !cancel, "closing the popup deletes its menu and crop action");
+        require(!Access::applyCropAction(window) && !Access::cancelCropAction(window),
                 "the pin must not retain a destroyed popup's crop action");
     };
 
     auto menu = open();
-    require(!Access::applyCropAction(window)->isEnabled(), "an uncropped pin cannot apply a crop");
+    require(!Access::applyCropAction(window)->isVisible() &&
+                !Access::cancelCropAction(window)->isVisible(),
+            "an uncropped pin hides both crop actions");
     retire(menu);
 
     // Matches the crash path: a controlled resize settles its native scale after the
@@ -50,7 +59,10 @@ void pinnedMenuActionLifetime() {
     require(Access::crop(window, crop) && Access::visibleCrop(window) == crop,
             "crop presentation remains usable after menu deletion");
     menu = open();
-    require(Access::applyCropAction(window)->isEnabled(),
+    require(Access::applyCropAction(window)->isVisible() &&
+                Access::cancelCropAction(window)->isVisible() &&
+                Access::applyCropAction(window)->isEnabled() &&
+                Access::cancelCropAction(window)->isEnabled(),
             "a reopened popup reflects the current crop");
 
     // A new popup can be created while the old one's deletion is still queued.
@@ -66,15 +78,28 @@ void pinnedMenuActionLifetime() {
             "deleting the old popup preserves the replacement's action");
     require(Access::crop(window, {120, 220, 40, 30}) && replacementAction->isEnabled(),
             "crop changes update the replacement popup");
+    Access::cancelCropAction(window)->trigger();
+    require(!replacementAction->isVisible() && !Access::cancelCropAction(window)->isVisible(),
+            "cancel hides both actions in the current popup");
     retire(replacement);
+    menu = open();
+    require(!Access::applyCropAction(window)->isVisible() &&
+                !Access::cancelCropAction(window)->isVisible(),
+            "reopening after cancel hides both actions");
+    require(Access::crop(window, {120, 220, 40, 30}) &&
+                Access::applyCropAction(window)->isVisible() &&
+                Access::cancelCropAction(window)->isVisible(),
+            "setting a crop reveals both actions in the open menu");
+    retire(menu);
 
     Access::applyCrop(window);
     require(!window.persistenceSnapshot().cropRect &&
                 Access::originalImage(window).size() == QSize(40, 30),
             "applying a crop without a menu commits the cropped source");
     menu = open();
-    require(!Access::applyCropAction(window)->isEnabled(),
-            "reopening after apply shows no pending crop");
+    require(!Access::applyCropAction(window)->isVisible() &&
+                !Access::cancelCropAction(window)->isVisible(),
+            "reopening after apply hides both crop actions");
     retire(menu);
     window.hide();
 }

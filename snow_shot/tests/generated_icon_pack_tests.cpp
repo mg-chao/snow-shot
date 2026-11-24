@@ -12,6 +12,7 @@
 #include <QStringList>
 #include <QXmlStreamReader>
 
+#include <array>
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
@@ -98,8 +99,8 @@ void everySnowShotEntryRenders() {
     const auto registered = icons::registerWith(renderer);
     require(registered.ok(), "Snow Shot pack registration should succeed");
     const adqt::icons::IconPack* staticPack = icons::pack().staticPack();
-    require(staticPack != nullptr && staticPack->entryCount == 224,
-            "Snow Shot pack should contain all 224 project-owned assets");
+    require(staticPack != nullptr && staticPack->entryCount == 225,
+            "Snow Shot pack should contain all 225 project-owned assets");
     require(adqt::icons::describeIcon(icons::outlined::CreditsCoin()).key.name ==
                 QStringLiteral("credits-coin"),
             "account credits should resolve to their project-owned coin icon");
@@ -118,6 +119,9 @@ void everySnowShotEntryRenders() {
     require(adqt::icons::describeIcon(icons::outlined::ApplyCrop()).key.name ==
                 QStringLiteral("apply-crop"),
             "applying a crop should resolve to its project-owned icon");
+    require(adqt::icons::describeIcon(icons::outlined::CancelCrop()).key.name ==
+                QStringLiteral("cancel-crop"),
+            "canceling a crop should resolve to its project-owned icon");
     require(adqt::icons::describeIcon(icons::outlined::WindowUnderCursorAlwaysOnTop()).key.name ==
                 QStringLiteral("window-under-cursor-always-on-top"),
             "window always-on-top should resolve to its project-owned icon");
@@ -880,13 +884,15 @@ void revealIconFollowsAntDesign() {
 
 void cropIconsFollowAntDesign() {
     namespace icons = snow_shot::presentation::icons::custom::outlined;
-    const adqt::icons::IconRef refs[] = {icons::CropVertical(), icons::CropHorizontal()};
-    QImage preview(480, 160, QImage::Format_ARGB32_Premultiplied);
+    const std::array refs{icons::CropVertical(), icons::CropHorizontal(), icons::ApplyCrop(),
+                          icons::CancelCrop()};
+    QImage preview(240 * static_cast<int>(refs.size()), 160, QImage::Format_ARGB32_Premultiplied);
     QPainter painter(&preview);
     for (int row = 0; row < 2; ++row) {
         const QColor foreground(row == 0 ? "#262626" : "#f0f0f0");
-        painter.fillRect(QRect(0, row * 80, 480, 80), row == 0 ? Qt::white : QColor("#141414"));
-        for (int index = 0; index < 2; ++index) {
+        painter.fillRect(QRect(0, row * 80, preview.width(), 80),
+                         row == 0 ? Qt::white : QColor("#141414"));
+        for (std::size_t index = 0; index < refs.size(); ++index) {
             const auto ref = refs[index].withColors(adqt::icons::IconColors::primary(foreground));
             const auto bounds = alphaBounds(render(ref, QSize(1024, 1024)).toImage());
             require(QRect(64, 64, 896, 896).contains(bounds),
@@ -899,7 +905,7 @@ void cropIconsFollowAntDesign() {
                                 containsOpaqueColor(pixels, foreground),
                             "crop icons render with theme colors at toolbar sizes and scales");
                 }
-                painter.drawPixmap(index * 240 + column * 72 + (72 - size) / 2,
+                painter.drawPixmap(static_cast<int>(index) * 240 + column * 72 + (72 - size) / 2,
                                    row * 80 + (80 - size) / 2, render(ref, QSize(size, size)));
                 ++column;
             }
@@ -908,6 +914,9 @@ void cropIconsFollowAntDesign() {
     painter.end();
     require(render(refs[0], QSize(24, 24)).toImage() != render(refs[1], QSize(24, 24)).toImage(),
             "crop directions are visually distinct at toolbar size");
+    require(render(icons::ApplyCrop(), QSize(16, 16)).toImage() !=
+                render(icons::CancelCrop(), QSize(16, 16)).toImage(),
+            "apply and cancel have distinct marks at menu size");
     if (const auto path = qEnvironmentVariable("SNOW_CROP_ICON_PREVIEW"); !path.isEmpty())
         require(preview.save(path), "save crop icon visual inspection sheet");
 }

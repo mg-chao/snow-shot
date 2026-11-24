@@ -1970,6 +1970,10 @@ Files:
             <translation>取消</translation>
         </message>
         <message>
+            <source>Cancel crop</source>
+            <translation>取消裁剪</translation>
+        </message>
+        <message>
             <source>Checkerboard</source>
             <translation>棋盤格</translation>
         </message>
