@@ -1207,7 +1207,7 @@ void registrationRequiresExplicitAgreement() {
                 text->textInteractionFlags().testFlag(Qt::LinksAccessibleByKeyboard) &&
                 text->textInteractionFlags().testFlag(Qt::LinksAccessibleByMouse),
             "both agreement documents can be opened with the mouse or keyboard");
-    for (const auto* locale : {"en_US", "zh_CN", "zh_TW"}) {
+    for (const auto* locale : {"en_US", "zh_CN", "zh_TW", "ru"}) {
         QTranslator translator;
         require(translator.load(
                     QStringLiteral(":/i18n/snow_shot_%1.qm").arg(QString::fromLatin1(locale))),
@@ -1673,6 +1673,22 @@ void accountUiAndCredits() {
     require(AccountSessionService::formatCredits(QString()) == u"0 credits" &&
                 AccountSessionService::formatCredits(QStringLiteral("invalid")) == u"0 credits",
             "missing and invalid credit values display zero");
+
+    QTranslator russian;
+    require(russian.load(QStringLiteral(":/i18n/snow_shot_ru.qm")) &&
+                QCoreApplication::installTranslator(&russian),
+            "the embedded Russian catalog is available for formatting credits");
+    require(
+        AccountSessionService::formatCredits(QStringLiteral("19999999")) == u"1 кредит" &&
+            AccountSessionService::formatCredits(QStringLiteral("-20000000")) == u"−2 кредита" &&
+            AccountSessionService::formatCredits(QStringLiteral("110000000")) == u"11 кредитов" &&
+            AccountSessionService::formatCredits(QStringLiteral("210000000")) == u"21 кредит" &&
+            AccountSessionService::formatCredits(QStringLiteral("21474836510000000")) ==
+                u"2147483651 кредит" &&
+            AccountSessionService::formatCredits(QStringLiteral("-9223372036854775808")) ==
+                u"−922337203685 кредитов",
+        "Russian selects the correct plural form without changing the displayed amount");
+    QCoreApplication::removeTranslator(&russian);
     Api api;
     api.debt = QStringLiteral("1000000000");
     api.balance = QStringLiteral("0");

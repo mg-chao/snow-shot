@@ -13,19 +13,19 @@ QString queueError() {
     return QCoreApplication::translate("DirectCaptureController",
                                        "The capture operation could not be queued");
 }
-} // namespace
 
-void DirectCaptureRequest::snapshotWindowNames(const QString& directory,
-                                               const QPointF& monitorCursor) {
-    exportContext = {};
-    const auto fields = storage::screenshotWindowNameFields(directory, filenameFormat);
+storage::ScreenshotExportContext windowNamesForExport(const DirectCaptureRequest& request) {
+    const auto fields =
+        storage::screenshotWindowNameFields(request.exportDirectory, request.filenameFormat);
     if (!fields.any())
-        return;
-    if (target == DirectCaptureTarget::FocusedWindow && window != 0)
-        exportContext = platform::screenshotWindowNamesForWindow(window, fields);
-    else if (target == DirectCaptureTarget::CurrentMonitor && !monitorName.isEmpty())
-        exportContext = platform::screenshotWindowNamesAtPoint(monitorCursor, {}, fields);
+        return {};
+    if (request.target == DirectCaptureTarget::FocusedWindow && request.window != 0)
+        return platform::screenshotWindowNamesForWindow(request.window, fields);
+    if (request.target == DirectCaptureTarget::CurrentMonitor && !request.monitorName.isEmpty())
+        return platform::screenshotWindowNamesAtPoint(request.monitorCursor, {}, fields);
+    return {};
 }
+} // namespace
 
 DirectCaptureWorkflow::DirectCaptureWorkflow(DirectCapturePorts ports, QObject* parent)
     : QObject(parent), m_ports(std::move(ports)) {}
@@ -86,6 +86,11 @@ void DirectCaptureWorkflow::copy() {
     m_phase = Phase::Copying;
     const quint64 generation = m_generation;
     const QPointer<DirectCaptureWorkflow> self(this);
+    auto names = windowNamesForExport(m_queue.front());
+    if (!self || m_generation != generation || m_phase != Phase::Copying)
+        return;
+    m_queue.front().exportContext = std::move(names);
+
     auto complete = [self, generation](bool published, QString error) {
         if (!self || self->m_generation != generation || self->m_phase != Phase::Copying)
             return;

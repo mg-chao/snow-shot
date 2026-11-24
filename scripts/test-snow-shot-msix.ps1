@@ -385,10 +385,13 @@ endif()
         Invoke-SnowMsixTool 'makepri.exe' @('dump', '/if', (Join-Path $stage 'resources.pri'), '/of', $dumpPath, '/dt', 'detailed', '/o')
         $dump = Get-Content -LiteralPath $dumpPath -Raw
         Require ($dump.Contains('zh-CN') -and $dump.Contains('zh-TW') -and $dump.Contains('en-US') -and
+            $dump.Contains('ru-RU') -and $dump.Contains('Изображения и текстовые документы') -and
             $dump.Contains('Images and text documents')) 'Compiled PRI must retain all language candidates.'
     }
-    foreach ($language in @('en-US', 'zh-CN', 'zh-TW')) {
-        $resources = [xml](Get-Content -LiteralPath (Join-Path $script:SnowMsixRepoRoot "snow_shot/packaging/msix/Strings/$language/Resources.resw") -Raw)
+    $languages = @($manifest.SelectNodes('//m:Resources/m:Resource', $ns) | ForEach-Object { $_.Language })
+    Require ($languages -ccontains 'ru-RU') 'The MSIX manifest must declare Russian.'
+    foreach ($language in $languages) {
+        $resources = [xml](Get-Content -LiteralPath (Join-Path $stage "Strings/$language/Resources.resw") -Raw)
         Require (@($resources.root.data).Count -eq 4 -and @($resources.root.data | Where-Object { [string]::IsNullOrWhiteSpace($_.value) }).Count -eq 0) 'All manifest languages require complete resource strings.'
     }
     $assetRoot = Join-Path $script:SnowMsixRepoRoot 'snow_shot/packaging/msix/Assets'

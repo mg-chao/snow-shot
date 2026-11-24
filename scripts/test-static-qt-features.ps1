@@ -235,14 +235,16 @@ QT_DISABLED_PRIVATE_FEATURES "timezone_locale"
     Set-Content -LiteralPath (Join-Path $guiDir "Qt6GuiTargets.cmake") -Value 'QT_ENABLED_PRIVATE_FEATURES "system_png"'
     $translationDirectory = Join-Path $testRoot "translations"
     New-Item -ItemType Directory -Path $translationDirectory -Force | Out-Null
-    foreach ($language in @("zh_CN", "zh_TW")) {
+    foreach ($language in @("zh_CN", "zh_TW", "ru")) {
         Set-Content -LiteralPath (Join-Path $translationDirectory "qtbase_$language.qm") -Value "fixture"
     }
-    Require (Test-SnowQtTranslationKit $qtDir) "Chinese catalogs must not require an English Qt catalog."
-    $traditionalCatalog = Join-Path $translationDirectory "qtbase_zh_TW.qm"
-    Remove-Item -LiteralPath $traditionalCatalog
-    Require (-not (Test-SnowQtTranslationKit $qtDir)) "Both Chinese Qt stock-dialog catalogs are required."
-    Set-Content -LiteralPath $traditionalCatalog -Value "fixture"
+    Require (Test-SnowQtTranslationKit $qtDir) "Localized catalogs must not require an English Qt catalog."
+    foreach ($language in @("zh_CN", "zh_TW", "ru")) {
+        $catalog = Join-Path $translationDirectory "qtbase_$language.qm"
+        Remove-Item -LiteralPath $catalog
+        Require (-not (Test-SnowQtTranslationKit $qtDir)) "The Qt stock-dialog catalog for $language is required."
+        Set-Content -LiteralPath $catalog -Value "fixture"
+    }
     $stampPath = Join-Path $testRoot "share/snow-apps/static-qt-build.json"
     $null = New-Item -ItemType Directory -Force -Path (Join-Path $testRoot 'bin')
     foreach ($name in @('moc', 'rcc', 'uic', 'lrelease', 'lupdate')) {

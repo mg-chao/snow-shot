@@ -309,45 +309,47 @@ void queuedRequestsRetainTargetsAndOutputSettings() {
             "burst requests were coalesced or dropped");
 }
 
-void queuedExportsKeepNamesFromTheirCaptureTarget() {
+void windowNamesResolveAfterAcquisitionForTheQueuedTarget() {
     using namespace snow_shot::storage;
     Fixture f;
-    f.workflow.enqueue({});
+    DirectCaptureRequest withoutNames;
+    withoutNames.monitorName = QStringLiteral("monitor");
+    withoutNames.filenameFormat = QStringLiteral("{YYYY}");
+    f.workflow.enqueue(withoutNames);
+
     const QPointF cursor(-1800, -210);
     DirectCaptureRequest focused;
     focused.target = DirectCaptureTarget::FocusedWindow;
     focused.window = 1234;
     focused.filenameFormat = QStringLiteral("{WN}");
     const QString folder = QStringLiteral("captures/{AN}");
-    focused.snapshotWindowNames(folder, cursor);
-    require(nameLookup.calls == 1 && nameLookup.window == focused.window &&
-                nameLookup.fields == ScreenshotWindowNameFields{true, true},
-            "focused capture must look up its exact window and include directory variables");
+    focused.exportDirectory = folder;
     f.workflow.enqueue(focused);
 
     DirectCaptureRequest monitor;
     monitor.monitorName = QStringLiteral("monitor");
+    monitor.monitorCursor = cursor;
     monitor.filenameFormat = QStringLiteral("{AN}_{WN}");
-    monitor.snapshotWindowNames({}, cursor);
-    require(nameLookup.calls == 2 && nameLookup.window == 0 && nameLookup.point == cursor &&
-                nameLookup.fields == ScreenshotWindowNameFields{true, true},
-            "monitor capture must look up both names at the cursor point");
     f.workflow.enqueue(monitor);
 
+    focused.window = 4321;
     focused.filenameFormat = QStringLiteral("{YYYY}");
-    focused.snapshotWindowNames({}, cursor);
-    monitor.monitorName.clear();
-    monitor.snapshotWindowNames({}, cursor);
-    require(nameLookup.calls == 2 && focused.exportContext == ScreenshotExportContext{} &&
-                monitor.exportContext == ScreenshotExportContext{},
-            "unused variables or a missing target must skip window metadata lookup");
+    monitor.monitorCursor = QPointF(100, 200);
+    require(nameLookup.calls == 0, "queuing a capture must not look up names before acquiring it");
 
     f.acquired(frame());
+    require(nameLookup.calls == 0 &&
+                f.copyRequests.back().exportContext == ScreenshotExportContext{},
+            "templates without window variables must skip window lookup");
     f.copied(true, {});
     QCoreApplication::processEvents();
+    require(nameLookup.calls == 0, "starting acquisition must not look up window names");
     f.acquired(frame());
+    require(nameLookup.calls == 1 && nameLookup.window == 1234 &&
+                nameLookup.fields == ScreenshotWindowNameFields{true, true},
+            "focused export must look up its queued window and include directory variables");
     const auto& focusedOutput = f.copyRequests.back();
-    require(expandScreenshotExportVariables(folder, {}, focusedOutput.exportContext) ==
+    require(expandScreenshotExportDirectory(folder, {}, focusedOutput.exportContext) ==
                     QStringLiteral("captures/Focused App") &&
                 expandScreenshotExportVariables(focusedOutput.filenameFormat, {},
                                                 focusedOutput.exportContext) ==
@@ -355,14 +357,22 @@ void queuedExportsKeepNamesFromTheirCaptureTarget() {
             "queued focused exports must keep application and window names");
     f.copied(true, {});
     QCoreApplication::processEvents();
+    require(nameLookup.calls == 1, "starting monitor acquisition must not look up window names");
     f.acquired(frame());
+    require(nameLookup.calls == 2 && nameLookup.window == 0 && nameLookup.point == cursor &&
+                nameLookup.fields == ScreenshotWindowNameFields{true, true},
+            "monitor export must use the cursor position saved with the request");
     const auto& monitorOutput = f.copyRequests.back();
     require(expandScreenshotExportVariables(monitorOutput.filenameFormat, {},
                                             monitorOutput.exportContext) ==
-                    QStringLiteral("Monitor App_Monitor Title") &&
-                nameLookup.calls == 2,
-            "queued monitor exports must keep the names found at invocation");
+                QStringLiteral("Monitor App_Monitor Title"),
+            "queued monitor exports must use names resolved before copying");
     f.copied(true, {});
+
+    f.workflow.enqueue(monitor);
+    f.acquired({});
+    require(nameLookup.calls == 2 && f.copyRequests.size() == 3,
+            "failed capture must skip export naming and clipboard output");
 }
 
 void shutdownDuringNotificationsStopsOutputs() {
@@ -405,7 +415,7 @@ int main(int argc, char** argv) {
     fileCopyHistoryFailureAndLateCallbacks();
     rejectedOperationsFinishAndDestroyedReceiversIgnoreResults();
     queuedRequestsRetainTargetsAndOutputSettings();
-    queuedExportsKeepNamesFromTheirCaptureTarget();
+    windowNamesResolveAfterAcquisitionForTheQueuedTarget();
     shutdownDuringNotificationsStopsOutputs();
     return 0;
 }

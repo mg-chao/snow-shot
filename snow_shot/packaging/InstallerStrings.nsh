@@ -6,4 +6,5 @@
 !include "${__FILEDIR__}\i18n\en_US.nsh"
 !include "${__FILEDIR__}\i18n\zh_CN.nsh"
 !include "${__FILEDIR__}\i18n\zh_TW.nsh"
+!include "${__FILEDIR__}\i18n\ru_RU.nsh"
 !endif

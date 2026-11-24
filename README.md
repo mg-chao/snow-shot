@@ -51,7 +51,7 @@
 - 🔎 **Turn pixels into text.** Extract text with local OCR and read QR codes. Optional online services add translation, table recognition, and AI conversion.
 - 🎬 **Show how it works.** Record your screen, include system or microphone audio, and export video or GIF, APNG, and WebP animations.
 - 🧩 **Finish the picture.** Stitch images, split them into pieces, or sketch on a full-screen canvas.
-- 🎨 **Make it yours.** Customize shortcuts, toolbars, themes, and export preferences. Use the interface in English, Simplified Chinese, or Traditional Chinese.
+- 🎨 **Make it yours.** Customize shortcuts, toolbars, themes, and export preferences. Use the interface in English, Simplified Chinese, Traditional Chinese, or Russian.
 - 🔌 **Connect your workflow.** Enable MCP integration to let a compatible AI client use supported Snow Shot tools.
 
 Core capture, annotation, recording, standard OCR, and QR recognition run on your device.

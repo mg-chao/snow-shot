@@ -102,7 +102,6 @@ class ScreenshotOcrRecognitionService::Impl final {
           m_tryCachedFallbackAtStartup(options.tryCachedFallbackAtStartup),
           m_deferIdleDownload(options.tryCachedFallbackAtStartup) {
         m_configuration.modelType = options.modelType;
-        m_configuration.detectorResizePolicy = options.detectorResizePolicy;
         m_configuration.textDetectionProcessing = options.textDetectionProcessing;
         m_configuration.hardwareAcceleration = options.hardwareAcceleration;
         m_queueClock.start();
@@ -455,7 +454,6 @@ class ScreenshotOcrRecognitionService::Impl final {
         const bool modelChanged = m_modelType != configuration.modelType;
         const bool sessionChanged =
             modelChanged ||
-            m_configuration.detectorResizePolicy != configuration.detectorResizePolicy ||
             m_configuration.textDetectionProcessing != configuration.textDetectionProcessing ||
             m_configuration.hardwareAcceleration != configuration.hardwareAcceleration;
         const bool accelerationChanged =
@@ -887,9 +885,7 @@ class ScreenshotOcrRecognitionService::Impl final {
         m_sessionIdleGeneration = m_idleGeneration;
         m_invalidateWarmSession = false;
         QByteArray payload;
-        appendU8(
-            payload,
-            m_configuration.detectorResizePolicy == ScreenshotOcrDetectorResizePolicy::Min ? 1 : 0);
+        appendU8(payload, 0); // Reserved protocol 8 resize field.
         appendU8(payload, m_configuration.textDetectionProcessing ==
                                   ScreenshotOcrTextDetectionProcessing::SpeedFirst
                               ? 1
@@ -1796,13 +1792,6 @@ void ScreenshotOcrRecognitionService::setModelType(ScreenshotOcrModelType modelT
     configuration.modelType = modelType;
     setRuntimeConfiguration(configuration);
 }
-void ScreenshotOcrRecognitionService::setDetectorResizePolicy(
-    ScreenshotOcrDetectorResizePolicy policy) {
-    auto configuration = m_runtimeConfiguration;
-    configuration.detectorResizePolicy = policy;
-    setRuntimeConfiguration(configuration, m_deferModelDownload);
-}
-
 void ScreenshotOcrRecognitionService::setTextDetectionProcessing(
     ScreenshotOcrTextDetectionProcessing processing) {
     auto configuration = m_runtimeConfiguration;

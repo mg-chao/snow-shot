@@ -12,23 +12,28 @@
     <!-- CMake inlines the title bar's canonical 95x17 wordmark here. -->
     <g transform="translate(295 31) scale(2)">@SNOW_DMG_WORDMARK@</g>
     <g font-size="14" fill="#50647e">
-      <text xml:lang="en" x="390" y="88">Capture. Annotate. Keep your ideas in view.</text>
-      <text xml:lang="zh-Hans" x="390" y="112">截图、标注，让灵感常驻眼前。</text>
-      <text xml:lang="zh-Hant" x="390" y="136">擷取、標註，讓靈感常駐眼前。</text>
+      <text xml:lang="en" x="390" y="85">Capture. Annotate. Keep your ideas in view.</text>
+      <text xml:lang="zh-Hans" x="390" y="105">截图、标注，让灵感常驻眼前。</text>
+      <text xml:lang="zh-Hant" x="390" y="125">擷取、標註，讓靈感常駐眼前。</text>
+      <text xml:lang="ru" x="390" y="145">Делайте скриншоты, добавляйте аннотации и держите идеи на виду</text>
     </g>
     <rect x="72" y="162" width="636" height="172" rx="24" fill="#ffffff" opacity=".75"/>
     <path d="M354 224h72m-16-16 16 16-16 16" fill="none" stroke="#4086d9" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
     <g xml:lang="en">
-      <text x="390" y="373" font-size="18" font-weight="500" fill="#152c4a">Drag Snow Shot to Applications</text>
-      <text x="390" y="397" font-size="13" fill="#50647e">Then open Snow Shot from Applications to get started.</text>
+      <text x="390" y="363" font-size="18" font-weight="500" fill="#152c4a">Drag Snow Shot to Applications</text>
+      <text x="390" y="383" font-size="13" fill="#50647e">Then open Snow Shot from Applications to get started.</text>
     </g>
     <g xml:lang="zh-Hans">
-      <text x="390" y="429" font-size="18" font-weight="500" fill="#152c4a">将 Snow Shot 拖到右侧的“应用程序”文件夹</text>
-      <text x="390" y="453" font-size="13" fill="#50647e">安装完成后，从“应用程序”中打开 Snow Shot 即可开始使用。</text>
+      <text x="390" y="409" font-size="18" font-weight="500" fill="#152c4a">将 Snow Shot 拖到右侧的“应用程序”文件夹</text>
+      <text x="390" y="429" font-size="13" fill="#50647e">安装完成后，从“应用程序”中打开 Snow Shot 即可开始使用。</text>
     </g>
     <g xml:lang="zh-Hant">
-      <text x="390" y="485" font-size="18" font-weight="500" fill="#152c4a">將 Snow Shot 拖曳至右側的「應用程式」檔案夾</text>
-      <text x="390" y="509" font-size="13" fill="#50647e">安裝完成後，從「應用程式」開啟 Snow Shot 即可開始使用。</text>
+      <text x="390" y="455" font-size="18" font-weight="500" fill="#152c4a">將 Snow Shot 拖曳至右側的「應用程式」檔案夾</text>
+      <text x="390" y="475" font-size="13" fill="#50647e">安裝完成後，從「應用程式」開啟 Snow Shot 即可開始使用。</text>
+    </g>
+    <g xml:lang="ru">
+      <text x="390" y="501" font-size="18" font-weight="500" fill="#152c4a">Перетащите Snow Shot в папку «Программы»</text>
+      <text x="390" y="521" font-size="13" fill="#50647e">Затем откройте Snow Shot из папки «Программы».</text>
     </g>
     <text x="390" y="543" font-size="11" fill="#697c94">macOS 15+</text>
   </g>

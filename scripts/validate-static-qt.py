@@ -188,7 +188,7 @@ def validate_kit(prefix, arch=None, require_static=False):
     if not (prefix / 'lib/cmake/Qt6/Qt6Config.cmake').is_file():
         raise ValueError(f'The Qt CMake package is missing: {prefix}')
     installed_version(prefix, toolchain_policy()['qtVersion'])
-    for language in ('zh_CN', 'zh_TW'):
+    for language in ('zh_CN', 'zh_TW', 'ru'):
         catalog = prefix / 'translations' / f'qtbase_{language}.qm'
         if not catalog.is_file():
             raise ValueError(f'The Qt stock-dialog translation catalog is missing: {catalog}')

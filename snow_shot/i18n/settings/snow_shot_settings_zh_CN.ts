@@ -2073,10 +2073,6 @@
             <translation>选择网络请求连接代理的方式</translation>
         </message>
         <message>
-            <source>Choose how text detection resizes images. Limiting the long side is faster; enlarging the short side may find smaller text</source>
-            <translation>选择文字检测时的图像缩放方式。限制长边可提高速度；放大短边可能识别出更小的文字</translation>
-        </message>
-        <message>
             <source>Choose how the area behind recognized text is filled</source>
             <translation>选择识别文字后方区域的填充方式</translation>
         </message>
@@ -2825,10 +2821,6 @@
             <translation>结束屏幕录制</translation>
         </message>
         <message>
-            <source>Enlarge short side (more detail)</source>
-            <translation>放大短边（更多细节）</translation>
-        </message>
-        <message>
             <source>Enter an HTTP or HTTPS address. Changes apply immediately. Clear to use the default server</source>
             <translation>输入 HTTP 或 HTTPS 地址。更改立即生效。清空可使用默认服务器</translation>
         </message>
@@ -3363,10 +3355,6 @@
         <message>
             <source>Limit how much disk space screenshot history can use</source>
             <translation>限制截图历史可使用的磁盘空间</translation>
-        </message>
-        <message>
-            <source>Limit long side (faster)</source>
-            <translation>限制长边（更快）</translation>
         </message>
         <message>
             <source>Limit the width of pinned text, including padding</source>
@@ -5049,10 +5037,6 @@
             <translation>文字检测处理</translation>
         </message>
         <message>
-            <source>Text detection scaling</source>
-            <translation>文字检测缩放</translation>
-        </message>
-        <message>
             <source>Text recognition</source>
             <translation>文本识别</translation>
         </message>
@@ -6152,9 +6136,11 @@ Unavailable: %2</source>
     </context>
     <context>
         <name>snow_shot::app::AccountSessionService</name>
-        <message>
+        <message numerus="yes">
             <source>%1 credits</source>
-            <translation>%1 积分</translation>
+            <translation>
+                <numerusform>%1 积分</numerusform>
+            </translation>
         </message>
         <message>
             <source>Confirm your password</source>

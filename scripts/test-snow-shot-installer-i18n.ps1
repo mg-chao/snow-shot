@@ -55,7 +55,7 @@ function Run-Installer {
     }
 }
 
-$locales = [ordered]@{ en_US = 1033; zh_CN = 2052; zh_TW = 1028 }
+$locales = [ordered]@{ en_US = 1033; zh_CN = 2052; zh_TW = 1028; ru_RU = 1049 }
 $catalogs = @{}
 foreach ($locale in $locales.Keys) { $catalogs[$locale] = Read-Catalog $locale $locales[$locale] }
 $english = $catalogs.en_US
@@ -70,7 +70,7 @@ foreach ($locale in $locales.Keys) {
         if (($expected -join '|') -cne ($actual -join '|')) { throw "Placeholder mismatch: $locale/$key" }
     }
 }
-Write-Output "PASS: all three installer catalogs have complete, nonempty translations and matching placeholders."
+Write-Output "PASS: all four installer catalogs have complete, nonempty translations and matching placeholders."
 
 $installer = Join-Path $testRoot "language-test.exe"
 & $compiler /V2 "/DOUTPUT=$installer" "/DDESTINATION=$testRoot" "/DPACKAGING=$packaging" `

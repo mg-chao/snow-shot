@@ -124,8 +124,6 @@ const QString kScreenshotDelaySecondsKey = QStringLiteral("screenshot/delay_seco
 const QString kFullscreenSuppressionKey =
     QStringLiteral("global_shortcuts/disable_on_focused_fullscreen_window");
 const QString kOcrModelTypeKey = QStringLiteral("text_recognition/model_type");
-const QString kOcrDetectorResizePolicyKey =
-    QStringLiteral("text_recognition/detector_resize_policy");
 const QString kOcrTextDetectionProcessingKey =
     QStringLiteral("text_recognition/text_detection_processing");
 const QString kMcpEnabledKey = QStringLiteral("mcp/enabled");
@@ -401,8 +399,6 @@ class ApplicationController::Impl {
             applicationStorage.configuration()
                 .value(QStringLiteral("text_recognition/model_type"))
                 .toString());
-        ocrOptions.detectorResizePolicy = screenshotOcrDetectorResizePolicyFromValue(
-            applicationStorage.configuration().value(kOcrDetectorResizePolicyKey).toString());
         ocrOptions.textDetectionProcessing = screenshotOcrTextDetectionProcessingFromValue(
             applicationStorage.configuration().value(kOcrTextDetectionProcessingKey).toString());
         ocrRecognition = std::make_unique<ScreenshotOcrRecognitionService>(ocrOptions, &q);
@@ -663,8 +659,7 @@ class ApplicationController::Impl {
                 if (modelChanged)
                     deferSynchronizedOcrModel = origin == storage::ConfigurationWriteOrigin::Remote;
                 if (started &&
-                    (modelChanged || values.contains(kOcrDetectorResizePolicyKey) ||
-                     values.contains(kOcrTextDetectionProcessingKey) ||
+                    (modelChanged || values.contains(kOcrTextDetectionProcessingKey) ||
                      values.contains(QStringLiteral("text_recognition/resident_process")) ||
                      values.contains(QStringLiteral("text_recognition/model_hot_start")) ||
                      values.contains(QStringLiteral("text_recognition/hardware_acceleration")))) {
@@ -1056,8 +1051,6 @@ class ApplicationController::Impl {
         const auto& configuration = storage::ApplicationStorage::instance().configuration();
         ocrRecognition->setRuntimeConfiguration(
             {screenshotOcrModelTypeFromValue(configuration.value(kOcrModelTypeKey).toString()),
-             screenshotOcrDetectorResizePolicyFromValue(
-                 configuration.value(kOcrDetectorResizePolicyKey).toString()),
              configuration.value(QStringLiteral("text_recognition/resident_process")).toBool(),
              configuration.value(QStringLiteral("text_recognition/model_hot_start")).toBool(),
              screenshotOcrTextDetectionProcessingFromValue(

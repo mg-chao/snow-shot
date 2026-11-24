@@ -243,7 +243,7 @@ function Test-SnowQtTranslationKit {
     param([Parameter(Mandatory = $true)][string]$Qt6Dir)
 
     $prefix = [IO.Path]::GetFullPath((Join-Path $Qt6Dir "../../.."))
-    foreach ($language in @("zh_CN", "zh_TW")) {
+    foreach ($language in @("zh_CN", "zh_TW", "ru")) {
         $catalog = Join-Path $prefix "translations/qtbase_$language.qm"
         if (-not (Test-Path -LiteralPath $catalog -PathType Leaf)) {
             return $false
