@@ -364,7 +364,8 @@ class DrawingSettings final {
 
 class ScreenshotShortcutSettings final {
   public:
-    [[nodiscard]] static bool isReservedShortcut(const shortcuts::ShortcutBinding& shortcut);
+    [[nodiscard]] static bool isReservedShortcut(const shortcuts::ShortcutBinding& shortcut,
+                                                 const QString& actionId = {});
     [[nodiscard]] static bool isReservedShortcutAllowed(const QString& actionId,
                                                         const shortcuts::ShortcutBinding& shortcut);
 
@@ -423,6 +424,7 @@ class DrawingShortcutSettings final {
 class PinToScreenShortcutSettings final {
   public:
     [[nodiscard]] static bool actionsMayConflict(const QString& first, const QString& second);
+    [[nodiscard]] shortcuts::ShortcutBindingList screenshotShortcuts(const QString& actionId) const;
     [[nodiscard]] shortcuts::ShortcutBindingList shortcuts(const QString& actionId) const;
     bool setShortcuts(const QString& actionId,
                       const shortcuts::ShortcutBindingList& bindings) const;

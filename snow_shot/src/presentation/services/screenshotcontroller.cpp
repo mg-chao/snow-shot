@@ -2143,7 +2143,10 @@ void ScreenshotController::Impl::createOverlayInputPipeline() {
         [this](const QString& actionId) {
             const auto* toolbar = toolbarForShortcut();
             auto* palette = toolbar != nullptr ? toolbar->palette() : nullptr;
-            return palette != nullptr && palette->canActivateScreenshotShortcut(actionId);
+            return palette != nullptr && palette->canActivateScreenshotShortcut(
+                                             actionId == QStringLiteral("text_recognition_copy")
+                                                 ? QStringLiteral("text_recognition")
+                                                 : actionId);
         },
         [this](const QString& toolId) {
             const auto* toolbar = toolbarForShortcut();
@@ -2883,10 +2886,13 @@ void ScreenshotController::Impl::setOcrTool() {
     if (!ensureRecognitionFeature()) {
         return;
     }
-    if (m_activatingOcrCopy)
+    if (m_activatingOcrCopy) {
+        // This activation owns its follow-up, even when a newer clipboard write wins.
+        m_ocrAutoActionHandledActivationId = m_ocrActivationId;
         m_ocrController->activateAndCopy();
-    else
+    } else {
         m_ocrController->activate();
+    }
     m_presentationServices->updateOverlayState();
     restoreToolUiAfterScrollingCapture(scrollingCaptureStopped);
 }

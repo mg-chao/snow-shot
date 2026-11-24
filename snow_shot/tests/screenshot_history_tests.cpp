@@ -2768,7 +2768,7 @@ void completionGesturesUseSharedEligibilityAcrossTools() {
         const auto activatePreview = [&](QPointF position = {10, 10}) {
             handler.handleMouseCompletion(action, nullptr, position);
         };
-        availableCommand = action == ShotOcrCopy ? QStringLiteral("text_recognition") : command;
+        availableCommand = command;
         shortcutInputAllowed = false;
         activatePreview();
         shortcutInputAllowed = true;

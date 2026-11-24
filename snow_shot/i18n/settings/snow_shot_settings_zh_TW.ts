@@ -4923,10 +4923,6 @@
             <translation>顯示文字醒目提示</translation>
         </message>
         <message>
-            <source>Show text recognition results</source>
-            <translation>顯示文字辨識結果</translation>
-        </message>
-        <message>
             <source>Show the annotation and close buttons in the upper-right corner of pinned windows</source>
             <translation>顯示固定到螢幕視窗右上角的標註和關閉按鈕</translation>
         </message>

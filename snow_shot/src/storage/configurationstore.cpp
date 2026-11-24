@@ -1,5 +1,4 @@
-#include "snow_shot/shortcuts/screenshotshortcutcontext.h"
-#include "snow_shot/shortcuts/pinnedshortcutcontext.h"
+#include "snow_shot/shortcuts/localshortcutcontext.h"
 #include "snow_shot/storage/configurationstore.h"
 #include "snow_shot/clouduploadconfiguration.h"
 #include "snow_shot/app/edition.h"
@@ -90,13 +89,15 @@ QMap<QString, QJsonValue> overlayFromDocument(const QJsonObject& document) {
             overlay.insert(entry.key, raw);
         }
     }
-    for (const QString& legacyKey : {QStringLiteral("capture_history/enabled"),
-                                     QStringLiteral("screenshot/auto_save_after_copy"),
-                                     QStringLiteral("screenshot/auto_save_after_execution_actions"),
-                                     QStringLiteral("screenshot/copy_after_pinning_to_screen"),
-                                     QStringLiteral("screenshot/screenshot_sound_notification"),
-                                     QStringLiteral("interface/app_font_size_percentage"),
-                                     QStringLiteral("screenshot_selection/selection_target")}) {
+    for (const QString& legacyKey :
+         {QStringLiteral("capture_history/enabled"),
+          QStringLiteral("screenshot/auto_save_after_copy"),
+          QStringLiteral("screenshot/auto_save_after_execution_actions"),
+          QStringLiteral("screenshot/copy_after_pinning_to_screen"),
+          QStringLiteral("screenshot/screenshot_sound_notification"),
+          QStringLiteral("interface/app_font_size_percentage"),
+          QStringLiteral("pin_to_screen_shortcuts/show_text_recognition_results"),
+          QStringLiteral("screenshot_selection/selection_target")}) {
         bool present = false;
         const QJsonValue raw = valueAtPath(document, legacyKey, &present);
         if (present) {
@@ -112,7 +113,7 @@ void reconcileLocalShortcutDefaults(MaterializedConfiguration& result,
     if (defaultedKeys.isEmpty())
         return;
 
-    QMap<QString, QList<std::pair<QString, shortcuts::ShortcutBinding>>> assignedByScope;
+    QList<std::pair<QString, shortcuts::ShortcutBinding>> assigned;
     QStringList defaultedLocalKeys;
     const auto bindingsForKey = [&result](const QString& key) {
         return shortcuts::shortcutBindingsFromJson(
@@ -128,34 +129,23 @@ void reconcileLocalShortcutDefaults(MaterializedConfiguration& result,
         if (defaultedKeys.contains(entry.key)) {
             defaultedLocalKeys.push_back(entry.key);
         } else {
-            auto& assigned = assignedByScope[entry.key.section(u'/', 0, 0)];
             for (const auto& binding : bindingsForKey(entry.key))
-                assigned.append({entry.key.section(u'/', 1), binding});
+                assigned.append({entry.key, binding});
         }
     }
     for (const QString& key : defaultedLocalKeys) {
-        auto& assigned = assignedByScope[key.section(u'/', 0, 0)];
         const auto defaults = bindingsForKey(key);
-        const auto actionsMayConflict = [&key](const QString& otherAction) {
-            const QString action = key.section(u'/', 1);
-            if (key.startsWith(QStringLiteral("screenshot_shortcuts/")))
-                return shortcuts::screenshotShortcutActionsMayConflict(action, otherAction);
-            if (key.startsWith(QStringLiteral("pin_to_screen_shortcuts/")))
-                return shortcuts::pinnedShortcutActionsMayConflict(action, otherAction);
-            return true;
-        };
         shortcuts::ShortcutBindingList retained;
         for (const auto& binding : defaults) {
-            if (std::any_of(assigned.cbegin(), assigned.cend(),
-                            [&binding, &actionsMayConflict](const auto& existing) {
-                                return actionsMayConflict(existing.first) &&
-                                       shortcuts::bindingsConflict(
-                                           existing.second, binding,
-                                           shortcuts::ShortcutPolicy::Application);
-                            }))
+            if (std::any_of(
+                    assigned.cbegin(), assigned.cend(), [&binding, &key](const auto& existing) {
+                        return shortcuts::localShortcutKeysMayConflict(key, existing.first) &&
+                               shortcuts::bindingsConflict(existing.second, binding,
+                                                           shortcuts::ShortcutPolicy::Application);
+                    }))
                 continue;
             retained.push_back(binding);
-            assigned.push_back({key.section(u'/', 1), binding});
+            assigned.push_back({key, binding});
         }
         if (retained.size() == defaults.size())
             continue;
@@ -203,6 +193,12 @@ MaterializedConfiguration materializeConfiguration(const QMap<QString, QJsonValu
                 result.document.insert(QStringLiteral("screenshot"), screenshot);
                 result.dirty = !replaceAll;
             }
+        }
+        auto pinnedShortcuts =
+            result.document.value(QStringLiteral("pin_to_screen_shortcuts")).toObject();
+        if (!pinnedShortcuts.take(QStringLiteral("show_text_recognition_results")).isUndefined()) {
+            result.document.insert(QStringLiteral("pin_to_screen_shortcuts"), pinnedShortcuts);
+            result.dirty = !replaceAll;
         }
         QJsonObject screenshotSelection =
             result.document.value(QStringLiteral("screenshot_selection")).toObject();

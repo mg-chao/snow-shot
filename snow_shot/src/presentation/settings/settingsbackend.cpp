@@ -1,5 +1,4 @@
 #include "snow_shot/app/distribution.h"
-#include "snow_shot/shortcuts/screenshotshortcutcontext.h"
 #include "snow_shot/presentation/globalmousemanager.h"
 #include "snow_shot/presentation/settings/settingsbackend.h"
 #include "snow_shot/app/edition.h"
@@ -2180,39 +2179,25 @@ BuiltInSettingsBackend::validateLocalShortcut(SettingsLocalShortcutScope scope,
         return {shortcut.portableText, false, GlobalShortcutFailureReason::InvalidShortcut,
                 canonical};
     }
-    if (scope != SettingsLocalShortcutScope::PinToScreen &&
-        scope != SettingsLocalShortcutScope::ScreenRecording &&
-        storage::ScreenshotShortcutSettings::isReservedShortcut(canonical) &&
-        (scope == SettingsLocalShortcutScope::Screenshot
-             ? !storage::ScreenshotShortcutSettings::isReservedShortcutAllowed(shortcutId,
-                                                                               canonical)
-             : !storage::DrawingShortcutSettings::isReservedShortcutAllowed(shortcutId,
-                                                                            canonical))) {
+    const bool reserved =
+        scope == SettingsLocalShortcutScope::Screenshot
+            ? storage::ScreenshotShortcutSettings::isReservedShortcut(canonical, shortcutId) &&
+                  !storage::ScreenshotShortcutSettings::isReservedShortcutAllowed(shortcutId,
+                                                                                  canonical)
+            : scope == SettingsLocalShortcutScope::Drawing &&
+                  storage::DrawingShortcutSettings::isReservedShortcut(canonical) &&
+                  !storage::DrawingShortcutSettings::isReservedShortcutAllowed(shortcutId,
+                                                                               canonical);
+    if (reserved) {
         return {canonical.portableText, false, GlobalShortcutFailureReason::InvalidShortcut,
                 canonical};
     }
-    const auto all = scope == SettingsLocalShortcutScope::Screenshot
-                         ? storage::ScreenshotShortcutSettings().allShortcuts()
-                     : scope == SettingsLocalShortcutScope::Drawing
-                         ? storage::DrawingShortcutSettings().allShortcuts()
-                     : scope == SettingsLocalShortcutScope::ScreenRecording
-                         ? storage::ScreenRecordingShortcutSettings().allShortcuts()
-                         : storage::PinToScreenShortcutSettings().allShortcuts();
-    for (auto it = all.cbegin(); it != all.cend(); ++it) {
-        if (it.key() == shortcutId ||
-            (scope == SettingsLocalShortcutScope::Screenshot &&
-             !shortcuts::screenshotShortcutActionsMayConflict(shortcutId, it.key())) ||
-            (scope == SettingsLocalShortcutScope::PinToScreen &&
-             !storage::PinToScreenShortcutSettings::actionsMayConflict(shortcutId, it.key()))) {
-            continue;
-        }
-        for (const shortcuts::ShortcutBinding& existing : it.value()) {
-            if (shortcuts::bindingsConflict(existing, canonical,
-                                            shortcuts::ShortcutPolicy::Application)) {
-                return {canonical.portableText, false, GlobalShortcutFailureReason::AlreadyInUse,
-                        canonical};
-            }
-        }
+    const auto& configuration = storage::ApplicationStorage::instance().configuration();
+    if (!storage::localShortcutChangesValid(configuration.snapshot(),
+                                            {{key, shortcuts::shortcutBindingsToJson({canonical})}},
+                                            true)) {
+        return {canonical.portableText, false, GlobalShortcutFailureReason::AlreadyInUse,
+                canonical};
     }
     return {canonical.portableText, true, GlobalShortcutFailureReason::None, canonical};
 }

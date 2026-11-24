@@ -11,7 +11,7 @@
 #include "snow_shot/translation/freetranslation.h"
 #include "translation_test_support.h"
 #include "recognition_attachment_test_access.h"
-#include <QKeyEvent>
+#include "physical_key_test_support.h"
 #include <QKeySequence>
 #include "widgets/select.h"
 
@@ -158,8 +158,7 @@ void cropSessionCopyUsesAttachedController() {
                 sawPublication = true;
                 assertClipboard();
             });
-        QKeyEvent key(QEvent::KeyPress, Qt::Key_C, Qt::ControlModifier, 0x2e, 0x43, 0,
-                      QStringLiteral("c"));
+        PhysicalKeyEvent key(QEvent::KeyPress, Qt::Key_C, Qt::ControlModifier, QStringLiteral("c"));
         QApplication::sendEvent(text, &key);
         QObject::disconnect(observe);
         require(sawPublication, "keyboard Copy publishes the correct MIME from its first write");
@@ -355,7 +354,7 @@ void copyCachedTranslationOverlay(const ImageEditingSource& source) {
     QApplication::clipboard()->setText(QStringLiteral("keyboard copy sentinel"));
     const auto key = QKeySequence::keyBindings(QKeySequence::Copy).first()[0];
     for (const auto type : {QEvent::ShortcutOverride, QEvent::KeyPress, QEvent::KeyRelease}) {
-        QKeyEvent event(type, int(key.key()), key.keyboardModifiers());
+        PhysicalKeyEvent event(type, int(key.key()), key.keyboardModifiers());
         QApplication::sendEvent(view, &event);
     }
     require(QApplication::clipboard()->text() == QStringLiteral("Translated text"),

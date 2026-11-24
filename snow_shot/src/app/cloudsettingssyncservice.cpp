@@ -3,8 +3,7 @@
 
 #include "cloudsettingslayout_p.h"
 #include "snow_shot/app/accountsessionservice.h"
-#include "snow_shot/shortcuts/pinnedshortcutcontext.h"
-#include "snow_shot/shortcuts/screenshotshortcutcontext.h"
+#include "snow_shot/shortcuts/localshortcutcontext.h"
 #include "snow_shot/shortcuts/shortcutbinding.h"
 #include "snow_shot/storage/cloudsyncconfiguration.h"
 #include "snow_shot/storage/configurationschema.h"
@@ -252,7 +251,7 @@ shortcuts::ShortcutPolicy shortcutPolicy(QStringView scope) {
 
 bool bindingsDependOnEachOther(const QString& first, const BindingChange& a, const QString& second,
                                const BindingChange& b) {
-    if (a.scope != b.scope)
+    if (!shortcuts::localShortcutKeysMayConflict(first, second))
         return false;
     if (mouse::isKey(first)) {
         const auto overlaps = [](const QJsonValue& a, const QJsonValue& b) {
@@ -264,14 +263,6 @@ bool bindingsDependOnEachOther(const QString& first, const BindingChange& a, con
     if (a.scope == u"global_mouse")
         return (a.afterMouse == b.beforeMouse && !a.afterMouse.toObject().isEmpty()) ||
                (b.afterMouse == a.beforeMouse && !b.afterMouse.toObject().isEmpty());
-    const auto firstAction = first.sliced(a.scope.size() + 1);
-    const auto secondAction = second.sliced(a.scope.size() + 1);
-    if (a.scope == u"screenshot_shortcuts" &&
-        !shortcuts::screenshotShortcutActionsMayConflict(firstAction, secondAction))
-        return false;
-    if (a.scope == u"pin_to_screen_shortcuts" &&
-        !shortcuts::pinnedShortcutActionsMayConflict(firstAction, secondAction))
-        return false;
     const auto overlaps = [policy = shortcutPolicy(a.scope)](const auto& after,
                                                              const auto& before) {
         for (const auto& newBinding : after) {

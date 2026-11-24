@@ -269,6 +269,25 @@ void autoSaveAfterExecutionArchivesMigrateAndRoundTrip(const QTemporaryDir& temp
             "export task selections survive archive round trip");
 }
 
+void pinnedOcrShortcutArchiveMigrates(const QTemporaryDir& temporary) {
+    const auto legacy = QStringLiteral("pin_to_screen_shortcuts/show_text_recognition_results");
+    const auto shared = QStringLiteral("screenshot_shortcuts/text_recognition");
+    const QJsonArray custom{QStringLiteral("F8")};
+    const auto expected = storage::ConfigurationSchema::normalize(shared, custom).value;
+    const auto version = storage::ConfigurationSchema::currentVersion();
+    const auto archive = temporary.filePath(QStringLiteral("legacy-pinned-ocr.zip"));
+    writeZip(
+        archive,
+        {{QStringLiteral("manifest.json"), manifestBytes(version)},
+         {QStringLiteral("config.json"),
+          configurationBytes(
+              {{legacy, custom}, {shared, storage::ConfigurationSchema::defaultValue(shared)}})}});
+    const auto imported = storage::ConfigurationArchive::read(archive);
+    require(imported.isValid() && imported.values.value(shared) == expected &&
+                !imported.values.contains(legacy),
+            "older archives preserve a custom pin OCR shortcut in the shared setting");
+}
+
 void recognitionModelPreferencesSurviveRestart(const QTemporaryDir& temporary) {
     const QString tableKey = QStringLiteral("screenshot_table/model");
     const QString latexKey = QStringLiteral("screenshot_latex/model");
@@ -831,6 +850,7 @@ int main(int argc, char** argv) {
     exportsOmitLocalDirectories(temporary);
     importsPreserveOmittedDirectories(temporary);
     autoSaveAfterExecutionArchivesMigrateAndRoundTrip(temporary);
+    pinnedOcrShortcutArchiveMigrates(temporary);
     readRejectsInvalidArchives(temporary);
     writeRejectsUnwritableTargets(temporary);
     unicodePathsRoundTrip();

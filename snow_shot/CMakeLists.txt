@@ -5898,7 +5898,9 @@ if(SNOW_SHOT_BUILD_TESTS)
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
     add_test(NAME snow-shot-pinned-text-type-tests
         COMMAND snow-shot-pinned-window-tests --text-type-only -platform offscreen)
-    set_tests_properties(snow-shot-pinned-text-type-tests PROPERTIES
+    add_test(NAME snow-shot-window-ocr-copy-shortcut-tests
+        COMMAND snow-shot-pinned-window-tests --ocr-copy-shortcut-only -platform offscreen)
+    set_tests_properties(snow-shot-pinned-text-type-tests snow-shot-window-ocr-copy-shortcut-tests PROPERTIES
         LABELS "unit" TIMEOUT 60 SNOW_TEST_CROSS_PLATFORM TRUE
         ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
@@ -12175,6 +12177,8 @@ if(SNOW_SHOT_BUILD_TESTS)
         LABELS unit SNOW_TEST_CROSS_PLATFORM TRUE TIMEOUT 30
         ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}")
     snow_shot_offscreen_qpa_environment(_snow_controller_clipboard_qpa_environment)
+    add_test(NAME snow-shot-screenshot-ocr-copy-shortcut-tests
+        COMMAND snow_shot --clipboard-pin-tests --ocr-copy-shortcut-only -platform offscreen)
     add_test(NAME snow-shot-screenshot-controller-clipboard-tests
         COMMAND snow_shot --clipboard-pin-tests -platform offscreen)
     add_test(NAME snow-shot-screenshot-export-tasks-tests
@@ -12199,7 +12203,8 @@ if(SNOW_SHOT_BUILD_TESTS)
         COMMAND snow_shot --clipboard-pin-tests --mcp-scrolling-admission-tests -platform offscreen)
     add_test(NAME snow-shot-mcp-selection-admission-tests
         COMMAND snow_shot --clipboard-pin-tests --mcp-selection-admission-tests -platform offscreen)
-    set_tests_properties(snow-shot-screenshot-controller-clipboard-tests snow-shot-screenshot-export-tasks-tests
+    set_tests_properties(snow-shot-screenshot-ocr-copy-shortcut-tests
+        snow-shot-screenshot-controller-clipboard-tests snow-shot-screenshot-export-tasks-tests
         snow-shot-clipboard-pin-selection-priority-tests
         snow-shot-clipboard-formula-pin-tests snow-shot-history-pin-admission-tests
         snow-shot-mcp-scrolling-admission-tests snow-shot-mcp-selection-admission-tests PROPERTIES

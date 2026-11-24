@@ -756,6 +756,54 @@ makeTextSession(ControllableOcrRecognition& recognition, PromptRecorder& recorde
     return controller;
 }
 
+void sourceCopyRespectsRecognitionAvailability() {
+    ControllableOcrRecognition recognition;
+    PromptRecorder recorder;
+    auto session = makeTextSession(recognition, recorder);
+    const auto key = QStringLiteral("oversized");
+    const QImage image(3840, 2161, QImage::Format_Grayscale8);
+    session->setTarget({key, image, QRectF(QPointF{}, image.size())});
+    QApplication::clipboard()->setText(QStringLiteral("Previous clipboard"));
+    const auto activateCopy = [&] {
+        session->activate(
+            ScreenshotRecognitionSessionController::Mode::Text,
+            ScreenshotClipboardService::reservePublication(QApplication::clipboard()));
+    };
+    activateCopy();
+    require(!session->active() && recognition.requests == 0 &&
+                QApplication::clipboard()->text() == QStringLiteral("Previous clipboard"),
+            "an oversized uncached target cannot start OCR or copy");
+    ScreenshotRecognitionResults cached;
+    cached.key = key;
+    auto source = std::make_shared<ScreenshotOcrPresentation>();
+    source->lines.append({QStringLiteral("Cached text"), 1.0, QPolygonF(QRectF(0, 0, 50, 20))});
+    cached.text = ScreenshotOcrRecognitionResult{source};
+    session->seedRecognitionResults(std::move(cached));
+    activateCopy();
+    require(session->active() && recognition.requests == 0 &&
+                QApplication::clipboard()->text() == QStringLiteral("Cached text"),
+            "a cached source remains available even when the image exceeds the OCR limit");
+
+    const snow_shot::storage::TextRecognitionSettings settings;
+    const auto previousFormatting = settings.defaultFormatting();
+    const auto previousPunctuation = settings.defaultPunctuation();
+    const auto restore = qScopeGuard([&] {
+        settings.setDefaultFormatting(previousFormatting);
+        settings.setDefaultPunctuation(previousPunctuation);
+    });
+    require(settings.setDefaultFormatting(QStringLiteral("remove")) &&
+                settings.setDefaultPunctuation(QStringLiteral("full")),
+            "enable OCR transformations that would change imported text");
+    auto document = std::make_shared<QTextDocument>();
+    const auto original = QStringLiteral("First line!\nSecond line?");
+    document->setHtml(QStringLiteral("<p><b>First line!</b></p><p>Second line?</p>"));
+    session->setTarget(
+        {QStringLiteral("formatted"), image, QRectF(QPointF{}, image.size()), document, original});
+    activateCopy();
+    require(QApplication::clipboard()->text() == original && recognition.requests == 0,
+            "explicit copy preserves imported line breaks and punctuation");
+}
+
 void smartTypesettingUsesRecognizedLayout() {
     ControllableOcrRecognition recognition;
     PromptRecorder recorder;
@@ -810,7 +858,16 @@ void smartTypesettingUsesRecognizedLayout() {
                                                      [&](auto mime) { copied = mime->text(); }),
             "smart copy is explicitly prepared");
     require(copied.isEmpty(), "smart copy waits for grouping");
+    std::optional<bool> published;
+    require(defaultController->copySourceTextToClipboard(
+                0, [&](bool success) { published = success; }) &&
+                !published.has_value(),
+            "explicit smart copy waits for the same pending grouping");
+    QApplication::clipboard()->setText(QStringLiteral("Newer clipboard"));
     QCoreApplication::processEvents();
+    require(published == false &&
+                QApplication::clipboard()->text() == QStringLiteral("Newer clipboard"),
+            "supersession during grouping completes the copy without replacing newer text");
     const QString expectedDefault = snow_shot::presentation::convertOcrPunctuation(expected, true);
     require(defaultController->recognitionClipboardMimeData()->text() == expectedDefault,
             "default Smart Typesetting copy uses the same paragraphs as the toolbar");
@@ -831,6 +888,10 @@ void smartTypesettingUsesRecognizedLayout() {
                     selection &&
                 defaultController->recognitionClipboardMimeData()->text() == selection,
             "copying an OCR selection keeps its line breaks and hyphen with Smart Typesetting set");
+    require(defaultController->copySourceTextToClipboard() &&
+                QApplication::clipboard()->text() == expectedDefault &&
+                presentation->selectedText() == selection && recognition.paragraphRequests == 2,
+            "explicit source copy reuses smart grouping and preserves the visible selection");
     const auto automaticCopy = defaultController->recognitionClipboardMimeData(
         presentation.get(), /*copyFullTextResult=*/true);
     require(automaticCopy && automaticCopy->text() == expectedDefault &&
@@ -2128,6 +2189,7 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (application.arguments().contains(QStringLiteral("--ocr-defaults-only"))) {
+        sourceCopyRespectsRecognitionAvailability();
         smartTypesettingUsesRecognizedLayout();
         paragraphFailuresAndStaleEdits();
         recognizedTextDefaultsApplyOnFirstEditAndOriginalCopy();
@@ -2165,6 +2227,7 @@ int main(int argc, char** argv) {
         snow_shot::storage::ApplicationStorage::instance().shutdown();
         return 0;
     }
+    sourceCopyRespectsRecognitionAvailability();
     smartTypesettingUsesRecognizedLayout();
     headlessWorkflowResultsAndEdits();
     cachedTextResultAccess();

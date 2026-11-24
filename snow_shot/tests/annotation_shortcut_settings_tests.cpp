@@ -227,6 +227,10 @@ void screenshotSectionResetsRejectPreservedShortcutCollisions() {
         require(configuration.applySnapshot(original), "restore section reset fixture");
         const QString restored = QString::fromLatin1(scenario.restoredAction);
         const QString preserved = QString::fromLatin1(scenario.preservedAction);
+        if (restored == QStringLiteral("save_as_file"))
+            require(backend.applyLocalShortcuts(settings::SettingsLocalShortcutScope::PinToScreen,
+                                                restored, {}),
+                    "free the pin Save As key before assigning it to shared OCR");
         const auto defaultBindings = shortcuts::shortcutBindingsFromJson(
             storage::ConfigurationSchema::defaultValue(QStringLiteral("screenshot_shortcuts/") +
                                                        restored),
@@ -286,7 +290,7 @@ void localShortcutBatchesValidateEveryAffectedScope() {
         {lineKey, validLine},
         {QStringLiteral("screenshot_shortcuts/text_recognition"), validLine},
         {QStringLiteral("screen_recording_shortcuts/export"), validLine},
-        {QStringLiteral("pin_to_screen_shortcuts/resize_window"), validLine},
+        {QStringLiteral("pin_to_screen_shortcuts/next_frame"), validLine},
     };
     configuration.suspendWrites(true);
     reject(values);
@@ -301,7 +305,7 @@ void localShortcutBatchesValidateEveryAffectedScope() {
                     QStringLiteral("text_recognition")) == expected &&
                 storage::ScreenRecordingShortcutSettings().shortcuts(QStringLiteral("export")) ==
                     expected &&
-                storage::PinToScreenShortcutSettings().shortcuts(QStringLiteral("resize_window")) ==
+                storage::PinToScreenShortcutSettings().shortcuts(QStringLiteral("next_frame")) ==
                     expected,
             "shared batch writes must normalize all scopes for their typed adapters");
     require(configuration.applySnapshot(original), "restore mixed shortcut batch assignments");

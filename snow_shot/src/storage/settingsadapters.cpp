@@ -1,5 +1,4 @@
-#include "snow_shot/shortcuts/screenshotshortcutcontext.h"
-#include "snow_shot/shortcuts/pinnedshortcutcontext.h"
+#include "snow_shot/shortcuts/localshortcutcontext.h"
 #include "snow_shot/storage/settingsadapters.h"
 #include "snow_shot/shortcuts/annotationoptionshortcut.h"
 #include "snow_shot/storage/floatingtoolbarsettings.h"
@@ -12,6 +11,7 @@
 
 #include "capturehistorypolicy_p.h"
 
+#include <QGuiApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -132,6 +132,7 @@ const QStringList& screenshotShortcutActionIds() {
             QStringLiteral("qr_code_recognition"),
             QStringLiteral("video_recording"),
             QStringLiteral("text_recognition"),
+            QStringLiteral("text_recognition_copy"),
             QStringLiteral("text_translation"),
             QStringLiteral("scrolling_screenshot"),
             QStringLiteral("quick_save"),
@@ -161,7 +162,6 @@ const QStringList& pinToScreenShortcutActionIds() {
         QStringLiteral("print"),
         QStringLiteral("save_as_file"),
         QStringLiteral("upload_to_cloud"),
-        QStringLiteral("show_text_recognition_results"),
         QStringLiteral("drawing_mode"),
         QStringLiteral("resize_window"),
         QStringLiteral("toggle_playback"),
@@ -1611,8 +1611,23 @@ bool ScreenshotSettings::setWindowElementApi(const QString& api) const {
     return cache().setValue(QStringLiteral("screenshot/window_element_api"), api);
 }
 
-bool ScreenshotShortcutSettings::isReservedShortcut(const shortcuts::ShortcutBinding& shortcut) {
-    return isReservedLocalShortcut(shortcut);
+bool ScreenshotShortcutSettings::isReservedShortcut(const shortcuts::ShortcutBinding& shortcut,
+                                                    const QString& actionId) {
+    if (isReservedLocalShortcut(shortcut))
+        return true;
+    if (actionId != QStringLiteral("text_recognition_copy"))
+        return false;
+
+    // Select Current Screen uses Qt's Select All bindings even with a confirmed selection.
+    const auto selectAll = qobject_cast<QGuiApplication*>(QCoreApplication::instance())
+                               ? QKeySequence::keyBindings(QKeySequence::SelectAll)
+                               : QList<QKeySequence>{QKeySequence(Qt::CTRL | Qt::Key_A)};
+    return std::ranges::any_of(selectAll, [&shortcut](const QKeySequence& sequence) {
+        return shortcuts::bindingsConflict(
+            shortcut,
+            shortcuts::bindingFromPortableText(sequence.toString(QKeySequence::PortableText)),
+            shortcuts::ShortcutPolicy::Application);
+    });
 }
 
 bool ScreenshotShortcutSettings::isReservedShortcutAllowed(
@@ -1651,20 +1666,26 @@ bool localShortcutChangesValid(const QMap<QString, QJsonValue>& current,
         affectedGroups.insert(group->prefix);
     }
 
+    struct Assignment {
+        QString key;
+        shortcuts::ShortcutBinding binding;
+        bool affected;
+    };
+    QList<Assignment> seen;
     for (const auto& group : localShortcutGroups()) {
-        if (!affectedGroups.contains(group.prefix))
+        const bool checkGroup = affectedGroups.contains(group.prefix);
+        const bool sharedScope =
+            (group.policy == LocalShortcutPolicy::Screenshot &&
+             affectedGroups.contains(QStringLiteral("pin_to_screen_shortcuts/"))) ||
+            (group.prefix == QStringLiteral("pin_to_screen_shortcuts/") &&
+             affectedGroups.contains(QStringLiteral("screenshot_shortcuts/")));
+        if (!checkGroup && !sharedScope)
             continue;
-        struct Assignment {
-            QString action;
-            shortcuts::ShortcutBinding binding;
-            bool affected;
-        };
-        QList<Assignment> seen;
         for (const QString& id : group.ids) {
             const QString key = group.prefix + id;
             const auto previous = current.value(key);
             const auto value = changes.value(key, previous);
-            const bool affected = validateUnchanged || value != previous;
+            const bool affected = (validateUnchanged && checkGroup) || value != previous;
             const auto bindings = shortcuts::shortcutBindingsFromJson(
                 value, ConfigurationSchema::allowsModifierOnlyShift(key), -1, nullptr, nullptr,
                 key == QStringLiteral("screenshot_shortcuts/toggle_guides"),
@@ -1676,27 +1697,25 @@ bool localShortcutChangesValid(const QMap<QString, QJsonValue>& current,
                     return false;
                 }
                 if (affected && group.policy == LocalShortcutPolicy::Screenshot &&
-                    ScreenshotShortcutSettings::isReservedShortcut(binding) &&
+                    ScreenshotShortcutSettings::isReservedShortcut(binding, id) &&
                     !ScreenshotShortcutSettings::isReservedShortcutAllowed(id, binding)) {
                     return false;
                 }
-                if (std::any_of(
-                        seen.cbegin(), seen.cend(),
-                        [&binding, &id, &group, affected](const auto& existing) {
-                            return (affected || existing.affected) &&
-                                   (group.policy != LocalShortcutPolicy::Screenshot ||
-                                    shortcuts::screenshotShortcutActionsMayConflict(existing.action,
-                                                                                    id)) &&
-                                   (group.prefix != QStringLiteral("pin_to_screen_shortcuts/") ||
-                                    PinToScreenShortcutSettings::actionsMayConflict(existing.action,
-                                                                                    id)) &&
-                                   shortcuts::bindingsConflict(
-                                       existing.binding, binding,
-                                       shortcuts::ShortcutPolicy::Application);
-                        })) {
+                if (std::any_of(seen.cbegin(), seen.cend(), [&](const auto& existing) {
+                        if (!(affected || existing.affected))
+                            return false;
+                        // Old configurations could explicitly share a key across these scopes.
+                        // Permit unrelated changes while the two assignments are untouched.
+                        if (!existing.key.startsWith(group.prefix) && !changes.contains(key) &&
+                            !changes.contains(existing.key))
+                            return false;
+                        return shortcuts::localShortcutKeysMayConflict(existing.key, key) &&
+                               shortcuts::bindingsConflict(existing.binding, binding,
+                                                           shortcuts::ShortcutPolicy::Application);
+                    })) {
                     return false;
                 }
-                seen.push_back({id, binding, affected});
+                seen.push_back({key, binding, affected});
             }
         }
     }
@@ -1833,6 +1852,30 @@ shortcuts::ShortcutBindingList
 PinToScreenShortcutSettings::shortcuts(const QString& actionId) const {
     const QString key = pinToScreenShortcutKey(actionId);
     return key.isEmpty() ? shortcuts::ShortcutBindingList{} : shortcutValue(key);
+}
+
+shortcuts::ShortcutBindingList
+PinToScreenShortcutSettings::screenshotShortcuts(const QString& actionId) const {
+    auto bindings = ScreenshotShortcutSettings().shortcuts(actionId);
+    if (bindings.isEmpty() || (actionId != QStringLiteral("text_recognition") &&
+                               actionId != QStringLiteral("text_recognition_copy")))
+        return bindings;
+    // Preserve both explicit assignments from older configurations. The dedicated pin
+    // command keeps its key on pins, and screenshot capture keeps its configured OCR key.
+    const auto key = screenshotShortcutKey(actionId);
+    for (const auto& id : pinToScreenShortcutActionIds()) {
+        if (!shortcuts::localShortcutKeysMayConflict(key, pinToScreenShortcutKey(id)))
+            continue;
+        for (const auto& pinned : shortcuts(id)) {
+            bindings.removeIf([&](const auto& binding) {
+                return shortcuts::bindingsConflict(binding, pinned,
+                                                   shortcuts::ShortcutPolicy::Application);
+            });
+        }
+        if (bindings.isEmpty())
+            break;
+    }
+    return bindings;
 }
 
 bool PinToScreenShortcutSettings::actionsMayConflict(const QString& first, const QString& second) {
