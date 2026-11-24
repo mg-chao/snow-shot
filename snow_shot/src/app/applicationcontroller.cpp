@@ -19,6 +19,9 @@
 #include "snow_shot/translation/translationservice.h"
 #include "snow_shot/app/accountsessionservice.h"
 #endif
+#if !SNOW_SHOT_EDITION_MINI
+#include "snow_shot/app/cloudsettingssyncservice.h"
+#endif
 #include "snow_shot/presentation/languagemanager.h"
 #include "snow_shot/presentation/styles/thememanager.h"
 #include "theme/theme_manager.h"
@@ -110,6 +113,10 @@ const QString kTrayIconKey = QStringLiteral("tray/icon");
 const QString kTrayCustomIconKey = QStringLiteral("tray/custom_icon");
 const QString kTrayDarkIconKey = QStringLiteral("tray/dark_icon");
 const QString kTrayDarkCustomIconKey = QStringLiteral("tray/dark_custom_icon");
+#if SNOW_SHOT_ENABLE_EXTENDED_FEATURES
+const QString kTranslationPageEnabledKey =
+    QStringLiteral("extended_features/translation_page_enabled");
+#endif
 const QString kTrayLeftClickActionKey = QStringLiteral("tray/left_click_action");
 const QString kTrayMiddleClickActionKey = QStringLiteral("tray/middle_click_action");
 const QString kTrayMenuOptionsKey = QStringLiteral("tray/menu_options");
@@ -376,6 +383,11 @@ class ApplicationController::Impl {
         // instances receive a consumer of this service instead of creating a
         // second child process for each controller.
         ScreenshotOcrRecognitionService::Options ocrOptions;
+#if !SNOW_SHOT_EDITION_MINI
+        deferSynchronizedOcrModel = CloudSettingsSyncService::shouldDeferOcrModelDownload(
+            applicationStorage.configuration());
+        ocrOptions.tryCachedFallbackAtStartup = deferSynchronizedOcrModel;
+#endif
         ocrOptions.offlineRoot =
             QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("assets/ocr"));
         if (applicationStorage.isInitialized() &&
@@ -615,7 +627,7 @@ class ApplicationController::Impl {
                                   kTrayLeftClickActionKey);
         applyRuntimeConfiguration(configuration.value(kTrayMiddleClickActionKey),
                                   kTrayMiddleClickActionKey);
-        applyRuntimeConfiguration(configuration.value(kTrayMenuOptionsKey), kTrayMenuOptionsKey);
+        systemTray.setMenuOptions(stringList(configuration.value(kTrayMenuOptionsKey)));
         applyRuntimeConfiguration(configuration.value(kScreenshotDelaySecondsKey),
                                   kScreenshotDelaySecondsKey);
         applyRuntimeConfiguration(configuration.value(kFullscreenSuppressionKey),
@@ -624,6 +636,40 @@ class ApplicationController::Impl {
                          [this](const QString& key, const QJsonValue& value) {
                              applyRuntimeConfiguration(value, key);
                          });
+        QObject::connect(
+            &configuration, &storage::ConfigurationStore::valuesCommitted, &q,
+            [this, &configuration](storage::ConfigurationWriteOrigin origin, const auto& before,
+                                   const auto& values) {
+                const bool trayMenuChanged =
+                    values.contains(kTrayMenuOptionsKey) &&
+                    values.value(kTrayMenuOptionsKey) != before.value(kTrayMenuOptionsKey);
+                bool translationAvailabilityChanged = false;
+#if SNOW_SHOT_ENABLE_EXTENDED_FEATURES
+                translationAvailabilityChanged = values.contains(kTranslationPageEnabledKey) &&
+                                                 values.value(kTranslationPageEnabledKey) !=
+                                                     before.value(kTranslationPageEnabledKey);
+#endif
+                if (trayMenuChanged || translationAvailabilityChanged) {
+                    systemTray.setMenuOptions(stringList(configuration.value(kTrayMenuOptionsKey)),
+                                              translationAvailabilityChanged ||
+                                                  origin ==
+                                                      storage::ConfigurationWriteOrigin::Remote);
+                }
+                const bool modelChanged = values.contains(kOcrModelTypeKey);
+                if (modelChanged)
+                    deferSynchronizedOcrModel = origin == storage::ConfigurationWriteOrigin::Remote;
+                if (started &&
+                    (modelChanged || values.contains(kOcrTextDetectionProcessingKey) ||
+                     values.contains(QStringLiteral("text_recognition/resident_process")) ||
+                     values.contains(QStringLiteral("text_recognition/model_hot_start")) ||
+                     values.contains(QStringLiteral("text_recognition/hardware_acceleration")))) {
+                    applyOcrConfiguration();
+                }
+            });
+#if !SNOW_SHOT_EDITION_MINI
+        cloudSettingsSync =
+            std::make_unique<CloudSettingsSyncService>(*accountSession, configuration, &q);
+#endif
         mcpLifecycle = std::make_unique<mcp::McpRuntimeLifecycle>(mcp::McpRuntimeLifecycle::Hooks{
             [this] { return startMcp(); }, [this](auto done) { mcpGraph.drain(std::move(done)); },
             [this] { mcpGraph.stop(); }});
@@ -1010,7 +1056,8 @@ class ApplicationController::Impl {
              screenshotOcrTextDetectionProcessingFromValue(
                  configuration.value(kOcrTextDetectionProcessingKey).toString()),
              configuration.value(QStringLiteral("text_recognition/hardware_acceleration"))
-                 .toBool()});
+                 .toBool()},
+            deferSynchronizedOcrModel);
     }
 
     void reconcileMcpConfiguration() {
@@ -1479,13 +1526,6 @@ class ApplicationController::Impl {
             memoryOptimization->synchronizePolicy();
         if (key == QStringLiteral("screen_recording/enable_microphone"))
             permissions.setMicrophoneEnabled(value.toBool());
-#if SNOW_SHOT_ENABLE_EXTENDED_FEATURES
-        if (key == QStringLiteral("extended_features/translation_page_enabled")) {
-            systemTray.setMenuOptions(
-                stringList(storage::ApplicationStorage::instance().configuration().value(
-                    kTrayMenuOptionsKey)));
-        }
-#endif
         if (key == u"updates/mode" && updates != nullptr) {
             updates->setMode(value.toString());
         } else if ((key == u"network/proxy" || key == u"network/http_proxy") &&
@@ -1536,20 +1576,12 @@ class ApplicationController::Impl {
             systemTray.setLeftClickAction(value.toString(QStringLiteral("screenshot")));
         } else if (key == kTrayMiddleClickActionKey) {
             systemTray.setMiddleClickAction(value.toString(QStringLiteral("screenshot_fixed")));
-        } else if (key == kTrayMenuOptionsKey) {
-            systemTray.setMenuOptions(stringList(value));
         } else if (key == kScreenshotDelaySecondsKey) {
             systemTray.setScreenshotDelaySeconds(value.toInt(3));
         } else if (key == kFullscreenSuppressionKey) {
             systemTray.setQuickActionChecked(
                 presentation::GlobalShortcutAction::ToggleDisableOnFocusedFullscreenWindow,
                 value.toBool());
-        } else if (key == kOcrModelTypeKey || key == kOcrTextDetectionProcessingKey ||
-                   key == QStringLiteral("text_recognition/resident_process") ||
-                   key == QStringLiteral("text_recognition/model_hot_start") ||
-                   key == QStringLiteral("text_recognition/hardware_acceleration")) {
-            if (started)
-                applyOcrConfiguration();
         }
     }
 
@@ -1687,6 +1719,23 @@ class ApplicationController::Impl {
         if (runtimeSession == nullptr) {
             runtimeSession = std::make_unique<presentation::settings::SettingsRuntimeSession>(
                 *settingsRegistry, *settingsBackend);
+#if !SNOW_SHOT_EDITION_MINI
+            using Session = presentation::settings::SettingsRuntimeSession;
+            auto publishSyncState = [this] {
+                runtimeSession->setCloudSettingsSyncState(
+                    {cloudSettingsSync->signedIn(), cloudSettingsSync->enabled(),
+                     cloudSettingsSync->lastSuccessfulSync()});
+            };
+            QObject::connect(cloudSettingsSync.get(), &CloudSettingsSyncService::changed,
+                             runtimeSession.get(), publishSyncState);
+            QObject::connect(runtimeSession.get(), &Session::cloudSettingsSyncEnabledRequested,
+                             cloudSettingsSync.get(), &CloudSettingsSyncService::setEnabled);
+            QObject::connect(runtimeSession.get(), &Session::cloudSettingsSyncRequested,
+                             cloudSettingsSync.get(), &CloudSettingsSyncService::syncNow);
+            QObject::connect(runtimeSession.get(), &Session::cloudSettingsSyncCheckRequested,
+                             cloudSettingsSync.get(), &CloudSettingsSyncService::settingsOpened);
+            publishSyncState();
+#endif
         }
     }
 
@@ -2179,7 +2228,11 @@ class ApplicationController::Impl {
 #if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
     translation::TranslationService* translationService = nullptr;
 #endif
+#if !SNOW_SHOT_EDITION_MINI
+    std::unique_ptr<CloudSettingsSyncService> cloudSettingsSync;
+#endif
     std::unique_ptr<ScreenshotOcrRecognitionService> ocrRecognition;
+    bool deferSynchronizedOcrModel = false;
     std::unique_ptr<ScreenshotController> screenshotController;
     std::unique_ptr<presentation::GlobalCanvasController> globalCanvasController;
     // Graph cancellation borrows direct capture even when construction unwinds before Impl's

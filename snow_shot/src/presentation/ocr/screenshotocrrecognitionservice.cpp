@@ -98,7 +98,9 @@ class ScreenshotOcrRecognitionService::Impl final {
         : m_owner(owner),
           m_shutdownTimeoutMilliseconds(std::max(1, options.shutdownTimeoutMilliseconds)),
           m_retryTimeUnit(std::max(1, options.retryTimeUnitMilliseconds)),
-          m_beforeLocalRender(options.beforeLocalRender), m_modelType(options.modelType) {
+          m_beforeLocalRender(options.beforeLocalRender), m_modelType(options.modelType),
+          m_tryCachedFallbackAtStartup(options.tryCachedFallbackAtStartup),
+          m_deferIdleDownload(options.tryCachedFallbackAtStartup) {
         m_configuration.modelType = options.modelType;
         m_configuration.textDetectionProcessing = options.textDetectionProcessing;
         m_configuration.hardwareAcceleration = options.hardwareAcceleration;
@@ -122,24 +124,55 @@ class ScreenshotOcrRecognitionService::Impl final {
                                             ? QDir(QCoreApplication::applicationDirPath())
                                                   .filePath(QStringLiteral("assets/ocr"))
                                             : options.offlineRoot;
-            m_assetManager = std::make_unique<ScreenshotOcrAssets>(
-                ScreenshotOcrAssets::Options{offlineRoot, options.cacheRoot, options.proxyUrl,
-                                             options.modelType},
-                owner);
+            m_modelAssetOptions = {offlineRoot, options.cacheRoot, options.proxyUrl,
+                                   options.modelType};
+            m_assetManager = std::make_unique<ScreenshotOcrAssets>(m_modelAssetOptions, owner);
             connect(m_assetManager.get(), &ScreenshotOcrAssets::statusChanged, owner,
-                    [this](const ScreenshotOcrAssetStatus& status) { m_assetStatus = status; });
-            connect(m_assetManager.get(), &ScreenshotOcrAssets::ready, owner,
-                    [this](const ScreenshotOcrResolvedAssets& assets) {
-                        m_assetPreparing = false;
-                        if (assets.modelType != m_modelType)
-                            return;
-                        m_assets = assets;
-                        m_assetRetryCount = 0;
-                        scheduleReconcile();
+                    [this](const ScreenshotOcrAssetStatus& status) {
+                        if (!m_assetProbeOnly ||
+                            status.phase == ScreenshotOcrAssetPhase::ReadyOffline ||
+                            status.phase == ScreenshotOcrAssetPhase::ReadyCached)
+                            m_assetStatus = status;
                     });
+            connect(
+                m_assetManager.get(), &ScreenshotOcrAssets::ready, owner,
+                [this](const ScreenshotOcrResolvedAssets& assets) {
+                    m_assetPreparing = false;
+                    m_assetProbeOnly = false;
+                    if (assets.modelType != m_modelType) {
+                        if (!m_deferIdleDownload) {
+                            // A local choice superseded the startup cache probe.
+                            scheduleReconcile();
+                            return;
+                        }
+                        if (!m_deferredModel) {
+                            probeDeferredModel(m_modelType, false);
+                        } else if (m_deferredModel == assets.modelType) {
+                            m_deferredModel.reset();
+                        }
+                        auto configuration = m_configuration;
+                        configuration.modelType = assets.modelType;
+                        applyRuntimeConfiguration(configuration, &assets);
+                        if (std::any_of(m_pending.cbegin(), m_pending.cend(), [](const auto& job) {
+                                return !job->paragraph && !job->cancelled.load() &&
+                                       job->request.priority ==
+                                           ScreenshotOcrRequestPriority::Interactive;
+                            })) {
+                            prepareDeferredModelForUse();
+                        }
+                        return;
+                    }
+                    m_assets = assets;
+                    m_assetRetryCount = 0;
+                    scheduleReconcile();
+                });
             connect(m_assetManager.get(), &ScreenshotOcrAssets::failed, owner,
                     [this](const QString& error) {
                         m_assetPreparing = false;
+                        if (std::exchange(m_assetProbeOnly, false)) {
+                            scheduleReconcile();
+                            return;
+                        }
                         qWarning().noquote() << "OCR asset preparation failed:" << error;
                         failPendingForAssetError();
                         scheduleAssetRetry();
@@ -180,7 +213,8 @@ class ScreenshotOcrRecognitionService::Impl final {
     }
 
     bool storageBusy() const {
-        return !m_jobs.isEmpty() || m_assetPreparing || m_paragraphPreparing;
+        return !m_jobs.isEmpty() || m_assetPreparing || m_paragraphPreparing ||
+               m_deferredAssetPreparing;
     }
     ScreenshotOcrRuntimeConfiguration configuration() const {
         return m_configuration;
@@ -234,7 +268,7 @@ class ScreenshotOcrRecognitionService::Impl final {
             return token;
         }
         if (job->request.priority == ScreenshotOcrRequestPriority::Interactive)
-            rearmResidency();
+            prepareForInteractiveUse(*job);
         if (m_sessionState == SessionState::Failed)
             m_sessionState = SessionState::Empty;
         if (!screenshotOcrImageWithinPixelLimit(job->imageSize)) {
@@ -367,7 +401,7 @@ class ScreenshotOcrRecognitionService::Impl final {
         it.value()->request.priority = priority;
         if (priority == ScreenshotOcrRequestPriority::Interactive) {
             it.value()->request.retainProcessThroughCompletion = true;
-            rearmResidency();
+            prepareForInteractiveUse(*it.value());
         }
         scheduleReconcile();
         return true;
@@ -386,13 +420,35 @@ class ScreenshotOcrRecognitionService::Impl final {
     }
 
     void setProxyUrl(const QString& proxyUrl) {
+        m_modelAssetOptions.proxyUrl = proxyUrl;
         if (m_paragraphAssetManager)
             m_paragraphAssetManager->setProxyUrl(proxyUrl);
         if (m_assetManager != nullptr)
             m_assetManager->setProxyUrl(proxyUrl);
+        if (m_deferredAssetManager != nullptr)
+            m_deferredAssetManager->setProxyUrl(proxyUrl);
     }
 
-    void setRuntimeConfiguration(const ScreenshotOcrRuntimeConfiguration& configuration) {
+    void setRuntimeConfiguration(ScreenshotOcrRuntimeConfiguration configuration,
+                                 bool deferModelDownload = false) {
+        if (m_deferIdleDownload != deferModelDownload) {
+            m_deferIdleDownload = deferModelDownload;
+            scheduleReconcile();
+        }
+        if (!deferModelDownload)
+            m_tryCachedFallbackAtStartup = false;
+        if (deferModelDownload && configuration.modelType != m_modelType && m_assetManager) {
+            if (m_deferredModel != configuration.modelType)
+                probeDeferredModel(configuration.modelType);
+            configuration.modelType = m_modelType;
+        } else {
+            m_deferredModel.reset();
+        }
+        applyRuntimeConfiguration(configuration);
+    }
+
+    void applyRuntimeConfiguration(const ScreenshotOcrRuntimeConfiguration& configuration,
+                                   const ScreenshotOcrResolvedAssets* preparedAssets = nullptr) {
         if (m_configuration == configuration)
             return;
         const bool modelChanged = m_modelType != configuration.modelType;
@@ -415,8 +471,16 @@ class ScreenshotOcrRecognitionService::Impl final {
         m_modelType = configuration.modelType;
         if (modelChanged) {
             if (m_assetManager != nullptr) {
-                m_assetManager->setModelType(m_modelType);
                 m_assetPreparing = false;
+                m_assetProbeOnly = false;
+                m_assetProbeAttempted = false;
+                m_assetManager->setModelType(m_modelType);
+                if (preparedAssets != nullptr) {
+                    m_assets = *preparedAssets;
+                    m_assetStatus = {m_assets.offline ? ScreenshotOcrAssetPhase::ReadyOffline
+                                                      : ScreenshotOcrAssetPhase::ReadyCached,
+                                     QStringLiteral("assets")};
+                }
             } else {
                 m_assets.modelType = m_modelType;
                 m_assets.modelId = screenshotOcrModelTypeValue(m_modelType);
@@ -453,6 +517,51 @@ class ScreenshotOcrRecognitionService::Impl final {
     }
 
   private:
+    void probeDeferredModel(ScreenshotOcrModelType modelType, bool probeCache = true) {
+        m_deferredModel = modelType;
+        m_deferredDownloadStarted = false;
+        if (!m_deferredAssetManager) {
+            m_deferredAssetManager =
+                std::make_unique<ScreenshotOcrAssets>(m_modelAssetOptions, m_owner);
+            connect(m_deferredAssetManager.get(), &ScreenshotOcrAssets::statusChanged, m_owner,
+                    [this](const ScreenshotOcrAssetStatus& status) {
+                        m_deferredAssetPreparing =
+                            status.phase == ScreenshotOcrAssetPhase::Verifying ||
+                            status.phase == ScreenshotOcrAssetPhase::Downloading;
+                    });
+            connect(m_deferredAssetManager.get(), &ScreenshotOcrAssets::ready, m_owner,
+                    [this](const ScreenshotOcrResolvedAssets& assets) {
+                        if (m_stopping || m_deferredModel != assets.modelType)
+                            return;
+                        m_deferredModel.reset();
+                        auto configuration = m_configuration;
+                        configuration.modelType = assets.modelType;
+                        applyRuntimeConfiguration(configuration, &assets);
+                    });
+            connect(m_deferredAssetManager.get(), &ScreenshotOcrAssets::failed, m_owner,
+                    [this](const QString&) { m_deferredDownloadStarted = false; });
+        }
+        m_deferredAssetManager->setModelType(modelType);
+        if (probeCache)
+            m_deferredAssetManager->prepare(false);
+    }
+
+    void prepareDeferredModelForUse() {
+        if (!m_deferredModel || m_deferredDownloadStarted)
+            return;
+        if (assetsReady()) {
+            // Continue servicing recognition with the current model while the newly selected
+            // components use the ordinary downloader and become available for later requests.
+            m_deferredDownloadStarted = true;
+            m_deferredAssetManager->prepare();
+        } else {
+            auto configuration = m_configuration;
+            configuration.modelType = *m_deferredModel;
+            m_deferredModel.reset();
+            applyRuntimeConfiguration(configuration);
+        }
+    }
+
     enum class ProcessStopReason { None, Cancelled, Shutdown };
     enum class ProcessState { Absent, Starting, Ready, Stopping };
     enum class SessionState { Empty, Preparing, Ready, Releasing, Failed };
@@ -486,6 +595,13 @@ class ScreenshotOcrRecognitionService::Impl final {
         bool residentSubmission = false;
         std::optional<ScreenshotOcrRecognitionResult> result;
     };
+
+    void prepareForInteractiveUse(const Job& job) {
+        rearmResidency();
+        if (!job.paragraph && !job.request.renderOnly &&
+            screenshotOcrImageWithinPixelLimit(job.imageSize))
+            prepareDeferredModelForUse();
+    }
 
     std::shared_ptr<Job> makeJob(RequestToken token, ScreenshotOcrRequest request,
                                  QObject* receiver, Completion completion) {
@@ -741,17 +857,22 @@ class ScreenshotOcrRecognitionService::Impl final {
         ++m_assetRetryCount;
         scheduleRetry(seconds);
     }
-    void prepareAssets() {
+    void prepareAssets(bool hasRecognitionDemand) {
         if (m_assetManager == nullptr) {
             failPendingForAssetError();
             if (!m_retryPending)
                 scheduleAssetRetry();
             return;
         }
-        if (!m_assetPreparing) {
-            m_assetPreparing = true;
-            m_assetManager->prepare();
-        }
+        const bool allowDownload =
+            !m_tryCachedFallbackAtStartup && (hasRecognitionDemand || !m_deferIdleDownload);
+        if (m_assetPreparing || (!allowDownload && m_assetProbeAttempted))
+            return;
+        const bool tryCachedFallback = std::exchange(m_tryCachedFallbackAtStartup, false);
+        m_assetPreparing = true;
+        m_assetProbeOnly = !allowDownload;
+        m_assetProbeAttempted = true;
+        m_assetManager->prepare(allowDownload, tryCachedFallback);
     }
     void releaseSession() {
         m_sessionState = SessionState::Releasing;
@@ -833,7 +954,7 @@ class ScreenshotOcrRecognitionService::Impl final {
             // Old inference may drain while the next model is being acquired.
             if (m_runningCount == 0 && m_sessionState == SessionState::Ready)
                 releaseSession();
-            prepareAssets();
+            prepareAssets(demand);
             return;
         }
         if (!ensureProcess() || !processReady())
@@ -1493,6 +1614,7 @@ class ScreenshotOcrRecognitionService::Impl final {
     }
 
     void drainShutdown() {
+        m_deferredAssetManager.reset();
         // Deleting the pool would wait for in-flight renders unconditionally;
         // orphan it past the deadline. Its runnables hold only shared state, a
         // QPointer to the service and the liveness flag, so completing after
@@ -1526,12 +1648,19 @@ class ScreenshotOcrRecognitionService::Impl final {
     const int m_retryTimeUnit;
     const std::function<void()> m_beforeLocalRender;
     ScreenshotOcrModelType m_modelType = ScreenshotOcrModelType::Small;
+    bool m_tryCachedFallbackAtStartup = false;
+    bool m_deferIdleDownload = false;
     ScreenshotOcrResolvedAssets m_assets;
     ScreenshotOcrResolvedAssets m_paragraphAssets;
     std::unique_ptr<ScreenshotOcrAssets> m_paragraphAssetManager;
     bool m_paragraphPreparing = false;
     ScreenshotOcrAssetStatus m_assetStatus;
     std::unique_ptr<ScreenshotOcrAssets> m_assetManager;
+    ScreenshotOcrAssets::Options m_modelAssetOptions;
+    std::unique_ptr<ScreenshotOcrAssets> m_deferredAssetManager;
+    std::optional<ScreenshotOcrModelType> m_deferredModel;
+    bool m_deferredDownloadStarted = false;
+    bool m_deferredAssetPreparing = false;
     QHash<RequestToken, std::shared_ptr<Job>> m_jobs;
     std::vector<std::shared_ptr<Job>> m_pending;
     std::shared_ptr<Job> m_active;
@@ -1559,6 +1688,7 @@ class ScreenshotOcrRecognitionService::Impl final {
     bool m_sessionUsed = false, m_sessionWarm = false, m_invalidateWarmSession = false;
     bool m_accelerationReadyPending = false;
     bool m_residentSuspended = false, m_retryPending = false, m_assetPreparing = false;
+    bool m_assetProbeOnly = false, m_assetProbeAttempted = false;
     bool m_reconcileScheduled = false, m_delivering = false;
     int m_assetRetryCount = 0;
     std::deque<qint64> m_crashes;
@@ -1571,7 +1701,8 @@ ScreenshotOcrRecognitionService::ScreenshotOcrRecognitionService(QObject* parent
 ScreenshotOcrRecognitionService::ScreenshotOcrRecognitionService(const Options& options,
                                                                  QObject* parent)
     : ScreenshotOcrRecognitionPort(parent), m_impl(std::make_unique<Impl>(this, options)),
-      m_storageOptions(options), m_runtimeConfiguration(m_impl->configuration()) {}
+      m_storageOptions(options), m_runtimeConfiguration(m_impl->configuration()),
+      m_deferModelDownload(options.tryCachedFallbackAtStartup) {}
 ScreenshotOcrRecognitionService::~ScreenshotOcrRecognitionService() = default;
 
 ScreenshotOcrRecognitionPort::RequestToken ScreenshotOcrRecognitionService::groupParagraphs(
@@ -1665,7 +1796,7 @@ void ScreenshotOcrRecognitionService::setTextDetectionProcessing(
     ScreenshotOcrTextDetectionProcessing processing) {
     auto configuration = m_runtimeConfiguration;
     configuration.textDetectionProcessing = processing;
-    setRuntimeConfiguration(configuration);
+    setRuntimeConfiguration(configuration, m_deferModelDownload);
 }
 int ScreenshotOcrRecognitionService::liveWorkerCount() const {
     return m_impl != nullptr ? m_impl->liveWorkerCount() : 0;
@@ -1679,16 +1810,17 @@ QString ScreenshotOcrRecognitionService::processPath() const {
 }
 
 void ScreenshotOcrRecognitionService::setRuntimeConfiguration(
-    const ScreenshotOcrRuntimeConfiguration& configuration) {
+    const ScreenshotOcrRuntimeConfiguration& configuration, bool deferModelDownload) {
     m_runtimeConfiguration = configuration;
+    m_deferModelDownload = deferModelDownload;
     if (m_impl != nullptr)
-        m_impl->setRuntimeConfiguration(configuration);
+        m_impl->setRuntimeConfiguration(configuration, deferModelDownload);
 }
 
 void ScreenshotOcrRecognitionService::setHardwareAcceleration(bool enabled) {
     auto configuration = m_runtimeConfiguration;
     configuration.hardwareAcceleration = enabled;
-    setRuntimeConfiguration(configuration);
+    setRuntimeConfiguration(configuration, m_deferModelDownload);
 }
 
 bool ScreenshotOcrRecognitionService::storageBusy() const {
@@ -1697,6 +1829,7 @@ bool ScreenshotOcrRecognitionService::storageBusy() const {
 void ScreenshotOcrRecognitionService::suspendStorage() {
     if (!m_impl)
         return;
+    m_storageOptions.modelType = m_impl->configuration().modelType;
     m_impl->beginShutdown();
     m_suspendedImpl = std::move(m_impl);
 }
@@ -1707,7 +1840,8 @@ void ScreenshotOcrRecognitionService::drainStorage() {
 void ScreenshotOcrRecognitionService::resumeStorage(const QString& cacheRoot) {
     m_suspendedImpl.reset();
     m_storageOptions.cacheRoot = cacheRoot;
-    m_storageOptions.modelType = m_runtimeConfiguration.modelType;
+    if (!m_deferModelDownload)
+        m_storageOptions.modelType = m_runtimeConfiguration.modelType;
     m_impl = std::make_unique<Impl>(this, m_storageOptions);
-    m_impl->setRuntimeConfiguration(m_runtimeConfiguration);
+    m_impl->setRuntimeConfiguration(m_runtimeConfiguration, m_deferModelDownload);
 }

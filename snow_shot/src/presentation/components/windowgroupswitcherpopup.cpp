@@ -199,9 +199,6 @@ class WindowGroupSwitcherPopup::Impl {
         const auto scheme = styles::ThemeManager::instance().themeColorScheme();
         delegate->scheme = scheme;
         QFont font = QApplication::font();
-        const QString family = styles::ThemeManager::instance().appFontFamily();
-        if (!family.isEmpty())
-            font.setFamily(family);
         font.setPixelSize(scheme.metricAlias.fontSize);
         q.setFont(font);
         QFont heading = font;

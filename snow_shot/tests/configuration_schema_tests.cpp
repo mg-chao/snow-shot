@@ -1,4 +1,7 @@
+#include "snow_shot/storage/cloudsyncconfiguration.h"
 #include "snow_shot/storage/configurationschema.h"
+#include "snow_shot/storage/configurationstore.h"
+#include "snow_shot/storage/settingsadapters.h"
 #include "snow_shot/app/edition.h"
 #include "snow_shot/shortcuts/shortcutbinding.h"
 
@@ -8,7 +11,9 @@
 #include <QJsonDocument>
 #include <QSet>
 #include <QStandardPaths>
+#include <QTemporaryDir>
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <utility>
@@ -211,6 +216,124 @@ void nativeDefaultsRemainIntact(const QString& movies, const QString& pictures) 
     }
 #endif
 }
+
+void cloudSyncConfiguration() {
+    using namespace snow_shot::storage;
+    const auto& keys = cloudSettingKeys();
+    const QSet<QString> unique(keys.cbegin(), keys.cend());
+    require(keys.size() == 291 && unique.size() == keys.size() &&
+                std::count_if(keys.cbegin(), keys.cend(), cloudSettingPlatformSpecific) == 146,
+            "cloud allowlist requires all 291 unique schema keys and 146 platform records");
+    const QString themeKey = QStringLiteral("interface/theme_mode");
+    const QString fontKey = QStringLiteral("interface/app_font_size");
+    const QString tasksKey = QStringLiteral("export_tasks/screenshot_copy");
+    const auto autoUpload = QJsonArray{QStringLiteral("upload_to_cloud")};
+    const auto eligibleTask = QJsonArray{QStringLiteral("auto_save")};
+    const QString layoutKey = QStringLiteral("tray/menu_options");
+    const auto futureLayout =
+        QJsonArray{QStringLiteral("quick.screenshot"), QStringLiteral("future.item")};
+    require(!cloudSettingSupported(QStringLiteral("interface/skin_path")) &&
+                !cloudSettingSupported(QStringLiteral("api_configuration/server_url")) &&
+                !cloudSettingSupported(QStringLiteral("screenshot/unknown_value")),
+            "cloud rejects unlisted settings even with a listed prefix");
+    if constexpr (snow_shot::app::edition::isMini) {
+        require(!cloudSettingSupported(themeKey), "Mini has no settings sync");
+    } else {
+        require(cloudSettingSupported(themeKey) &&
+                    cloudSettingValue(tasksKey, autoUpload) == QJsonArray{} &&
+                    cloudSettingLocalValue(tasksKey, QJsonArray{}, autoUpload) == autoUpload &&
+                    cloudSettingLocalValue(tasksKey, eligibleTask, autoUpload) ==
+                        QJsonArray{QStringLiteral("auto_save"), QStringLiteral("upload_to_cloud")},
+                "export task projection always preserves local automatic upload");
+        require(!cloudSettingLayoutComplete(layoutKey, futureLayout) &&
+                    cloudSettingLocalValue(layoutKey, futureLayout, {}) ==
+                        QJsonArray{QStringLiteral("quick.screenshot")},
+                "layout display drops unknown commands without losing the incomplete status");
+        const QString languageKey = QStringLiteral("interface/language");
+        require(cloudSettingValue(languageKey, QStringLiteral("system")) ==
+                        QStringLiteral("system") &&
+                    cloudSettingLocalValue(languageKey, QStringLiteral("es_ES"),
+                                           QStringLiteral("en_US"))
+                        .isUndefined(),
+                "locale preferences require a translation catalog on the receiving device");
+        const QString regularTrayIcon = QStringLiteral("tray/icon");
+        const QString darkTrayIcon = QStringLiteral("tray/dark_icon");
+        const QString localIconPath = QStringLiteral("icons/device-specific.png");
+        const QString dedicatedIcon = QStringLiteral("snow-dark");
+        const QString inheritedIcon = QStringLiteral("inherit");
+        require(cloudSettingLocalValue(darkTrayIcon, dedicatedIcon, inheritedIcon, localIconPath)
+                        .isUndefined() &&
+                    cloudSettingLocalValue(darkTrayIcon, dedicatedIcon, inheritedIcon) ==
+                        dedicatedIcon &&
+                    cloudSettingLocalValue(regularTrayIcon, dedicatedIcon,
+                                           QStringLiteral("default"),
+                                           localIconPath) == dedicatedIcon,
+                "dark mode keeps inherited custom artwork while built-in choices still sync");
+        const QString modelKey = QStringLiteral("screenshot_translation/model");
+        if (cloudSettingSupported(modelKey)) {
+            const QString custom = QStringLiteral("translation:local-account-only");
+            const QString builtIn = QStringLiteral("free-translation");
+            require(cloudSettingValue(modelKey, custom).isUndefined() &&
+                        cloudSettingLocalValue(modelKey, builtIn, custom).isUndefined(),
+                    "custom translation services remain local in both directions");
+        }
+    }
+
+    QTemporaryDir directory;
+    require(directory.isValid(), "configuration test directory should be available");
+    const auto path = directory.filePath(QStringLiteral("config.json"));
+    ConfigurationStore store(path, true, true);
+    QList<ConfigurationWriteOrigin> origins;
+    QList<QMap<QString, QJsonValue>> operations;
+    QObject::connect(&store, &ConfigurationStore::valuesCommitted, &store,
+                     [&origins, &operations](auto origin, const auto&, const auto& values) {
+                         origins.append(origin);
+                         operations.append(values);
+                     });
+    const auto unchanged = store.value(themeKey);
+    const auto revision = store.revision();
+    require(store.setValue(themeKey, unchanged, ConfigurationWriteOrigin::Reset) &&
+                origins == QList{ConfigurationWriteOrigin::Reset} &&
+                operations.front().value(themeKey) == unchanged && store.revision() == revision,
+            "same-value resets still record the explicit reset operation");
+
+    const QJsonObject syncState{{QStringLiteral("pending"), true}};
+    require(store.setCloudSyncState(syncState, {{themeKey, QStringLiteral("dark")}}) &&
+                origins.back() == ConfigurationWriteOrigin::Remote && store.flushNow().success,
+            "remote settings and their sync state share a durable transaction");
+    const ConfigurationStore reloaded(path, true, false);
+    require(reloaded.cloudSyncState() == syncState &&
+                reloaded.value(themeKey) == QStringLiteral("dark") &&
+                !reloaded.snapshot().contains(QStringLiteral("_cloud_settings_sync")),
+            "only the live configuration document carries private sync state");
+
+    origins.clear();
+    operations.clear();
+    const QSet explicitlyImported{fontKey};
+    require(store.applySnapshot({{fontKey, store.value(fontKey)}}, 9, &explicitlyImported) &&
+                origins == QList{ConfigurationWriteOrigin::Import,
+                                 ConfigurationWriteOrigin::ImportDefaults} &&
+                operations.front().size() == 1 && operations.front().contains(fontKey) &&
+                operations.back().contains(themeKey) && store.cloudSyncState() == syncState,
+            "import reports a supplied preference separately from omitted replacement defaults");
+
+    const QString syncColorKey = QStringLiteral("drawing/sync_tool_colors");
+    const QString shapeKey = QStringLiteral("drawing/shape_style");
+    const QString sharedColorKey = QStringLiteral("drawing/shared_tool_color");
+    const QString stroke = QStringLiteral("stroke");
+    const QString localColor = QStringLiteral("#112233FF");
+    require(store.setValue(shapeKey, QJsonObject{{stroke, localColor}}),
+            "the test device chooses its own color");
+    QMap<QString, QJsonValue> enable{{syncColorKey, true}};
+    require(applyDrawingColorPolicy(store, enable) && enable.value(sharedColorKey) == localColor &&
+                store.setCloudSyncState(syncState, enable) &&
+                !store.value(shapeKey).toObject().contains(stroke),
+            "a downloaded color toggle keeps the device's effective local color");
+    QMap<QString, QJsonValue> disable{{syncColorKey, false}};
+    require(applyDrawingColorPolicy(store, disable) &&
+                disable.value(shapeKey).toObject().value(stroke) == localColor,
+            "turning off shared color on another device preserves local tool appearance");
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -222,6 +345,7 @@ int main(int argc, char** argv) {
     publicMetadataMatchesOriginal(before);
     nativeDefaultsRemainIntact(movies, pictures);
     entryReferencesAndCopiesRemainIndependent();
+    cloudSyncConfiguration();
     require(metadata() == before, "copy mutation must not change any public schema field");
     return 0;
 }

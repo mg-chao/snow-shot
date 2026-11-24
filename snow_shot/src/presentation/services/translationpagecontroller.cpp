@@ -96,20 +96,20 @@ void TranslationPageController::setComposing(bool composing) {
 
 bool TranslationPageController::setPreferences(const QString& source, const QString& target,
                                                const QString& model) {
-    if (m_service == nullptr)
-        return false;
-    auto next = m_service->preferences();
-    next.sourceLanguage = source;
-    next.targetLanguage = target;
-    next.modelId = model;
-    return m_service->savePreferences(next);
+    return setPreferences({.sourceLanguage = source, .targetLanguage = target, .modelId = model});
+}
+
+bool TranslationPageController::setPreferences(
+    const translation::TranslationPreferenceChanges& changes) {
+    return m_service && m_service->savePreferenceChanges(changes);
 }
 
 void TranslationPageController::swapLanguages() {
     const auto current = preferences();
     if (current.sourceLanguage != QStringLiteral("auto") &&
         current.sourceLanguage != current.targetLanguage)
-        setPreferences(current.targetLanguage, current.sourceLanguage, current.modelId);
+        setPreferences(
+            {.sourceLanguage = current.targetLanguage, .targetLanguage = current.sourceLanguage});
 }
 
 void TranslationPageController::startTranslation() {

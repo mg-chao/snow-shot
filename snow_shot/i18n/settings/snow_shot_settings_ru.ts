@@ -489,6 +489,33 @@
         </message>
     </context>
     <context>
+        <name>CloudSettingsSyncWidget</name>
+        <message>
+            <source>Last sync: %1</source>
+            <translation>Последняя синхронизация: %1</translation>
+        </message>
+        <message>
+            <source>Not synced yet</source>
+            <translation>Синхронизация ещё не выполнялась</translation>
+        </message>
+        <message>
+            <source>Settings</source>
+            <translation>Настройки</translation>
+        </message>
+        <message>
+            <source>Sign in to sync settings</source>
+            <translation>Войдите в аккаунт, чтобы синхронизировать настройки</translation>
+        </message>
+        <message>
+            <source>Sync now</source>
+            <translation>Синхронизировать сейчас</translation>
+        </message>
+        <message>
+            <source>Sync on this device</source>
+            <translation>Синхронизация на этом устройстве</translation>
+        </message>
+    </context>
+    <context>
         <name>CloudUploadSettingsWidget</name>
         <message>
             <source>%1 (Copy %2)</source>
@@ -1427,6 +1454,10 @@
             <translation>Введите допустимый адрес HTTP-прокси, например http://127.0.0.1:7890</translation>
         </message>
         <message>
+            <source>Language %1 is unavailable on this device</source>
+            <translation>Язык %1 недоступен на этом устройстве</translation>
+        </message>
+        <message>
             <source>The clipboard is unavailable</source>
             <translation>Буфер обмена недоступен</translation>
         </message>
@@ -2268,6 +2299,10 @@
         <message>
             <source>Closed window count</source>
             <translation>Число закрытых окон</translation>
+        </message>
+        <message>
+            <source>Cloud settings sync</source>
+            <translation>Синхронизация настроек через облако</translation>
         </message>
         <message>
             <source>Cloud upload</source>
@@ -4616,6 +4651,10 @@
         <message>
             <source>Shape tool</source>
             <translation>Инструмент фигур</translation>
+        </message>
+        <message>
+            <source>Share preferences across devices signed in to the same account</source>
+            <translation>Синхронизируйте настройки между устройствами, на которых выполнен вход в один аккаунт</translation>
         </message>
         <message>
             <source>Shared image export settings for screenshot and pin-to-screen windows</source>

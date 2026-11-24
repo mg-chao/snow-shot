@@ -34,6 +34,7 @@ class TranslationPageController final : public QObject {
     void setSourceText(const QString& text);
     void setComposing(bool composing);
     bool setPreferences(const QString& source, const QString& target, const QString& model);
+    bool setPreferences(const translation::TranslationPreferenceChanges& changes);
     void swapLanguages();
     void retry();
     void setLocale(const QLocale& locale);

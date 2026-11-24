@@ -123,6 +123,8 @@ struct DirectRecordingSettings {
     SnowCaptureVideoEncodingPreset preset = SNOW_CAPTURE_VIDEO_ENCODING_PRESET_VERYFAST;
     uint32_t quality = 80;
     bool useHardwareEncoder = false;
+    bool notifyAfterExport = false;
+    bool autoExitAfterExport = false;
     QSize maximumSize{1920, 1080};
     uint32_t targetFps = 30;
     QString extension = QStringLiteral("mp4");
@@ -171,6 +173,8 @@ DirectRecordingSettings directRecordingSettings(const QString& outputFormat,
         qBound(0, overrides.value(QStringLiteral("quality")).toInt(settings.videoQuality()), 100));
     result.useHardwareEncoder =
         encoder == QStringLiteral("h264_hw") || encoder == QStringLiteral("h265_hw");
+    result.notifyAfterExport = settings.notifyAfterExportCompletes();
+    result.autoExitAfterExport = settings.autoExitAfterRecordingEnds();
 
     if (outputFormat == QStringLiteral("mp4")) {
         result
@@ -1901,11 +1905,13 @@ struct ScreenRecordingController::Impl {
             areaWindow->setTrimming(true);
         trimSession = new RecordingTrimSession(areaWindow, toolbarWindow, &owner);
         trimSession->reportError = [this](const QString& error) { showError(error); };
-        trimSession->exported = [this, session = trimSession](const QString& path) {
-            if (trimSession == session)
-                autoExitAfterRecordingEnds();
-            notifyExportCompleted(path);
-        };
+        trimSession->exported =
+            [this, session = trimSession, autoExit = sessionOutputSettings.autoExitAfterExport,
+             notify = sessionOutputSettings.notifyAfterExport](const QString& path) {
+                if (trimSession == session)
+                    autoExitAfterRecordingEnds(autoExit);
+                notifyExportCompleted(path, notify);
+            };
     }
 
     void stop(bool copyToClipboard) {
@@ -2045,6 +2051,8 @@ struct ScreenRecordingController::Impl {
         const QString completedPath = pendingOutputPath;
         const bool shouldCopy =
             sessionStatus.busyOperation() == ScreenshotToolPalette::RecordingBusyOperation::Copying;
+        const bool autoExit = sessionOutputSettings.autoExitAfterExport;
+        const bool notify = sessionOutputSettings.notifyAfterExport;
         sessionStatus = ScreenshotToolPalette::RecordingSessionStatus::idle();
         automationError = error;
         automationRevision = snow_shot::presentation::nextAutomationRevision();
@@ -2062,24 +2070,24 @@ struct ScreenRecordingController::Impl {
         }
         finalizedOutputPath = completedPath;
         automationRevision = snow_shot::presentation::nextAutomationRevision();
-        autoExitAfterRecordingEnds();
+        autoExitAfterRecordingEnds(autoExit);
         // Finalized observers can destroy the controller or start a new session.
         // Keep the original Copy intent and its path independent of that callback.
         const QPointer<ScreenRecordingController> guard(&owner);
-        notifyExportCompleted(completedPath);
+        notifyExportCompleted(completedPath, notify);
         if (guard)
             emit guard->finalized();
         if (shouldCopy)
             copyFileToClipboard(completedPath);
     }
 
-    void notifyExportCompleted(const QString& path) {
-        if (snow_shot::storage::RecordingSettings().notifyAfterExportCompletes())
+    void notifyExportCompleted(const QString& path, bool enabled) {
+        if (enabled)
             emit owner.exportNotificationRequested(path);
     }
 
-    void autoExitAfterRecordingEnds() {
-        if (snow_shot::storage::RecordingSettings().autoExitAfterRecordingEnds())
+    void autoExitAfterRecordingEnds(bool enabled) {
+        if (enabled)
             destroyUi();
     }
 
@@ -2174,9 +2182,11 @@ struct ScreenRecordingController::Impl {
                 uiSession->preview->stopAndClear();
                 trimSession = new RecordingTrimSession(areaWindow, toolbarWindow, &owner);
                 trimSession->reportError = [this](const QString& error) { showError(error); };
-                trimSession->exported = [this, marker, record](const QString& path) {
+                const bool notify =
+                    snow_shot::storage::RecordingSettings().notifyAfterExportCompletes();
+                trimSession->exported = [this, marker, record, notify](const QString& path) {
                     static_cast<void>(clearRecovery(marker, record));
-                    notifyExportCompleted(path);
+                    notifyExportCompleted(path, notify);
                 };
                 trimSession->open(record.sourcePath, pendingOutputPath, {}, true, false, {});
             });

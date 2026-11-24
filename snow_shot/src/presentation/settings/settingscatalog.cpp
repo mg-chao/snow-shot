@@ -3329,6 +3329,19 @@ SettingsItemDefinition clearPinnedHistoryItem() {
     };
 }
 
+#if !SNOW_SHOT_EDITION_MINI
+SettingsItemDefinition cloudSettingsSyncItem() {
+    return {
+        QStringLiteral("storage.cloud-settings-sync"),
+        settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Cloud settings sync")),
+        settingsText(QT_TRANSLATE_NOOP(
+            "SettingsCatalog", "Share preferences across devices signed in to the same account")),
+        {},
+        {},
+        SettingsCustomDefinition{SettingsCustomRenderer::CloudSettingsSync}};
+}
+#endif
+
 SettingsItemDefinition storageStatusItem() {
     return {
         QStringLiteral("storage.status"),
@@ -4996,6 +5009,9 @@ constexpr CatalogItemFactory catalogPageFilesHistorySectionPinnedHistoryItems[] 
 };
 
 constexpr CatalogItemFactory catalogPageFilesHistorySectionStorageStatusItems[] = {
+#if !SNOW_SHOT_EDITION_MINI
+    {cloudSettingsSyncItem},
+#endif
     {exportConfigurationItem}, {importConfigurationItem}, {storageStatusItem},
     {exportLogsItem},          {clearRecordingTempItem},
 };
@@ -7193,6 +7209,7 @@ QStringList SettingsCatalog::validationErrors() const {
                     case SettingsCustomRenderer::PermissionInputMonitoring:
                     case SettingsCustomRenderer::PermissionMicrophone:
                     case SettingsCustomRenderer::McpStatus:
+                    case SettingsCustomRenderer::CloudSettingsSync:
                     case SettingsCustomRenderer::StorageStatus:
                         rendererSupported = true;
                         break;

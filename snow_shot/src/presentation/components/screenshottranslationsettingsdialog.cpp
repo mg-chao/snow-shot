@@ -274,13 +274,21 @@ adqt::widgets::AdModal* createScreenshotTranslationSettingsDialog(
         }
         if (!models->isEnabled())
             return;
-        QString modelId = models->currentValue().toString();
-        if (modelId.isEmpty())
-            modelId = draft->model.value_or(liveService->preferences().modelId);
-        if (!liveService->savePreferences({source->currentValue().toString(),
-                                           target->currentValue().toString(), modelId,
-                                           secondaryTarget->currentValue().toString(),
-                                           static_cast<int>(confidenceThreshold->value())}))
+        translation::TranslationPreferenceChanges changes;
+        if (draft->sourceEdited)
+            changes.sourceLanguage = source->currentValue().toString();
+        if (draft->targetEdited)
+            changes.targetLanguage = target->currentValue().toString();
+        if (draft->secondaryTargetEdited)
+            changes.secondaryTargetLanguage = secondaryTarget->currentValue().toString();
+        if (draft->confidenceThresholdEdited)
+            changes.languageDetectionConfidenceThreshold =
+                static_cast<int>(confidenceThreshold->value());
+        if (draft->model) {
+            const QString selectedModel = models->currentValue().toString();
+            changes.modelId = selectedModel.isEmpty() ? *draft->model : selectedModel;
+        }
+        if (!liveService->savePreferenceChanges(changes))
             return;
         const storage::ScreenshotTranslationSettings settings;
         const bool changed = draft->originalImageEdited &&

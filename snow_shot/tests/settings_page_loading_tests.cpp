@@ -13,6 +13,7 @@
 #include "snow_shot/presentation/styles/thememanager.h"
 #include "snow_shot/presentation/screenshotclipboardcontent.h"
 #include "snow_shot/storage/applicationstorage.h"
+#include "snow_shot/storage/configurationarchive.h"
 #include "widgets/scroll_area.h"
 #include "widgets/color_picker.h"
 #include "widgets/select.h"
@@ -22,6 +23,7 @@
 #include <QLineEdit>
 #include "widgets/switch.h"
 #include "widgets/button.h"
+#include "antd_icons.h"
 #include "widgets/checkbox.h"
 #include "snow_shot/presentation/components/sectionheaderwidget.h"
 #include "snow_shot/storage/configurationschema.h"
@@ -837,6 +839,97 @@ void scrollingLoadsSections(const settings::SettingsRegistry& registry,
     page.resize(880, 1000);
     drainEvents();
     require(bar->value() <= bar->maximum(), "resize preserves a valid scroll position");
+}
+
+void cloudSettingsSyncControls(const settings::SettingsRegistry& registry,
+                               settings::SettingsRuntimeSession& session) {
+    SettingsPageWidget page(registry, QStringLiteral("files-history"), session);
+    page.resize(880, 620);
+    int settingsChecks = 0;
+    int manualChecks = 0;
+    settings::SettingsLocation destination;
+    QObject::connect(&session, &settings::SettingsRuntimeSession::cloudSettingsSyncCheckRequested,
+                     &page, [&] { ++settingsChecks; });
+    QObject::connect(&session, &settings::SettingsRuntimeSession::cloudSettingsSyncRequested, &page,
+                     [&] { ++manualChecks; });
+    QObject::connect(&page, &SettingsPageWidget::commandRequested, &page,
+                     [&](const settings::SettingsCommand& command) {
+                         if (command.kind == settings::SettingsCommandKind::Navigate)
+                             destination = command.location;
+                     });
+    page.show();
+    page.reveal({page.pageId(), QStringLiteral("storage-status"),
+                 QStringLiteral("storage.cloud-settings-sync")});
+    drainEvents();
+    require(settingsChecks == 1, "opening Settings requests a background check");
+    auto* button =
+        page.findChild<adqt::widgets::AdButton*>(QStringLiteral("settings-cloud-settings-sync"));
+    require(button && button->text() == u"Sign in to sync settings",
+            "the signed-out row asks the user to sign in");
+    require(button->iconRef() == adqt::icons::antd::outlined::Login(),
+            "the signed-out row shows the login icon");
+    button->click();
+    require(destination.pageId == u"account", "the signed-out row opens the account page");
+
+    session.setCloudSettingsSyncState({true, true, {}});
+    require(button->text() == u"Settings", "the signed-in row opens sync settings");
+    require(button->iconRef() == adqt::icons::antd::outlined::Setting(),
+            "signing in switches the row to the settings icon");
+    button->click();
+    drainEvents();
+    auto* dialog = page.findChild<adqt::widgets::AdModal*>(
+        QStringLiteral("settings-cloud-settings-sync-dialog"));
+    require(dialog && dialog->isOpen() && !dialog->footerVisible(),
+            "the sync dialog contains only its controls and the standard close button");
+    auto* body = dialog->contentWidget();
+    auto* enabled = body->findChild<adqt::widgets::AdSwitch*>(
+        QStringLiteral("settings-cloud-settings-sync-enabled"));
+    auto* manual = body->findChild<adqt::widgets::AdButton*>(
+        QStringLiteral("settings-cloud-settings-sync-now"));
+    auto* last =
+        body->findChild<QLabel*>(QStringLiteral("settings-cloud-settings-sync-last-success"));
+    require(enabled && enabled->isChecked() && manual && manual->isEnabled() && last &&
+                last->text() == u"Last sync: Not synced yet",
+            "the dialog reflects enabled sync before the first success");
+    require(manual->iconRef() == adqt::icons::antd::outlined::CloudSync(),
+            "the manual sync button shows the cloud sync icon");
+    require(last->geometry().right() < manual->geometry().left() &&
+                qAbs(last->geometry().center().y() - manual->geometry().center().y()) <= 1,
+            "manual sync appears to the right of the last sync text on the same row");
+    manual->click();
+    require(manualChecks == 1 && dialog->isOpen(), "manual sync leaves the settings dialog open");
+
+    const auto success = QDateTime::fromString(QStringLiteral("2026-09-03T08:30:00Z"), Qt::ISODate);
+    auto& language = snow_shot::presentation::LanguageManager::instance();
+    const auto localizedTime = [&] {
+        return language.currentLocale().toString(success.toLocalTime(), QLocale::ShortFormat);
+    };
+    const QString expectedLastSync = QStringLiteral("Last sync: %1").arg(localizedTime());
+    session.setCloudSettingsSyncState({true, true, success});
+    require(last->text() == expectedLastSync, "the dialog displays the localized last sync time");
+    QObject::connect(&session, &settings::SettingsRuntimeSession::cloudSettingsSyncEnabledRequested,
+                     &page,
+                     [&](bool next) { session.setCloudSettingsSyncState({true, next, success}); });
+    enabled->click();
+    require(!enabled->isChecked() && !manual->isEnabled() && last->text() == expectedLastSync,
+            "pausing disables manual sync and preserves the last successful time");
+    enabled->click();
+    require(enabled->isChecked() && manual->isEnabled(), "resuming enables manual sync");
+    require(language.setLanguage(QStringLiteral("zh_CN")), "switch the open dialog to Chinese");
+    drainEvents();
+    require(last->text() == QStringLiteral("上次同步：%1").arg(localizedTime()) &&
+                manual->text() == u"立即同步",
+            "the open dialog retranslates the last sync text and button");
+    require(language.setLanguage(QStringLiteral("en_US")), "restore English settings labels");
+    drainEvents();
+    session.setCloudSettingsSyncState({});
+    drainEvents();
+    require(button->text() == u"Sign in to sync settings" &&
+                !page.findChild<adqt::widgets::AdModal*>(
+                    QStringLiteral("settings-cloud-settings-sync-dialog")),
+            "sign-out closes the previous account's settings dialog");
+    require(button->iconRef() == adqt::icons::antd::outlined::Login(),
+            "signing out restores the login icon");
 }
 
 void deferredSections(const settings::SettingsRegistry& registry,
@@ -2109,6 +2202,58 @@ void catalogResetsPreserveOtherSections(settings::SettingsRuntimeSession& sessio
                     "a section reset restores its defaults and preserves neighboring sections");
     }
 }
+
+void unavailableLanguageImport(settings::BuiltInSettingsBackend& backend,
+                               const QString& archivePath) {
+    namespace storage = snow_shot::storage;
+    auto& configuration = storage::ApplicationStorage::instance().configuration();
+    const QString languageKey = QStringLiteral("interface/language");
+    const QString delayKey = QStringLiteral("screenshot/delay_seconds");
+    const auto previous = configuration.snapshot();
+    auto values = previous;
+    values.insert(languageKey, QStringLiteral("fr_FR"));
+    values.insert(delayKey, 7);
+    require(storage::ConfigurationArchive::write(
+                archivePath, values, storage::ConfigurationStore::currentSchemaVersion())
+                .isEmpty(),
+            "write an archive requesting an unavailable language");
+
+    bool finished = false;
+    bool succeeded = false;
+    bool languageImported = false;
+    QString error;
+    const auto result = QObject::connect(
+        &backend, &settings::SettingsBackend::actionFinished, &backend,
+        [&](settings::SettingsActionBinding binding, bool success, const QString& message) {
+            if (binding == settings::SettingsActionBinding::ImportConfiguration) {
+                finished = true;
+                succeeded = success;
+                error = message;
+            }
+        });
+    const auto committed = QObject::connect(
+        &configuration, &storage::ConfigurationStore::valuesCommitted, &backend,
+        [&](storage::ConfigurationWriteOrigin origin, const auto&, const auto& changes) {
+            if (origin == storage::ConfigurationWriteOrigin::Import &&
+                changes.contains(languageKey))
+                languageImported = true;
+        });
+    require(
+        backend.triggerAction(settings::SettingsActionBinding::ImportConfiguration, archivePath),
+        "open the archive through the settings backend");
+    drainEvents();
+    QObject::disconnect(result);
+    QObject::disconnect(committed);
+    require(finished && !succeeded && error.contains(QStringLiteral("fr_FR")) &&
+                !languageImported &&
+                configuration.value(languageKey) == previous.value(languageKey) &&
+                snow_shot::presentation::LanguageManager::instance().languagePreference() ==
+                    previous.value(languageKey).toString(),
+            "reject the unavailable language and keep the stored and active preference");
+    require(configuration.value(delayKey).toInt() == 7 &&
+                configuration.setValue(delayKey, previous.value(delayKey)),
+            "the import still applies an unrelated preference");
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -2133,6 +2278,11 @@ int main(int argc, char** argv) {
     settings::BuiltInSettingsBackend backend(shortcuts);
     const auto registry = settings::buildBuiltInSettingsRegistry();
     settings::SettingsRuntimeSession session(registry, backend);
+    if (application.arguments().contains(QStringLiteral("--cloud-settings-sync-only"))) {
+        cloudSettingsSyncControls(registry, session);
+        storage.shutdown();
+        return 0;
+    }
     if (application.arguments().contains(QStringLiteral("--shutter-sound-only"))) {
         shutterSoundSelection(registry, session);
         storage.shutdown();
@@ -2225,6 +2375,8 @@ int main(int argc, char** argv) {
         storage.shutdown();
         return 0;
     }
+    unavailableLanguageImport(backend,
+                              QDir(temporary.path()).filePath(QStringLiteral("language.zip")));
     deferredSections(registry, session);
     settingsRowsHaveOnlySectionSpacing(registry, session);
     deferredStateAndKeyboard(registry, session);

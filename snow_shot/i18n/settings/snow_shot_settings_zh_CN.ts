@@ -489,6 +489,33 @@
         </message>
     </context>
     <context>
+        <name>CloudSettingsSyncWidget</name>
+        <message>
+            <source>Last sync: %1</source>
+            <translation>上次同步：%1</translation>
+        </message>
+        <message>
+            <source>Not synced yet</source>
+            <translation>尚未同步</translation>
+        </message>
+        <message>
+            <source>Settings</source>
+            <translation>设置</translation>
+        </message>
+        <message>
+            <source>Sign in to sync settings</source>
+            <translation>登录以同步设置</translation>
+        </message>
+        <message>
+            <source>Sync now</source>
+            <translation>立即同步</translation>
+        </message>
+        <message>
+            <source>Sync on this device</source>
+            <translation>在此设备上同步</translation>
+        </message>
+    </context>
+    <context>
         <name>CloudUploadSettingsWidget</name>
         <message>
             <source>%1 (Copy %2)</source>
@@ -1427,6 +1454,10 @@
             <translation>请输入有效的 HTTP 代理地址，例如 http://127.0.0.1:7890</translation>
         </message>
         <message>
+            <source>Language %1 is unavailable on this device</source>
+            <translation>此设备不支持语言 %1</translation>
+        </message>
+        <message>
             <source>The clipboard is unavailable</source>
             <translation>剪贴板不可用</translation>
         </message>
@@ -2268,6 +2299,10 @@
         <message>
             <source>Closed window count</source>
             <translation>已关闭窗口数量</translation>
+        </message>
+        <message>
+            <source>Cloud settings sync</source>
+            <translation>云端设置同步</translation>
         </message>
         <message>
             <source>Cloud upload</source>
@@ -4616,6 +4651,10 @@
         <message>
             <source>Shape tool</source>
             <translation>图形</translation>
+        </message>
+        <message>
+            <source>Share preferences across devices signed in to the same account</source>
+            <translation>在登录了同一账号的设备间共享偏好设置</translation>
         </message>
         <message>
             <source>Shared image export settings for screenshot and pin-to-screen windows</source>

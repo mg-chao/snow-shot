@@ -5,6 +5,7 @@
 #include "snow_shot/presentation/settings/settingsregistry.h"
 #include "snow_shot/presentation/settings/settingsbackend.h"
 
+#include <QDateTime>
 #include <QHash>
 #include <QSet>
 #include <QVariant>
@@ -58,6 +59,14 @@ struct SettingsCommandState {
     QString error;
 };
 
+struct CloudSettingsSyncState {
+    bool signedIn = false;
+    bool enabled = false;
+    QDateTime lastSuccessfulSync;
+
+    friend bool operator==(const CloudSettingsSyncState&, const CloudSettingsSyncState&) = default;
+};
+
 class SettingsRuntimeSession final : public QObject {
     Q_OBJECT
 
@@ -76,6 +85,7 @@ class SettingsRuntimeSession final : public QObject {
     // Immediate reactive write API.  A rejected/failed write intentionally
     // keeps the attempted draft visible so the UI can offer retry or discard.
     bool submitDraft(const QString& fieldId, const QVariant& value);
+    bool submitExplicitDraft(const QString& fieldId, const QVariant& value);
     bool retry(const QString& fieldId);
     bool discard(const QString& fieldId);
     bool reset(SettingsSectionReset reset);
@@ -160,9 +170,10 @@ class SettingsRuntimeSession final : public QObject {
     bool applyCloudUploadSettings(const CloudUploadSettings& values);
     bool
     importConfigurationSnapshot(const QMap<QString, QJsonValue>& values, int schemaVersion,
-                                std::shared_future<storage::StorageResult>* completion = nullptr) {
-        const bool result =
-            m_backend.importConfigurationSnapshot(values, schemaVersion, completion);
+                                std::shared_future<storage::StorageResult>* completion = nullptr,
+                                const QSet<QString>* explicitlyImported = nullptr) {
+        const bool result = m_backend.importConfigurationSnapshot(values, schemaVersion, completion,
+                                                                  explicitlyImported);
         refreshAll();
         return result;
     }
@@ -173,6 +184,8 @@ class SettingsRuntimeSession final : public QObject {
         return m_backend.changeStorageDirectory(directory, migrate);
     }
     void refreshStorageStatusIfStale();
+    [[nodiscard]] const CloudSettingsSyncState& cloudSettingsSyncState() const;
+    void setCloudSettingsSyncState(CloudSettingsSyncState state);
 
     AppPermissionService* appPermissions() const {
         return m_backend.appPermissions();
@@ -203,6 +216,10 @@ class SettingsRuntimeSession final : public QObject {
     void commandStateChanged(snow_shot::presentation::settings::SettingsCommandKind commandKind,
                              const snow_shot::presentation::settings::SettingsCommandState& state);
     void storageStateChanged(const snow_shot::storage::StorageStatus& status);
+    void cloudSettingsSyncStateChanged();
+    void cloudSettingsSyncEnabledRequested(bool enabled);
+    void cloudSettingsSyncRequested();
+    void cloudSettingsSyncCheckRequested();
     void actionFinished(snow_shot::presentation::settings::SettingsActionBinding action,
                         bool success, const QString& error);
     void
@@ -297,6 +314,7 @@ class SettingsRuntimeSession final : public QObject {
     QHash<int, int> m_auxiliaryIntegerValues;
     QHash<int, FilePathStatus> m_filePathStatuses;
     storage::StorageStatus m_lastStorageStatus;
+    CloudSettingsSyncState m_cloudSettingsSyncState;
     bool m_hasStorageStatus = false;
     bool m_refreshPending = false;
 };

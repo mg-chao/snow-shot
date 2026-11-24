@@ -1,6 +1,7 @@
 #include "snow_shot/platform/focusedfullscreenwindow.h"
 #include "snow_shot/presentation/globalshortcutmanager.h"
 #include "snow_shot/storage/applicationstorage.h"
+#include "snow_shot/storage/cloudsyncconfiguration.h"
 #include "snow_shot/storage/settingsadapters.h"
 
 #include <QCoreApplication>
@@ -275,6 +276,49 @@ void clearAll(GlobalShortcutManager& manager) {
     for (const GlobalShortcutAction action : ALL_ACTIONS) {
         require(manager.setShortcuts(action, {}), "clear global shortcut fixture");
     }
+}
+
+void remoteBindingsReconcileAsOneConfiguration() {
+    constexpr auto first = GlobalShortcutAction::Screenshot;
+    constexpr auto second = GlobalShortcutAction::ScreenshotCopy;
+    const QString firstKey = QStringLiteral("global_shortcuts/screenshot");
+    const QString secondKey = QStringLiteral("global_shortcuts/screenshot_copy");
+    const shortcuts::ShortcutBindingList firstBindings{QStringLiteral("Ctrl+Shift+F15")};
+    const shortcuts::ShortcutBindingList secondBindings{QStringLiteral("Ctrl+Shift+F16")};
+    auto backend = std::make_unique<FakeBackend>();
+    auto* native = backend.get();
+    GlobalShortcutManager manager(std::move(backend), nullptr, [] { return false; });
+    manager.initialize();
+    clearAll(manager);
+    require(manager.setShortcuts(first, firstBindings) &&
+                manager.setShortcuts(second, secondBindings),
+            "establish both shortcut owners before a swap");
+
+    auto& store = snow_shot::storage::ApplicationStorage::instance().configuration();
+    const auto firstValue = shortcuts::shortcutBindingsToJson(firstBindings);
+    const auto secondValue = shortcuts::shortcutBindingsToJson(secondBindings);
+    const QMap<QString, QJsonValue> swap{{firstKey, secondValue}, {secondKey, firstValue}};
+    require(!snow_shot::storage::cloudSettingShortcutChangesValid(store.snapshot(),
+                                                                  {{firstKey, secondValue}}) &&
+                snow_shot::storage::cloudSettingShortcutChangesValid(store.snapshot(), swap),
+            "shortcut conflict validation uses the final assignment of the whole swap");
+
+    manager.setGlobalShortcutsEnabled(false);
+    const int disabledRegistrationCalls = native->registerCalls;
+    require(store.setCloudSyncState({}, swap) && native->registerCalls == disabledRegistrationCalls,
+            "remote bindings stay unregistered while global shortcuts are disabled");
+    requireDisabled(manager, first, secondBindings);
+    requireDisabled(manager, second, firstBindings);
+
+    native->failures.insert(secondBindings.front().portableText,
+                            {false, GlobalShortcutFailureReason::AlreadyInUse, 1});
+    manager.setGlobalShortcutsEnabled(true);
+    require(manager.state(first).shortcuts == secondBindings &&
+                !manager.state(first).bindings.front().registered &&
+                store.value(firstKey) == secondValue &&
+                manager.state(second).status == GlobalShortcutStatus::Registered,
+            "external ownership leaves the cloud binding configured and independent bindings live");
+    clearAll(manager);
 }
 
 void screenshotQuickActionShortcutsRegisterActivateAndPersist() {
@@ -2014,6 +2058,7 @@ int main(int argc, char** argv) {
         return 0;
     }
     screenshotQuickActionShortcutsRegisterActivateAndPersist();
+    remoteBindingsReconcileAsOneConfiguration();
     switchGroupShortcutPersistsAndReportsBinding();
 #ifdef Q_OS_WIN
     nativeGroupKeyStateUsesEveryShortcutKey();

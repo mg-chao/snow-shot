@@ -5,6 +5,7 @@
 
 #include <QJsonValue>
 #include <QMap>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 
@@ -15,6 +16,7 @@ struct ConfigurationArchiveReadResult {
     int schemaVersion = 0;
     QString error;
     QStringList redactedCredentialIds;
+    QSet<QString> explicitlyImported;
     // Restores local save directories absent from the archive. Explicit values in
     // older archives take precedence over the receiving configuration.
     void preserveOmittedDirectories(const QMap<QString, QJsonValue>& current);

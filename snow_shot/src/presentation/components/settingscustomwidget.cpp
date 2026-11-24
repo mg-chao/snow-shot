@@ -3,6 +3,7 @@
 #include "snow_shot/presentation/components/clouduploadsettingswidget.h"
 #include "snow_shot/presentation/components/settingscustomwidget.h"
 #include "snow_shot/presentation/components/formfields.h"
+#include "snow_shot/presentation/components/settingspageutils.h"
 #include "snow_shot/app/edition.h"
 #if SNOW_SHOT_ENABLE_API_CONFIGURATION
 #include "snow_shot/presentation/components/customaimodelssettingswidget.h"
@@ -15,6 +16,7 @@
 
 #include "snow_shot/presentation/components/toolbareditorsettingswidget.h"
 #include "snow_shot/presentation/components/storagestatussettingswidget.h"
+#include "snow_shot/presentation/languagemanager.h"
 #include "snow_shot/presentation/screenshottoolbarlayoutmodel.h"
 #include "snow_shot/presentation/settings/settingsregistry.h"
 #include "snow_shot/presentation/settings/settingsruntimesession.h"
@@ -26,6 +28,8 @@
 #include "widgets/checkbox.h"
 #include "widgets/divider.h"
 #include "widgets/input_text_edit.h"
+#include "widgets/modal.h"
+#include "widgets/switch.h"
 #include "widgets/tag.h"
 #include "antd_icons.h"
 
@@ -1376,6 +1380,154 @@ void ToolbarEditorSettingsWidget::changeEvent(QEvent* event) {
 }
 
 namespace {
+#if !SNOW_SHOT_EDITION_MINI
+class CloudSettingsSyncWidget final : public SettingsCustomWidget {
+  public:
+    CloudSettingsSyncWidget(
+        const snow_shot::presentation::settings::SettingsItemDefinition& definition,
+        snow_shot::presentation::settings::SettingsRuntimeSession& session,
+        std::function<void()> openAccount, QWidget* parent)
+        : SettingsCustomWidget(parent), m_definition(definition), m_session(session),
+          m_openAccount(std::move(openAccount)) {
+        auto* layout = new QVBoxLayout(this);
+        layout->setContentsMargins(0, 0, 0, 0);
+        m_button = new adqt::widgets::AdButton(this);
+        m_button->setObjectName(QStringLiteral("settings-cloud-settings-sync"));
+        m_button->setButtonStyle(adqt::widgets::AdButton::ButtonStyle::Outline);
+        setFocusProxy(m_button);
+
+        const auto scheme =
+            snow_shot::presentation::styles::ThemeManager::instance().themeColorScheme();
+        auto* row = snow_shot::presentation::components::createSettingItemRow(
+            this, scheme.metricAlias, &m_title, &m_description, m_button, {});
+        layout->addWidget(row);
+        connect(m_button, &QAbstractButton::clicked, this, [this] {
+            if (m_session.cloudSettingsSyncState().signedIn)
+                openSettings();
+            else if (m_openAccount)
+                m_openAccount();
+        });
+        connect(&m_session,
+                &snow_shot::presentation::settings::SettingsRuntimeSession::
+                    cloudSettingsSyncStateChanged,
+                this, &CloudSettingsSyncWidget::refreshState);
+        applyTheme(scheme);
+        retranslateUi();
+    }
+
+    void applyTheme(const snow_shot::presentation::styles::ThemeColorScheme& scheme) override {
+        snow_shot::presentation::components::applySettingItemTheme(m_title, m_description, scheme);
+    }
+
+    void retranslateUi() override {
+        m_title->setText(m_definition.title.translated());
+        m_description->setText(m_definition.description.translated());
+        m_button->setAccessibleDescription(m_title->text());
+        if (m_dialog != nullptr) {
+            m_dialog->setWindowTitle(m_title->text());
+            m_enabledLabel->setText(
+                QCoreApplication::translate("CloudSettingsSyncWidget", "Sync on this device"));
+            m_enabled->setAccessibleName(m_enabledLabel->text());
+            m_syncNow->setText(QCoreApplication::translate("CloudSettingsSyncWidget", "Sync now"));
+        }
+        refreshState();
+    }
+
+  private:
+    void refreshState() {
+        const auto& state = m_session.cloudSettingsSyncState();
+        const QString text =
+            state.signedIn ? QCoreApplication::translate("CloudSettingsSyncWidget", "Settings")
+                           : QCoreApplication::translate("CloudSettingsSyncWidget",
+                                                         "Sign in to sync settings");
+        m_button->setText(text);
+        m_button->setIconRef(state.signedIn ? adqt::icons::antd::outlined::Setting()
+                                            : adqt::icons::antd::outlined::Login());
+        if (m_dialog == nullptr)
+            return;
+        if (!state.signedIn) {
+            m_dialog->close();
+            return;
+        }
+        const QSignalBlocker blocker(m_enabled);
+        m_enabled->setChecked(state.enabled);
+        m_syncNow->setEnabled(state.enabled);
+        const auto locale = snow_shot::presentation::LanguageManager::instance().currentLocale();
+        const QString lastSync =
+            state.lastSuccessfulSync.isValid()
+                ? locale.toString(state.lastSuccessfulSync.toLocalTime(), QLocale::ShortFormat)
+                : QCoreApplication::translate("CloudSettingsSyncWidget", "Not synced yet");
+        m_lastSuccess->setText(
+            QCoreApplication::translate("CloudSettingsSyncWidget", "Last sync: %1").arg(lastSync));
+    }
+
+    void openSettings() {
+        if (m_dialog != nullptr)
+            return;
+        auto* dialog = new adqt::widgets::AdModal(this);
+        m_dialog = dialog;
+        dialog->setObjectName(QStringLiteral("settings-cloud-settings-sync-dialog"));
+        dialog->setMode(adqt::widgets::AdModal::Mode::Overlay);
+        dialog->setOwnerWindow(window());
+        dialog->setCentered(true);
+        dialog->setPreferredWidth(440);
+        dialog->setFooterVisible(false);
+
+        auto* body = new QWidget;
+        auto* layout = new QGridLayout(body);
+        layout->setContentsMargins(0, 0, 0, 0);
+        const auto metric = snow_shot::presentation::styles::ThemeManager::instance()
+                                .themeColorScheme()
+                                .metricAlias;
+        layout->setHorizontalSpacing(metric.marginLG);
+        layout->setVerticalSpacing(metric.margin);
+        layout->setColumnStretch(0, 1);
+        m_enabledLabel = new QLabel(body);
+        m_enabledLabel->setWordWrap(true);
+        m_enabled = new adqt::widgets::AdSwitch(body);
+        m_enabled->setObjectName(QStringLiteral("settings-cloud-settings-sync-enabled"));
+        m_enabledLabel->setBuddy(m_enabled);
+        m_lastSuccess = new QLabel(body);
+        m_lastSuccess->setWordWrap(true);
+        m_lastSuccess->setObjectName(QStringLiteral("settings-cloud-settings-sync-last-success"));
+        m_syncNow = new adqt::widgets::AdButton(body);
+        m_syncNow->setObjectName(QStringLiteral("settings-cloud-settings-sync-now"));
+        m_syncNow->setButtonStyle(adqt::widgets::AdButton::ButtonStyle::Outline);
+        m_syncNow->setIconRef(adqt::icons::antd::outlined::CloudSync());
+        layout->addWidget(m_enabledLabel, 0, 0);
+        layout->addWidget(m_enabled, 0, 1, Qt::AlignRight | Qt::AlignVCenter);
+        layout->addWidget(m_lastSuccess, 1, 0);
+        layout->addWidget(m_syncNow, 1, 1, Qt::AlignRight | Qt::AlignVCenter);
+        dialog->setContentWidget(body);
+        connect(m_enabled, &QAbstractButton::toggled, this, [this](bool enabled) {
+            emit m_session.cloudSettingsSyncEnabledRequested(enabled);
+            refreshState();
+        });
+        connect(
+            m_syncNow, &QAbstractButton::clicked, &m_session,
+            &snow_shot::presentation::settings::SettingsRuntimeSession::cloudSettingsSyncRequested);
+        connect(dialog, &adqt::widgets::AdModal::finished, this, [this, dialog] {
+            m_dialog = nullptr;
+            dialog->deleteLater();
+        });
+        retranslateUi();
+        dialog->open();
+    }
+
+    const snow_shot::presentation::settings::SettingsItemDefinition& m_definition;
+    snow_shot::presentation::settings::SettingsRuntimeSession& m_session;
+    std::function<void()> m_openAccount;
+    adqt::widgets::AdButton* m_button = nullptr;
+    QLabel* m_title = nullptr;
+    QLabel* m_description = nullptr;
+    QPointer<adqt::widgets::AdModal> m_dialog;
+    QLabel* m_enabledLabel = nullptr;
+    adqt::widgets::AdSwitch* m_enabled = nullptr;
+    QLabel* m_lastSuccess = nullptr;
+    adqt::widgets::AdButton* m_syncNow = nullptr;
+};
+#endif
+
 class McpStatusSettingsWidget final : public SettingsCustomWidget {
   public:
     explicit McpStatusSettingsWidget(QWidget* parent) : SettingsCustomWidget(parent) {
@@ -1552,8 +1704,12 @@ SettingsCustomWidget* createSettingsCustomWidget(
     snow_shot::presentation::settings::SettingsCustomRenderer renderer,
     const snow_shot::presentation::settings::SettingsRegistry& registry,
     const snow_shot::presentation::settings::SettingsItemDefinition& definition,
-    snow_shot::presentation::settings::SettingsRuntimeSession& runtimeSession, QWidget* parent) {
+    snow_shot::presentation::settings::SettingsRuntimeSession& runtimeSession, QWidget* parent,
+    std::function<void()> openAccount) {
     using snow_shot::presentation::settings::SettingsCustomRenderer;
+#if SNOW_SHOT_EDITION_MINI
+    Q_UNUSED(openAccount);
+#endif
     switch (renderer) {
     case SettingsCustomRenderer::CloudUploadConfigurations:
         return new CloudUploadSettingsWidget(runtimeSession, parent);
@@ -1573,6 +1729,13 @@ SettingsCustomWidget* createSettingsCustomWidget(
     case SettingsCustomRenderer::CustomAiModels:
 #if SNOW_SHOT_ENABLE_API_CONFIGURATION
         return new CustomAiModelsSettingsWidget(runtimeSession, parent);
+#else
+        return nullptr;
+#endif
+    case SettingsCustomRenderer::CloudSettingsSync:
+#if !SNOW_SHOT_EDITION_MINI
+        return new CloudSettingsSyncWidget(definition, runtimeSession, std::move(openAccount),
+                                           parent);
 #else
         return nullptr;
 #endif

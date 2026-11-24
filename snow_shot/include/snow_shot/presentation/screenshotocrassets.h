@@ -77,7 +77,8 @@ class ScreenshotOcrAssets final : public QObject {
     explicit ScreenshotOcrAssets(Options options, QObject* parent = nullptr);
     ~ScreenshotOcrAssets() override;
 
-    void prepare();
+    // Cache-only preparation may also select an available local model.
+    void prepare(bool allowDownload = true, bool tryCachedFallback = false);
     void setProxyUrl(const QString& proxyUrl);
     void setModelType(ScreenshotOcrModelType modelType);
 

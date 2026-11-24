@@ -371,6 +371,35 @@ def exercise_application(client, directory):
     updated = client.tool("snow_shot_settings_get")["result"]["fields"]
     assert next(field for field in updated if field["id"] == delay["id"])["value"] == 3
 
+    binding_fields = ("quick.screenshot-delay", "quick.screenshot-copy")
+    original_bindings = {field_id: fields[field_id]["value"] for field_id in binding_fields}
+    assigned_bindings = {
+        binding_fields[0]: [{"portable": "Ctrl+Shift+F17"}],
+        binding_fields[1]: [{"portable": "Ctrl+Shift+F18"}],
+    }
+    swapped_bindings = {
+        binding_fields[0]: assigned_bindings[binding_fields[1]],
+        binding_fields[1]: assigned_bindings[binding_fields[0]],
+    }
+    before = revision()
+    for invalid in ([{"portable": f"Ctrl+Shift+F{i}"} for i in (17, 19, 20)],
+                    [{"portable": "Ctrl+Shift+F17"}, {"portable": "UnknownFutureKey"}]):
+        client.tool("snow_shot_settings_update", {"expected_revision": before, "values": {
+            binding_fields[0]: invalid, binding_fields[1]: assigned_bindings[binding_fields[1]],
+        }}, error="invalid_parameters")
+        snapshot = client.tool("snow_shot_settings_get")
+        assert snapshot["revision"] == before
+        assert {field["id"]: field["value"] for field in snapshot["result"]["fields"]
+                if field["id"] in binding_fields} == original_bindings
+    for bindings in (assigned_bindings, swapped_bindings, original_bindings):
+        applied = client.tool("snow_shot_settings_update", {
+            "expected_revision": revision(), "values": bindings})["result"]["applied_fields"]
+        assert set(applied) == set(bindings)
+        current = {field["id"]: field["value"] for field in
+                   client.tool("snow_shot_settings_get")["result"]["fields"]}
+        actual = {field_id: current[field_id] for field_id in binding_fields}
+        assert actual == bindings, (actual, bindings)
+
     model = {"id": "95ca84ed-5dcb-42ea-bf6c-c47bf6e87d4b", "name": "Fixture model",
              "base_url": "https://example.invalid/v1", "model": "fixture",
              "supports_vision": False, "supports_reasoning": True}

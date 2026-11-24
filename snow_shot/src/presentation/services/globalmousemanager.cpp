@@ -182,14 +182,19 @@ void GlobalMouseManager::initialize() {
     impl.started = true;
     const quint64 epoch = impl.generation;
     impl.reload();
-    impl.configurationConnection =
-        connect(&storage::ApplicationStorage::instance().configuration(),
-                &storage::ConfigurationStore::valueChanged, this,
-                [this](const QString& key, const QJsonValue&) {
-                    if (key.startsWith(QStringLiteral("global_mouse/"))) {
-                        m_impl->reload();
-                    }
-                });
+    impl.configurationConnection = connect(
+        &storage::ApplicationStorage::instance().configuration(),
+        &storage::ConfigurationStore::valuesCommitted, this,
+        [this](storage::ConfigurationWriteOrigin, const auto& previous, const auto& values) {
+            const QString prefix = QStringLiteral("global_mouse/");
+            for (auto it = values.lowerBound(prefix);
+                 it != values.cend() && it.key().startsWith(prefix); ++it) {
+                if (previous.value(it.key()) != it.value()) {
+                    m_impl->reload();
+                    break;
+                }
+            }
+        });
     impl.backend->setPermissionRefreshHandler([this, epoch] {
         QMetaObject::invokeMethod(
             this,

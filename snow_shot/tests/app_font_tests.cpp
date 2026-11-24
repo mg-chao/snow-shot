@@ -212,6 +212,8 @@ int main(int argc, char** argv) {
                 theme.appFontFamily() == unavailable && theme.appFontSize() == 25,
             "configuration import applies font family and size using Qt fallback");
     requireFontSize(QApplication::font(), 25);
+    require(QApplication::font().family() == originalFont.family(),
+            "a missing preferred font uses the original application font until installed");
     const auto options = backend.dynamicSelectOptions(binding);
     require(std::any_of(options.cbegin(), options.cend(),
                         [&](const auto& option) { return option.value.toString() == unavailable; }),

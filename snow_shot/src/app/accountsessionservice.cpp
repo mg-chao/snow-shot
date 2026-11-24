@@ -5,6 +5,8 @@
 #include "snow_shot/storage/accountsecretstore.h"
 #include "snow_shot/storage/applicationstorage.h"
 
+#include "../network/boundednetworkresponse.h"
+
 #include <QCoreApplication>
 #include <QJsonDocument>
 #include <QNetworkAccessManager>
@@ -197,6 +199,42 @@ AccountSessionService* AccountSessionService::forClient(SnowShotApiClient* clien
     return new AccountSessionService(*client, std::move(options), client);
 }
 
+AccountSessionService::SettingsSyncAccount AccountSessionService::settingsSyncAccount() const {
+    return {m_origin, m_accountId, signedIn(), !m_refreshToken.isEmpty()};
+}
+
+void AccountSessionService::requestSettingsSync(const QUrlQuery& query, const QJsonObject& update,
+                                                SettingsSyncCompletion completion) {
+    if (!signedIn() || m_accountId.isEmpty()) {
+        completion({}, 401);
+        return;
+    }
+    QString path = QStringLiteral("/account/settings-sync");
+    if (!query.isEmpty())
+        path += u'?' + query.toString(QUrl::FullyEncoded);
+    send(
+        update.isEmpty() ? "GET" : "POST", path, update,
+        [completion = std::move(completion)](const QJsonObject& data,
+                                             const RequestFailure& failure) {
+            if (failure.isEmpty())
+                completion(data, 200);
+            else
+                completion({}, failure.status >= 400 ? failure.status : 0);
+        },
+        true, {}, {}, false, m_settingsSyncGeneration);
+}
+
+void AccountSessionService::cancelSettingsSyncRequest() {
+    ++m_settingsSyncGeneration;
+    if (auto reply = std::exchange(m_settingsSyncReply, {}))
+        reply->abort();
+}
+
+void AccountSessionService::restoreSettingsSyncSession() {
+    if (!signedIn() && !m_refreshToken.isEmpty() && !m_busy && !m_refreshing)
+        refreshSession([](bool) {}, true);
+}
+
 QString AccountSessionService::formatCredits(const QString& nanos) {
     const qint64 credits = wholeCredits(nanos);
     const qint64 magnitude = credits < 0 ? -credits : credits;
@@ -213,7 +251,10 @@ QString AccountSessionService::formatCreditAmount(const QString& nanos) {
 
 void AccountSessionService::send(const QByteArray& method, const QString& path,
                                  const QJsonObject& body, Completion completion, bool authenticated,
-                                 const QString& proof, const QString& operation, bool retried) {
+                                 const QString& proof, const QString& operation, bool retried,
+                                 std::optional<quint64> syncGeneration) {
+    if (syncGeneration && *syncGeneration != m_settingsSyncGeneration)
+        return;
     const quint64 generation = m_generation;
     const QString requestId =
         operation.isEmpty() ? QUuid::createUuid().toString(QUuid::Id128) : operation;
@@ -235,36 +276,41 @@ void AccountSessionService::send(const QByteArray& method, const QString& path,
                       : m_network->sendCustomRequest(
                             request, method, QJsonDocument(body).toJson(QJsonDocument::Compact));
     m_replies.insert(reply);
-    // Codes are bounded separately from streaming translation responses.
-    auto bytes = std::make_shared<QByteArray>();
-    connect(reply, &QIODevice::readyRead, this, [reply, bytes] {
-        bytes->append(reply->readAll());
-        if (bytes->size() > 4 * 1024 * 1024)
-            reply->abort();
-    });
+    if (syncGeneration)
+        m_settingsSyncReply = reply;
+    const auto* response = new network::BoundedNetworkResponse(
+        reply, syncGeneration ? 256 * 1024 : network::kMaximumJsonResponseBytes);
     connect(reply, &QNetworkReply::finished, this,
-            [this, reply, bytes, generation, method, path, body, completion, authenticated, proof,
-             requestId, retried] {
+            [this, reply, response, generation, method, path, body, completion, authenticated,
+             proof, requestId, retried, syncGeneration] {
                 m_replies.remove(reply);
-                bytes->append(reply->readAll());
+                if (m_settingsSyncReply == reply)
+                    m_settingsSyncReply.clear();
                 const int status =
                     reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-                const auto object = QJsonDocument::fromJson(*bytes).object();
-                const bool success = status >= 200 && status < 300 &&
+                reply->deleteLater();
+                if (generation != m_generation ||
+                    (syncGeneration && *syncGeneration != m_settingsSyncGeneration))
+                    return;
+                const auto object = QJsonDocument::fromJson(response->body()).object();
+                const bool success = status >= 200 && status < 300 && !response->tooLarge() &&
                                      reply->error() == QNetworkReply::NoError &&
                                      object.value(QStringLiteral("code")).toInt(-1) == 0 &&
                                      object.value(QStringLiteral("data")).isObject();
-                reply->deleteLater();
-                if (generation != m_generation)
-                    return;
                 if (status == 401 && authenticated && !retried && !m_refreshToken.isEmpty()) {
                     refreshSession(
-                        [this, method, path, body, completion, proof, requestId](bool refreshed) {
+                        [this, method, path, body, completion, proof, requestId, generation,
+                         syncGeneration](bool refreshed) {
+                            if (generation != m_generation ||
+                                (syncGeneration && *syncGeneration != m_settingsSyncGeneration))
+                                return;
                             if (refreshed)
-                                send(method, path, body, completion, true, proof, requestId, true);
+                                send(method, path, body, completion, true, proof, requestId, true,
+                                     syncGeneration);
                             else
                                 completion({}, {QStringLiteral("invalid_session"), 401});
-                        });
+                        },
+                        syncGeneration.has_value());
                     return;
                 }
                 QString code = object.value(QStringLiteral("code")).toString();
@@ -276,8 +322,10 @@ void AccountSessionService::send(const QByteArray& method, const QString& path,
 }
 
 void AccountSessionService::resetOrigin() {
+    const QString previousOrigin = m_origin;
     resetRegistrationClaimRetry();
     ++m_generation;
+    cancelSettingsSyncRequest();
     const auto replies = m_replies;
     for (auto* reply : replies)
         reply->abort();
@@ -296,6 +344,7 @@ void AccountSessionService::resetOrigin() {
     m_purchase.m_pollBusy = m_purchase.m_queryPlatform = m_purchase.m_cancelBusy =
         m_purchase.m_claimBusy = false;
     m_origin = m_client ? m_client->baseUrl() : QString();
+    m_accountId.clear();
     m_accessToken.clear();
     m_refreshToken.clear();
     m_account = {};
@@ -314,6 +363,8 @@ void AccountSessionService::resetOrigin() {
     if (m_options.persistSecrets) {
         const auto stored = QJsonDocument::fromJson(m_secrets->read()).object();
         m_refreshToken = stored.value(QStringLiteral("refresh_token")).toString();
+        if (!m_refreshToken.isEmpty())
+            m_accountId = stored.value(QStringLiteral("account_id")).toString();
         m_purchase.m_request = stored.value(QStringLiteral("purchase")).toObject();
         m_purchase.m_request.remove(QStringLiteral("server_time"));
         m_purchase.m_proof = stored.value(QStringLiteral("registration_proof")).toString();
@@ -337,6 +388,7 @@ void AccountSessionService::resetOrigin() {
              m_purchase.m_request.value(QStringLiteral("state")).toString() == u"fulfilled")
         QTimer::singleShot(0, this, &AccountSessionService::claimRegistration);
     schedulePreviousRegistrationPoll();
+    emit settingsSyncAccountChanged(!previousOrigin.isEmpty() && previousOrigin != m_origin);
     emit changed();
 }
 
@@ -344,6 +396,7 @@ void AccountSessionService::persist() {
     if (!m_options.persistSecrets || !m_secrets)
         return;
     const QJsonObject state{{QStringLiteral("refresh_token"), m_refreshToken},
+                            {QStringLiteral("account_id"), m_accountId},
                             {QStringLiteral("purchase"), m_purchase.m_request},
                             {QStringLiteral("registration_proof"), m_purchase.m_proof},
                             {QStringLiteral("registration"), m_purchase.m_registration},
@@ -358,7 +411,8 @@ void AccountSessionService::persist() {
             "payment is confirmed; you may need to sign in again after restarting"));
 }
 
-void AccountSessionService::refreshSession(std::function<void(bool)> completion) {
+void AccountSessionService::refreshSession(std::function<void(bool)> completion, bool quiet) {
+    m_reportRefreshFailure = m_refreshing ? m_reportRefreshFailure || !quiet : !quiet;
     m_refreshWaiters.append(std::move(completion));
     if (m_refreshing)
         return;
@@ -367,6 +421,7 @@ void AccountSessionService::refreshSession(std::function<void(bool)> completion)
          {{QStringLiteral("refresh_token"), m_refreshToken}},
          [this](const QJsonObject& data, const RequestFailure& error) {
              m_refreshing = false;
+             const bool reportFailure = std::exchange(m_reportRefreshFailure, false);
              const bool success = error.isEmpty() &&
                                   !data.value(QStringLiteral("access_token")).toString().isEmpty();
              if (success)
@@ -374,6 +429,7 @@ void AccountSessionService::refreshSession(std::function<void(bool)> completion)
              else if (error.status == 401) {
                  m_accessToken.clear();
                  m_refreshToken.clear();
+                 m_accountId.clear();
                  if (m_client)
                      m_client->setAccountAccessToken({});
                  m_accountRefresh.stop();
@@ -382,12 +438,13 @@ void AccountSessionService::refreshSession(std::function<void(bool)> completion)
                  m_transactions = {};
                  m_nextCursor.clear();
                  persist();
+                 emit settingsSyncAccountChanged(false);
                  emit signedInChanged(false);
              }
              const auto waiters = std::exchange(m_refreshWaiters, {});
              for (const auto& waiter : waiters)
                  waiter(success);
-             if (!success)
+             if (!success && reportFailure)
                  fail(error);
          });
 }
@@ -397,6 +454,10 @@ void AccountSessionService::acceptSession(const QJsonObject& session, bool sameA
         fail(accountError({}));
         return;
     }
+    const QString previousAccountId = m_accountId;
+    const QString accountId = session.value(QStringLiteral("account_id")).toString();
+    if (!sameAccountRefresh || !accountId.isEmpty())
+        m_accountId = accountId.size() <= 256 ? accountId : QString();
     m_accessToken = session.value(QStringLiteral("access_token")).toString();
     m_refreshToken = session.value(QStringLiteral("refresh_token")).toString();
     if (m_client)
@@ -414,6 +475,8 @@ void AccountSessionService::acceptSession(const QJsonObject& session, bool sameA
     if (m_purchase.shouldPollPayment() && !m_purchase.m_pollBusy && !m_purchase.m_poll.isActive())
         startPurchasePoll(0);
     persist();
+    emit settingsSyncAccountChanged(!previousAccountId.isEmpty() &&
+                                    previousAccountId != m_accountId);
     emit signedInChanged(signedIn());
     emit changed();
 }
@@ -500,6 +563,7 @@ void AccountSessionService::signOut() {
     const auto refresh = m_refreshToken;
     m_purchase.m_poll.stop();
     ++m_generation;
+    cancelSettingsSyncRequest();
     m_previousRegistrationQueries.clear();
     m_previousManualRefreshes.clear();
     const auto replies = m_replies;
@@ -515,6 +579,7 @@ void AccountSessionService::signOut() {
     m_tokenRefresh.stop();
     m_accessToken.clear();
     m_refreshToken.clear();
+    m_accountId.clear();
     m_account = {};
     m_transactions = {};
     m_nextCursor.clear();
@@ -522,6 +587,7 @@ void AccountSessionService::signOut() {
     m_fieldErrors.clear();
     if (m_client)
         m_client->setAccountAccessToken({});
+    emit settingsSyncAccountChanged(true);
     persist();
     if (!refresh.isEmpty())
         send("POST", QStringLiteral("/auth/logout"), {{QStringLiteral("refresh_token"), refresh}},

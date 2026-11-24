@@ -10,10 +10,14 @@
 #include <QRecursiveMutex>
 #include <QObject>
 #include <QPair>
+#include <QSet>
 #include <QString>
 #include <QTimer>
 #include <QVector>
 #include <functional>
+#include <memory>
+
+class QThreadPool;
 
 namespace snow_shot::storage {
 enum class ConfigurationCompatibility {
@@ -24,6 +28,7 @@ enum class ConfigurationCompatibility {
 };
 
 enum class ConfigurationDefaults { Standard, Portable };
+enum class ConfigurationWriteOrigin { Explicit, Reset, Import, ImportDefaults, Remote, Internal };
 
 class ConfigurationStore final : public QObject {
     Q_OBJECT
@@ -32,6 +37,7 @@ class ConfigurationStore final : public QObject {
     ConfigurationStore(QString configurationFile, bool readAvailable, bool writeAvailable,
                        int debounceMilliseconds = 1000, QObject* parent = nullptr,
                        ConfigurationDefaults defaults = ConfigurationDefaults::Standard);
+    ~ConfigurationStore() override;
 
     [[nodiscard]] static int currentSchemaVersion();
 
@@ -44,13 +50,28 @@ class ConfigurationStore final : public QObject {
     // nested writes made by runtime settings adapters.
     bool mutateIfRevision(quint64 expectedRevision, const std::function<bool()>& mutation,
                           bool* conflict = nullptr);
+    // On the store thread, deliver earlier worker commits before changing their observer's
+    // context. Concurrent writers resume after the transition completes.
+    void afterPendingChanges(const std::function<void()>& transition);
+    // Called on the committing thread under the mutation lock, before a flush can capture
+    // the edit. Runtime/UI observers continue to receive valuesCommitted on the store thread.
+    using CloudSyncJournal =
+        std::function<void(ConfigurationWriteOrigin, const QMap<QString, QJsonValue>&,
+                           const QMap<QString, QJsonValue>&)>;
+    void setCloudSyncJournal(CloudSyncJournal journal);
     [[nodiscard]] bool isDirty() const;
     [[nodiscard]] bool isWritable() const;
     [[nodiscard]] QString lastError() const;
     [[nodiscard]] ConfigurationCompatibility compatibility() const;
 
-    bool setValue(const QString& key, const QJsonValue& value);
-    bool setValues(const QMap<QString, QJsonValue>& values);
+    bool setValue(const QString& key, const QJsonValue& value,
+                  ConfigurationWriteOrigin origin = ConfigurationWriteOrigin::Explicit);
+    bool setValues(const QMap<QString, QJsonValue>& values,
+                   ConfigurationWriteOrigin origin = ConfigurationWriteOrigin::Explicit);
+    [[nodiscard]] QJsonObject cloudSyncState() const;
+    // Keep sync metadata and downloaded preferences in the same atomic file write.
+    bool setCloudSyncState(const QJsonObject& state,
+                           const QMap<QString, QJsonValue>& remoteValues = {});
     // Replaces the whole configuration with `values` overlaid on schema
     // defaults for this store, using the same per-key salvage rules as loading a
     // configuration file. Keys absent from `values` revert to defaults.
@@ -59,22 +80,33 @@ class ConfigurationStore final : public QObject {
     // than this application are rejected. Pass 0 to treat the overlay as
     // already at the current schema. Returns false when storage is
     // read-only or `schemaVersion` is from a newer application.
-    bool applySnapshot(const QMap<QString, QJsonValue>& values, int schemaVersion = 0);
+    bool applySnapshot(const QMap<QString, QJsonValue>& values, int schemaVersion = 0,
+                       const QSet<QString>* explicitlyImported = nullptr);
     [[nodiscard]] StorageResult flushNow();
+    void flushAsync(QObject* receiver, std::function<void(StorageResult)> completion);
     void suspendWrites(bool suspended);
     void relocate(const QString& configurationDirectory);
 
   signals:
+    void writesResumed();
+    // Accepted operations include an explicit write of the current value.
+    void valuesCommitted(snow_shot::storage::ConfigurationWriteOrigin origin,
+                         const QMap<QString, QJsonValue>& previous,
+                         const QMap<QString, QJsonValue>& values);
     void valueChanged(const QString& key, const QJsonValue& value);
     void mutationRejected(const QString& key, const QString& error);
     void errorChanged(const QString& error);
 
   private:
+    bool setValuesImpl(const QMap<QString, QJsonValue>& values, ConfigurationWriteOrigin origin,
+                       const QJsonObject* cloudSyncState);
     void load();
     void scheduleFlush();
     void setLastError(const QString& error);
     void rejectMutation(const QString& key, const QString& error);
-    void announceChanges(QVector<QPair<QString, QJsonValue>> changed);
+    void announceChanges(ConfigurationWriteOrigin origin, QMap<QString, QJsonValue> previous,
+                         QMap<QString, QJsonValue> values,
+                         QVector<QPair<QString, QJsonValue>> changed, bool documentChanged);
 
     QString m_configurationFile;
     bool m_readAvailable = false;
@@ -82,6 +114,9 @@ class ConfigurationStore final : public QObject {
     bool m_writeAvailable = false;
     mutable QMutex m_mutex;
     QRecursiveMutex m_mutationMutex;
+    CloudSyncJournal m_cloudSyncJournal;
+    QList<std::function<void()>> m_pendingChanges;
+    bool m_deliveringChanges = false;
     QMutex m_ioMutex;
     const QMap<QString, QJsonValue> m_defaults;
     QMap<QString, QJsonValue> m_values;
@@ -89,8 +124,10 @@ class ConfigurationStore final : public QObject {
     QString m_lastError;
     ConfigurationCompatibility m_compatibility = ConfigurationCompatibility::Current;
     quint64 m_revision = 0;
+    quint64 m_documentRevision = 0;
     bool m_dirty = false;
     QTimer m_flushTimer;
+    std::unique_ptr<QThreadPool> m_flushWorker;
 };
 } // namespace snow_shot::storage
 

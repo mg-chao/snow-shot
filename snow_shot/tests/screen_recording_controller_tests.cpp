@@ -908,6 +908,20 @@ void recordingAutoExitAfterSuccessfulFinalization(bool notifications = false) {
                                 controller.isOpen(),
                             "auto-exit must wait for pending recording finalization");
                     require(notificationPaths.isEmpty(), "pending exports must not notify");
+                    const bool updatePreferences = !deferred && !copy && succeeds;
+                    if (updatePreferences) {
+                        require(
+                            snow_shot::storage::ApplicationStorage::instance()
+                                .configuration()
+                                .setValues({{QStringLiteral(
+                                                 "screen_recording/auto_exit_after_recording_ends"),
+                                             !enabled},
+                                            {QStringLiteral(
+                                                 "screen_recording/notify_after_export_completes"),
+                                             !notifications}},
+                                           snow_shot::storage::ConfigurationWriteOrigin::Remote),
+                            "save new completion preferences while the previous export is pending");
+                    }
                     joinHeldExport(release, previousExports);
                     if (deferred && succeeds) {
                         wait([&] {
@@ -927,6 +941,13 @@ void recordingAutoExitAfterSuccessfulFinalization(bool notifications = false) {
                             "only successful recordings auto-exit when enabled");
                     require(notificationPaths.size() == (notifications && succeeds ? 1 : 0),
                             "only successful exports notify once when enabled");
+                    if (updatePreferences) {
+                        require(settings.autoExitAfterRecordingEnds() == !enabled &&
+                                    settings.notifyAfterExportCompletes() == !notifications &&
+                                    settings.setAutoExitAfterRecordingEnds(enabled) &&
+                                    settings.setNotifyAfterExportCompletes(notifications),
+                                "synchronized completion preferences are saved for the next task");
+                    }
                     if (!notificationPaths.isEmpty())
                         require(notificationPaths.first() == controller.automationState()
                                                                  .value(QStringLiteral("path"))

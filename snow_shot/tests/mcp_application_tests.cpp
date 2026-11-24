@@ -520,6 +520,23 @@ void runMcpApplicationTests() {
                 true,
         "MCP toolbar auto-hide updates persist and publish the same boolean as the UI");
     const auto autoHideRevision = configuration.revision();
+    int explicitAssignments = 0;
+    const auto watchAssignment = QObject::connect(
+        &configuration, &storage::ConfigurationStore::valuesCommitted, &session,
+        [&](storage::ConfigurationWriteOrigin origin, const auto& previous, const auto& values) {
+            const auto key = autoHideField->configurationKey;
+            if (origin == storage::ConfigurationWriteOrigin::Explicit && values.contains(key) &&
+                previous.value(key) == values.value(key))
+                ++explicitAssignments;
+        });
+    const auto sameValueAssignment = call(
+        QStringLiteral("settings_update"),
+        {{QStringLiteral("values"), QJsonObject{{autoHideField->id, true}}}}, autoHideRevision);
+    QObject::disconnect(watchAssignment);
+    require(
+        sameValueAssignment.ok && explicitAssignments == 1 &&
+            configuration.revision() == autoHideRevision,
+        "same-value MCP assignment records one explicit sync operation at the existing revision");
     require(
         call(QStringLiteral("settings_update"),
              {{QStringLiteral("values"), QJsonObject{{autoHideField->id, QStringLiteral("true")}}}},
