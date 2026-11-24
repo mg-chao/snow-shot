@@ -553,8 +553,10 @@ class ScreenshotPinnedWindow final : public QWidget {
     void updateOriginalImagePreviewVisibility();
     void beginAuxiliaryWindowInteraction();
     void endAuxiliaryWindowInteraction();
-    void activateRecognitionMode(int mode, bool showToolbar = true);
+    void activateRecognitionMode(int mode, bool showToolbar = true,
+                                 ScreenshotClipboardService::PublicationId copySourceOnReady = 0);
     void toggleTextRecognitionResults();
+    void copyRecognizedSourceText();
     void initializeTextType(const Config& config);
     void updateTextType(snow_shot::storage::PinnedTextType type);
     void setTextType(snow_shot::storage::PinnedTextType type);

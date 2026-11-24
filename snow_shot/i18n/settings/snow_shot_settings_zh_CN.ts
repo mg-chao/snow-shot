@@ -4923,10 +4923,6 @@
             <translation>显示文本高亮</translation>
         </message>
         <message>
-            <source>Show text recognition results</source>
-            <translation>显示文本识别结果</translation>
-        </message>
-        <message>
             <source>Show the annotation and close buttons in the upper-right corner of pinned windows</source>
             <translation>显示固定到屏幕窗口右上角的标注和关闭按钮</translation>
         </message>

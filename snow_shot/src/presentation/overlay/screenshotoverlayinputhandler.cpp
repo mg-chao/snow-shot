@@ -1474,10 +1474,7 @@ void ScreenshotOverlayInputHandler::handleMouseCompletion(snow_shot::mouse::Acti
     if (!preview.contains(virtualPositionForOverlay(overlay, position)))
         return;
 
-    const QString toolbarActionId = actionId == QStringLiteral("text_recognition_copy")
-                                        ? QStringLiteral("text_recognition")
-                                        : actionId;
-    if (m_context.actions.canActivateScreenshotShortcut(toolbarActionId)) {
+    if (m_context.actions.canActivateScreenshotShortcut(actionId)) {
         static_cast<void>(activateToolbarShortcutForSelection(activate));
     }
 }

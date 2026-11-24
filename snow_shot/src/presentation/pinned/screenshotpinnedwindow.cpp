@@ -1115,7 +1115,8 @@ ScreenshotPinnedWindow::ScreenshotPinnedWindow(QWidget* parent)
                     }
                     if (key == QStringLiteral("pin_to_screen/quick_annotation_for_selected_text"))
                         synchronizeQuickTextAnnotationToolbar();
-                    if (key.startsWith(QStringLiteral("pin_to_screen_shortcuts/"))) {
+                    if (key.startsWith(QStringLiteral("pin_to_screen_shortcuts/")) ||
+                        key == QStringLiteral("screenshot_shortcuts/text_recognition")) {
                         reloadPinnedWindowShortcuts();
                     }
                     if (key == QStringLiteral("pin_to_screen/show_window_buttons")) {
@@ -1153,6 +1154,21 @@ void ScreenshotPinnedWindow::registerWindowShortcuts() {
                 readOnlyRecognitionBrowserForFocus(context.focusWidget) != nullptr) &&
                !ShortcutManager::focusAcceptsTextInput(context.focusWidget);
     };
+    ShortcutManager::Binding recognition;
+    recognition.id = QStringLiteral("pinned.text_recognition");
+    recognition.priority = ShortcutManager::StandardPriority::WindowCommand;
+    recognition.canActivate = [this, localCommandsAllowed](const auto& context) {
+        return localCommandsAllowed(context) &&
+               recognitionModeAvailable(
+                   static_cast<int>(ScreenshotRecognitionSessionController::Mode::Text));
+    };
+    recognition.activate = [this](const auto&) {
+        toggleTextRecognitionResults();
+        return true;
+    };
+    m_pinnedShortcutBindings.insert(QStringLiteral("text_recognition"),
+                                    m_shortcutManager->addBinding(this, std::move(recognition)));
+
     for (const QString& id :
          {QStringLiteral("toggle_playback"), QStringLiteral("next_frame"),
           QStringLiteral("previous_frame"), QStringLiteral("decrease_playback_speed"),
@@ -1274,21 +1290,6 @@ void ScreenshotPinnedWindow::registerWindowShortcuts() {
         };
         m_pinnedShortcutBindings.insert(id, m_shortcutManager->addBinding(this, std::move(batch)));
     }
-
-    ShortcutManager::Binding recognition;
-    recognition.id = QStringLiteral("pinned.show_recognition");
-    recognition.priority = ShortcutManager::StandardPriority::WindowCommand;
-    recognition.canActivate = [this, localCommandsAllowed](const auto& context) {
-        return localCommandsAllowed(context) &&
-               recognitionModeAvailable(
-                   static_cast<int>(ScreenshotRecognitionSessionController::Mode::Text));
-    };
-    recognition.activate = [this](const auto&) {
-        toggleTextRecognitionResults();
-        return true;
-    };
-    m_pinnedShortcutBindings.insert(QStringLiteral("show_text_recognition_results"),
-                                    m_shortcutManager->addBinding(this, std::move(recognition)));
 
     ShortcutManager::Binding drawing;
     drawing.id = QStringLiteral("pinned.drawing_mode");
@@ -1568,7 +1569,6 @@ void ScreenshotPinnedWindow::reloadPinnedWindowShortcuts() {
         {"batch_save_as_file", "screenshotPinnedBatchSaveAsFileAction"},
         {"upload_to_cloud", nullptr},
         {"print", nullptr},
-        {"show_text_recognition_results", "screenshotPinnedOcrAction"},
         {"drawing_mode", "screenshotPinnedDrawingAction"},
         {"toggle_playback", "screenshotPinnedTogglePlaybackAction"},
         {"next_frame", "screenshotPinnedNextFrameAction"},
@@ -1619,6 +1619,13 @@ void ScreenshotPinnedWindow::reloadPinnedWindowShortcuts() {
                 snow_shot::presentation::formatShortcutListDisplayText(shortcuts));
         }
     }
+    const QString recognitionId = QStringLiteral("text_recognition");
+    const auto recognition = settings.screenshotShortcuts(recognitionId);
+    static_cast<void>(m_shortcutManager->setShortcuts(m_pinnedShortcutBindings.value(recognitionId),
+                                                      recognition));
+    m_pinnedShortcutDisplays.insert(
+        QStringLiteral("screenshotPinnedOcrAction"),
+        snow_shot::presentation::formatShortcutListDisplayText(recognition));
     m_platform->setMoveKeyCombinations(movementCombinations);
     refreshMenuShortcutDisplays();
 }
@@ -5353,7 +5360,8 @@ void ScreenshotPinnedWindow::endAuxiliaryWindowInteraction() {
     }
 }
 
-void ScreenshotPinnedWindow::activateRecognitionMode(int mode, bool showToolbar) {
+void ScreenshotPinnedWindow::activateRecognitionMode(
+    int mode, bool showToolbar, ScreenshotClipboardService::PublicationId copySourceOnReady) {
     cancelCropInteraction();
     if (isLiveWindow() || animatedImage())
         return;
@@ -5373,10 +5381,16 @@ void ScreenshotPinnedWindow::activateRecognitionMode(int mode, bool showToolbar)
         return;
     }
     if (m_originalImage.isNull()) {
-        requestMaterializedImage([this, mode, showToolbar](bool succeeded) {
-            if (succeeded && !m_closing) {
-                activateRecognitionMode(mode, showToolbar);
-            } else if (!succeeded) {
+        const QPointer<ScreenshotRecognitionSessionController> session(m_recognitionSession.get());
+        requestMaterializedImage([this, mode, showToolbar, copySourceOnReady,
+                                  session](bool succeeded) {
+            if (!session || session != m_recognitionSession.get() || m_closing ||
+                (copySourceOnReady && (m_copyPublicationId != copySourceOnReady ||
+                                       !m_editController || !m_editController->editMode())))
+                return;
+            if (succeeded) {
+                activateRecognitionMode(mode, showToolbar, copySourceOnReady);
+            } else {
                 showPinnedRecognitionMessage(
                     this, translatePinnedText("The pinned image could not be prepared"), true);
             }
@@ -5396,7 +5410,10 @@ void ScreenshotPinnedWindow::activateRecognitionMode(int mode, bool showToolbar)
     if (m_editController != nullptr && m_editController->editMode()) {
         m_editController->prepareRecognitionToolActivation();
     }
-    m_recognitionSession->activate(selectedMode);
+    const QPointer<ScreenshotPinnedWindow> lifetime(this);
+    m_recognitionSession->activate(selectedMode, copySourceOnReady);
+    if (!lifetime || m_closing)
+        return;
     refreshContextMenu();
     schedulePersistence();
 }
@@ -5454,6 +5471,15 @@ void ScreenshotPinnedWindow::completePendingTextTranslation() {
     m_translateAfterRecognition = false;
     if (!m_preferCachedTranslation || !m_recognitionSession->activateCachedTextTranslation())
         m_recognitionSession->beginTextTranslation();
+}
+
+void ScreenshotPinnedWindow::copyRecognizedSourceText() {
+    const auto publication = beginCopyRequest();
+    updateTextType(snow_shot::storage::PinnedTextType::RecognitionResults);
+    m_initialTranslationVisible = false;
+    m_translateAfterRecognition = false;
+    activateRecognitionMode(static_cast<int>(ScreenshotRecognitionSessionController::Mode::Text),
+                            false, publication);
 }
 
 void ScreenshotPinnedWindow::toggleTextRecognitionResults() {

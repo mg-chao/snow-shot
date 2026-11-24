@@ -329,8 +329,8 @@ ScreenshotOcrController::ScreenshotOcrController(ScreenshotOcrControllerContext 
             },
             {},
             [this]() {
-                return !m_copyAndEndCapture && (!m_context.shouldRenderTextBackground ||
-                                                m_context.shouldRenderTextBackground());
+                return !m_explicitCopyPublication && (!m_context.shouldRenderTextBackground ||
+                                                      m_context.shouldRenderTextBackground());
             },
             {},
             Qt::ApplicationModal,
@@ -341,7 +341,7 @@ ScreenshotOcrController::ScreenshotOcrController(ScreenshotOcrControllerContext 
     connect(m_session.get(), &ScreenshotRecognitionSessionController::textResultChanged, this,
             [this](bool available) {
                 // This explicit action takes precedence over the configurable OCR follow-up.
-                if (m_copyAndEndCapture) {
+                if (m_explicitCopyPublication) {
                     if (available && m_active && m_mode == Mode::Text)
                         scheduleCopyRecognitionAndEndCapture();
                     return;
@@ -479,7 +479,10 @@ void ScreenshotOcrController::activateMode(Mode mode, bool textTranslation,
     }
 
     ++m_activationId;
-    m_copyAndEndCapture = copyAndEndCapture;
+    m_explicitCopyPublication =
+        copyAndEndCapture
+            ? ScreenshotClipboardService::reservePublication(QApplication::clipboard())
+            : 0;
     if (!m_active) {
         m_previousTool = m_context.interaction.activeTool();
         m_canvasStates.clear();
@@ -568,11 +571,29 @@ void ScreenshotOcrController::activateMode(Mode mode, bool textTranslation,
 void ScreenshotOcrController::scheduleCopyRecognitionAndEndCapture() {
     // A cached result is published inside tool activation. Ending the capture there
     // invalidates the recognition cache while activation is still using it.
-    QTimer::singleShot(0, this, [this, activation = m_activationId] {
-        if (activation == m_activationId && m_active && m_mode == Mode::Text && !translating() &&
-            hasTextResult())
-            static_cast<void>(copyRecognitionToClipboard(true, /*copyFullTextResult=*/true));
-    });
+    QTimer::singleShot(
+        0, this, [this, activation = m_activationId, publication = m_explicitCopyPublication] {
+            if (activation != m_activationId || publication != m_explicitCopyPublication ||
+                !m_active || m_mode != Mode::Text || !hasTextResult())
+                return;
+            if (publication) {
+                const auto finish = [this, activation, publication](bool published) {
+                    if (activation != m_activationId || publication != m_explicitCopyPublication)
+                        return;
+                    m_explicitCopyPublication = 0;
+                    if (published) {
+                        m_context.cancelCapture();
+                    } else if (m_presentation && !editing()) {
+                        applyOcrBackgroundToOverlays(m_presentation);
+                        m_session->renderTextBackground();
+                    }
+                };
+                if (!m_session->copySourceTextToClipboard(publication, finish))
+                    finish(false);
+            } else if (!translating()) {
+                static_cast<void>(copyRecognitionToClipboard(true, /*copyFullTextResult=*/true));
+            }
+        });
 }
 
 bool ScreenshotOcrController::copyRecognitionToClipboard(bool endCapture, bool copyFullTextResult,
@@ -842,7 +863,7 @@ void ScreenshotOcrController::deactivateForSelectionResize() {
 
 void ScreenshotOcrController::deactivateImpl(bool preserveRecognitionWindow) {
     ++m_activationId;
-    m_copyAndEndCapture = false;
+    m_explicitCopyPublication = 0;
     m_session->deactivate();
     if (!m_active && m_canvasStates.isEmpty() && m_recognitionWindow == nullptr) {
         return;

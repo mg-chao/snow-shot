@@ -147,7 +147,8 @@ ScreenshotPinnedEditController::ScreenshotPinnedEditController(
                         }
                     } else if (key.startsWith(QStringLiteral("drawing_shortcuts/"))) {
                         reloadDrawingShortcuts();
-                    } else if (key.startsWith(QStringLiteral("screenshot_shortcuts/"))) {
+                    } else if (key.startsWith(QStringLiteral("screenshot_shortcuts/")) ||
+                               key.startsWith(QStringLiteral("pin_to_screen_shortcuts/"))) {
                         reloadScreenshotShortcuts();
                     }
                 });
@@ -338,8 +339,8 @@ void ScreenshotPinnedEditController::reloadDrawingShortcuts() {
 void ScreenshotPinnedEditController::registerScreenshotShortcuts() {
     const auto shortcuts = snow_shot::storage::ScreenshotShortcutSettings().allShortcuts();
     for (const QString& actionId :
-         {QStringLiteral("table_recognition"), QStringLiteral("qr_code_recognition"),
-          QStringLiteral("text_recognition"), QStringLiteral("text_translation")}) {
+         {QStringLiteral("text_recognition_copy"), QStringLiteral("table_recognition"),
+          QStringLiteral("qr_code_recognition"), QStringLiteral("text_translation")}) {
         if (!shortcuts.contains(actionId)) {
             continue;
         }
@@ -347,14 +348,22 @@ void ScreenshotPinnedEditController::registerScreenshotShortcuts() {
         binding.id = QStringLiteral("pinned.screenshot.") + actionId;
         binding.priority =
             snow_shot::presentation::WindowShortcutManager::StandardPriority::ScreenshotShortcut;
-        binding.canActivate = [this](const auto& context) {
-            return m_editMode &&
+        const bool copySource = actionId == QStringLiteral("text_recognition_copy");
+        binding.canActivate = [this, copySource](const auto& context) {
+            return m_editMode && !m_pinnedWindow.m_closing && !m_pinnedWindow.m_printPending &&
+                   !m_pinnedWindow.property("saveDialogOpen").toBool() &&
                    !snow_shot::presentation::WindowShortcutManager::focusAcceptsTextInput(
                        context.focusWidget) &&
                    !m_canvas.hasActiveTextEditing() && m_toolbarWindow != nullptr &&
-                   m_toolbarWindow->palette() != nullptr;
+                   m_toolbarWindow->palette() != nullptr &&
+                   (!copySource || m_toolbarWindow->palette()->canActivateScreenshotShortcut(
+                                       QStringLiteral("text_recognition")));
         };
-        binding.activate = [this, actionId](const auto&) {
+        binding.activate = [this, actionId, copySource](const auto&) {
+            if (copySource) {
+                m_pinnedWindow.copyRecognizedSourceText();
+                return true;
+            }
             return m_toolbarWindow->palette()->activateScreenshotShortcut(actionId);
         };
         m_screenshotShortcutBindings.insert(actionId,
@@ -363,11 +372,11 @@ void ScreenshotPinnedEditController::registerScreenshotShortcuts() {
 }
 
 void ScreenshotPinnedEditController::reloadScreenshotShortcuts() {
-    const snow_shot::storage::ScreenshotShortcutSettings settings;
+    const snow_shot::storage::PinToScreenShortcutSettings settings;
     for (auto binding = m_screenshotShortcutBindings.cbegin();
          binding != m_screenshotShortcutBindings.cend(); ++binding) {
-        static_cast<void>(
-            m_shortcutManager.setShortcuts(binding.value(), settings.shortcuts(binding.key())));
+        static_cast<void>(m_shortcutManager.setShortcuts(
+            binding.value(), settings.screenshotShortcuts(binding.key())));
     }
 }
 

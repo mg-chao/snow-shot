@@ -162,6 +162,98 @@ void ocrHardwareAccelerationPersistsAndDefaultsOff() {
             "older configurations must restore acceleration to off");
 }
 
+void sharedRecognitionShortcutSurvivesUpgrade() {
+    QTemporaryDir directory;
+    const auto path = directory.filePath(QStringLiteral("config.json"));
+    const auto shared = QStringLiteral("screenshot_shortcuts/text_recognition");
+    const auto retired = QStringLiteral("pin_to_screen_shortcuts/show_text_recognition_results");
+    const auto saveAs = QStringLiteral("pin_to_screen_shortcuts/save_as_file");
+    const auto defaultOcr = storage::ConfigurationSchema::defaultValue(shared);
+    const QJsonArray custom{QStringLiteral("F8")};
+    const QJsonArray other{QStringLiteral("F9")};
+    const QJsonArray quickSave{QStringLiteral("F7")};
+    struct Case {
+        QJsonValue screenshot;
+        QJsonArray pinned;
+        QJsonValue expected;
+    };
+    const QList<Case> cases{
+        {defaultOcr, custom, custom},
+        {QJsonValue(QJsonValue::Undefined), custom, custom},
+        {other, custom, other},
+        {QJsonArray{}, custom, QJsonArray{}},
+        {defaultOcr, defaultOcr.toArray(), defaultOcr},
+        {defaultOcr, QJsonArray{}, defaultOcr},
+        {defaultOcr, QJsonArray{QStringLiteral("Escape"), QStringLiteral("F7")}, defaultOcr},
+        {defaultOcr, QJsonArray{QStringLiteral("F7"), QStringLiteral("F8")}, custom},
+    };
+    for (const auto& test : cases) {
+        auto document = storage::ConfigurationSchema::completeDefaultDocument();
+        auto recognition = document.value(QStringLiteral("screenshot_shortcuts")).toObject();
+        recognition.insert(QStringLiteral("text_recognition"), test.screenshot);
+        recognition.insert(QStringLiteral("quick_save"), quickSave);
+        recognition.remove(QStringLiteral("text_recognition_copy"));
+        document.insert(QStringLiteral("screenshot_shortcuts"), recognition);
+        auto pinned = document.value(QStringLiteral("pin_to_screen_shortcuts")).toObject();
+        pinned.insert(QStringLiteral("show_text_recognition_results"), test.pinned);
+        pinned.insert(QStringLiteral("save_as_file"), other);
+        document.insert(QStringLiteral("pin_to_screen_shortcuts"), pinned);
+        writeBytes(path, QJsonDocument(document).toJson());
+        storage::ConfigurationStore upgraded(path, true, true, 60000);
+        const auto expected = storage::ConfigurationSchema::normalize(shared, test.expected).value;
+        require(upgraded.value(shared) == expected &&
+                    upgraded.value(saveAs) ==
+                        storage::ConfigurationSchema::normalize(saveAs, other).value &&
+                    !upgraded.snapshot().contains(retired) &&
+                    upgraded.value(QStringLiteral("screenshot_shortcuts/text_recognition_copy"))
+                        .toArray()
+                        .isEmpty(),
+                "upgrade preserves compatible pin OCR bindings and explicit screenshot choices");
+        require(upgraded.flushNow().success &&
+                    !QJsonDocument::fromJson(readBytes(path))
+                         .object()
+                         .value(QStringLiteral("pin_to_screen_shortcuts"))
+                         .toObject()
+                         .contains(QStringLiteral("show_text_recognition_results")),
+                "the obsolete pinned binding is removed from saved settings");
+        storage::ConfigurationStore reloaded(path, true, true, 60000);
+        require(reloaded.value(shared) == expected, "the shared binding must survive reload");
+    }
+
+    auto document = storage::ConfigurationSchema::completeDefaultDocument();
+    auto recognition = document.value(QStringLiteral("screenshot_shortcuts")).toObject();
+    recognition.remove(QStringLiteral("text_recognition"));
+    document.insert(QStringLiteral("screenshot_shortcuts"), recognition);
+    auto pinned = document.value(QStringLiteral("pin_to_screen_shortcuts")).toObject();
+    pinned.insert(QStringLiteral("save_as_file"), defaultOcr);
+    document.insert(QStringLiteral("pin_to_screen_shortcuts"), pinned);
+    writeBytes(path, QJsonDocument(document).toJson());
+    storage::ConfigurationStore upgraded(path, true, true, 60000);
+    require(!defaultOcr.toArray().isEmpty() && upgraded.value(shared).toArray().isEmpty() &&
+                upgraded.value(saveAs) ==
+                    storage::ConfigurationSchema::normalize(saveAs, defaultOcr).value,
+            "a new shared OCR default preserves a pre-existing dedicated pin binding");
+}
+
+void shadowedOcrCopyShortcutIsRemovedOnLoad() {
+    QTemporaryDir directory;
+    const auto path = directory.filePath(QStringLiteral("config.json"));
+    const auto key = QStringLiteral("screenshot_shortcuts/text_recognition_copy");
+    auto document = storage::ConfigurationSchema::completeDefaultDocument();
+    auto screenshot = document.value(QStringLiteral("screenshot_shortcuts")).toObject();
+    screenshot.insert(QStringLiteral("text_recognition_copy"),
+                      QJsonArray{QStringLiteral("Ctrl+A"), QStringLiteral("F8")});
+    document.insert(QStringLiteral("screenshot_shortcuts"), screenshot);
+    writeBytes(path, QJsonDocument(document).toJson());
+    storage::ConfigurationStore store(path, true, true, 60000);
+    const auto expected =
+        storage::ConfigurationSchema::normalize(key, QJsonArray{QStringLiteral("F8")}).value;
+    require(store.value(key) == expected && store.isDirty() && store.flushNow().success,
+            "loading repairs the shadowed OCR copy shortcut and keeps its valid alternative");
+    storage::ConfigurationStore reloaded(path, true, true, 60000);
+    require(reloaded.value(key) == expected, "the repaired OCR copy shortcut survives reload");
+}
+
 void ocrHighlightingSettingsPersistAndValidate() {
     QTemporaryDir temporary;
     require(temporary.isValid(), "OCR highlighting requires isolated storage");
@@ -1123,6 +1215,7 @@ void settingsSchemaDefaultsAndValidationAreComplete() {
         {QStringLiteral("qr_code_recognition"), QJsonArray{QStringLiteral("Ctrl+Q")}},
         {QStringLiteral("video_recording"), QJsonArray{QStringLiteral("Ctrl+R")}},
         {QStringLiteral("text_recognition"), QJsonArray{QStringLiteral("Ctrl+D")}},
+        {QStringLiteral("text_recognition_copy"), QJsonArray{}},
         {QStringLiteral("text_translation"), QJsonArray{QStringLiteral("Ctrl+T")}},
         {QStringLiteral("scrolling_screenshot"), QJsonArray{QStringLiteral("L")}},
         {QStringLiteral("print"), QJsonArray{QStringLiteral("Ctrl+P")}},
@@ -1161,7 +1254,6 @@ void settingsSchemaDefaultsAndValidationAreComplete() {
         {QStringLiteral("copy_original_content"), QJsonArray{QStringLiteral("Ctrl+Shift+C")}},
         {QStringLiteral("print"), QJsonArray{QStringLiteral("Ctrl+P")}},
         {QStringLiteral("save_as_file"), QJsonArray{QStringLiteral("Ctrl+S")}},
-        {QStringLiteral("show_text_recognition_results"), QJsonArray{QStringLiteral("Ctrl+D")}},
         {QStringLiteral("drawing_mode"), QJsonArray{QStringLiteral("Space")}},
         {QStringLiteral("toggle_playback"), QJsonArray{QStringLiteral("Space")}},
         {QStringLiteral("next_frame"), QJsonArray{}},
@@ -2088,7 +2180,7 @@ void verifyPinToScreenShortcutSettings() {
     const storage::PinToScreenShortcutSettings shortcutSettings;
     const shortcuts::ShortcutBindingMap defaults = shortcutSettings.allShortcuts();
     require(
-        defaults.size() == 40 &&
+        defaults.size() == 39 &&
             portable(defaults.value(QStringLiteral("copy_to_clipboard"))) ==
                 QStringList{QStringLiteral("Ctrl+C")} &&
             portable(defaults.value(QStringLiteral("copy_original_content"))) ==
@@ -2099,8 +2191,7 @@ void verifyPinToScreenShortcutSettings() {
                 QStringList{QStringLiteral("Ctrl+S")} &&
             portable(defaults.value(QStringLiteral("upload_to_cloud"))) ==
                 QStringList{QStringLiteral("Ctrl+U")} &&
-            portable(defaults.value(QStringLiteral("show_text_recognition_results"))) ==
-                QStringList{QStringLiteral("Ctrl+D")} &&
+            !defaults.contains(QStringLiteral("show_text_recognition_results")) &&
             portable(defaults.value(QStringLiteral("drawing_mode"))) ==
                 QStringList{QStringLiteral("Space")} &&
             defaults.contains(QStringLiteral("toggle_playback")) &&
@@ -3130,7 +3221,7 @@ void settingsAdaptersRoundTripAndRejectInvalidValues() {
     const storage::ScreenshotShortcutSettings screenshotShortcuts;
     const shortcuts::ShortcutBindingMap screenshotDefaults = screenshotShortcuts.allShortcuts();
     require(
-        screenshotDefaults.size() == 37 &&
+        screenshotDefaults.size() == 38 &&
             portable(screenshotDefaults.value(QStringLiteral("duplicate_latest_region"))) ==
                 QStringList{QStringLiteral("R")} &&
             portable(screenshotShortcuts.moveTool()) ==
@@ -4933,6 +5024,8 @@ int main(int argc, char** argv) {
     }
     if (application.arguments().contains(QStringLiteral("--local-shortcut-migration-only"))) {
         applicationEnterBindingsMigrateAndPersist();
+        sharedRecognitionShortcutSurvivesUpgrade();
+        shadowedOcrCopyShortcutIsRemovedOnLoad();
         duplicateShortcutDefaultsSurviveUpgrade();
         localShortcutDefaultsPreserveConfiguredBindings();
         previousSelectionStorageIsRetired();

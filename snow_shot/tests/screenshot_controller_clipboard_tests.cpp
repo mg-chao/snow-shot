@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "cloud_upload_test_support.h"
+#include "physical_key_test_support.h"
 #include "snow_shot/presentation/screenshotclouduploadservice.h"
 #include "canvas_automatic_selection_test_support.h"
 #include "screenshot_controller_test_access.h"
@@ -436,6 +437,98 @@ void captureActionsChooseToolBeforeFirstPresentation(const QString& directory) {
     }
 }
 
+void localOcrCopyShortcut(const QString& directory) {
+    using Access = ScreenshotControllerTestAccess;
+    const snow_shot::storage::ScreenshotShortcutSettings shortcuts;
+    require(
+        shortcuts.setShortcuts(QStringLiteral("text_recognition_copy"), {QStringLiteral("F8")}) &&
+            snow_shot::storage::ScreenshotSettings().setAutoExecuteAfterTextRecognition(
+                QStringLiteral("enable_edit_mode")),
+        "configure explicit OCR copy");
+    enum class Selection { Confirmed, Smart, Cached, Superseded, ReplacedDuringCopy };
+    for (auto selection : {Selection::Confirmed, Selection::Smart, Selection::Cached,
+                           Selection::Superseded, Selection::ReplacedDuringCopy}) {
+        const bool smart = selection == Selection::Smart;
+        const bool superseded =
+            selection == Selection::Superseded || selection == Selection::ReplacedDuringCopy;
+        if (superseded)
+            require(snow_shot::storage::ScreenshotSettings().setAutoExecuteAfterTextRecognition(
+                        QStringLiteral("copy_text_and_end_screenshot")),
+                    "configure automatic copy-and-end during supersession");
+        ScreenshotOcrRecognitionService recognition(isolatedRecognitionOptions(directory));
+        ScreenshotController controller(nullptr, nullptr, &recognition);
+        ScreenshotSelectionParams params;
+        params.selection = QRect(10, 10, 60, 40);
+        Access::prepareSelection(controller, fixture(), params);
+        auto* overlay = Access::presentSelection(controller);
+        const auto press = [&] {
+            for (auto type : {QEvent::KeyPress, QEvent::KeyRelease}) {
+                PhysicalKeyEvent event(type, Qt::Key_F8, Qt::NoModifier);
+                QApplication::sendEvent(overlay, &event);
+            }
+        };
+        QApplication::clipboard()->setText(QStringLiteral("Previous clipboard"));
+        if (smart) {
+            Access::interaction(controller).enterOverlayVisible(true);
+            Access::selection(controller).clearSelection();
+            press();
+            require(Access::interaction(controller).intelligentSelecting() &&
+                        !controller.findChild<ScreenshotRecognitionSessionController*>(),
+                    "an empty preview cannot trigger OCR");
+            Access::selection(controller).setSelectionRect(params.selection);
+        } else {
+            Access::confirmCaptureSelection(controller, ScreenshotController::CaptureAction::None);
+        }
+        if (selection == Selection::Cached)
+            Access::commands(controller).setOcrTool();
+        else
+            press();
+        auto* session = controller.findChild<ScreenshotRecognitionSessionController*>();
+        require(session && session->active() &&
+                    !Access::interaction(controller).intelligentSelecting(),
+                "local shortcut activates OCR for both confirmed and smart selections");
+        auto results = session->cachedRecognitionResults();
+        auto source = std::make_shared<ScreenshotOcrPresentation>();
+        source->selection = params.selection;
+        if (!smart)
+            source->lines.push_back(
+                {QStringLiteral("Selected area"), 1.0,
+                 QPolygonF{QPointF(12, 12), QPointF(46, 12), QPointF(46, 28), QPointF(12, 28)}});
+        source->prepareForRendering();
+        results.text = ScreenshotOcrRecognitionResult{source};
+        if (selection == Selection::Superseded)
+            QApplication::clipboard()->setText(QStringLiteral("Newer clipboard"));
+        if (selection == Selection::ReplacedDuringCopy) {
+            auto* clipboard = QApplication::clipboard();
+            QObject::connect(
+                clipboard, &QClipboard::dataChanged, &controller,
+                [clipboard] { clipboard->setText(QStringLiteral("Newer clipboard")); },
+                Qt::SingleShotConnection);
+        }
+        session->seedRecognitionResults(std::move(results));
+        if (superseded) {
+            waitUntil([&] { return source->lines.first().backgroundFillColor.isValid(); },
+                      "a superseded explicit copy restores the OCR background");
+            require(session->active() && !session->editing() &&
+                        QApplication::clipboard()->text() == QStringLiteral("Newer clipboard"),
+                    "recovery keeps the capture open and preserves the newer clipboard");
+            press();
+        }
+        if (selection == Selection::Cached) {
+            session->beginTextEditing();
+            session->setTextDraft(QStringLiteral("Edited text"));
+            overlay->activateWindow();
+            overlay->setFocus();
+            press();
+        }
+        waitUntil([&] { return !session->active(); }, "successful explicit copy ends capture");
+        require(QApplication::clipboard()->mimeData()->hasText() &&
+                    QApplication::clipboard()->text() ==
+                        (smart ? QString{} : QStringLiteral("Selected area")),
+                "copy writes the complete source, including successful empty OCR");
+    }
+}
+
 void copyAndEndWorkflowsSkipTextBackgrounds(const QString& directory) {
     enum class Workflow { Ordinary, Quick, Translation, ExplicitCopy };
     using Action = ScreenshotController::CaptureAction;
@@ -498,6 +591,7 @@ void copyAndEndWorkflowsSkipTextBackgrounds(const QString& directory) {
             selection.selection = QRect(10, 10, 60, 40);
             ScreenshotControllerTestAccess::prepareSelection(controller, fixture(), selection);
             ScreenshotControllerTestAccess::presentSelection(controller);
+            QApplication::clipboard()->setText(QStringLiteral("Previous clipboard"));
             if (workflow == Workflow::Ordinary) {
                 ScreenshotControllerTestAccess::commands(controller).setOcrTool();
             } else {
@@ -526,7 +620,6 @@ void copyAndEndWorkflowsSkipTextBackgrounds(const QString& directory) {
                 results.translatedText->lines[0].text = QStringLiteral("Translated text");
             }
 #endif
-            QApplication::clipboard()->setText(QStringLiteral("Previous clipboard"));
             session->seedRecognitionResults(std::move(results));
             QCoreApplication::processEvents();
             const bool endCapture =
@@ -2615,6 +2708,12 @@ int runScreenshotControllerClipboardTests(int argc, char** argv) {
         exportTaskErrorsSurviveCaptureTeardown();
         userExportTasks();
         storage.shutdown();
+        return EXIT_SUCCESS;
+    }
+    if (application.arguments().contains(QStringLiteral("--ocr-copy-shortcut-only"))) {
+        const auto shutdown = qScopeGuard([&] { storage.shutdown(); });
+        localOcrCopyShortcut(directory.path());
+        copyAndEndWorkflowsSkipTextBackgrounds(directory.path());
         return EXIT_SUCCESS;
     }
     if (application.arguments().contains(QStringLiteral("--selection-priority-only"))) {

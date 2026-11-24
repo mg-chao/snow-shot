@@ -4923,10 +4923,6 @@
             <translation>Show text highlighting</translation>
         </message>
         <message>
-            <source>Show text recognition results</source>
-            <translation>Show text recognition results</translation>
-        </message>
-        <message>
             <source>Show the annotation and close buttons in the upper-right corner of pinned windows</source>
             <translation>Show the annotation and close buttons in the upper-right corner of pinned windows</translation>
         </message>

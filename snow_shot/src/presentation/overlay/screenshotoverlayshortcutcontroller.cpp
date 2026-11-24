@@ -281,6 +281,7 @@ struct ScreenshotOverlayShortcutController::Impl {
             QStringLiteral("qr_code_recognition"),
             QStringLiteral("video_recording"),
             QStringLiteral("text_recognition"),
+            QStringLiteral("text_recognition_copy"),
             QStringLiteral("text_translation"),
             QStringLiteral("scrolling_screenshot"),
             QStringLiteral("quick_save"),

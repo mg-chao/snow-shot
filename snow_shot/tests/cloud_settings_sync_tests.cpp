@@ -774,9 +774,7 @@ void unsupportedShortcutList(const QString& path) {
             "an unsupported member preserves the entire local action while other changes sync");
 }
 
-void atomicShortcutSwap(const QString& path) {
-    const auto first = u"global_shortcuts/screenshot_delay"_s;
-    const auto second = u"global_shortcuts/screenshot_copy"_s;
+void atomicShortcutSwap(const QString& path, const QString& first, const QString& second) {
     const QJsonArray firstChord{QJsonObject{{u"portable"_s, u"Ctrl+Shift+F17"_s}}};
     const QJsonArray secondChord{QJsonObject{{u"portable"_s, u"Ctrl+Shift+F18"_s}}};
     Service service;
@@ -1210,7 +1208,11 @@ int main(int argc, char* argv[]) {
     conflictingShortcutSwap(temp.filePath(u"swap.json"_s), temp.filePath(u"competing.json"_s));
     blockedShortcutRollback(temp.filePath(u"rollback-confirmed.json"_s), true);
     blockedShortcutRollback(temp.filePath(u"rollback-local.json"_s), false);
-    atomicShortcutSwap(temp.filePath(u"atomic-swap.json"_s));
+    atomicShortcutSwap(temp.filePath(u"atomic-swap.json"_s), u"global_shortcuts/screenshot_delay"_s,
+                       u"global_shortcuts/screenshot_copy"_s);
+    atomicShortcutSwap(temp.filePath(u"shared-ocr-swap.json"_s),
+                       u"screenshot_shortcuts/text_recognition"_s,
+                       u"pin_to_screen_shortcuts/save_as_file"_s);
     mousePreferencesOnUpgrade(temp.filePath(u"mouse-operations.json"_s));
     signedOutMouseEditMergesWithLegacyCloud(temp.filePath(u"mouse-signed-out.json"_s));
     pendingLegacyMouseEditsOnUpgrade(temp.filePath(u"mouse-pending-upgrade.json"_s));

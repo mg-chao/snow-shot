@@ -4923,10 +4923,6 @@
             <translation>Показывать подсветку текста</translation>
         </message>
         <message>
-            <source>Show text recognition results</source>
-            <translation>Показывать результаты распознавания текста</translation>
-        </message>
-        <message>
             <source>Show the annotation and close buttons in the upper-right corner of pinned windows</source>
             <translation>Показывать кнопки разметок и закрытия в правом верхнем углу закреплённых окон</translation>
         </message>

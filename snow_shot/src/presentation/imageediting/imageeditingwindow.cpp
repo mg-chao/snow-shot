@@ -512,11 +512,11 @@ struct ImageEditingWindow::Impl {
                 if (!drawing &&
                     !QStringList{
                         QStringLiteral("table_recognition"), QStringLiteral("qr_code_recognition"),
-                        QStringLiteral("text_recognition"), QStringLiteral("text_translation"),
-                        QStringLiteral("copy_to_clipboard"), QStringLiteral("save_as_file"),
-                        QStringLiteral("quick_save"), QStringLiteral("print"),
-                        QStringLiteral("upload_to_cloud"), QStringLiteral("move_tool"),
-                        QStringLiteral("pin_to_screen")}
+                        QStringLiteral("text_recognition"), QStringLiteral("text_recognition_copy"),
+                        QStringLiteral("text_translation"), QStringLiteral("copy_to_clipboard"),
+                        QStringLiteral("save_as_file"), QStringLiteral("quick_save"),
+                        QStringLiteral("print"), QStringLiteral("upload_to_cloud"),
+                        QStringLiteral("move_tool"), QStringLiteral("pin_to_screen")}
                          .contains(it.key()))
                     continue;
                 WindowShortcutManager::Binding binding;
@@ -533,12 +533,21 @@ struct ImageEditingWindow::Impl {
                         WindowShortcutManager::focusAcceptsTextInput(context.focusWidget) ||
                         canvas->hasActiveTextEditing())
                         return false;
+                    if (id == QStringLiteral("text_recognition_copy"))
+                        return palette->canActivateScreenshotShortcut(
+                            QStringLiteral("text_recognition"));
                     if (id != snow_shot::shortcuts::kCycleAnnotationToolOptions)
                         return true;
                     return !WindowShortcutManager::inputTargetsPopup(context) &&
                            palette->canActivateDrawingShortcut(id);
                 };
                 binding.activate = [this, id = it.key(), drawing](const auto&) {
+                    if (id == QStringLiteral("text_recognition_copy")) {
+                        activate(Session::Mode::Text, false,
+                                 ScreenshotClipboardService::reservePublication(
+                                     QApplication::clipboard()));
+                        return true;
+                    }
                     return drawing ? palette->activateDrawingShortcut(id)
                                    : palette->activateScreenshotShortcut(id);
                 };
@@ -802,7 +811,9 @@ struct ImageEditingWindow::Impl {
                             : document.baseState() == 0 ? initialRecognition
                                                         : ScreenshotRecognitionResults{};
         const bool sized = screenshotOcrImageWithinPixelLimit(document.image().size());
-        palette->setOcrEnabled((sized && providers.recognition) || cached.text.has_value());
+        const auto textSession = sessions.value(document.baseState()).controller;
+        palette->setOcrEnabled((sized && providers.recognition) || cached.text.has_value() ||
+                               (textSession && textSession->hasTextResult()));
         palette->setTableEnabled((sized && providers.tableRecognition) ||
                                  !cached.tableEntries.isEmpty() || cached.table.has_value());
         palette->setQrEnabled((sized && providers.qrRecognition) || cached.qr.has_value());
@@ -916,7 +927,8 @@ struct ImageEditingWindow::Impl {
         syncPalette();
     }
     void bindRecognition();
-    void activate(Session::Mode mode, bool translate = false);
+    void activate(Session::Mode mode, bool translate = false,
+                  ScreenshotClipboardService::PublicationId copySourceOnReady = 0);
     Session* ensureSession();
     void pruneRecognitionSessions(bool replaceDocument = false) {
         for (auto it = sessions.begin(); it != sessions.end();) {
@@ -1218,7 +1230,9 @@ Session* ImageEditingWindow::Impl::ensureSession() {
     });
     return session;
 }
-void ImageEditingWindow::Impl::activate(Session::Mode mode, bool translate) {
+void ImageEditingWindow::Impl::activate(
+    Session::Mode mode, bool translate,
+    ScreenshotClipboardService::PublicationId copySourceOnReady) {
     if (loading || cropBusy || document.image().isNull())
         return;
     const QPointer<ImageEditingWindow> lifetime(&q);
@@ -1236,7 +1250,7 @@ void ImageEditingWindow::Impl::activate(Session::Mode mode, bool translate) {
     current->setShowOriginalImage(false);
     if (!lifetime || !current || current != session)
         return;
-    current->activate(mode);
+    current->activate(mode, copySourceOnReady);
     if (!lifetime || !current || current != session)
         return;
     syncAvailability();

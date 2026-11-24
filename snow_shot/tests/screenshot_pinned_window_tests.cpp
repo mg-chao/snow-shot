@@ -228,6 +228,7 @@ int macPinnedContentDragTests(
 void runPinnedOriginalImageTranslationTests();
 void runPinnedHideToTopControllerTests();
 void runImageEditingTests();
+void runImageEditingOcrCopyShortcutTests();
 void runImageEditingEntryPointTests();
 #if defined(Q_OS_MACOS)
 void runMacImageEditingToolbarStackingTests();
@@ -3379,6 +3380,149 @@ void pinnedToolbarLayoutReloadsAndResetsIndependently() {
     controller.setEditMode(false);
 }
 
+void pinnedOcrCopyShortcut() {
+    using Access = ScreenshotPinnedWindowTestAccess;
+    const snow_shot::storage::ScreenshotShortcutSettings shortcuts;
+    const auto original = shortcuts.allShortcuts();
+    const auto restore = qScopeGuard([&] { shortcuts.setAllShortcutsAtomic(original); });
+    const auto copyBinding = snow_shot::shortcuts::bindingFromKeyEvent(
+        PhysicalKeyEvent(QEvent::KeyPress, Qt::Key_D, Qt::ShiftModifier, QStringLiteral("D")));
+    class Recognition final : public ScreenshotOcrRecognitionPort {
+      public:
+        QSize imageSize;
+        int requests = 0;
+        RequestToken recognize(ScreenshotOcrRequest request, QObject*,
+                               Completion complete) override {
+            ++requests;
+            imageSize = request.image.size();
+            complete({std::make_shared<ScreenshotOcrPresentation>()});
+            return 1;
+        }
+        void cancel(RequestToken) override {}
+        bool reprioritize(RequestToken, ScreenshotOcrRequestPriority) override {
+            return true;
+        }
+    };
+    const QString previousClipboard = QStringLiteral("Previous clipboard");
+    for (const bool cached : {true, false}) {
+        Recognition recognition;
+        auto config = cachedOcrPinConfig(&recognition);
+        if (!cached)
+            config.recognitionResults = {};
+        ScreenshotPinnedWindow window;
+        Access::hiddenSelectionOffscreen(window, config);
+        require(
+            shortcuts.setShortcuts(QStringLiteral("text_recognition_copy"), {copyBinding}) &&
+                shortcuts.setShortcuts(QStringLiteral("text_recognition"), {QStringLiteral("F9")}),
+            "shared OCR bindings update an open pin");
+        materializePinnedMenuTree(window);
+        auto* toggle = window.findChild<QAction*>(QStringLiteral("screenshotPinnedOcrAction"));
+        require(toggle && toggle->text().endsWith(QStringLiteral("\tF9")),
+                "pinned text menu displays the shared recognition binding");
+        require(Access::crop(window, {900, 480, 40, 30}), "crop outside the recognized line");
+        Access::applyCrop(window);
+        auto* canvas = window.findChild<SnowCanvasWidget*>();
+        auto* session = Access::recognition(window);
+        const auto pressCopy = [&] {
+            window.activateWindow();
+            canvas->setFocus();
+            QApplication::processEvents();
+            QApplication::clipboard()->setText(previousClipboard);
+            sendShortcut(*canvas, Qt::Key_D, Qt::ShiftModifier);
+        };
+        pressCopy();
+        require(!session->active() && recognition.requests == 0 &&
+                    QApplication::clipboard()->text() == previousClipboard,
+                "a normal pin ignores OCR copy before annotation");
+
+        Access::editSelectionOffscreen(window, true);
+        auto* editor = window.findChild<ScreenshotPinnedEditController*>();
+        auto* palette = editor->toolbarWindow()->palette();
+        require(palette->activateDrawingShortcut(QStringLiteral("shape")), "select a drawing tool");
+        pressCopy();
+        auto* view = window.findChild<ScreenshotRecognitionWindow*>();
+        const QString expectedText = cached ? QStringLiteral("Saved OCR") : QString{};
+        require(
+            window.isVisible() && view && view->isVisible() && session->active() &&
+                session->mode() == ScreenshotRecognitionSessionController::Mode::Text &&
+                !session->editing() && !session->translating() && !session->showOriginalImage() &&
+                toggle->isChecked() &&
+                palette->activeToolForTests() == ScreenshotToolPalette::Tool::Ocr &&
+                QApplication::clipboard()->mimeData()->hasText() &&
+                QApplication::clipboard()->text() == expectedText,
+            "annotation OCR copy selects OCR and copies the entire source, including empty text");
+        pressCopy();
+        require(view->isVisible() && session->active() &&
+                    QApplication::clipboard()->text() == expectedText &&
+                    recognition.requests == (cached ? 0 : 1) &&
+                    (cached || recognition.imageSize == QSize(40, 30)),
+                "repeating OCR copy reuses the result and stays in recognition");
+
+        Access::editSelectionOffscreen(window, false);
+        pressCopy();
+        require(!editor->editMode() && session->active() && view->isVisible() &&
+                    QApplication::clipboard()->text() == previousClipboard,
+                "leaving annotation disables OCR copy even with results visible");
+        sendShortcut(*canvas, Qt::Key_F9);
+        require(!session->active(),
+                "the shared recognition shortcut hides results on a normal pin");
+        sendShortcut(*canvas, Qt::Key_F9);
+        require(session->active(), "the shared recognition shortcut shows results on a normal pin");
+
+        if (cached) {
+            auto& configuration =
+                snow_shot::storage::ApplicationStorage::instance().configuration();
+            const auto borderKey = QStringLiteral("pin_to_screen_shortcuts/show_border");
+            const auto previous = configuration.value(borderKey);
+            const auto restoreBorder =
+                qScopeGuard([&] { configuration.setValue(borderKey, previous); });
+            require(configuration.setValue(borderKey, snow_shot::shortcuts::shortcutBindingsToJson(
+                                                          {QStringLiteral("F9"), copyBinding})),
+                    "load a legacy pin binding that overlaps both shared OCR actions");
+            const auto borderVisible = [&] {
+                return window.automationState().value(QStringLiteral("show_border")).toBool();
+            };
+            const auto originalBorder = borderVisible();
+            sendShortcut(*canvas, Qt::Key_F9);
+            require(session->active() && borderVisible() != originalBorder &&
+                        !toggle->text().endsWith(QStringLiteral("\tF9")),
+                    "a legacy pin shortcut keeps its command and updates the OCR menu hint");
+            Access::editSelectionOffscreen(window, true);
+            pressCopy();
+            require(borderVisible() == originalBorder &&
+                        QApplication::clipboard()->text() == previousClipboard,
+                    "the dedicated pin command also wins over OCR copy while annotating");
+        }
+    }
+#if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
+    Recognition recognition;
+    auto config = cachedOcrPinConfig(&recognition);
+    auto translation =
+        std::make_shared<ScreenshotOcrPresentation>(*config.recognitionResults.text->presentation);
+    translation->setLineText(0, QStringLiteral("Saved translation"));
+    translation->prepareForRendering();
+    config.recognitionResults.translatedText = translation;
+    ScreenshotPinnedWindow window;
+    auto* session = Access::hiddenSelectionOffscreen(window, config);
+    materializePinnedMenuTree(window);
+    auto* translated =
+        window.findChild<QAction*>(QStringLiteral("screenshotPinnedTranslationResultsAction"));
+    require(translated, "the pin has a translation result");
+    translated->trigger();
+    Access::editSelectionOffscreen(window, true);
+    window.activateWindow();
+    auto* canvas = window.findChild<SnowCanvasWidget*>();
+    canvas->setFocus();
+    QApplication::processEvents();
+    sendShortcut(*canvas, Qt::Key_D, Qt::ShiftModifier);
+    require(QApplication::clipboard()->text() == QStringLiteral("Saved OCR") && session->active() &&
+                !session->translating() && !translated->isChecked() &&
+                window.persistenceSnapshot().textType ==
+                    snow_shot::storage::PinnedTextType::RecognitionResults,
+            "OCR copy switches a translated pin to its original recognition result");
+#endif
+}
+
 void pinnedEditingRecognitionShortcutsUsePaletteCommands(bool hiddenTools = false) {
     const snow_shot::storage::ScreenshotToolbarSettings toolbarSettings;
     const auto kind = snow_shot::storage::ScreenshotToolbarLayoutKind::PinnedActionTools;
@@ -3438,8 +3582,7 @@ void pinnedEditingRecognitionShortcutsUsePaletteCommands(bool hiddenTools = fals
     const snow_shot::storage::ScreenshotShortcutSettings settings;
     const auto original = settings.allShortcuts();
     for (const auto& [id, tool] :
-         {std::pair{"text_recognition", ScreenshotToolPalette::Tool::Ocr},
-          std::pair{"text_translation", ScreenshotToolPalette::Tool::TextTranslation},
+         {std::pair{"text_translation", ScreenshotToolPalette::Tool::TextTranslation},
           std::pair{"table_recognition", ScreenshotToolPalette::Tool::Table},
           std::pair{"qr_code_recognition", ScreenshotToolPalette::Tool::Qr}}) {
         auto bindings = original;
@@ -29812,6 +29955,11 @@ int main(int argc, char* argv[]) {
         }
         if (app.arguments().contains(QStringLiteral("--menu-lifetime-only"))) {
             pinnedMenuActionLifetime();
+            return 0;
+        }
+        if (app.arguments().contains(QStringLiteral("--ocr-copy-shortcut-only"))) {
+            pinnedOcrCopyShortcut();
+            runImageEditingOcrCopyShortcutTests();
             return 0;
         }
         if (app.arguments().contains(QStringLiteral("--text-type-only"))) {

@@ -1760,7 +1760,7 @@ void builtInCatalogIsCompleteAndValid() {
     };
     bool playbackShortcutContractsMatch = pinToScreenShortcuts != nullptr;
     for (qsizetype index = 0; index < playbackShortcutIds.size(); ++index) {
-        const qsizetype row = 7 + index;
+        const qsizetype row = 6 + index;
         if (pinToScreenShortcuts == nullptr || pinToScreenShortcuts->items.size() <= row) {
             playbackShortcutContractsMatch = false;
             continue;
@@ -1850,14 +1850,14 @@ void builtInCatalogIsCompleteAndValid() {
             std::get<settings::SettingsLocalShortcutDefinition>(
                 drawingShortcuts->items.at(2).payload)
                     .scope == settings::SettingsLocalShortcutScope::Drawing &&
-            pinToScreenShortcuts != nullptr && pinToScreenShortcuts->items.size() == 40 &&
-            pinToScreenShortcuts->items.at(36).configurationKey ==
+            pinToScreenShortcuts != nullptr && pinToScreenShortcuts->items.size() == 39 &&
+            pinToScreenShortcuts->items.at(35).configurationKey ==
                 QStringLiteral("pin_to_screen_shortcuts/batch_select_all") &&
-            pinToScreenShortcuts->items.at(37).configurationKey ==
+            pinToScreenShortcuts->items.at(36).configurationKey ==
                 QStringLiteral("pin_to_screen_shortcuts/batch_image_stitching") &&
-            pinToScreenShortcuts->items.at(38).configurationKey ==
+            pinToScreenShortcuts->items.at(37).configurationKey ==
                 QStringLiteral("pin_to_screen_shortcuts/batch_copy_files_to_clipboard") &&
-            pinToScreenShortcuts->items.at(39).configurationKey ==
+            pinToScreenShortcuts->items.at(38).configurationKey ==
                 QStringLiteral("pin_to_screen_shortcuts/batch_save_as_file") &&
             playbackShortcutContractsMatch &&
             pinToScreenShortcuts->itemLayout ==
@@ -1877,67 +1877,71 @@ void builtInCatalogIsCompleteAndValid() {
                 QStringLiteral("Upload to cloud") &&
             pinToScreenShortcuts->items.at(4).configurationKey ==
                 QStringLiteral("pin_to_screen_shortcuts/save_as_file") &&
-            pinToScreenShortcuts->items.at(5).configurationKey ==
-                QStringLiteral("pin_to_screen_shortcuts/show_text_recognition_results") &&
-            pinToScreenShortcuts->items.at(6).id ==
+            pinToScreenShortcuts->items.at(5).id ==
                 QStringLiteral("pin-to-screen-shortcut.drawing_mode") &&
-            pinToScreenShortcuts->items.at(13).id ==
+            pinToScreenShortcuts->items.at(12).id ==
                 QStringLiteral("pin-to-screen-shortcut.resize_window") &&
-            pinToScreenShortcuts->items.at(13).title.translated() ==
+            pinToScreenShortcuts->items.at(12).title.translated() ==
                 QStringLiteral("Resize window") &&
-            pinToScreenShortcuts->items.at(13).configurationKey ==
+            pinToScreenShortcuts->items.at(12).configurationKey ==
                 QStringLiteral("pin_to_screen_shortcuts/resize_window") &&
             std::get<settings::SettingsLocalShortcutDefinition>(
-                pinToScreenShortcuts->items.at(13).payload)
+                pinToScreenShortcuts->items.at(12).payload)
                 .iconFactory &&
             std::get<settings::SettingsLocalShortcutDefinition>(
-                pinToScreenShortcuts->items.at(13).payload)
+                pinToScreenShortcuts->items.at(12).payload)
                     .iconFactory() ==
                 snow_shot::presentation::icons::custom::outlined::ToolMove() &&
-            pinToScreenShortcuts->items.at(16).id ==
+            pinToScreenShortcuts->items.at(15).id ==
                 QStringLiteral("pin-to-screen-shortcut.toggle_click_through") &&
-            pinToScreenShortcuts->items.at(16).title.translated() ==
+            pinToScreenShortcuts->items.at(15).title.translated() ==
                 QStringLiteral("Click-through") &&
-            pinToScreenShortcuts->items.at(16).configurationKey ==
+            pinToScreenShortcuts->items.at(15).configurationKey ==
                 QStringLiteral("pin_to_screen_shortcuts/toggle_click_through") &&
-            pinToScreenShortcuts->items.at(17).id ==
+            pinToScreenShortcuts->items.at(16).id ==
                 QStringLiteral("pin-to-screen-shortcut.toggle_lock") &&
-            pinToScreenShortcuts->items.at(17).title.translated() == QStringLiteral("Lock mode") &&
-            pinToScreenShortcuts->items.at(17).configurationKey ==
+            pinToScreenShortcuts->items.at(16).title.translated() == QStringLiteral("Lock mode") &&
+            pinToScreenShortcuts->items.at(16).configurationKey ==
                 QStringLiteral("pin_to_screen_shortcuts/toggle_lock") &&
-            pinToScreenShortcuts->items.at(18).id ==
+            pinToScreenShortcuts->items.at(17).id ==
                 QStringLiteral("pin-to-screen-shortcut.always_on_top") &&
-            pinToScreenShortcuts->items.at(18).title.translated() ==
+            pinToScreenShortcuts->items.at(17).title.translated() ==
                 QStringLiteral("Always on top") &&
-            pinToScreenShortcuts->items.at(18).configurationKey ==
+            pinToScreenShortcuts->items.at(17).configurationKey ==
                 QStringLiteral("pin_to_screen_shortcuts/always_on_top") &&
-            pinToScreenShortcuts->items.at(19).id ==
+            pinToScreenShortcuts->items.at(18).id ==
                 QStringLiteral("pin-to-screen-shortcut.show_border") &&
-            pinToScreenShortcuts->items.at(19).title.translated() ==
+            pinToScreenShortcuts->items.at(18).title.translated() ==
                 QStringLiteral("Show border") &&
-            pinToScreenShortcuts->items.at(19).configurationKey ==
+            pinToScreenShortcuts->items.at(18).configurationKey ==
                 QStringLiteral("pin_to_screen_shortcuts/show_border") &&
-            pinToScreenShortcuts->items.at(20).id ==
+            pinToScreenShortcuts->items.at(19).id ==
                 QStringLiteral("pin-to-screen-shortcut.show_shadow") &&
-            pinToScreenShortcuts->items.at(20).title.translated() ==
+            pinToScreenShortcuts->items.at(19).title.translated() ==
                 QStringLiteral("Show shadow") &&
-            pinToScreenShortcuts->items.at(20).configurationKey ==
+            pinToScreenShortcuts->items.at(19).configurationKey ==
                 QStringLiteral("pin_to_screen_shortcuts/show_shadow") &&
-            pinToScreenShortcuts->items.at(22).id ==
+            pinToScreenShortcuts->items.at(21).id ==
                 QStringLiteral("pin-to-screen-shortcut.destroy_window") &&
-            pinToScreenShortcuts->items.at(22).title.translated() == QStringLiteral("Destroy") &&
-            pinToScreenShortcuts->items.at(22).configurationKey ==
+            pinToScreenShortcuts->items.at(21).title.translated() == QStringLiteral("Destroy") &&
+            pinToScreenShortcuts->items.at(21).configurationKey ==
                 QStringLiteral("pin_to_screen_shortcuts/destroy_window") &&
             std::get<settings::SettingsLocalShortcutDefinition>(
-                pinToScreenShortcuts->items.at(16).payload)
+                pinToScreenShortcuts->items.at(15).payload)
                 .iconFactory &&
             std::get<settings::SettingsLocalShortcutDefinition>(
-                pinToScreenShortcuts->items.at(16).payload)
+                pinToScreenShortcuts->items.at(15).payload)
                     .iconFactory() == snow_shot::presentation::icons::custom::outlined::Mouse() &&
             std::get<settings::SettingsLocalShortcutDefinition>(
                 pinToScreenShortcuts->items.constFirst().payload)
                     .scope == settings::SettingsLocalShortcutScope::PinToScreen &&
-            otherShortcutSection != nullptr && otherShortcutSection->items.size() == 4 &&
+            otherShortcutSection != nullptr && otherShortcutSection->items.size() == 5 &&
+            otherShortcutSection->items.at(2).configurationKey ==
+                QStringLiteral("screenshot_shortcuts/text_recognition") &&
+            otherShortcutSection->items.at(3).configurationKey ==
+                QStringLiteral("screenshot_shortcuts/text_recognition_copy") &&
+            otherShortcutSection->items.at(3).title.translated() ==
+                QStringLiteral("Copy after text recognition") &&
             otherShortcutSection->itemLayout ==
                 settings::SettingsSectionItemLayout::TwoColumnGrid &&
             otherShortcutSection->title.translated() == QStringLiteral("Image recognition") &&
@@ -3714,6 +3718,10 @@ void registryCompilesOwnedIndexesAndProviderPlans() {
                     "local shortcut bindings must resolve through the registry index");
             break;
         }
+        case settings::SettingsFieldKind::MouseOperation:
+            require(registry.fieldForConfigurationKey(descriptor.configurationKey) == &descriptor,
+                    "mouse operation bindings must resolve through their configuration key");
+            break;
         case settings::SettingsFieldKind::GlobalMouseAction: {
             const auto& payload = std::get<settings::SettingsGlobalMouseActionDefinition>(
                 descriptor.definition->payload);
@@ -4131,7 +4139,7 @@ int main(int argc, char** argv) {
         require(catalog.validationErrors().isEmpty(), "batch shortcuts preserve catalog validity");
         const auto* section = catalog.section(QStringLiteral("shortcuts-mouse"),
                                               QStringLiteral("pin-to-screen-shortcuts"));
-        require(section && section->items.size() == 40,
+        require(section && section->items.size() == 39,
                 "pinned shortcuts expose all four batch commands");
         for (const auto& id :
              {QStringLiteral("batch_select_all"), QStringLiteral("batch_image_stitching"),

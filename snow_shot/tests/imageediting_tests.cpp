@@ -19,6 +19,7 @@
 #include "snow_shot/storage/configurationstore.h"
 #include "snow_shot/presentation/styles/thememanager.h"
 #include <QClipboard>
+#include <QMimeData>
 #include <QElapsedTimer>
 #include <QThread>
 #include <QTimer>
@@ -1332,6 +1333,156 @@ void annotationOptionShortcutReachesEditorCanvas() {
     require(currentShape() == cycledShape, "popup input must not cycle annotation options");
 }
 } // namespace
+
+void runImageEditingOcrCopyShortcutTests() {
+    using namespace snow_shot::presentation;
+    const snow_shot::storage::ScreenshotShortcutSettings shortcuts;
+    const snow_shot::storage::TextRecognitionSettings settings;
+    const QString id = QStringLiteral("text_recognition_copy");
+    const auto original = shortcuts.shortcuts(id);
+    const auto formatting = settings.defaultFormatting();
+    const auto punctuation = settings.defaultPunctuation();
+    const auto restore = qScopeGuard([&] {
+        shortcuts.setShortcuts(id, original);
+        settings.setDefaultFormatting(formatting);
+        settings.setDefaultPunctuation(punctuation);
+    });
+    const auto copyBinding = snow_shot::shortcuts::bindingFromKeyEvent(
+        PhysicalKeyEvent(QEvent::KeyPress, Qt::Key_D, Qt::ShiftModifier, QStringLiteral("D")));
+    require(shortcuts.setShortcuts(id, {copyBinding}) &&
+                settings.setDefaultFormatting(QStringLiteral("remove")) &&
+                settings.setDefaultPunctuation(QStringLiteral("half")),
+            "configure the shared copy shortcut and OCR transforms");
+    DeferredOcr provider;
+    ImageEditingServices services;
+    services.providers = [&] { return ScreenshotPinnedRecognitionProviders{&provider}; };
+    ImageEditingWindow window(services);
+    window.present(source());
+    auto* canvas = window.canvas();
+    require(window.palette()->activateDrawingShortcut(QStringLiteral("shape")),
+            "activate the shape tool");
+    canvas->window()->activateWindow();
+    canvas->setFocus();
+    QApplication::processEvents();
+    const auto press = [](QWidget* receiver) {
+        for (auto type : {QEvent::KeyPress, QEvent::KeyRelease}) {
+            PhysicalKeyEvent event(type, Qt::Key_D, Qt::ShiftModifier, QStringLiteral("D"));
+            QApplication::sendEvent(receiver, &event);
+        }
+    };
+    press(canvas);
+    press(canvas);
+    require(provider.pending.size() == 1 && window.recognition()->active() &&
+                window.recognition()->mode() ==
+                    ScreenshotRecognitionSessionController::Mode::Text &&
+                window.palette()->activeToolForTests() == ScreenshotToolPalette::Tool::Ocr,
+            "copy immediately selects the OCR tool and repeated copy joins the visible request");
+    auto presentation = std::make_shared<ScreenshotOcrPresentation>();
+    presentation->selection = window.document()->bounds().toAlignedRect();
+    for (const QString& text : {QStringLiteral("Alpha！"), QStringLiteral("Beta")}) {
+        ScreenshotOcrLine line;
+        line.text = text;
+        line.quad =
+            QPolygonF(QRectF(-20, 15 + static_cast<qreal>(presentation->lines.size()), 5, 1));
+        presentation->lines.append(line);
+    }
+    presentation->prepareForRendering();
+    provider.complete(0, presentation);
+    const auto expected = QStringLiteral("Alpha!Beta");
+    auto* view = canvas->parentWidget()->findChild<ScreenshotRecognitionWindow*>();
+    require(QApplication::clipboard()->text() == expected && view && view->isVisible() &&
+                window.recognition()->active() &&
+                window.palette()->activeToolForTests() == ScreenshotToolPalette::Tool::Ocr,
+            "copy formats the full original and keeps the recognition view open");
+
+    window.palette()->textEditRequested();
+    const QPointer<QTextEdit> editor =
+        canvas->parentWidget()->findChild<QTextEdit*>(QStringLiteral("screenshotOcrEditor"));
+    require(editor && editor->isVisible(), "open the OCR draft");
+    const QString draft = QStringLiteral("Draft only");
+    window.recognition()->setTextDraft(draft);
+    editor->selectAll();
+    editor->setFocus();
+    QApplication::processEvents();
+    const auto sentinel = QStringLiteral("Previous clipboard");
+    QApplication::clipboard()->setText(sentinel);
+    press(editor);
+    require(QApplication::clipboard()->text() == sentinel &&
+                editor->toPlainText() == QStringLiteral("D"),
+            "Shift+D types into the focused draft without triggering OCR copy");
+    editor->selectAll();
+    canvas->setFocus();
+    press(canvas);
+    require(QApplication::clipboard()->text() == expected && provider.pending.size() == 1 &&
+                !window.recognition()->editing() && view->isVisible() &&
+                (!editor || !editor->isVisible()) &&
+                window.recognition()->textDraft() == QStringLiteral("D"),
+            "copy leaves the draft for the original result and retains the draft text");
+    window.recognition()->setShowOriginalImage(true);
+    press(canvas);
+    require(!window.recognition()->showOriginalImage() && view->isVisible(),
+            "copy returns from the original image preview to the recognition result");
+
+    require(window.document()->crop(ImageEditingDocument::CropAxis::Rows, 1, 3),
+            "replace the OCR target");
+    canvas->setFocus();
+    press(canvas);
+    require(provider.pending.size() == 2 &&
+                provider.pending.last().request.image == window.document()->image(),
+            "fresh editor OCR uses the cropped document state");
+    QApplication::clipboard()->setText(sentinel);
+    provider.complete(1, presentation);
+    require(QApplication::clipboard()->text() == sentinel, "a newer clipboard write wins");
+    require(window.document()->crop(ImageEditingDocument::CropAxis::Columns, 1, 3),
+            "create an uncached target");
+    press(canvas);
+    require(provider.pending.size() == 3, "start OCR before replacing this target");
+    require(window.document()->undo(), "leave the target with pending OCR");
+    provider.complete(2, presentation);
+    require(QApplication::clipboard()->text() == sentinel,
+            "stale target completion cannot publish");
+    press(canvas);
+    require(provider.pending.size() == 3 && QApplication::clipboard()->text() == expected,
+            "the restored target reuses its completed OCR");
+    require(window.document()->redo(), "restore the target whose OCR was cancelled");
+    QApplication::clipboard()->setText(sentinel);
+    press(canvas);
+    require(provider.pending.size() == 4,
+            "restart the cancelled recognition on the restored target");
+    provider.complete(3, {}, QStringLiteral("OCR failed"));
+    require(QApplication::clipboard()->text() == sentinel,
+            "recognition failures preserve the clipboard");
+    press(canvas);
+    require(provider.pending.size() == 5, "retry after failed recognition");
+    provider.complete(4, std::make_shared<ScreenshotOcrPresentation>());
+    require(QApplication::clipboard()->mimeData()->hasText() &&
+                QApplication::clipboard()->text().isEmpty(),
+            "successful empty editor OCR replaces the clipboard with empty text");
+    window.shutdown();
+#if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
+    auto translatedSource = source();
+    translatedSource.recognition.text = ScreenshotOcrRecognitionResult{presentation};
+    auto translation = std::make_shared<ScreenshotOcrPresentation>(*presentation);
+    translation->setLineText(0, QStringLiteral("Translated line"));
+    translatedSource.recognition.translatedText = translation;
+    ImageEditingWindow translatedWindow;
+    translatedWindow.present(std::move(translatedSource));
+    translatedWindow.palette()->textTranslationRequested();
+    auto* translatedSession = translatedWindow.recognition();
+    require(translatedSession && translatedSession->translating(), "open the cached translation");
+    auto* translatedCanvas = translatedWindow.canvas();
+    translatedCanvas->window()->activateWindow();
+    translatedCanvas->setFocus();
+    QApplication::processEvents();
+    press(translatedCanvas);
+    require(translatedSession->active() && !translatedSession->translating() &&
+                translatedWindow.palette()->activeToolForTests() ==
+                    ScreenshotToolPalette::Tool::Ocr &&
+                QApplication::clipboard()->text() == expected,
+            "copy selects original OCR from a translated editor without a provider");
+    translatedWindow.shutdown();
+#endif
+}
 
 void runImageEditingEntryPointTests() {
     const int font = QFontDatabase::addApplicationFont(

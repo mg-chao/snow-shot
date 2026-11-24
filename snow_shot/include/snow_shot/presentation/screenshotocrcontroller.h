@@ -185,7 +185,7 @@ class ScreenshotOcrController final : public QObject {
     std::shared_ptr<ScreenshotOcrPresentation> m_backgroundPresentation;
     Mode m_mode = Mode::Text;
     bool m_active = false;
-    bool m_copyAndEndCapture = false;
+    quint64 m_explicitCopyPublication = 0;
     quint64 m_activationId = 0;
 };
 

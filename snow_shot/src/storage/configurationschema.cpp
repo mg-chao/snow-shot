@@ -19,7 +19,9 @@
 #include "snow_shot/storage/capturehistorytypes.h"
 #include "snow_shot/storage/persistedselectioncodec.h"
 #include "snow_shot/storage/recordingareahistory.h"
+#include "snow_shot/storage/settingsadapters.h"
 #include "snow_shot/shortcuts/shortcutbinding.h"
+#include "snow_shot/shortcuts/localshortcutcontext.h"
 #include "snow_shot/shortcuts/menuaccesskey.h"
 #include "snow_shot/shortcuts/screenshotregiontypeshortcut.h"
 #include "snow_draw_engine.h"
@@ -1377,6 +1379,8 @@ constexpr SchemaEntryDescriptor kEntryDescriptors[] = {
      ConfigurationValueKind::StringList, nullptr, nullptr, 2},
     {u"screenshot_shortcuts/text_recognition", stringsDefault(kSchemaStrings69),
      ConfigurationValueKind::StringList, nullptr, nullptr, 2},
+    {u"screenshot_shortcuts/text_recognition_copy", emptyArrayDefault(),
+     ConfigurationValueKind::StringList, nullptr, nullptr, 2},
 #if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
     {u"screenshot_shortcuts/text_translation", stringsDefault(kSchemaStrings70),
      ConfigurationValueKind::StringList, nullptr, nullptr, 2},
@@ -1430,8 +1434,6 @@ constexpr SchemaEntryDescriptor kEntryDescriptors[] = {
     {u"pin_to_screen_shortcuts/batch_save_as_file", stringsDefault(kSchemaStrings87),
      ConfigurationValueKind::StringList, nullptr, nullptr, 2},
     {u"pin_to_screen_shortcuts/save_as_file", stringsDefault(kSchemaStrings74),
-     ConfigurationValueKind::StringList, nullptr, nullptr, 2},
-    {u"pin_to_screen_shortcuts/show_text_recognition_results", stringsDefault(kSchemaStrings69),
      ConfigurationValueKind::StringList, nullptr, nullptr, 2},
     {u"pin_to_screen_shortcuts/drawing_mode", stringsDefault(kSchemaStrings53),
      ConfigurationValueKind::StringList, nullptr, nullptr, 2},
@@ -3084,8 +3086,57 @@ bool ConfigurationSchema::parseIntegerVersion(const QJsonValue& value, int* vers
     return true;
 }
 
+namespace {
+void migratePinnedOcrShortcut(QMap<QString, QJsonValue>& values) {
+    const auto legacy =
+        values.take(QStringLiteral("pin_to_screen_shortcuts/show_text_recognition_results"));
+    if (!legacy.isArray())
+        return;
+
+    const QString key = QStringLiteral("screenshot_shortcuts/text_recognition");
+    const auto factory = ConfigurationSchema::defaultValue(key);
+    const auto configured = ConfigurationSchema::normalize(key, values.value(key));
+    if (configured.valid && configured.value != factory)
+        return;
+
+    const auto normalizedLegacy = ConfigurationSchema::normalize(key, legacy).value;
+    if (normalizedLegacy == factory || normalizedLegacy.toArray().isEmpty())
+        return;
+
+    QMap<QString, QJsonValue> otherShortcuts;
+    for (const auto& entry : ConfigurationSchema::entries()) {
+        if (entry.valueKind != ConfigurationValueKind::ShortcutList || entry.key == key ||
+            !shortcuts::localShortcutKeysMayConflict(key, entry.key))
+            continue;
+        const auto stored = ConfigurationSchema::normalize(entry.key, values.value(entry.key));
+        otherShortcuts.insert(entry.key, stored.valid ? stored.value : entry.defaultValue);
+    }
+    QJsonArray migrated;
+    for (const auto& binding : normalizedLegacy.toArray()) {
+        auto proposed = migrated;
+        proposed.append(binding);
+        if (localShortcutChangesValid(otherShortcuts, {{key, proposed}}))
+            migrated = std::move(proposed);
+    }
+    if (!migrated.isEmpty())
+        values.insert(key, migrated);
+}
+
+void repairOcrCopyShortcut(QMap<QString, QJsonValue>& values) {
+    const QString key = QStringLiteral("screenshot_shortcuts/text_recognition_copy");
+    auto bindings = shortcuts::shortcutBindingsFromJson(values.value(key), true);
+    if (bindings.removeIf([](const auto& binding) {
+            return ScreenshotShortcutSettings::isReservedShortcut(
+                binding, QStringLiteral("text_recognition_copy"));
+        }) > 0)
+        values.insert(key, shortcuts::shortcutBindingsToJson(bindings));
+}
+} // namespace
+
 QMap<QString, QJsonValue>
 ConfigurationSchema::migrateLegacyValues(QMap<QString, QJsonValue> values) {
+    repairOcrCopyShortcut(values);
+    migratePinnedOcrShortcut(values);
     mouse::migrate(values);
     const QString shutterKey = QStringLiteral("screenshot/shutter_sound_notification");
     const auto directSound = values.value(shutterKey);

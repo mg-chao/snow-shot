@@ -3057,6 +3057,16 @@
       "allowedStringValues": [],
       "defaultJsonType": 4,
       "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "screenshot_shortcuts/text_recognition_copy",
+      "maximumListItems": 2,
+      "valueKind": "ShortcutList"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
       "defaultValue": [
         {
           "portable": "Ctrl+T"
@@ -3413,20 +3423,6 @@
       ],
       "integerRange": null,
       "key": "pin_to_screen_shortcuts/save_as_file",
-      "maximumListItems": 2,
-      "valueKind": "ShortcutList"
-    },
-    {
-      "allowedStringValues": [],
-      "defaultJsonType": 4,
-      "defaultStringIsNull": false,
-      "defaultValue": [
-        {
-          "portable": "Ctrl+D"
-        }
-      ],
-      "integerRange": null,
-      "key": "pin_to_screen_shortcuts/show_text_recognition_results",
       "maximumListItems": 2,
       "valueKind": "ShortcutList"
     },

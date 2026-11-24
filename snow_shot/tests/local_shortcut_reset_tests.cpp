@@ -3,11 +3,13 @@
 #include "snow_shot/presentation/settings/settingsregistry.h"
 #include "snow_shot/presentation/settings/settingsruntimesession.h"
 #include "snow_shot/storage/applicationstorage.h"
+#include "snow_shot/storage/cloudsyncconfiguration.h"
 #include "snow_shot/storage/configurationschema.h"
 
 #include <QApplication>
 #include <QDir>
 #include <QJsonArray>
+#include <QKeySequence>
 #include <QTemporaryDir>
 
 #include <cstdlib>
@@ -100,6 +102,75 @@ void copyShortcutReset(settings::SettingsRuntimeSession& session) {
                     session.localShortcuts(scope, id) == defaults &&
                     configuration.snapshot() == before,
                 "reset must restore both Ctrl+C and Enter for screenshot copy");
+    }
+    const QString ocrCopy = QStringLiteral("text_recognition_copy");
+    require(session.localShortcuts(scope, ocrCopy).isEmpty() &&
+                session.applyLocalShortcuts(scope, ocrCopy, {QStringLiteral("F8")}) &&
+                session.reset(settings::SettingsSectionReset::PinToScreenShortcuts) &&
+                !session.localShortcuts(scope, ocrCopy).isEmpty() &&
+                session.reset(settings::SettingsSectionReset::ScreenshotOtherShortcuts) &&
+                session.localShortcuts(scope, ocrCopy).isEmpty(),
+            "the shared OCR copy binding resets to Not set from Image recognition");
+}
+
+void sharedOcrShortcutsRespectPinCommands(settings::BuiltInSettingsBackend& backend) {
+    constexpr auto screenshot = settings::SettingsLocalShortcutScope::Screenshot;
+    constexpr auto pinned = settings::SettingsLocalShortcutScope::PinToScreen;
+    auto& configuration = storage::ApplicationStorage::instance().configuration();
+    const auto original = configuration.snapshot();
+    const storage::PinToScreenShortcutSettings pinSettings;
+    const auto saveAs = QStringLiteral("save_as_file");
+    const auto pinKey = QStringLiteral("pin_to_screen_shortcuts/") + saveAs;
+    const auto f8 = QStringLiteral("F8");
+    const auto f9 = QStringLiteral("F9");
+    for (const auto& ocr :
+         {QStringLiteral("text_recognition"), QStringLiteral("text_recognition_copy")}) {
+        const auto sharedKey = QStringLiteral("screenshot_shortcuts/") + ocr;
+        require(backend.applyLocalShortcuts(pinned, saveAs, {f9}) &&
+                    !backend.validateLocalShortcut(screenshot, ocr, f9).supported &&
+                    !backend.applyLocalShortcuts(screenshot, ocr, {f9}),
+                "a dedicated pin command reserves its shortcut against shared OCR");
+        require(backend.applyLocalShortcuts(screenshot, ocr, {f8}) &&
+                    !backend.validateLocalShortcut(pinned, saveAs, f8).supported &&
+                    !storage::setLocalShortcutValuesAtomic({{pinKey, QJsonArray{f8}}}) &&
+                    backend.localShortcuts(pinned, saveAs) == shortcuts::ShortcutBindingList{f9},
+                "assigning a shared OCR shortcut to a pin command is rejected atomically");
+        require(storage::setLocalShortcutValuesAtomic(
+                    {{sharedKey, QJsonArray{f9}}, {pinKey, QJsonArray{f8}}}) &&
+                    backend.applyLocalShortcuts(pinned, QStringLiteral("next_frame"), {f9}),
+                "a cross-scope swap is atomic and animated pins can reuse the static OCR key");
+        require(
+            configuration.setValues({{sharedKey, QJsonArray{f8, f9}}}) &&
+                backend.localShortcuts(screenshot, ocr) == shortcuts::ShortcutBindingList{f8, f9} &&
+                pinSettings.screenshotShortcuts(ocr) == shortcuts::ShortcutBindingList{f9},
+            "older profiles retain both screenshot keys and prioritize dedicated commands on pins");
+        require(backend.applyLocalShortcuts(pinned, saveAs, {}) &&
+                    pinSettings.screenshotShortcuts(ocr) == shortcuts::ShortcutBindingList{f8, f9},
+                "releasing a dedicated pin key immediately restores its shared OCR binding");
+        require(configuration.applySnapshot(original), "restore shortcut settings");
+    }
+}
+
+void ocrCopyRejectsSelectAll(settings::BuiltInSettingsBackend& backend) {
+    constexpr auto scope = settings::SettingsLocalShortcutScope::Screenshot;
+    const auto action = QStringLiteral("text_recognition_copy");
+    const auto key = QStringLiteral("screenshot_shortcuts/text_recognition_copy");
+    const auto before = storage::ApplicationStorage::instance().configuration().snapshot();
+    const auto reserved = QKeySequence::keyBindings(QKeySequence::SelectAll);
+    require(!reserved.isEmpty(), "the platform has a Select All shortcut");
+    for (const auto& sequence : reserved) {
+        const auto binding =
+            shortcuts::bindingFromPortableText(sequence.toString(QKeySequence::PortableText));
+        const auto validation = backend.validateLocalShortcut(scope, action, binding);
+        require(!binding.portableText.isEmpty() && !validation.supported &&
+                    validation.failureReason ==
+                        snow_shot::presentation::GlobalShortcutFailureReason::InvalidShortcut,
+                "settings reject the fixed select-current-screen key for OCR copy");
+        require(!storage::ScreenshotShortcutSettings().setShortcuts(action, {binding}) &&
+                    !storage::cloudSettingShortcutChangesValid(
+                        before, {{key, shortcuts::shortcutBindingsToJson({binding})}}) &&
+                    backend.localShortcuts(scope, action).isEmpty(),
+                "local writes and cloud sync reject reserved OCR copy shortcuts");
     }
 }
 
@@ -360,6 +431,8 @@ int main(int argc, char** argv) {
         duplicateShortcutSharesOnlyHistoryContexts(session, backend);
         screenshotQuickActionShortcutsReset(session);
         copyShortcutReset(session);
+        sharedOcrShortcutsRespectPinCommands(backend);
+        ocrCopyRejectsSelectAll(backend);
         printShortcutsReset(session);
         selectionTypeShortcutsPersistValidateAndReset(
             session, backend,
