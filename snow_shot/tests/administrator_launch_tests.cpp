@@ -140,6 +140,7 @@ void restartFailures() {
                     return AdministratorResult{false, false, QStringLiteral("child disconnected")};
                 return AdministratorResult{true, false, {}};
             },
+            [] { return true; },
             [&] {
                 saved = true;
                 return scenario != 2;
@@ -152,6 +153,33 @@ void restartFailures() {
                 "failed authorization must not reach settings persistence");
         require(result.cancelled == (scenario == 0),
                 "UAC cancellation must remain distinguishable for warning messages");
+    }
+}
+void startupRestartGuard() {
+    // The combined operation checks for work before UAC, after helper readiness, and after
+    // the checkpoint and configuration save. Rejection at any point leaves the app open.
+    for (int blockedCheck = 1; blockedCheck <= 4; ++blockedCheck) {
+        int checks = 0;
+        bool startedHelper = false, saved = false, committed = false, quit = false;
+        const auto result = runRestartTransaction(
+            [&](const std::function<bool()>& save) {
+                startedHelper = true;
+                committed = save();
+                return AdministratorResult{committed, false, {}};
+            },
+            [&] { return ++checks != blockedCheck; },
+            [&] {
+                saved = true;
+                return true;
+            },
+            [&] {
+                require(committed, "startup registration must commit before the parent quits");
+                quit = true;
+            });
+        require(startedHelper == (blockedCheck > 1), "check restart admission before UAC");
+        require(saved == (blockedCheck > 2), "recheck restart admission before saving");
+        require(committed == (blockedCheck > 3) && result.success == committed && quit == committed,
+                "recheck restart admission before committing the startup and restart handoff");
     }
 }
 void accountIdentity() {
@@ -356,6 +384,7 @@ int main(int argc, char** argv) {
         presentationStates();
         transactions();
         restartFailures();
+        startupRestartGuard();
         accountIdentity();
         translations();
         startupRunValueReconciliation();

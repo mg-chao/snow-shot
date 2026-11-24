@@ -414,7 +414,8 @@ class BuiltInSettingsBackend final : public SettingsBackend {
     [[nodiscard]] bool applyContextMenuSettings(const QJsonValue& mode,
                                                 const QJsonValue& shortcuts);
     [[nodiscard]] platform::windows::AdministratorResult
-    applyStartupSettings(bool enabled, bool elevated, bool reportError = true);
+    applyStartupSettings(bool enabled, bool elevated, bool reportError = true,
+                         bool restartOnElevation = false);
 
     ::snow_shot::presentation::GlobalShortcutManager& m_shortcutManager;
     AppPermissionService* m_permissions = nullptr;

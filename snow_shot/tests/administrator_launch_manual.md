@@ -11,9 +11,13 @@ The automated tests do not approve UAC or modify live startup registrations.
    and immediately follows **Auto start at boot**. The next row is **Restart as
    administrator**, showing **Restart**.
 2. Enable administrator launch and decline UAC. Expect one error message, the switch
-   off, the original Run entry unchanged, and no task for this installation.
-3. Enable it and approve UAC. Expect one task named `SnowShot-<user SID>-<path hash>`,
-   no `SnowShot` Run entry, and both settings retained after closing and reopening.
+   off, the original PID still running, the original Run entry unchanged, and no task
+   for this installation.
+3. Enable it from the unelevated app and approve UAC once. Expect the original process
+   to exit cleanly and one elevated Snow Shot process to reopen the main window. Expect
+   one task named `SnowShot-<user SID>-<path hash>`, no `SnowShot` Run entry, and both
+   settings retained after the restart. Turn the switch off and on from the elevated
+   app and verify that its PID stays the same.
    Inspect the task's user SID, interactive logon trigger, highest run level,
    executable, `--autostart` argument, working directory, battery settings, and
    unlimited execution time.

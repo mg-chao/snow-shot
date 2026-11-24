@@ -46,6 +46,7 @@ AdministratorResult failure(const QString& detail) {
 }
 #ifdef Q_OS_WIN
 using Microsoft::WRL::ComPtr;
+constexpr auto kEnableElevatedStartupAndRestart = "enable-elevated-startup-and-restart";
 struct Handle {
     HANDLE value = nullptr;
     ~Handle() {
@@ -501,6 +502,20 @@ AdministratorResult withHelper(const QByteArray& operation, const std::function<
                 .arg(text(e.what())));
     }
 }
+
+AdministratorResult restartWithHelper(const QByteArray& operation,
+                                      const std::function<bool()>& flush) {
+    return runRestartTransaction(
+        [&operation](const std::function<bool()>& save) { return withHelper(operation, save); },
+        restartGuard, flush, [] { QCoreApplication::quit(); });
+}
+
+int finishAdministratorHandoff(QLocalSocket& socket, HANDLE parent, bool restart) {
+    send(socket, QByteArrayLiteral("done"));
+    if (!restart)
+        return 0;
+    return WaitForSingleObject(parent, 45000) == WAIT_OBJECT_0 ? -1 : 23;
+}
 #endif
 } // namespace
 
@@ -548,8 +563,14 @@ void reconcileStartupRunValue(const QString& usersRunKey, const QString& expecte
 
 AdministratorResult runRestartTransaction(
     const std::function<AdministratorResult(const std::function<bool()>&)>& prepare,
-    const std::function<bool()>& flush, const std::function<void()>& quit) {
-    const auto result = prepare(flush);
+    const std::function<bool()>& guard, const std::function<bool()>& flush,
+    const std::function<void()>& quit) {
+    const auto allowed = [&guard] { return !guard || guard(); };
+    if (!allowed())
+        return failure(text(QT_TRANSLATE_NOOP(
+            "AdministratorLaunch",
+            "Finish capturing, recording, exporting, or updating before restarting")));
+    const auto result = prepare([&] { return allowed() && flush() && allowed(); });
     if (result.success)
         quit();
     return result;
@@ -652,7 +673,8 @@ bool administratorOperationPending() {
 void setAdministratorRestartGuard(std::function<bool()> guard) {
     restartGuard = std::move(guard);
 }
-AdministratorResult changeStartupMode(StartupMode mode, const std::function<bool()>& persist) {
+AdministratorResult changeStartupMode(StartupMode mode, const std::function<bool()>& persist,
+                                      const std::function<bool()>& flushBeforeRestart) {
     if (app::distribution::isStoreManaged()) {
         if (mode == StartupMode::ElevatedTask)
             return failure(text(QT_TRANSLATE_NOOP(
@@ -683,6 +705,10 @@ AdministratorResult changeStartupMode(StartupMode mode, const std::function<bool
                 return failure(text(QT_TRANSLATE_NOOP(
                     "AdministratorLaunch",
                     "This feature requires membership in the Administrators group")));
+            if (mode == StartupMode::ElevatedTask && !state.elevated && flushBeforeRestart) {
+                return restartWithHelper(kEnableElevatedStartupAndRestart,
+                                         [&] { return flushBeforeRestart() && persist(); });
+            }
             // Even elevated callers use the same isolated transaction lifetime and protocol.
             return withHelper(QByteArray::number(static_cast<int>(mode)), persist);
         }
@@ -713,6 +739,7 @@ AdministratorResult changeStartupMode(StartupMode mode, const std::function<bool
 #else
     Q_UNUSED(mode);
     Q_UNUSED(persist);
+    Q_UNUSED(flushBeforeRestart);
     return failure(text(QT_TRANSLATE_NOOP("AdministratorLaunch",
                                           "Administrator launch is only supported on Windows")));
 #endif
@@ -734,16 +761,7 @@ AdministratorResult restartAsAdministrator(const std::function<bool()>& flush) {
                                               "Another administrator operation is in progress")));
     QScopedValueRollback<bool> pending(operationPending, true);
 #ifdef Q_OS_WIN
-    if (restartGuard && !restartGuard())
-        return failure(text(QT_TRANSLATE_NOOP(
-            "AdministratorLaunch",
-            "Finish capturing, recording, exporting, or updating before restarting")));
-    return runRestartTransaction(
-        [](const std::function<bool()>& save) {
-            return withHelper(QByteArrayLiteral("restart"), save);
-        },
-        [&] { return (!restartGuard || restartGuard()) && flush(); },
-        [] { QCoreApplication::quit(); });
+    return restartWithHelper(QByteArrayLiteral("restart"), flush);
 #else
     Q_UNUSED(flush);
     return failure(text(QT_TRANSLATE_NOOP("AdministratorLaunch",
@@ -773,15 +791,13 @@ int dispatchAdministratorHelper(const QStringList& arguments) {
         const QByteArray operation = receive(socket);
         if (operation == "restart") {
             send(socket, QByteArrayLiteral("ready"));
-            if (receive(socket) != "commit") {
-                send(socket, QByteArrayLiteral("done"));
-                return 0;
-            }
-            send(socket, QByteArrayLiteral("done"));
-            return WaitForSingleObject(parent.value, 45000) == WAIT_OBJECT_0 ? -1 : 23;
+            return finishAdministratorHandoff(socket, parent.value, receive(socket) == "commit");
         }
-        if (operation != "0" && operation != "1" && operation != "2")
+        const bool restart = operation == kEnableElevatedStartupAndRestart;
+        if (!restart && operation != "0" && operation != "1" && operation != "2")
             return 24;
+        const auto mode =
+            restart ? StartupMode::ElevatedTask : static_cast<StartupMode>(operation.toInt());
         // A previous interrupted operation is reconciled to the parent's persisted selection.
         // The journal contains no executable, command line, or task XML to trust across elevation.
         if (QFile::exists(journalPath()) && !QFile::remove(journalPath()))
@@ -795,8 +811,6 @@ int dispatchAdministratorHelper(const QStringList& arguments) {
                                        return true;
                                    },
                                    [&](QString* error) {
-                                       const auto mode =
-                                           static_cast<StartupMode>(operation.toInt());
                                        if (mode == StartupMode::ElevatedTask)
                                            transaction.tasks.create();
                                        else if (mode == StartupMode::Registry)
@@ -815,8 +829,7 @@ int dispatchAdministratorHelper(const QStringList& arguments) {
             send(socket, result.error.toUtf8());
             return 26;
         }
-        send(socket, QByteArrayLiteral("done"));
-        return 0;
+        return finishAdministratorHandoff(socket, parent.value, restart && result.success);
     } catch (const std::exception& e) {
         try {
             send(socket, QByteArray(e.what()));
