@@ -813,6 +813,41 @@ void sourceSelectionSurvivesOriginalImageTranslation() {
             "reinstalling an explicitly cleared model cannot revive its retired character gesture");
 }
 
+void fontChangesRefitStreamingAndCompletedTranslations() {
+    configureTranslation();
+    const QFont original = QApplication::font();
+    const auto restore = qScopeGuard([&] { QApplication::setFont(original); });
+    auto wide = original;
+    wide.setStretch(150);
+    auto narrow = original;
+    narrow.setStretch(65);
+    QApplication::setFont(wide);
+    TranslationServer server;
+    SnowShotApiClient api(server.url());
+    SessionProbe session(&api, 1, QStringLiteral("font-change"), false, nullptr, nullptr, nullptr,
+                         {QStringLiteral("WWWWWWWWWWWWWWWWWWWW")});
+    session.controller->beginTextTranslation();
+    server.waitForStreams(1);
+    server.delta(0, QStringLiteral("字"));
+    waitUntil([&] { return session.textUpdates == 1; }, "receive the translated prefix");
+    const auto frozen = session.controller->recognitionResultsSnapshot().translatedText;
+    const auto oldSize = renderedFontSize(session.source->lines.first());
+    QApplication::setFont(narrow);
+    const auto newSize = renderedFontSize(session.source->lines.first());
+    const auto& live = session.displayed->lines.first();
+    require(newSize > oldSize * 1.2 && std::abs(renderedFontSize(live) - newSize) < 0.01 &&
+                live.translationStreaming && frozen &&
+                frozen->lines.first().fontSizeCapRatio != live.fontSizeCapRatio,
+            "a font change must remeasure the live OCR source while preserving a frozen snapshot");
+    server.finish(0);
+    waitUntil([&] { return !session.streaming; }, "complete the same translation request");
+    QApplication::setFont(wide);
+    require(std::abs(renderedFontSize(session.displayed->lines.first()) - oldSize) < 0.01 &&
+                session.displayed->lines.first().text == QStringLiteral("字") &&
+                server.streams.size() == 1,
+            "a completed overlay must follow the font without translating its text again");
+}
+
 void streamsIndividualBoxesAndKeepsOriginals() {
     configureTranslation();
     TranslationServer server;
@@ -1630,6 +1665,7 @@ void runOriginalImageTranslationTests() {
     smartLayoutStreamsParagraphsAndSwitchesModes();
     smartLayoutTranslatesVerticalColumnsInReadingOrder();
     sourceSelectionSurvivesOriginalImageTranslation();
+    fontChangesRefitStreamingAndCompletedTranslations();
     streamsIndividualBoxesAndKeepsOriginals();
     fourBoxesAndOwnerClosure();
     partialFailuresRetryOnlyFailedBoxes();
@@ -1710,6 +1746,22 @@ void runPinnedOriginalImageTranslationTests() {
                         std::abs(renderedFontSize(actual) - renderedFontSize(expected)) < 0.0001,
                     "pin restoration reconstructs the source metrics and Smart Merge fit");
             auto* content = window->findChild<ScreenshotRecognitionWindow*>();
+            require(content != nullptr, "the merged pin must have a visible recognition view");
+            {
+                const auto savedFont = QApplication::font();
+                const auto resetFont = qScopeGuard([&] { QApplication::setFont(savedFont); });
+                QFont changed = savedFont;
+                changed.setStretch(savedFont.stretch() == 150 ? 80 : 150);
+                QApplication::setFont(changed);
+                const auto displayed =
+                    content->imageSnapshot(image, mergedConfig.canvasSourceRect, {}, {}, {});
+                require(displayed && displayed->lines.size() == 1 &&
+                            displayed->lines.first().sourceTextMetrics &&
+                            displayed->lines.first().sourceTextMetrics->measuredFont ==
+                                QApplication::font() &&
+                            displayed->lines.first().text == expected.text,
+                        "the mapped pin display and export must use the current font metrics");
+            }
             auto* layer =
                 content == nullptr
                     ? nullptr

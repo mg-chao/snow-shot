@@ -5309,6 +5309,12 @@ void ocrGlyphDeviceCachesMatchDirectPaintingAndInvalidate() {
         require(layer.glyphRasterBuildCount() == previewBuilds,
                 "entering and leaving a box preview must reuse cached committed glyph pixels");
 
+        // A whole-line highlight can cover the same quad after text replacement.
+        // Select a prefix so its changed width is visible in SelectionOnly as well.
+        presentation->beginTextSelection(ScreenshotOcrTextPosition{0, 0});
+        presentation->updateTextSelection(ScreenshotOcrTextPosition{1, 5});
+        presentation->finishTextSelection();
+        layer.updateSelection();
         const QImage beforeTextReplacement = renderOcrSelectionLayer(layer, 1.5);
         const auto textBuilds = layer.glyphRasterBuildCount();
         const auto textGeometry = layer.geometrySynchronizationCount();
@@ -5322,8 +5328,9 @@ void ocrGlyphDeviceCachesMatchDirectPaintingAndInvalidate() {
                 "pixels before painting");
         compareWithDirect(1.5);
         require(renderOcrSelectionLayer(layer, 1.5) != beforeTextReplacement,
-                "a streaming replacement must display changed glyph pixels even when its new "
-                "geometry requires direct painting");
+                "streaming replacement must update visible glyphs and partial selection geometry");
+        presentation->selectAll();
+        layer.updateSelection();
         presentation->setLineText(
             0, QStringLiteral("A long original OCR line constrained by the source box width"));
         const auto sourceLines = presentation->lines;
@@ -6106,16 +6113,16 @@ void ocrPresentationRendersWhileCanvasContentIsHidden() {
     const QRect paintedTextBounds = paintedInkBounds(output, QRect(24, 32, 32, 16), 80);
     require(!paintedTextBounds.isEmpty(),
             "OCR graphics items should render text over the region fill");
-    require(paintedTextBounds.width() < 30 && paintedTextBounds.height() >= 13,
-            "short OCR text must retain natural spacing while using the full estimated height");
+    require(paintedTextBounds.width() >= 30 && paintedTextBounds.height() >= 13,
+            "source OCR text must fill the detected width at its fitted height");
     require(std::abs(paintedTextBounds.left() - 24) <= 1,
-            "naturally spaced OCR text must remain left-aligned");
+            "fitted source OCR text must remain left-aligned");
     auto* textLayer = canvas.findChild<QGraphicsView*>(QStringLiteral("snowShotOcrTextLayer"));
     require(textLayer != nullptr && textLayer->isVisible(),
             "OCR text widgets should live in a visible layer above the canvas");
     require(!textLayer->scene()->items().isEmpty() &&
                 textLayer->scene()->items().constFirst()->sceneBoundingRect().width() >= 31.0,
-            "natural glyph spacing must preserve the original recognition region for hit testing");
+            "fitted source glyphs must preserve the original recognition region for hit testing");
 
     const ScreenshotOcrTextPosition lineStart = renderer.ocrTextPositionAt(QPointF(-15.5, 0.0));
     const ScreenshotOcrTextPosition lineMiddle =

@@ -39,6 +39,7 @@
 #include <QApplication>
 #include <QCryptographicHash>
 #include <QDataStream>
+#include <QEvent>
 #include <QThreadPool>
 #include <QLocale>
 #include <QMimeData>
@@ -714,6 +715,7 @@ void ScreenshotRecognitionSessionController::seedRecognitionResults(
                                              &paragraphsToRestore, &smartMerge)
                                        : std::nullopt;
         if (sourceIndices) {
+            qApp->installEventFilter(this);
             entry.overlayTranslation.presentation = copyTextPresentation(results.translatedText);
             for (const int index : paragraphsToRestore)
                 entry.overlayTranslation.presentation->lines[index].paragraph = true;
@@ -2912,6 +2914,34 @@ void ScreenshotRecognitionSessionController::startTranslation() {
 #endif
 }
 
+#if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
+bool ScreenshotRecognitionSessionController::eventFilter(QObject* watched, QEvent* event) {
+    if (event->type() == QEvent::ApplicationFontChange && watched == qApp) {
+        // Update before Qt delivers the font change to the canvas and pinned text layers.
+        // The existing presentation retains its translation job, selection and captured text.
+        const QFont font = QApplication::font();
+        bool displayedLayoutChanged = false;
+        for (auto& entry : m_textCache) {
+            entry.overlayLayouts.clear();
+            entry.overlayLayoutFont = font;
+            const auto& overlay = entry.overlayTranslation.presentation;
+            if (!overlay || !entry.presentation)
+                continue;
+            bool smartMerge = false;
+            if (const auto indices = snow_shot::presentation::ocrTranslationSourceIndices(
+                    *overlay, *entry.presentation, nullptr, &smartMerge)) {
+                prepareScreenshotOcrTranslationLayout(overlay->lines, entry.presentation->lines,
+                                                      *indices, font, smartMerge);
+                displayedLayoutChanged |= overlay == m_presentation;
+            }
+        }
+        if (displayedLayoutChanged && !m_destroying && canPublishUi())
+            emit translationTypographyChanged();
+    }
+    return false;
+}
+#endif
+
 bool ScreenshotRecognitionSessionController::showOverlayTranslation() {
 #if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
     const auto generation = m_translationGeneration;
@@ -2919,6 +2949,7 @@ bool ScreenshotRecognitionSessionController::showOverlayTranslation() {
     auto entry = m_textCache.find(key);
     if (entry == m_textCache.end() || !entry->presentation)
         return true;
+    qApp->installEventFilter(this);
     const auto configuration = snow_shot::storage::ScreenshotTranslationSettings().configuration();
     const QFont font = QApplication::font();
     if (entry->overlayLayoutFont != font) {

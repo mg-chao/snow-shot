@@ -6079,6 +6079,22 @@ void ScreenshotPinnedWindow::configureRecognitionSession() {
                 notifyBatchClipboardTextChanged();
                 schedulePersistence();
             });
+#if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
+    connect(m_recognitionSession.get(),
+            &ScreenshotRecognitionSessionController::translationTypographyChanged, this, [this] {
+                if (!m_originalOcrPresentation || !m_displayOcrPresentation ||
+                    m_originalOcrPresentation->lines.size() !=
+                        m_displayOcrPresentation->lines.size())
+                    return;
+                // The text layer and image exporter share this copy with pin-local coordinates.
+                for (qsizetype i = 0; i < m_displayOcrPresentation->lines.size(); ++i) {
+                    const auto& original = m_originalOcrPresentation->lines.at(i);
+                    auto& displayed = m_displayOcrPresentation->lines[i];
+                    displayed.fontSizeCapRatio = original.fontSizeCapRatio;
+                    displayed.sourceTextMetrics = original.sourceTextMetrics;
+                }
+            });
+#endif
     connect(m_recognitionSession.get(), &ScreenshotRecognitionSessionController::textEditingChanged,
             this, [this](bool) {
                 notifyBatchClipboardTextChanged();

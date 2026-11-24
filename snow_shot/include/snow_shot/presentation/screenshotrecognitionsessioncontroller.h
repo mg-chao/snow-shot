@@ -242,6 +242,7 @@ class ScreenshotRecognitionSessionController final : public QObject {
     void textEditingChanged(bool editing);
     void textResultChanged(bool available);
     void translationCompleted();
+    void translationTypographyChanged();
     void textDraftChanged(const QString& text);
     void recognitionResultsChanged();
     void workflowStateChanged() const;
@@ -441,6 +442,7 @@ class ScreenshotRecognitionSessionController final : public QObject {
     void reportOverlayTranslationFailure();
     void failTranslationPreparation(const QString& message);
 #if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
+    bool eventFilter(QObject* watched, QEvent* event) override;
     bool finishOverlayTranslationLines(snow_shot::translation::TranslationJob* job);
     bool publishOverlayUpdates(const QString& key, ScreenshotOcrPresentation& presentation,
                                const QVector<ScreenshotOcrTextUpdate>& updates);
