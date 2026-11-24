@@ -22,10 +22,7 @@ class ImageStitchingSettingsStore final {
         ImageStitchingSettings result;
         const QString direction =
             m_configuration.value(QStringLiteral("collage/direction")).toString();
-        if (direction == QStringLiteral("custom"))
-            result.direction = ImageStitchingDirection::Custom;
-        else if (direction == QStringLiteral("horizontal"))
-            result.direction = ImageStitchingDirection::Horizontal;
+        result.direction = imageStitchingDirectionFromKey(direction);
         result.sizing = m_configuration.value(QStringLiteral("collage/sizing_mode")).toString() ==
                                 QStringLiteral("original")
                             ? ImageStitchingSizing::Original
@@ -52,17 +49,7 @@ class ImageStitchingSettingsStore final {
         for (const QString& field : fields) {
             QJsonValue value;
             if (field == QStringLiteral("direction")) {
-                switch (settings.direction) {
-                case ImageStitchingDirection::Vertical:
-                    value = QStringLiteral("vertical");
-                    break;
-                case ImageStitchingDirection::Horizontal:
-                    value = QStringLiteral("horizontal");
-                    break;
-                case ImageStitchingDirection::Custom:
-                    value = QStringLiteral("custom");
-                    break;
-                }
+                value = imageStitchingDirectionKey(settings.direction);
             } else if (field == QStringLiteral("sizing_mode"))
                 value = settings.sizing == ImageStitchingSizing::Uniform
                             ? QStringLiteral("uniform")
