@@ -1335,6 +1335,7 @@ endif()
 add_library(snow_shot_collage_core STATIC
     include/snow_shot/presentation/collagedocument.h
     src/presentation/collage/collagedocument.cpp
+    src/presentation/collage/collagefreelayout.cpp
     src/presentation/collage/collagetransformedrows_p.h
     src/presentation/collage/collageresourcebudget.cpp
     src/presentation/collage/collageresourcebudget_p.h)

@@ -3,15 +3,27 @@
 
 #include "snow_shot/image/imageimportlimits.h"
 
+#include <QSize>
 #include <QString>
 #include <QtGlobal>
 
+#include <limits>
 #include <memory>
 
 namespace snow_shot::presentation::image_stitching_detail {
 inline constexpr qint64 maximumRasterBytes = image::maximumImageImportBytes;
 inline constexpr qint64 maximumWindowPreviewBytes = qint64{64} * 1024 * 1024;
 inline constexpr qint64 maximumWorkingBytes = qint64{512} * 1024 * 1024;
+
+inline bool outputBytes(QSize size, qint64* bytes) {
+    if (size.isEmpty() || size.width() > std::numeric_limits<int>::max() / 4)
+        return false;
+    const qint64 pixels = qint64(size.width()) * size.height();
+    if (pixels > maximumRasterBytes / 4)
+        return false;
+    *bytes = pixels * 4;
+    return true;
+}
 
 class ResourceReservation final {
   public:

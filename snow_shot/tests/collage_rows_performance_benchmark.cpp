@@ -22,12 +22,13 @@ void require(bool condition, const char* message) {
         throw std::runtime_error(message);
 }
 
-QJsonObject measure(int count, QSize size, bool transformed, int batch) {
+QJsonObject measure(int count, QSize size, bool transformed, int batch, bool layered = false) {
     ImageStitchingDocument document;
     for (int i = 0; i < count; ++i) {
-        auto image = snowCanvasAllocateImage(size, QImage::Format_RGB32);
+        auto image =
+            snowCanvasAllocateImage(size, layered ? QImage::Format_RGBA8888 : QImage::Format_RGB32);
         require(!image.isNull(), "source allocation failed");
-        image.fill(QColor((i * 13) % 256, (i * 29) % 256, (i * 47) % 256));
+        image.fill(QColor((i * 13) % 256, (i * 29) % 256, (i * 47) % 256, layered ? 128 : 255));
         const auto id = document.append(std::move(image), QString::number(i));
         require(id != 0, "source admission failed");
         if (transformed) {
@@ -37,7 +38,16 @@ QJsonObject measure(int count, QSize size, bool transformed, int batch) {
     }
     auto settings = document.settings();
     settings.sizing = ImageStitchingSizing::Original;
+    if (layered) {
+        settings.direction = ImageStitchingDirection::Free;
+        settings.background = Qt::transparent;
+    }
     document.setSettings(settings);
+    if (layered)
+        for (int i = 0; i < count; ++i)
+            require(document.setFreePlacement(document.items()[i].id,
+                                              {{qreal(i * 16), qreal(i * 8)}, {}}),
+                    "Free placement failed");
     const auto baseline = imageStitchingResourceUsage().reservedBytes;
     QVector<double> preparation;
     QVector<double> composition;
@@ -60,8 +70,9 @@ QJsonObject measure(int count, QSize size, bool transformed, int batch) {
             require(rows.readRows(first, countRows, stride,
                                   reinterpret_cast<uchar*>(storage.data()), storage.size()),
                     "row production failed");
-            sample = sample * 131 + static_cast<uchar>(storage[0]) +
-                     static_cast<uchar>(storage[(countRows - 1) * stride]);
+            const qsizetype column = layered ? (rows.size.width() / 2) * 4 : 0;
+            sample = sample * 131 + static_cast<uchar>(storage[column]) +
+                     static_cast<uchar>(storage[(countRows - 1) * stride + column]);
         }
         composition.append(double(timer.nsecsElapsed()) / 1'000'000.0);
         require(iteration == 0 || sample == checksum, "row checksum changed between samples");
@@ -75,6 +86,7 @@ QJsonObject measure(int count, QSize size, bool transformed, int batch) {
             {QStringLiteral("source_height"), size.height()},
             {QStringLiteral("transformed"), transformed},
             {QStringLiteral("row_batch"), batch},
+            {QStringLiteral("layered"), layered},
             {QStringLiteral("samples"), 5},
             {QStringLiteral("prepare_median_ms"), preparation[2]},
             {QStringLiteral("compose_median_ms"), composition[2]},
@@ -97,6 +109,8 @@ int main(int argc, char** argv) {
                 results.append(measure(count, {32, 1}, false, batch));
         for (const int batch : {1, 64})
             results.append(measure(12, {2048, 1024}, true, batch));
+        for (const int batch : {1, 64})
+            results.append(measure(12, {512, 256}, false, batch, true));
         const auto report = QJsonDocument(results).toJson(QJsonDocument::Indented);
         std::cout << report.constData();
         const auto arguments = application.arguments();

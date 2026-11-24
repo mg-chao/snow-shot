@@ -694,6 +694,10 @@
             <translation>Перетащите файлы изображений сюда или нажмите «Добавить изображения»</translation>
         </message>
         <message>
+            <source>Drag to move an image. Hold %1 to snap to other images. Drag a handle to resize around the center.</source>
+            <translation>Перетащите изображение, чтобы переместить его. Удерживайте %1 для привязки к другим изображениям. Потяните за маркер, чтобы изменить размер относительно центра.</translation>
+        </message>
+        <message>
             <source>Drop images to stitch</source>
             <translation>Отпустите, чтобы добавить изображения в склейку</translation>
         </message>
@@ -708,6 +712,10 @@
         <message>
             <source>Flip vertically</source>
             <translation>Отразить по вертикали</translation>
+        </message>
+        <message>
+            <source>Free</source>
+            <translation>Свободное</translation>
         </message>
         <message>
             <source>Gray</source>
@@ -788,6 +796,14 @@
         <message>
             <source>Percentage</source>
             <translation>Проценты</translation>
+        </message>
+        <message>
+            <source>Percentage of the first image’s original height after rotation</source>
+            <translation>Процент от исходной высоты первого изображения после поворота</translation>
+        </message>
+        <message>
+            <source>Percentage of the greatest original image height after rotation</source>
+            <translation>Процент от наибольшей исходной высоты изображений после поворота</translation>
         </message>
         <message>
             <source>Percentage of the grid cell width</source>

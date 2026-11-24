@@ -33,6 +33,7 @@ class ImageStitchingPreviewCanvas final : public QWidget {
   signals:
     void replaceImageRequested(quint64 id);
     void previewOriginalRequested(quint64 id);
+    void previewSizeChanged(QSize size);
 
   protected:
     void paintEvent(QPaintEvent*) override;
@@ -44,6 +45,8 @@ class ImageStitchingPreviewCanvas final : public QWidget {
     void mouseReleaseEvent(QMouseEvent*) override;
     void wheelEvent(QWheelEvent*) override;
     void keyPressEvent(QKeyEvent*) override;
+    void keyReleaseEvent(QKeyEvent*) override;
+    void focusOutEvent(QFocusEvent*) override;
     void dragEnterEvent(QDragEnterEvent*) override;
     void dragMoveEvent(QDragMoveEvent*) override;
     void dragLeaveEvent(QDragLeaveEvent*) override;

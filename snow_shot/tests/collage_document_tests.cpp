@@ -112,6 +112,206 @@ void geometry() {
         "output pixels are DPI independent and single-image spacing cannot overflow");
 }
 
+void freeLayoutGeometryAndLifecycle() {
+    ImageStitchingDocument document;
+    const auto a = document.append(fixture({40, 20}), QStringLiteral("a"));
+    const auto b = document.append(fixture({20, 40}), QStringLiteral("b"));
+    auto settings = document.settings();
+    settings.direction = ImageStitchingDirection::Free;
+    settings.border = 3;
+    settings.spacing = 5;
+    document.setSettings(settings);
+    const auto placement = [&](quint64 id) {
+        return document.items()[document.indexOf(id)].freePlacement.value();
+    };
+    const auto world = [&](quint64 id) {
+        const auto layout = document.layout();
+        return QRectF(layout.imageRects[document.indexOf(id)]).translated(layout.origin);
+    };
+    require(document.layout().size == QSize(61, 26) && world(a) == QRectF(0, -10, 40, 20) &&
+                world(b) == QRectF(45, -10, 10, 20),
+            "first Free layout uses rotated reference height, list order, spacing and border");
+    require(document.setFreePlacement(a, {{96, -40}, {}}),
+            "move first image beyond the last list item");
+    const auto c = document.append(fixture({9, 9}), QStringLiteral("c"));
+    const auto d = document.append(fixture({8, 4}), QStringLiteral("d"));
+    require(world(c).left() == world(a).right() + 5 && world(d).left() == world(c).right() + 5 &&
+                placement(d).centerPixels.y() == -40 && world(b).left() == 45,
+            "batch appends use rightmost geometry in sequence and preserve existing images");
+
+    const auto centerB = placement(b).centerPixels;
+    require(document.setFreePlacement(b, {centerB, 1.5}), "store source-relative manual scale");
+    settings.sizing = ImageStitchingSizing::Original;
+    document.setSettings(settings);
+    require(world(b).size() == QSizeF(30, 60) && world(c).size() == QSizeF(9, 9),
+            "only automatic images follow sizing mode");
+    settings.sizing = ImageStitchingSizing::Uniform;
+    document.setSettings(settings);
+    require(document.rotate(a, true) && world(c).size() == QSizeF(40, 40) &&
+                world(b).size() == QSizeF(30, 60) && placement(b).centerPixels == centerB,
+            "rotating the reference changes automatic sizes around saved centers");
+    const auto centerC = placement(c).centerPixels;
+    require(document.swapItems(c, a) && placement(c).centerPixels == centerC &&
+                world(b).size() == QSizeF(30, 60) && world(a).height() == 9 &&
+                !document.reverseItems(),
+            "swapping changes the reference and preserves centers and manual scale");
+    require(document.rotate(b, true) && document.resetTransform(b) &&
+                document.items()[document.indexOf(b)].transform.isIdentity() &&
+                !placement(b).pixelsPerPixel && placement(b).centerPixels == centerB &&
+                world(b).height() == 9,
+            "reset restores orientation and automatic sizing at the original center");
+    require(document.setFreePlacement(b, {centerB, 3.0}) &&
+                document.replace(b, fixture({18, 9}), QStringLiteral("new")) &&
+                placement(b).centerPixels == centerB && !placement(b).pixelsPerPixel &&
+                world(b).size() == QSizeF(18, 9),
+            "replacement follows sizing mode at the same center");
+    require(document.remove(c) && world(b).size() == QSizeF(18, 9) &&
+                placement(b).centerPixels == centerB,
+            "deleting the reference retains remaining centers");
+    require(document.setFreePlacement(b, {centerB, 2.0}),
+            "give the hidden Free layout a manual scale");
+    const auto oldLayout = document.layout();
+    const auto oldItems = document.items();
+    require(!document.setFreePlacement(b, {{1e11, 0}, {}}) &&
+                !document.setFreePlacement(b, {centerB, std::numeric_limits<double>::infinity()}) &&
+                oldLayout.imageRects == document.layout().imageRects,
+            "invalid candidates leave the last admitted layout intact");
+    settings.direction = ImageStitchingDirection::Custom;
+    document.setSettings(settings);
+    document.setOutputType(ImageStitchingOutputType::PdfDocument);
+    require(document.resetTransform(b) && placement(b).pixelsPerPixel == 2.0,
+            "reset in PDF mode preserves the hidden Free scale");
+    document.setOutputType(ImageStitchingOutputType::StaticImage);
+    settings.direction = ImageStitchingDirection::Free;
+    document.setSettings(settings);
+    require(document.layout().origin == oldLayout.origin &&
+                document.layout().imageRects == oldLayout.imageRects &&
+                oldItems[0].freePlacement == document.items()[0].freePlacement,
+            "Free arrangement survives layout and output changes");
+    document.setOutputType(ImageStitchingOutputType::PdfDocument);
+    require(document.reverseItems(),
+            "PDF permits reverse while the saved static direction is Free");
+    const auto extra = document.append(fixture({1, 1}), QStringLiteral("PDF import"));
+    document.setOutputType(ImageStitchingOutputType::StaticImage);
+    qreal right = world(extra).left() - settings.spacing;
+    bool touches = false;
+    for (const auto& item : document.items()) {
+        if (item.id == extra)
+            continue;
+        require(world(item.id).right() <= right, "hidden append is beyond all existing images");
+        touches |= world(item.id).right() == right &&
+                   placement(item.id).centerPixels.y() == placement(extra).centerPixels.y();
+    }
+    require(touches && placement(b).centerPixels == centerB,
+            "images imported in PDF append to the restored Free arrangement");
+}
+
+void freeSparseCanvasAtOutputLimit() {
+    ImageStitchingDocument document;
+    auto settings = document.settings();
+    settings.direction = ImageStitchingDirection::Free;
+    settings.sizing = ImageStitchingSizing::Original;
+    settings.background = Qt::transparent;
+    document.setSettings(settings);
+    const auto first = document.append(fixture({1, 1}), QStringLiteral("first"));
+    const auto last =
+        document.append(fixture({1, 1}, QColor(0, 0, 255, 128)), QStringLiteral("last"));
+    const auto height = std::numeric_limits<int>::max();
+    const auto center = document.items()[document.indexOf(first)].freePlacement->centerPixels;
+    require(document.setFreePlacement(last, {center + QPointF(0, height - 1), {}}) &&
+                document.layout().size == QSize(1, height),
+            "a narrow Free canvas can reach the maximum representable height");
+    require(!document.setFreePlacement(last, {center + QPointF(1, height - 1), {}}),
+            "adding one column would exceed the raster budget");
+    const auto rows = prepareImageStitchingRows(document.items(), settings);
+    std::array<uchar, 4> pixel{};
+    require(rows.isValid() && rows.readRows(height - 1, 1, 4, pixel.data(), 4) &&
+                pixel == std::array<uchar, 4>{0, 0, 255, 128},
+            "the last translucent pixel of a sparse canvas streams without allocating the canvas "
+            "or overflowing the row index");
+
+    const auto beforeAppend = document.layout();
+    const auto overlap = document.append(fixture({1, 1}), QStringLiteral("overlap"));
+    const auto withOverlap = document.layout();
+    require(overlap != 0 && withOverlap.isValid() && withOverlap.size == beforeAppend.size &&
+                withOverlap.origin == beforeAppend.origin &&
+                withOverlap.imageRects[0] == beforeAppend.imageRects[0] &&
+                withOverlap.imageRects[1] == beforeAppend.imageRects[1] &&
+                withOverlap.imageRects[2] == beforeAppend.imageRects[0],
+            "append falls back to the existing bounds when the normal placement is too large");
+
+    const auto revision = document.contentRevision();
+    const auto reserved = imageStitchingResourceUsage().reservedBytes;
+    require(document.append(fixture({2, 1}), QStringLiteral("too wide")) == 0 &&
+                !document.lastError().isEmpty() && document.items().size() == 3 &&
+                document.layout().imageRects == withOverlap.imageRects &&
+                document.contentRevision() == revision && document.selectedId() == first &&
+                imageStitchingResourceUsage().reservedBytes == reserved,
+            "an append with no valid placement leaves the document and resource budget intact");
+    require(document.append(fixture({1, 1}), QStringLiteral("retry")) != 0 &&
+                document.lastError().isEmpty() && document.layout().size == beforeAppend.size,
+            "a rejected append does not affect the next valid placement");
+}
+
+void freeSpacingAndLayers() {
+    ImageStitchingDocument document;
+    auto settings = document.settings();
+    settings.direction = ImageStitchingDirection::Free;
+    settings.spacing = 10;
+    settings.border = 2;
+    settings.background = Qt::transparent;
+    document.setSettings(settings);
+    const auto a =
+        document.append(fixture({20, 20}, QColor(255, 0, 0, 128)), QStringLiteral("bottom"));
+    const auto b =
+        document.append(fixture({20, 20}, QColor(0, 0, 255, 128)), QStringLiteral("middle"));
+    const auto c = document.append(fixture({20, 20}, Qt::transparent), QStringLiteral("top"));
+    const auto center = [&](quint64 id) {
+        return document.items()[document.indexOf(id)].freePlacement->centerPixels;
+    };
+    document.setFreePlacement(a, {{-30, -30}, {}});
+    document.setFreePlacement(b, {{-22, 30}, {}});
+    document.setFreePlacement(c, {{-22, 30}, {}});
+    settings.direction = ImageStitchingDirection::Horizontal;
+    document.setSettings(settings);
+    settings.spacing = 20;
+    document.setSettings(settings);
+    settings.direction = ImageStitchingDirection::Free;
+    document.setSettings(settings);
+    require(center(a) == QPointF(-30, -30) && center(b) == QPointF(-12, 40) &&
+                center(c) == center(b),
+            "spacing edited away from Free changes a 12 px overlap to 2 px and a 40 px gap to 50 "
+            "px while coincident images stay together");
+    settings.spacing = 0;
+    document.setSettings(settings);
+    require(center(b) == QPointF(-30, 20) && center(c) == center(b),
+            "decreasing spacing clamps each axis at coincidence");
+    document.setFreePlacement(b, {{-32, -30}, {}});
+    document.setFreePlacement(c, {{-32, -30}, {}});
+    const auto rows = prepareImageStitchingRows(document.items(), settings);
+    const auto full = materializeImageStitchingRows(rows);
+    require(full.size() == QSize(26, 24) && full.pixelColor(0, 0) == QColor(0, 0, 0, 0) &&
+                full.pixelColor(2, 2) == QColor(0, 0, 255, 128) &&
+                full.pixelColor(5, 5) == QColor(85, 0, 170, 192),
+            "later images composite over earlier pixels in list order even when the upper layer "
+            "starts farther left");
+    QImage region(8, 4, QImage::Format_RGBA8888);
+    require(rows.readRegion(QRect(1, 1, 8, 4), region.bytesPerLine(), region.bits(),
+                            region.sizeInBytes()) &&
+                region.pixelColor(4, 3) == full.pixelColor(5, 4),
+            "partial reads preserve the full composition");
+    require(document.swapItems(a, b), "swap layers");
+    settings.background = QColor(0, 255, 0, 128);
+    document.setSettings(settings);
+    const auto reordered =
+        materializeImageStitchingRows(prepareImageStitchingRows(document.items(), settings));
+    const auto mixed = reordered.pixelColor(5, 5);
+    require(mixed.red() > mixed.blue() && mixed.blue() > mixed.green() && mixed.alpha() == 224 &&
+                reordered.pixelColor(0, 0) == settings.background &&
+                materializeImageStitchingRows(rows) == full,
+            "translucent backgrounds and older export snapshots retain their own stacking order");
+}
+
 void customGridGeometry() {
     ImageStitchingDocument document;
     const auto first = document.append(fixture({4, 2}), QStringLiteral("first"));
@@ -1054,6 +1254,9 @@ int main(int argc, char** argv) {
     QCoreApplication application(argc, argv);
     try {
         geometry();
+        freeLayoutGeometryAndLifecycle();
+        freeSpacingAndLayers();
+        freeSparseCanvasAtOutputLimit();
         customGridGeometry();
         customGridInitializationAndGrowth();
         customGridPixelsAndLimits();

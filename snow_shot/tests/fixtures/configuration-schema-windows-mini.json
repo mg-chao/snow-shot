@@ -4966,6 +4966,7 @@
       "allowedStringValues": [
         "vertical",
         "horizontal",
+        "free",
         "custom"
       ],
       "defaultJsonType": 3,
