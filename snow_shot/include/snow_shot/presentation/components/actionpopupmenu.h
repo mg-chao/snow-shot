@@ -11,6 +11,7 @@
 #include <QContextMenuEvent>
 #include <QKeyEvent>
 #include <QPointer>
+#include <QScopeGuard>
 #include <QTimer>
 #include <functional>
 #include <optional>
@@ -53,11 +54,19 @@ class ActionPopupMenu final : public QObject {
     }
 
     void open(bool keyboard = false, std::optional<QPoint> globalPosition = std::nullopt) {
+        if (m_opening)
+            return;
         m_closeTimer.stop();
         m_keyboard = keyboard;
         if (!m_trigger->isVisible() || !m_trigger->isEnabled())
             return;
         if (!m_menu || !m_menu->isPopupVisible()) {
+            m_opening = true;
+            const QPointer<ActionPopupMenu> controller(this);
+            const auto finishOpening = qScopeGuard([controller] {
+                if (controller)
+                    controller->m_opening = false;
+            });
             dismissMenu();
             m_menu = m_createMenu();
             if (!m_menu)
@@ -87,7 +96,20 @@ class ActionPopupMenu final : public QObject {
             }
             if (!keyboard)
                 m_menu->setActiveAction(nullptr);
+
+            // Qt's menu effect shows a proxy window before the real popup becomes visible.
+            // Pointer events during that transition can reopen a hover menu on the same trigger.
+            const bool animateMenu =
+                !m_nativeMenu && QApplication::isEffectEnabled(Qt::UI_AnimateMenu);
+            if (animateMenu)
+                QApplication::setEffectEnabled(Qt::UI_AnimateMenu, false);
+            const auto restoreMenuEffect = qScopeGuard([animateMenu] {
+                if (animateMenu)
+                    QApplication::setEffectEnabled(Qt::UI_AnimateMenu, true);
+            });
             m_menu->popupAt(globalPosition.value_or(m_trigger->mapToGlobal(position)));
+            if (!controller)
+                return;
         }
         if (keyboard && m_menu) {
             for (auto* action : m_menu->actions()) {
@@ -195,5 +217,6 @@ class ActionPopupMenu final : public QObject {
     QTimer m_closeTimer;
     bool m_keyboard = false;
     bool m_nativeMenu = false;
+    bool m_opening = false;
 };
 } // namespace snow_shot::presentation

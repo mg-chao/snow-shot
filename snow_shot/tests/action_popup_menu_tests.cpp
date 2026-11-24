@@ -168,6 +168,58 @@ void hoverMovementCanOpenWithoutAnEnterEvent() {
     }
 }
 
+void hoverWhileMenuIsOpeningKeepsOneSession() {
+    QWidget owner;
+    owner.resize(360, 240);
+    QPushButton trigger(QStringLiteral("More"), &owner);
+    trigger.setGeometry(100, 80, 90, 32);
+    owner.show();
+    QCoreApplication::processEvents();
+
+    const bool generalEffects = QApplication::isEffectEnabled(Qt::UI_General);
+    const bool animateMenus = QApplication::isEffectEnabled(Qt::UI_AnimateMenu);
+    const bool fadeMenus = QApplication::isEffectEnabled(Qt::UI_FadeMenu);
+    const auto restoreEffects = qScopeGuard([=] {
+        QApplication::setEffectEnabled(Qt::UI_FadeMenu, fadeMenus);
+        QApplication::setEffectEnabled(Qt::UI_AnimateMenu, animateMenus);
+        QApplication::setEffectEnabled(Qt::UI_General, generalEffects);
+    });
+    QApplication::setEffectEnabled(Qt::UI_General, true);
+    QApplication::setEffectEnabled(Qt::UI_AnimateMenu, true);
+    QApplication::setEffectEnabled(Qt::UI_FadeMenu, false);
+
+    QPointer<AdContextMenu> menu;
+    int creations = 0;
+    ActionPopupMenu controller(
+        &trigger,
+        [&]() {
+            ++creations;
+            menu = new AdContextMenu(&owner);
+            menu->addItem(QStringLiteral("Action"));
+            QObject::connect(menu, &QMenu::aboutToShow, &owner, [&] {
+                if (creations == 1)
+                    sendPointerHover(&trigger, QEvent::HoverMove, trigger.rect().center());
+            });
+            return menu.data();
+        },
+        ActionPopupMenu::Placement::BottomLeft, ActionPopupMenu::Surface::Widget);
+
+    sendPointerHover(&trigger, QEvent::Enter, trigger.rect().center());
+    const QPointer<AdContextMenu> first = menu;
+    require(first && first->isVisible() && creations == 1,
+            "hover during popup creation must leave exactly one visible menu");
+    require(QApplication::isEffectEnabled(Qt::UI_AnimateMenu),
+            "opening an action popup must restore the application menu effect");
+    for (int index = 0; index < 8; ++index) {
+        sendPointerHover(&trigger, QEvent::HoverMove, trigger.rect().center() + QPoint(index, 0));
+        require(menu == first && creations == 1,
+                "hover before the menu's first paint must keep the same popup session");
+    }
+    menu->dismissPopup();
+    drainRetiredMenus();
+    require(!first, "dismissing the popup must release the session");
+}
+
 void actionMenuHoverRespectsTheVisibleTriggerRegion() {
     QWidget owner;
     owner.resize(360, 240);
@@ -406,6 +458,7 @@ int main(int argc, char** argv) {
     hoverEventsRespectClippingAndEnabledState();
     enteringTriggerUsesTheDeliveredPointerPosition();
     hoverMovementCanOpenWithoutAnEnterEvent();
+    hoverWhileMenuIsOpeningKeepsOneSession();
     actionMenuHoverRespectsTheVisibleTriggerRegion();
     hoverTransitionsPreserveMenuAndKeyboardSessions();
     deletingAnOpenMenuEndsTheControllerSession();
