@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QMetaObject>
 #include <QJsonObject>
+#include <QMap>
 
 #include "snow_shot/presentation/styles/themecolorscheme.h"
 
@@ -45,10 +46,13 @@ class ThemeManager : public QObject {
     void rebuildScheme();
     void applyThemeMode();
     void applyFontSize(ThemeStyleConfig& config) const;
+    void applyInterfaceConfiguration(const QMap<QString, QJsonValue>& values);
 
     ThemeStyleConfig m_config;
     ThemeColorScheme m_scheme;
     ThemeMode m_mode = ThemeMode::FollowSystem;
+    QString m_appFontFamily;
+    QString m_effectiveFontFamily;
     int m_appFontSize = 14;
     QMetaObject::Connection m_systemColorSchemeConnection;
     bool m_initialized = false;

@@ -34,12 +34,20 @@ class TranslationService;
 class TranslationJob;
 
 #if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
+struct TranslationPreferenceChanges {
+    std::optional<QString> sourceLanguage;
+    std::optional<QString> targetLanguage;
+    std::optional<QString> modelId;
+    std::optional<QString> secondaryTargetLanguage;
+    std::optional<int> languageDetectionConfidenceThreshold;
+};
+
 // One catalog and settings binding per client/store pair. The application owns the client;
 // standalone consumers may supply an isolated client and store through the same boundary.
 class TranslationService final : public QObject {
     Q_OBJECT
   public:
-    enum class ChangeReason { UserPreferences, Catalog, ModelInvalidated };
+    enum class ChangeReason { UserPreferences, Catalog, ModelInvalidated, RemotePreferences };
     static TranslationService& forClient(SnowShotApiClient& client,
                                          storage::ConfigurationStore& settings,
                                          const QLocale& locale,
@@ -57,6 +65,7 @@ class TranslationService final : public QObject {
     QString errorText() const;
     static QString modelConfigurationChangedText();
     bool savePreferences(const TranslationPreferences& preferences);
+    bool savePreferenceChanges(const TranslationPreferenceChanges& changes);
     void refreshModels(bool force = false);
     void setLocale(const QLocale& locale);
     TranslationJob* createJob(const QStringList& texts, QObject* owner);

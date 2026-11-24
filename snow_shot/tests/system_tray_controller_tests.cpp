@@ -2000,6 +2000,14 @@ int main(int argc, char* argv[]) {
             "the manager-driven check sync must mirror the enabled state");
     controller.setQuickActionChecked(
         snow_shot::presentation::GlobalShortcutAction::ToggleGlobalShortcuts, true);
+    controller.setMenuOptions({QStringLiteral("quick.screenshot"), QStringLiteral("tray.exit")},
+                              true);
+    require(!shortcutToggleMenuAction->isVisible() && shortcutToggleMenuAction->isChecked() &&
+                quickActions.size() == 2,
+            "a remote tray layout can hide the toggle without changing the local input pause");
+    controller.setMenuOptions(defaultMenuOptions, true);
+    require(shortcutToggleMenuAction->isVisible() && shortcutToggleMenuAction->isChecked(),
+            "restoring the remote toggle reflects the same local pause state");
     controller.setMenuOptions({QStringLiteral("quick.screenshot"), QStringLiteral("tray.exit")});
     const QList<QAction*> compactVisibleActions = visibleActions();
     require(compactVisibleActions.size() == 3 && compactVisibleActions.at(1)->isSeparator() &&

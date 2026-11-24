@@ -101,11 +101,21 @@ TranslationService::TranslationService(SnowShotApiClient& client,
                 } else if (key == proxyKey || key == httpProxyKey) {
                     m_client->setProxyConfiguration(m_settings->value(proxyKey).toString(),
                                                     m_settings->value(httpProxyKey).toString());
-                } else if (!m_saving &&
-                           (key == sourceKey || key == targetKey || key == secondaryTargetKey ||
-                            key == confidenceThresholdKey || key == modelKey)) {
-                    syncPreferences(ChangeReason::UserPreferences);
                 }
+            });
+    connect(&settings, &storage::ConfigurationStore::valuesCommitted, this,
+            [this](storage::ConfigurationWriteOrigin origin, const auto&, const auto& values) {
+                if (m_saving ||
+                    (!values.contains(sourceKey) && !values.contains(targetKey) &&
+                     !values.contains(secondaryTargetKey) &&
+                     !values.contains(confidenceThresholdKey) && !values.contains(modelKey)))
+                    return;
+                auto reason = ChangeReason::UserPreferences;
+                if (origin == storage::ConfigurationWriteOrigin::Remote)
+                    reason = ChangeReason::RemotePreferences;
+                else if (origin == storage::ConfigurationWriteOrigin::Internal)
+                    reason = ChangeReason::Catalog;
+                syncPreferences(reason);
             });
     connect(&client, &SnowShotApiClient::customModelInvalidated, this,
             [this](const QString& id, bool translation, bool) {
@@ -171,7 +181,10 @@ std::optional<bool> TranslationService::writePreferences(const QMap<QString, QJs
     const QPointer<TranslationService> lifetime(this);
     const quint64 generation = ++m_preferencesGeneration;
     const bool previousSaving = std::exchange(m_saving, true);
-    const bool saved = m_settings->setValues(values);
+    const bool saved =
+        m_settings->setValues(values, reason == ChangeReason::UserPreferences
+                                          ? storage::ConfigurationWriteOrigin::Explicit
+                                          : storage::ConfigurationWriteOrigin::Internal);
     if (!lifetime)
         return std::nullopt;
     m_saving = previousSaving;
@@ -185,13 +198,27 @@ std::optional<bool> TranslationService::writePreferences(const QMap<QString, QJs
 }
 
 bool TranslationService::savePreferences(const TranslationPreferences& preferences) {
-    const auto saved = writePreferences(
-        {{sourceKey, preferences.sourceLanguage},
-         {targetKey, preferences.targetLanguage},
-         {secondaryTargetKey, preferences.secondaryTargetLanguage},
-         {confidenceThresholdKey, preferences.languageDetectionConfidenceThreshold},
-         {modelKey, preferences.modelId}},
-        ChangeReason::UserPreferences);
+    return savePreferenceChanges(
+        {.sourceLanguage = preferences.sourceLanguage,
+         .targetLanguage = preferences.targetLanguage,
+         .modelId = preferences.modelId,
+         .secondaryTargetLanguage = preferences.secondaryTargetLanguage,
+         .languageDetectionConfidenceThreshold = preferences.languageDetectionConfidenceThreshold});
+}
+
+bool TranslationService::savePreferenceChanges(const TranslationPreferenceChanges& changes) {
+    QMap<QString, QJsonValue> values;
+    if (changes.sourceLanguage)
+        values.insert(sourceKey, *changes.sourceLanguage);
+    if (changes.targetLanguage)
+        values.insert(targetKey, *changes.targetLanguage);
+    if (changes.secondaryTargetLanguage)
+        values.insert(secondaryTargetKey, *changes.secondaryTargetLanguage);
+    if (changes.modelId)
+        values.insert(modelKey, *changes.modelId);
+    if (changes.languageDetectionConfidenceThreshold)
+        values.insert(confidenceThresholdKey, *changes.languageDetectionConfidenceThreshold);
+    const auto saved = writePreferences(values, ChangeReason::UserPreferences);
     if (!saved.has_value())
         return false;
     const QPointer<TranslationService> lifetime(this);
@@ -487,7 +514,7 @@ void TranslationJob::prepare() {
             fail(m_service->errorText());
             return;
         }
-        const int index = translationModelIndex(models, m_service->preferences().modelId);
+        const int index = translationModelIndex(models, m_preferences.modelId);
         if (index < 0) {
             fail(m_service->errorText());
             return;

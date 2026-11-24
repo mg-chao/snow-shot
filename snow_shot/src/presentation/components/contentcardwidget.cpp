@@ -58,9 +58,11 @@ ContentCardWidget::ContentCardWidget(
         static_cast<void>(applicationStorage.initialize());
     }
     connect(&applicationStorage.configuration(),
-            &snow_shot::storage::ConfigurationStore::valueChanged, this,
-            [this](const QString& key, const QJsonValue&) {
-                if (key == QStringLiteral("extended_features/translation_page_enabled") &&
+            &snow_shot::storage::ConfigurationStore::valuesCommitted, this,
+            [this](snow_shot::storage::ConfigurationWriteOrigin origin, const auto&,
+                   const auto& values) {
+                if (origin != snow_shot::storage::ConfigurationWriteOrigin::Remote &&
+                    values.contains(QStringLiteral("extended_features/translation_page_enabled")) &&
                     m_currentLocation.pageId == QStringLiteral("translation") &&
                     !snow_shot::storage::ExtendedFeaturesSettings().translationPageEnabled()) {
                     navigateTo({QStringLiteral("text-recognition-translation"),

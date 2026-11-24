@@ -1511,14 +1511,17 @@ void builtInCatalogIsCompleteAndValid() {
     const auto* importConfiguration =
         catalog.item({QStringLiteral("files-history"), QStringLiteral("storage-status"),
                       QStringLiteral("configuration.import")});
+    require(configurationSection != nullptr &&
+                configurationSection->items.constFirst().id == u"storage.cloud-settings-sync",
+            "cloud settings sync is the first data storage row in the full edition");
     require(configurationSection != nullptr && exportConfiguration != nullptr &&
                 importConfiguration != nullptr &&
-                configurationSection->items.at(0).id == exportConfiguration->id &&
-                configurationSection->items.at(1).id == importConfiguration->id &&
-                configurationSection->items.at(2).id == QStringLiteral("storage.status") &&
+                configurationSection->items.at(1).id == exportConfiguration->id &&
+                configurationSection->items.at(2).id == importConfiguration->id &&
+                configurationSection->items.at(3).id == QStringLiteral("storage.status") &&
                 exportConfiguration->configurationKey.isEmpty() &&
                 importConfiguration->configurationKey.isEmpty(),
-            "data storage leads with export and import before the storage-directory widget");
+            "export and import precede the storage-directory widget");
     require(catalog.item({QStringLiteral("files-history"), QStringLiteral("storage-status"),
                           QStringLiteral("storage.clear-thumbnails")}) == nullptr,
             "retired thumbnail cache cleanup must not appear in settings");
@@ -3226,7 +3229,11 @@ void invalidCatalogReportsAllConformanceErrors() {
         storagePage.sections.begin(), storagePage.sections.end(),
         [](const auto& section) { return section.id == QStringLiteral("storage-status"); });
     require(statusSection != storagePage.sections.end(), "storage status fixture must exist");
-    auto& custom = std::get<settings::SettingsCustomDefinition>(statusSection->items[2].payload);
+    const auto statusItem =
+        std::find_if(statusSection->items.begin(), statusSection->items.end(),
+                     [](const auto& item) { return item.id == u"storage.status"; });
+    require(statusItem != statusSection->items.end(), "storage status fixture item must exist");
+    auto& custom = std::get<settings::SettingsCustomDefinition>(statusItem->payload);
     custom.renderer = static_cast<settings::SettingsCustomRenderer>(999);
     pages.push_back({QStringLiteral("empty-page"),
                      QStringLiteral("relative-route"),
@@ -4273,17 +4280,18 @@ int main(int argc, char** argv) {
         const auto& catalog = settings::builtInSettingsRegistry().catalog();
         const auto* section =
             catalog.section(QStringLiteral("files-history"), QStringLiteral("storage-status"));
-        require(section && section->items.size() == 5 &&
-                    section->items.at(0).id == u"configuration.export" &&
-                    section->items.at(1).id == u"configuration.import" &&
-                    section->items.at(2).id == u"storage.status" &&
-                    section->items.at(3).id == u"storage.export-logs" &&
-                    section->items.at(4).id == u"storage.clear-recording-temp",
-                "backup and restore precede storage status in the shared category");
+        require(section && section->items.size() == 6 &&
+                    section->items.at(0).id == u"storage.cloud-settings-sync" &&
+                    section->items.at(1).id == u"configuration.export" &&
+                    section->items.at(2).id == u"configuration.import" &&
+                    section->items.at(3).id == u"storage.status" &&
+                    section->items.at(4).id == u"storage.export-logs" &&
+                    section->items.at(5).id == u"storage.clear-recording-temp",
+                "cloud settings sync leads the data storage category");
         require(!catalog.item({QStringLiteral("files-history"), QStringLiteral("storage-status"),
                                QStringLiteral("storage.clear-thumbnails")}),
                 "retired thumbnail cache cleanup stays absent from the catalog");
-        const auto& exportItem = section->items.at(3);
+        const auto& exportItem = section->items.at(4);
         const auto* exportAction =
             std::get_if<settings::SettingsActionDefinition>(&exportItem.payload);
         require(exportItem.title.translated() == u"Export logs" && exportAction &&
@@ -4297,7 +4305,7 @@ int main(int argc, char** argv) {
                 "log export is discoverable by its title");
 #ifdef Q_OS_WIN
         require(section->title.translated() == u"Data storage" &&
-                    section->items.at(2).title.translated() == u"Data storage",
+                    section->items.at(3).title.translated() == u"Data storage",
                 "storage cleanup retains the Windows data-directory control");
 #else
         require(section->title.translated() == u"Data storage", "storage cleanup is discoverable");

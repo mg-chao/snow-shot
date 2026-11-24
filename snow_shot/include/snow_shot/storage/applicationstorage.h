@@ -142,9 +142,12 @@ class ApplicationStorage final : public QObject {
     bool requestCaptureHistoryPolicy(const CaptureHistoryPolicy& policy);
     [[nodiscard]] std::shared_future<StorageResult>
     requestCaptureHistoryPolicyAsync(const CaptureHistoryPolicy& policy);
-    bool requestSmartSelectionMode(SmartSelectionMode mode);
-    [[nodiscard]] std::shared_future<StorageResult>
-    requestSmartSelectionModeAsync(SmartSelectionMode mode);
+    bool
+    requestSmartSelectionMode(SmartSelectionMode mode,
+                              ConfigurationWriteOrigin origin = ConfigurationWriteOrigin::Explicit);
+    [[nodiscard]] std::shared_future<StorageResult> requestSmartSelectionModeAsync(
+        SmartSelectionMode mode,
+        ConfigurationWriteOrigin origin = ConfigurationWriteOrigin::Explicit);
     [[nodiscard]] PinnedWindowPolicy pinnedWindowPolicy() const;
     bool requestPinnedWindowPolicy(const PinnedWindowPolicy& policy);
     bool requestPinnedWindowClear();

@@ -422,6 +422,51 @@ void diskBackedEngineCompletesThroughTheQtWorker(bool managedRuntime = false) {
     if (managedRuntime) {
         require(service.assetStatus().phase == ScreenshotOcrAssetPhase::ReadyOffline,
                 "managed OCR must use the verified offline payload without downloading");
+        auto synchronized = service.runtimeConfiguration();
+        synchronized.modelType = ScreenshotOcrModelType::Medium;
+        synchronized.residentProcess = true;
+        service.setRuntimeConfiguration(synchronized, true);
+        require(waitUntil([&] { return !service.storageBusy(); }, 5000) &&
+                    service.modelFilesReady() &&
+                    !QDir(cache.path()).exists(QStringLiteral(".staging")),
+                "a synchronized unavailable model keeps the ready model without downloading");
+        QObject fallbackReceiver;
+        bool fallbackCompleted = false;
+        ScreenshotOcrRequest prefetch{image, QRectF(QPointF(), QSizeF(image.size()))};
+        prefetch.priority = ScreenshotOcrRequestPriority::Prefetch;
+        const auto fallback = service.recognize(
+            std::move(prefetch), &fallbackReceiver,
+            [&](const ScreenshotOcrRecognitionResult& result) {
+                require(result.error.isEmpty() && result.presentation != nullptr,
+                        "the available model handles OCR while the preferred model is unavailable");
+                fallbackCompleted = true;
+            });
+        require(fallback != 0 &&
+                    service.reprioritize(fallback, ScreenshotOcrRequestPriority::Interactive) &&
+                    waitUntil([&] { return QDir(cache.path()).exists(QStringLiteral(".staging")); },
+                              5000),
+                "promoting a prefetch starts preparation of the deferred model");
+        require(waitUntil([&] { return fallbackCompleted; }, kRecognitionTimeoutMs),
+                "deferred model preparation preserves active recognition");
+
+        QTemporaryDir restartedCache;
+        require(restartedCache.isValid(), "restart with isolated OCR component storage");
+        options.cacheRoot = restartedCache.path();
+        options.modelType = ScreenshotOcrModelType::Medium;
+        options.tryCachedFallbackAtStartup = true;
+        ScreenshotOcrRecognitionService restarted(options);
+        restarted.setRuntimeConfiguration(synchronized, true);
+        require(waitUntil([&] { return restarted.modelFilesReady(); }, 5000) &&
+                    restarted.runtimeConfiguration().modelType == ScreenshotOcrModelType::Medium &&
+                    restarted.assetStatus().phase == ScreenshotOcrAssetPhase::ReadyOffline &&
+                    !QDir(restartedCache.path()).exists(QStringLiteral(".staging")),
+                "resident startup restores a cached fallback without replacing the preference");
+        synchronized.modelHotStart = true;
+        restarted.setRuntimeConfiguration(synchronized, false);
+        require(waitUntil(
+                    [&] { return QDir(restartedCache.path()).exists(QStringLiteral(".staging")); },
+                    5000),
+                "explicitly choosing the uncached model starts its download while OCR is idle");
     }
 }
 

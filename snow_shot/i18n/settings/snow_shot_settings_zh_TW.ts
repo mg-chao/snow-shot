@@ -489,6 +489,33 @@
         </message>
     </context>
     <context>
+        <name>CloudSettingsSyncWidget</name>
+        <message>
+            <source>Last sync: %1</source>
+            <translation>上次同步：%1</translation>
+        </message>
+        <message>
+            <source>Not synced yet</source>
+            <translation>尚未同步</translation>
+        </message>
+        <message>
+            <source>Settings</source>
+            <translation>設定</translation>
+        </message>
+        <message>
+            <source>Sign in to sync settings</source>
+            <translation>登入以同步設定</translation>
+        </message>
+        <message>
+            <source>Sync now</source>
+            <translation>立即同步</translation>
+        </message>
+        <message>
+            <source>Sync on this device</source>
+            <translation>在此裝置上同步</translation>
+        </message>
+    </context>
+    <context>
         <name>CloudUploadSettingsWidget</name>
         <message>
             <source>%1 (Copy %2)</source>
@@ -1427,6 +1454,10 @@
             <translation>請輸入有效的 HTTP 代理位址，例如 http://127.0.0.1:7890</translation>
         </message>
         <message>
+            <source>Language %1 is unavailable on this device</source>
+            <translation>此裝置不支援語言 %1</translation>
+        </message>
+        <message>
             <source>The clipboard is unavailable</source>
             <translation>剪貼簿無法使用</translation>
         </message>
@@ -2272,6 +2303,10 @@
         <message>
             <source>Closed window count</source>
             <translation>已關閉視窗數量</translation>
+        </message>
+        <message>
+            <source>Cloud settings sync</source>
+            <translation>雲端設定同步</translation>
         </message>
         <message>
             <source>Cloud upload</source>
@@ -4628,6 +4663,10 @@
         <message>
             <source>Shape tool</source>
             <translation>圖形</translation>
+        </message>
+        <message>
+            <source>Share preferences across devices signed in to the same account</source>
+            <translation>在登入同一帳號的裝置間共用偏好設定</translation>
         </message>
         <message>
             <source>Shared image export settings for screenshot and pin-to-screen windows</source>
