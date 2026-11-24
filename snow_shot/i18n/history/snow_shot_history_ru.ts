@@ -1956,6 +1956,10 @@ Files:
             <translation>Отмена</translation>
         </message>
         <message>
+            <source>Cancel crop</source>
+            <translation>Отменить обрезку</translation>
+        </message>
+        <message>
             <source>Checkerboard</source>
             <translation>Шахматная доска</translation>
         </message>

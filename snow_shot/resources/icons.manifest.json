@@ -487,6 +487,14 @@
     },
     {
       "variant": "outlined",
+      "symbol": "CancelCrop",
+      "name": "cancel-crop",
+      "source": "../src/presentation/components/icons/resources/cancel-crop.svg",
+      "colorModel": "monochrome",
+      "fit": "contain"
+    },
+    {
+      "variant": "outlined",
       "symbol": "ColorPicker",
       "name": "color-picker",
       "source": "../src/presentation/components/icons/resources/color-picker.svg",

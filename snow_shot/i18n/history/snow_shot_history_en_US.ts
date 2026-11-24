@@ -1977,6 +1977,10 @@ Files:
             <translation>Cancel</translation>
         </message>
         <message>
+            <source>Cancel crop</source>
+            <translation>Cancel crop</translation>
+        </message>
+        <message>
             <source>Checkerboard</source>
             <translation>Checkerboard</translation>
         </message>
