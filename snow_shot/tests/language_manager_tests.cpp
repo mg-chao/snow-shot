@@ -37,17 +37,20 @@ int main(int argc, char** argv) {
     manager.initialize();
 
     const auto catalogs = manager.availableLanguages();
-    require(catalogs.size() == 3, "the three embedded catalogs should be discovered");
+    require(catalogs.size() == 4, "all four embedded catalogs should be discovered");
     require(catalogs.at(0).localeName == QStringLiteral("en_US"),
             "the source catalog should sort first");
-    require(catalogs.at(1).localeName == QStringLiteral("zh_CN") &&
-                catalogs.at(2).localeName == QStringLiteral("zh_TW"),
+    require(catalogs.at(1).localeName == QStringLiteral("ru_RU") &&
+                catalogs.at(2).localeName == QStringLiteral("zh_CN") &&
+                catalogs.at(3).localeName == QStringLiteral("zh_TW"),
             "remaining catalogs should sort by canonical locale name");
     require(catalogs.at(0).nativeName == QStringLiteral("English"),
             "English should expose its catalog native name");
-    require(catalogs.at(1).nativeName == QString::fromUtf8("简体中文"),
+    require(catalogs.at(1).nativeName == QString::fromUtf8("Русский"),
+            "Russian should expose its catalog native name");
+    require(catalogs.at(2).nativeName == QString::fromUtf8("简体中文"),
             "Simplified Chinese should expose its catalog native name");
-    require(catalogs.at(2).nativeName == QString::fromUtf8("繁體中文"),
+    require(catalogs.at(3).nativeName == QString::fromUtf8("繁體中文"),
             "Traditional Chinese should expose its catalog native name");
     require(manager.languagePreference() == QStringLiteral("en_US"),
             "English should use the canonical en_US preference");
@@ -167,9 +170,36 @@ int main(int argc, char** argv) {
                 QString::fromUtf8("尚無固定到螢幕視窗"),
             "Traditional Chinese management should use the same window terminology");
 
+    require(manager.setLanguage(QStringLiteral("ru")), "Russian should load by its language tag");
+    require(manager.languagePreference() == QStringLiteral("ru_RU") &&
+                manager.currentLocale().name() == QStringLiteral("ru_RU") &&
+                settings.language() == QStringLiteral("ru_RU"),
+            "Russian should become active and persist as ru_RU");
+    require(QCoreApplication::translate("SettingsCatalog",
+                                        "Keep selection width and height consistent") ==
+                QString::fromUtf8("Сохранять ширину и высоту выделения одинаковыми"),
+            "Russian should describe the square selection shortcut");
+    require(
+        QCoreApplication::translate("PinnedWindowManagementPageWidget", "%n pinned window(s)",
+                                    nullptr, 1) == QString::fromUtf8("1 закреплённое окно") &&
+            QCoreApplication::translate("PinnedWindowManagementPageWidget", "%n pinned window(s)",
+                                        nullptr, 2) == QString::fromUtf8("2 закреплённых окна") &&
+            QCoreApplication::translate("PinnedWindowManagementPageWidget", "%n pinned window(s)",
+                                        nullptr, 5) == QString::fromUtf8("5 закреплённых окон"),
+        "the embedded Russian catalog must preserve all three plural forms");
+    require(QCoreApplication::translate("QFileDialog", "File &name:") ==
+                QString::fromUtf8("&Имя файла:"),
+            "the embedded Russian catalog must include Qt's file dialog translations");
+    require(adqt::locale::LocaleManager::instance().locale().name() == QStringLiteral("ru_RU") &&
+                QCoreApplication::translate("adqt::widgets::AdPagination", "Previous page") ==
+                    QString::fromUtf8("Предыдущая страница"),
+            "shared controls should follow the Russian application locale");
+
     require(manager.setLanguage(QStringLiteral("en_US")) &&
                 QCoreApplication::translate("CanvasStatusReadout", "Locked") ==
-                    QStringLiteral("Locked"),
+                    QStringLiteral("Locked") &&
+                QCoreApplication::translate("adqt::widgets::AdPagination", "Previous page") ==
+                    QStringLiteral("Previous page"),
             "switching back to compact English must remove previous localized translations");
 
     require(manager.setLanguage(QStringLiteral("system")),

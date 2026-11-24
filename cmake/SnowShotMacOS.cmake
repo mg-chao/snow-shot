@@ -56,7 +56,7 @@ set_target_properties(snow_shot PROPERTIES
     INSTALL_RPATH "@executable_path/../Frameworks"
     INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-foreach(_snow_bundle_language IN ITEMS en zh-Hans zh-Hant)
+foreach(_snow_bundle_language IN ITEMS en zh-Hans zh-Hant ru)
     set(_snow_bundle_strings
         "${CMAKE_CURRENT_LIST_DIR}/../snow_shot/packaging/macos/${_snow_bundle_language}.lproj/InfoPlist.strings")
     set_source_files_properties("${_snow_bundle_strings}" PROPERTIES

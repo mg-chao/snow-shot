@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="DisplayName" xml:space="preserve"><value>Snow Shot</value></data>
+  <data name="Description" xml:space="preserve"><value>Делайте скриншоты, добавляйте разметку, распознавайте содержимое экрана и закрепляйте его на экране.</value></data>
+  <data name="FileTypesDisplayName" xml:space="preserve"><value>Изображения и текстовые документы</value></data>
+  <data name="EditVerb" xml:space="preserve"><value>Редактировать в Snow Shot</value></data>
+</root>

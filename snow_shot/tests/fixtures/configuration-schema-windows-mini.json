@@ -624,19 +624,6 @@
     },
     {
       "allowedStringValues": [
-        "max",
-        "min"
-      ],
-      "defaultJsonType": 3,
-      "defaultStringIsNull": false,
-      "defaultValue": "max",
-      "integerRange": null,
-      "key": "text_recognition/detector_resize_policy",
-      "maximumListItems": -1,
-      "valueKind": "String"
-    },
-    {
-      "allowedStringValues": [
         "accuracy_first",
         "speed_first"
       ],

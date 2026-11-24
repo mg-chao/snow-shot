@@ -4,6 +4,7 @@ Unicode true
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "SimpChinese"
 !insertmacro MUI_LANGUAGE "TradChinese"
+!insertmacro MUI_LANGUAGE "Russian"
 !include "${PACKAGING}\InstallerArchitecture.nsh"
 !ifdef SIMULATE_ARM64
   !define /redef IsNativeARM64 '"" LogicLib_AlwaysTrue ""'

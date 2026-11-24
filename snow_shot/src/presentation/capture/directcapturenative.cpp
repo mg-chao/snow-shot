@@ -18,21 +18,16 @@ QString nativeError() {
 
 DirectCaptureFrame captureDirectTarget(const DirectCaptureRequest& request) {
     DirectCaptureFrame result;
-    if ((request.target == DirectCaptureTarget::FocusedWindow && request.window == 0) ||
-        (request.target == DirectCaptureTarget::CurrentMonitor && request.monitorName.isEmpty())) {
+    const bool focusedWindow = request.target == DirectCaptureTarget::FocusedWindow;
+    const bool fullHistory = request.historyMode == storage::CaptureHistoryMode::Full;
+    if (focusedWindow ? request.window == 0 : request.monitorName.isEmpty()) {
         return result;
     }
     SnowCaptureDesktopSessionConfig config{};
     config.capture_retry_count = 1;
-    if (request.target == DirectCaptureTarget::CurrentMonitor)
+    if (!focusedWindow)
         config.capture_backend = request.captureBackend;
     config.pixel_format = SNOW_CAPTURE_PIXEL_FORMAT_BGRA8;
-    const std::unique_ptr<SnowCaptureDesktopSession,
-                          decltype(&snow_capture_desktop_session_destroy)>
-        session(request.historyMode == storage::CaptureHistoryMode::Full
-                    ? snow_capture_desktop_session_create(&config)
-                    : nullptr,
-                snow_capture_desktop_session_destroy);
     SnowCaptureScreenshotRequest nativeRequest{};
     nativeRequest.version = SNOW_CAPTURE_SCREENSHOT_REQUEST_VERSION;
     nativeRequest.struct_size = sizeof(nativeRequest);
@@ -41,17 +36,14 @@ DirectCaptureFrame captureDirectTarget(const DirectCaptureRequest& request) {
     if (request.restoreOriginalScreenColors) {
         nativeRequest.flags |= SNOW_CAPTURE_SCREENSHOT_REQUEST_RESTORE_ORIGINAL_COLORS;
     }
-    nativeRequest.focused_window = request.target == DirectCaptureTarget::FocusedWindow
-                                       ? static_cast<intptr_t>(request.window)
-                                       : 0;
     const QByteArray monitorIdentity = request.monitorName.toUtf8();
     SnowCaptureTargetScreenshotRequest targetRequest{};
     targetRequest.version = SNOW_CAPTURE_TARGET_SCREENSHOT_REQUEST_VERSION;
     targetRequest.struct_size = sizeof(targetRequest);
     targetRequest.screenshot = nativeRequest;
-    targetRequest.monitor_utf8 = request.target == DirectCaptureTarget::CurrentMonitor
-                                     ? monitorIdentity.constData()
-                                     : nullptr;
+    if (focusedWindow)
+        targetRequest.screenshot.focused_window = static_cast<intptr_t>(request.window);
+    targetRequest.monitor_utf8 = focusedWindow ? nullptr : monitorIdentity.constData();
     targetRequest.pixel_format = config.pixel_format;
     targetRequest.capture_backend = config.capture_backend;
     struct Admission {
@@ -81,31 +73,44 @@ DirectCaptureFrame captureDirectTarget(const DirectCaptureRequest& request) {
             return accepted ? 1 : 0;
         };
     }
-    const std::unique_ptr<SnowCaptureScreenshotResult,
-                          decltype(&snow_capture_screenshot_result_destroy)>
-        snapshot(request.historyMode != storage::CaptureHistoryMode::Full
-                     ? snow_capture_target_screenshot(&targetRequest)
-                     : (session
-                            ? snow_capture_desktop_session_capture(session.get(), &nativeRequest)
-                            : nullptr),
-                 snow_capture_screenshot_result_destroy);
-    if (!snapshot || admission.rejected.load(std::memory_order_acquire)) {
-        result.error = admission.rejected.load(std::memory_order_acquire)
-                           ? QStringLiteral("resource_limit")
-                           : nativeError();
-        return result;
+    using Snapshot = std::unique_ptr<SnowCaptureScreenshotResult,
+                                     decltype(&snow_capture_screenshot_result_destroy)>;
+    Snapshot targetSnapshot(nullptr, snow_capture_screenshot_result_destroy);
+    if (focusedWindow || !fullHistory) {
+        // Freeze the focused window before creating the desktop workers for history.
+        targetSnapshot.reset(snow_capture_target_screenshot(&targetRequest));
+        const bool rejected = admission.rejected.load(std::memory_order_acquire);
+        if (!targetSnapshot || rejected) {
+            result.error = rejected ? QStringLiteral("resource_limit") : nativeError();
+            return result;
+        }
     }
-    const size_t count = snow_capture_screenshot_result_display_count(snapshot.get());
+    Snapshot desktopSnapshot(nullptr, snow_capture_screenshot_result_destroy);
+    if (fullHistory) {
+        const std::unique_ptr<SnowCaptureDesktopSession,
+                              decltype(&snow_capture_desktop_session_destroy)>
+            session(snow_capture_desktop_session_create(&config),
+                    snow_capture_desktop_session_destroy);
+        if (session)
+            desktopSnapshot.reset(
+                snow_capture_desktop_session_capture(session.get(), &nativeRequest));
+        if (!desktopSnapshot) {
+            result.error = nativeError();
+            return result;
+        }
+    }
+    const auto* displaySnapshot = fullHistory ? desktopSnapshot.get() : targetSnapshot.get();
+    const size_t count = snow_capture_screenshot_result_display_count(displaySnapshot);
     for (size_t index = 0; index < count; ++index) {
         SnowCaptureFrameInfo info{};
-        if (!snow_capture_screenshot_result_display_info(snapshot.get(), index, &info) ||
+        if (!snow_capture_screenshot_result_display_info(displaySnapshot, index, &info) ||
             !capture::validFrameInfo(info)) {
             result.error = nativeError();
             break;
         }
         DirectCaptureDisplay display;
         display.image = capture::imageFromFrameLease(
-            snow_capture_screenshot_result_display_retain(snapshot.get(), index), info.rgba_bytes,
+            snow_capture_screenshot_result_display_retain(displaySnapshot, index), info.rgba_bytes,
             info.rgba_len, info.width, info.height, info.stride_bytes, info.pixel_format,
             capture::FrameAlphaMode::Opaque);
         display.physicalBounds =
@@ -114,7 +119,7 @@ DirectCaptureFrame captureDirectTarget(const DirectCaptureRequest& request) {
         SnowCaptureFrameGeometry geometry{};
         geometry.version = SNOW_CAPTURE_FRAME_GEOMETRY_VERSION;
         geometry.struct_size = sizeof(geometry);
-        if (!snow_capture_screenshot_result_display_geometry(snapshot.get(), index, &geometry)) {
+        if (!snow_capture_screenshot_result_display_geometry(displaySnapshot, index, &geometry)) {
             result.error = nativeError();
             break;
         }
@@ -136,7 +141,7 @@ DirectCaptureFrame captureDirectTarget(const DirectCaptureRequest& request) {
             currentMonitor ||
             request.monitorName == QStringLiteral("display:%1").arg(display.nativeDisplayId);
 #endif
-        if (request.target == DirectCaptureTarget::CurrentMonitor && currentMonitor) {
+        if (!focusedWindow && currentMonitor) {
             result.image = display.image;
             result.logicalBounds = display.logicalBounds;
             result.physicalBounds = display.physicalBounds;
@@ -147,25 +152,24 @@ DirectCaptureFrame captureDirectTarget(const DirectCaptureRequest& request) {
             break;
         result.displays.push_back(std::move(display));
     }
-    if (((request.historyMode == storage::CaptureHistoryMode::Full ||
-          request.target == DirectCaptureTarget::CurrentMonitor) &&
-         result.displays.isEmpty()) ||
+    if (((fullHistory || !focusedWindow) && result.displays.isEmpty()) ||
         static_cast<size_t>(result.displays.size()) != count) {
         result.image = {};
         result.displays.clear();
         return result;
     }
-    if (request.target == DirectCaptureTarget::FocusedWindow) {
+    if (focusedWindow) {
         SnowCaptureWindowFrameInfo info{};
         info.version = SNOW_CAPTURE_WINDOW_FRAME_INFO_VERSION;
         info.struct_size = sizeof(info);
-        if (!snow_capture_screenshot_result_focused_window_info(snapshot.get(), &info)) {
+        if (!snow_capture_screenshot_result_focused_window_info(targetSnapshot.get(), &info)) {
             result.error = nativeError();
             return result;
         }
         result.image = capture::imageFromFrameLease(
-            snow_capture_screenshot_result_focused_window_retain(snapshot.get()), info.rgba_bytes,
-            info.rgba_len, info.width, info.height, info.stride_bytes, info.pixel_format,
+            snow_capture_screenshot_result_focused_window_retain(targetSnapshot.get()),
+            info.rgba_bytes, info.rgba_len, info.width, info.height, info.stride_bytes,
+            info.pixel_format,
             info.backend_kind == SNOW_CAPTURE_BACKEND_SCREEN_CAPTURE_KIT
                 ? capture::FrameAlphaMode::Premultiplied
                 : capture::FrameAlphaMode::Preserve);
@@ -175,7 +179,8 @@ DirectCaptureFrame captureDirectTarget(const DirectCaptureRequest& request) {
         SnowCaptureFrameGeometry geometry{};
         geometry.version = SNOW_CAPTURE_FRAME_GEOMETRY_VERSION;
         geometry.struct_size = sizeof(geometry);
-        if (!snow_capture_screenshot_result_focused_window_geometry(snapshot.get(), &geometry)) {
+        if (!snow_capture_screenshot_result_focused_window_geometry(targetSnapshot.get(),
+                                                                    &geometry)) {
             result.error = nativeError();
             return result;
         }

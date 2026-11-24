@@ -1,7 +1,7 @@
 # Snow Shot translations
 
 Edit the Qt Linguist `.ts` catalogs in the feature directories. Each feature has
-`en_US`, `zh_CN`, and `zh_TW` catalogs. English is the source language and its
+`en_US`, `zh_CN`, `zh_TW`, and `ru` catalogs. English is the source language and its
 translations are identity strings, except for the native language name and
 language-specific plural forms.
 
@@ -69,7 +69,7 @@ result back to the feature catalogs. Qt retains responsibility for extraction,
 translation reuse, plural handling, and obsolete-message removal. If extraction
 reports an unassigned context, add it to `modules.json` and rerun the target.
 
-Fill all unfinished translations in all three languages, preserving `%1`, `%n`,
+Fill all unfinished translations in all four languages, preserving `%1`, `%n`,
 and other Qt placeholders. Qt Linguist can open each feature catalog directly.
 Then validate and compile:
 

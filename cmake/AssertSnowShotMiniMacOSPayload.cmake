@@ -53,6 +53,7 @@ set(_mini_allowed_resources assets snow-shot.icns
     en.lproj en.lproj/InfoPlist.strings
     zh-Hans.lproj zh-Hans.lproj/InfoPlist.strings
     zh-Hant.lproj zh-Hant.lproj/InfoPlist.strings
+    ru.lproj ru.lproj/InfoPlist.strings
     snow-shot-mini snow-shot-mini/licenses)
 foreach(_mini_asset IN LISTS _mini_expected_assets)
     list(APPEND _mini_allowed_resources "assets/${_mini_asset}")

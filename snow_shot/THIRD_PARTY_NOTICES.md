@@ -84,9 +84,11 @@ resolved notice is included in the same bundle.
 
 The OCR worker uses the Apache-2.0 `simd-paddle-ocr-rs` Git submodule for
 CPU inference and optional Vulkan/Metal acceleration. It includes adaptations of Sdcb.SimdPaddleOCR (Apache-2.0),
-.NET runtime reading-order sorting (MIT), and AMD win-libm exponential
-approximation (MIT). The generated bundle includes the submodule's LICENSE,
-NOTICE, and both component notices from its `licenses/` directory, along with
+.NET runtime reading-order sorting (MIT), AMD win-libm exponential
+approximation (MIT), OpenCV rectangle and perspective geometry (see upstream notices),
+and recognition aspect-ratio sorting from Intel x86-simd-sort and NumPy
+(BSD 3-Clause). The generated bundle includes the submodule's LICENSE,
+NOTICE, and component notices from its `licenses/` directory, along with
 its resolved dependencies. The worker is built using the submodule's pinned
 nightly toolchain. Runtime 1.2.1 uses ash (MIT OR Apache-2.0), gpu-allocator
 (MIT OR Apache-2.0), and shaderc (Apache-2.0) for Vulkan; shaderc and its bundled

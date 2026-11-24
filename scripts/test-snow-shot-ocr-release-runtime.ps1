@@ -72,6 +72,11 @@ $modelFiles = @('detector.onnx', 'recognizer.onnx', 'dictionary.txt') | ForEach-
     [IO.File]::WriteAllBytes((Join-Path $modelCache $_), $payload)
     [ordered]@{ name = $_; size = $payload.Length; sha256 = $payloadHash; url = 'https://invalid.invalid/unused' }
 }
+$paragraphId = 'fixture-paragraph'
+$paragraphCache = Join-Path $testRoot "ocr-models-$paragraphId"
+$null = New-Item -ItemType Directory -Path $paragraphCache
+$paragraphName = 'paragraph.onnx'
+[IO.File]::WriteAllBytes((Join-Path $paragraphCache $paragraphName), $payload)
 $validArchive = Join-Path $testRoot 'valid.zip'
 $manifest = [ordered]@{
     schema = 2; default_model = 'small'
@@ -82,6 +87,10 @@ $manifest = [ordered]@{
     }
     models = @('extra_small', 'small', 'medium') | ForEach-Object {
         [ordered]@{ type = $_; id = $modelId; files = @($modelFiles) }
+    }
+    paragraph_model = [ordered]@{
+        id = $paragraphId
+        files = @([ordered]@{ name = $paragraphName; size = $payload.Length; sha256 = $payloadHash; url = 'https://invalid.invalid/unused' })
     }
 }
 $manifestPath = Join-Path $testRoot 'asset-manifest.json'
@@ -100,6 +109,7 @@ foreach ($pass in 1..2) {
     }
     if (-not (Test-Path (Join-Path $runtimeStage '.complete.json')) -or
         -not (Test-Path (Join-Path $stage "models/$modelId/.complete.json")) -or
+        -not (Test-Path (Join-Path $stage "models/$paragraphId/.complete.json")) -or
         @(Get-ChildItem -LiteralPath $runtimeStage -Force -File).Count -ne 3) {
         throw 'Offline staging must complete exactly two runtime files.'
     }

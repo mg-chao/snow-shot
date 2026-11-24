@@ -971,8 +971,8 @@ void settingsSchemaDefaultsAndValidationAreComplete() {
 #endif
             defaultValue("network/proxy").toString() == QStringLiteral("none") &&
             defaultValue("text_recognition/model_type").toString() == QStringLiteral("small") &&
-            defaultValue("text_recognition/detector_resize_policy").toString() ==
-                QStringLiteral("max") &&
+            !storage::ConfigurationSchema::contains(
+                QStringLiteral("text_recognition/detector_resize_policy")) &&
             defaultValue("text_recognition/resident_process").toBool() &&
             !defaultValue("text_recognition/model_hot_start").toBool() &&
             !defaultValue("text_recognition/hardware_acceleration").toBool() &&
@@ -1286,8 +1286,6 @@ void settingsSchemaDefaultsAndValidationAreComplete() {
          {QStringLiteral("blur"), QStringLiteral("background_fill")}},
         {QStringLiteral("text_recognition/model_type"),
          {QStringLiteral("extra_small"), QStringLiteral("small"), QStringLiteral("medium")}},
-        {QStringLiteral("text_recognition/detector_resize_policy"),
-         {QStringLiteral("max"), QStringLiteral("min")}},
         {QStringLiteral("screenshot/auto_execute_after_text_recognition"),
          {QStringLiteral("no_action"), QStringLiteral("copy_text"),
           QStringLiteral("copy_text_and_end_screenshot"), QStringLiteral("quick_copy_text"),

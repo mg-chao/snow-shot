@@ -1,6 +1,6 @@
 # OCR protocol 8
 
-Runtime 1.4.0 uses a binary stdin/stdout command channel. Diagnostics use stderr.
+Runtime 1.5.0 uses a binary stdin/stdout command channel. Diagnostics use stderr.
 The application and runtime are released together; earlier protocols are incompatible.
 All integers and IEEE-754 floats are little-endian. A string is a `u32` byte
 length followed by UTF-8. Frames have a 20-byte header: `SOCR`, version `u16`,
@@ -15,7 +15,7 @@ kind `u16`, operation ID `u64`, payload size `u32`. Payloads are capped at 1 MiB
 | 5 | Complete | Recognition token | Recognition result, described below |
 | 6 | Shutdown | 0 | Empty |
 | 7 | ShutdownAck | 0 | Empty |
-| 8 | PrepareSession | Session operation | Detector resize policy `u8` (0 = max, 1 = min), text detection processing `u8` (0 = accuracy first, 1 = speed first), hardware acceleration `u8` (0 = off, 1 = prefer GPU), detector/recognizer/dictionary path strings |
+| 8 | PrepareSession | Session operation | Reserved resize byte `u8` (send 0, historical 1 also accepted), text detection processing `u8` (0 = accuracy first, 1 = speed first), hardware acceleration `u8` (0 = off, 1 = prefer GPU), detector/recognizer/dictionary path strings |
 | 9 | SessionReady | Session operation | Success `u8` |
 | 10 | ReleaseSession | Session operation | Empty |
 | 11 | SessionReleased | Session operation | Empty |
@@ -46,17 +46,17 @@ the next one. Repeating `PrepareSession` with the same configuration may share
 immutable compiled models, packed weights, dictionary and CPU context. Idle hot
 start detaches the image mapping, then sends `PrepareSession` directly when the
 configuration is unchanged. `ReleaseSession` always drops all model resources;
-configuration changes and disabling hot start still use it. Protocol 7 workers exclusively accept this session layout. Session preparation accepts no image. CPU inference uses simd-paddle-ocr-rs with a
-bounded context and local V6 models, without orientation classification.
-On multi-core workers, detector and recognizer parsing/compilation overlap on
-two bounded tasks. Both are joined before preparation succeeds or fails.
+configuration changes and disabling hot start still use it. Session preparation
+accepts no image. CPU inference uses simd-paddle-ocr-rs with a bounded context
+and local V6 models, without orientation classification. On multi-core workers,
+detector and recognizer model parsing overlap before compilation by the library.
 GPU kernels remain embedded in the executable, compressed at build time and decompressed only
 when a Vulkan pipeline is requested.
-Text detection processing selects the recognizer input-width floor: accuracy first uses
-320, while speed first uses 48 before the existing 32-pixel width alignment.
-Accuracy first is the default. Protocol 7 adds the acceleration preference to
-PrepareSession and the separate acceleration control/readiness messages. Older
-workers are rejected before decoding their incompatible payloads.
+Both processing modes use the library's default detector, which enlarges the
+short side toward 736 pixels within the library's image limits. Accuracy first
+uses the library recognizer defaults, including a 320-pixel width floor. Speed
+first uses a 48-pixel width floor. Widths are aligned to 32 pixels. The host
+checks the exact runtime version during the handshake.
 
 The host sends ConfigureAcceleration immediately after Ready and when the
 preference changes. Enabling starts device discovery on a separate thread;
