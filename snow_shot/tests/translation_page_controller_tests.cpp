@@ -191,6 +191,18 @@ void streamLifecycleAndSharedPreferences(const QString& directory) {
     controller.retry();
     waitUntil([&]() { return server.streams.size() == 3; }, "explicit retry starts a new request");
     server.delta(2, QStringLiteral("完整的翻譯"));
+    waitUntil([&] { return controller.resultText() == QStringLiteral("完整的翻譯"); },
+              "show the translation before receiving settings");
+    require(settings.setValues(
+                {{QStringLiteral("screenshot_translation/target_language"), QStringLiteral("ja")},
+                 {QStringLiteral("screenshot_translation/model"), QStringLiteral("general")}},
+                snow_shot::storage::ConfigurationWriteOrigin::Remote),
+            "save translated preferences received from another device");
+    flushEvents();
+    require(controller.translating() && controller.resultText() == QStringLiteral("完整的翻譯") &&
+                server.streams.size() == 3 &&
+                controller.preferences().targetLanguage == QStringLiteral("ja"),
+            "remote preferences update controls and preserve the active result and request");
     server.finish(2);
     waitUntil([&]() { return !controller.translating(); }, "stream finishes");
     require(controller.errorText().isEmpty() &&
@@ -210,6 +222,8 @@ void streamLifecycleAndSharedPreferences(const QString& directory) {
     require(server.streams.size() == 3, "IME preedit never reaches the service");
     controller.setComposing(false);
     waitUntil([&]() { return server.streams.size() == 4; }, "translate committed IME text");
+    require(server.streams[3].body.value(QStringLiteral("model")) == QStringLiteral("general"),
+            "new text uses the synchronized model");
     controller.deactivate();
     waitUntil([&]() { return server.disconnected(3); }, "deactivation aborts active stream");
     require(controller.sourceText().isEmpty() && controller.resultText().isEmpty(),

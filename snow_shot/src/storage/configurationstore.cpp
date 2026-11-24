@@ -21,6 +21,9 @@
 #include <QJsonParseError>
 #include <QMutexLocker>
 #include <QSaveFile>
+#include <QScopedValueRollback>
+#include <QPointer>
+#include <QThreadPool>
 #include <QSet>
 #include <QThread>
 
@@ -30,6 +33,7 @@
 namespace snow_shot::storage {
 namespace {
 const QString kSchemaVersionKey = QStringLiteral("storage/schema_version");
+const QString kCloudSyncStateKey = QStringLiteral("_cloud_settings_sync");
 #if SNOW_SHOT_ENABLE_API_CONFIGURATION
 const QString kCustomModelsKey = QStringLiteral("api_configuration/custom_models");
 #endif
@@ -424,8 +428,18 @@ ConfigurationStore::ConfigurationStore(QString configurationFile, bool readAvail
       m_defaults(configurationDefaults(defaults)) {
     m_flushTimer.setSingleShot(true);
     m_flushTimer.setInterval(std::max(0, debounceMilliseconds));
-    connect(&m_flushTimer, &QTimer::timeout, this, [this]() { static_cast<void>(flushNow()); });
+    connect(&m_flushTimer, &QTimer::timeout, this, [this] {
+        if (m_flushWorker)
+            flushAsync(this, {});
+        else
+            static_cast<void>(flushNow());
+    });
     load();
+}
+
+ConfigurationStore::~ConfigurationStore() {
+    if (m_flushWorker)
+        m_flushWorker->waitForDone();
 }
 
 int ConfigurationStore::currentSchemaVersion() {
@@ -465,9 +479,26 @@ bool ConfigurationStore::isDirty() const {
     return m_dirty;
 }
 
+void ConfigurationStore::afterPendingChanges(const std::function<void()>& transition) {
+    Q_ASSERT(QThread::currentThread() == thread());
+    QMutexLocker mutationLock(&m_mutationMutex);
+    {
+        QScopedValueRollback delivering(m_deliveringChanges, true);
+        while (!m_pendingChanges.isEmpty())
+            m_pendingChanges.takeFirst()();
+    }
+    if (transition)
+        transition();
+}
+
 bool ConfigurationStore::isWritable() const {
     QMutexLocker locker(&m_mutex);
     return m_writeAvailable && m_compatibility != ConfigurationCompatibility::FutureVersion;
+}
+
+void ConfigurationStore::setCloudSyncJournal(CloudSyncJournal journal) {
+    QMutexLocker lock(&m_mutationMutex);
+    m_cloudSyncJournal = std::move(journal);
 }
 
 QString ConfigurationStore::lastError() const {
@@ -480,11 +511,29 @@ ConfigurationCompatibility ConfigurationStore::compatibility() const {
     return m_compatibility;
 }
 
-bool ConfigurationStore::setValue(const QString& key, const QJsonValue& value) {
-    return setValues({{key, value}});
+bool ConfigurationStore::setValue(const QString& key, const QJsonValue& value,
+                                  ConfigurationWriteOrigin origin) {
+    return setValues({{key, value}}, origin);
 }
 
-bool ConfigurationStore::setValues(const QMap<QString, QJsonValue>& values) {
+bool ConfigurationStore::setValues(const QMap<QString, QJsonValue>& values,
+                                   ConfigurationWriteOrigin origin) {
+    return setValuesImpl(values, origin, nullptr);
+}
+
+QJsonObject ConfigurationStore::cloudSyncState() const {
+    QMutexLocker locker(&m_mutex);
+    return m_document.value(kCloudSyncStateKey).toObject();
+}
+
+bool ConfigurationStore::setCloudSyncState(const QJsonObject& state,
+                                           const QMap<QString, QJsonValue>& remoteValues) {
+    return setValuesImpl(remoteValues, ConfigurationWriteOrigin::Remote, &state);
+}
+
+bool ConfigurationStore::setValuesImpl(const QMap<QString, QJsonValue>& values,
+                                       ConfigurationWriteOrigin origin,
+                                       const QJsonObject* cloudSyncState) {
     QMutexLocker mutationLock(&m_mutationMutex);
     QMap<QString, QJsonValue> normalizedValues;
     for (auto it = values.cbegin(); it != values.cend(); ++it) {
@@ -502,6 +551,8 @@ bool ConfigurationStore::setValues(const QMap<QString, QJsonValue>& values) {
     }
 
     QVector<QPair<QString, QJsonValue>> changed;
+    QMap<QString, QJsonValue> previous;
+    bool documentChanged = false;
     {
         QMutexLocker locker(&m_mutex);
         if (m_suspended || !m_writeAvailable ||
@@ -512,39 +563,71 @@ bool ConfigurationStore::setValues(const QMap<QString, QJsonValue>& values) {
             return false;
         }
         for (auto it = normalizedValues.cbegin(); it != normalizedValues.cend(); ++it) {
-            if (m_values.value(it.key()) == it.value()) {
+            const auto before = m_values.value(it.key());
+            previous.insert(it.key(), before);
+            if (before == it.value()) {
                 continue;
             }
             m_values.insert(it.key(), it.value());
             insertPath(&m_document, it.key(), it.value());
             changed.push_back({it.key(), it.value()});
         }
-        if (changed.isEmpty()) {
-            return true;
+        const bool stateChanged =
+            cloudSyncState && m_document.value(kCloudSyncStateKey).toObject() != *cloudSyncState;
+        if (stateChanged) {
+            if (cloudSyncState->isEmpty())
+                m_document.remove(kCloudSyncStateKey);
+            else
+                m_document.insert(kCloudSyncStateKey, *cloudSyncState);
         }
-        m_dirty = true;
-        ++m_revision;
+        documentChanged = stateChanged || !changed.isEmpty();
+        if (documentChanged) {
+            m_dirty = true;
+            ++m_documentRevision;
+        }
+        if (!changed.isEmpty())
+            ++m_revision;
     }
 
-    announceChanges(std::move(changed));
+    announceChanges(origin, std::move(previous), std::move(normalizedValues), std::move(changed),
+                    documentChanged);
     return true;
 }
 
-void ConfigurationStore::announceChanges(QVector<QPair<QString, QJsonValue>> changed) {
-    const auto notify = [this, changed = std::move(changed)]() {
+void ConfigurationStore::announceChanges(ConfigurationWriteOrigin origin,
+                                         QMap<QString, QJsonValue> previous,
+                                         QMap<QString, QJsonValue> values,
+                                         QVector<QPair<QString, QJsonValue>> changed,
+                                         bool documentChanged) {
+    if (!documentChanged && values.isEmpty())
+        return;
+    if (m_cloudSyncJournal && !values.isEmpty() && origin != ConfigurationWriteOrigin::Remote &&
+        origin != ConfigurationWriteOrigin::Internal)
+        m_cloudSyncJournal(origin, previous, values);
+    auto notify = [this, origin, previous = std::move(previous), values = std::move(values),
+                   changed = std::move(changed), documentChanged]() {
+        if (!values.isEmpty())
+            emit valuesCommitted(origin, previous, values);
         for (const auto& item : changed) {
             emit valueChanged(item.first, item.second);
         }
-        scheduleFlush();
+        if (documentChanged)
+            scheduleFlush();
     };
-    if (QThread::currentThread() == thread()) {
+    const bool onStoreThread = QThread::currentThread() == thread();
+    if (onStoreThread && m_pendingChanges.isEmpty() && !m_deliveringChanges) {
         notify();
-    } else {
-        QMetaObject::invokeMethod(this, notify, Qt::QueuedConnection);
+        return;
     }
+    m_pendingChanges.append(std::move(notify));
+    if (onStoreThread && !m_deliveringChanges)
+        afterPendingChanges({});
+    else if (!onStoreThread && m_pendingChanges.size() == 1)
+        QMetaObject::invokeMethod(this, [this] { afterPendingChanges({}); }, Qt::QueuedConnection);
 }
 
-bool ConfigurationStore::applySnapshot(const QMap<QString, QJsonValue>& values, int schemaVersion) {
+bool ConfigurationStore::applySnapshot(const QMap<QString, QJsonValue>& values, int schemaVersion,
+                                       const QSet<QString>* explicitlyImported) {
     QMutexLocker mutationLock(&m_mutationMutex);
     const int currentVersion = ConfigurationSchema::currentVersion();
     if (schemaVersion <= 0) {
@@ -563,6 +646,20 @@ bool ConfigurationStore::applySnapshot(const QMap<QString, QJsonValue>& values, 
             : QString();
 
     QVector<QPair<QString, QJsonValue>> changed;
+    QMap<QString, QJsonValue> importedValues;
+    if (explicitlyImported) {
+        for (const auto& key : *explicitlyImported) {
+            const auto supplied = values.constFind(key);
+            if (supplied == values.cend())
+                continue;
+            const auto normalized = ConfigurationSchema::normalize(key, supplied.value());
+            if (normalized.valid && normalized.value == materialized.values.value(key))
+                importedValues.insert(key, normalized.value);
+        }
+    }
+    QMap<QString, QJsonValue> previousImported;
+    QMap<QString, QJsonValue> internalValues;
+    QMap<QString, QJsonValue> previousInternal;
     {
         QMutexLocker locker(&m_mutex);
         if (m_suspended || !m_writeAvailable ||
@@ -572,32 +669,43 @@ bool ConfigurationStore::applySnapshot(const QMap<QString, QJsonValue>& values, 
             return false;
         }
         for (auto it = materialized.values.cbegin(); it != materialized.values.cend(); ++it) {
-            if (m_values.value(it.key()) == it.value()) {
+            const auto before = m_values.value(it.key());
+            if (importedValues.contains(it.key()))
+                previousImported.insert(it.key(), before);
+            if (before == it.value()) {
                 continue;
+            }
+            if (!importedValues.contains(it.key())) {
+                previousInternal.insert(it.key(), before);
+                internalValues.insert(it.key(), it.value());
             }
             changed.push_back({it.key(), it.value()});
         }
-        if (changed.isEmpty()) {
-            locker.unlock();
-            if (!customModelsError.isEmpty()) {
-                qCWarning(storageLog) << customModelsError;
-                setLastError(customModelsError);
-            }
-            return true;
+        if (!changed.isEmpty()) {
+            if (m_document.contains(kCloudSyncStateKey))
+                materialized.document.insert(kCloudSyncStateKey,
+                                             m_document.value(kCloudSyncStateKey));
+            m_values = std::move(materialized.values);
+            m_document = std::move(materialized.document);
+            m_dirty = true;
+            ++m_revision;
+            ++m_documentRevision;
         }
-        m_values = std::move(materialized.values);
-        m_document = std::move(materialized.document);
-        m_dirty = true;
-        ++m_revision;
     }
 
     if (!customModelsError.isEmpty()) {
         qCWarning(storageLog) << customModelsError;
         setLastError(customModelsError);
-    } else {
+    } else if (!changed.isEmpty()) {
         setLastError({});
     }
-    announceChanges(std::move(changed));
+    announceChanges(ConfigurationWriteOrigin::Import, std::move(previousImported),
+                    std::move(importedValues), {}, false);
+    const bool documentChanged = !changed.isEmpty();
+    announceChanges(explicitlyImported ? ConfigurationWriteOrigin::ImportDefaults
+                                       : ConfigurationWriteOrigin::Internal,
+                    std::move(previousInternal), std::move(internalValues), std::move(changed),
+                    documentChanged);
     return true;
 }
 
@@ -605,8 +713,9 @@ StorageResult ConfigurationStore::flushNow() {
     if (QThread::currentThread() == thread()) {
         m_flushTimer.stop();
     }
-    QMutexLocker ioLocker(&m_ioMutex);
     for (;;) {
+        QMutexLocker mutationLock(&m_mutationMutex);
+        QMutexLocker ioLocker(&m_ioMutex);
         QJsonObject document;
         quint64 revision = 0;
         {
@@ -622,8 +731,11 @@ StorageResult ConfigurationStore::flushNow() {
                 return StorageResult::failure(error);
             }
             document = m_document;
-            revision = m_revision;
+            revision = m_documentRevision;
         }
+        // Explicit operations can journal their intent while holding the mutation lock.
+        // Save the captured document without holding that lock during disk I/O.
+        mutationLock.unlock();
 
         const QByteArray bytes = serializedDocument(document);
         QSaveFile file(m_configurationFile);
@@ -638,7 +750,7 @@ StorageResult ConfigurationStore::flushNow() {
 
         {
             QMutexLocker locker(&m_mutex);
-            if (m_revision == revision) {
+            if (m_documentRevision == revision) {
                 m_dirty = false;
                 locker.unlock();
                 setLastError({});
@@ -648,12 +760,40 @@ StorageResult ConfigurationStore::flushNow() {
     }
 }
 
+void ConfigurationStore::flushAsync(QObject* receiver,
+                                    std::function<void(StorageResult)> completion) {
+    Q_ASSERT(QThread::currentThread() == thread());
+    m_flushTimer.stop();
+    if (!m_flushWorker) {
+        m_flushWorker = std::make_unique<QThreadPool>();
+        m_flushWorker->setMaxThreadCount(1);
+    }
+    m_flushWorker->start([this, receiver = QPointer(receiver), completion = std::move(completion)] {
+        const auto result = flushNow();
+        if (completion) {
+            QMetaObject::invokeMethod(
+                this,
+                [receiver, completion, result] {
+                    if (receiver)
+                        completion(result);
+                },
+                Qt::QueuedConnection);
+        }
+    });
+}
+
 void ConfigurationStore::suspendWrites(bool suspended) {
-    QMutexLocker mutationLock(&m_mutationMutex);
-    QMutexLocker lock(&m_mutex);
-    m_suspended = suspended;
-    if (suspended)
-        m_flushTimer.stop();
+    {
+        QMutexLocker mutationLock(&m_mutationMutex);
+        QMutexLocker lock(&m_mutex);
+        if (m_suspended == suspended)
+            return;
+        m_suspended = suspended;
+        if (suspended)
+            m_flushTimer.stop();
+    }
+    if (!suspended)
+        emit writesResumed();
 }
 
 void ConfigurationStore::relocate(const QString& directory) {

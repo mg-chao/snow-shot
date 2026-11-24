@@ -402,6 +402,16 @@ void pageActionsAndLifecycle() {
     server.delta(0, QStringLiteral("translated result"));
     waitUntil([&] { return result->toPlainText() == QStringLiteral("translated result"); },
               "standalone renders streamed output");
+    auto& configuration = storage::ApplicationStorage::instance().configuration();
+    const QString standaloneKey = QStringLiteral("extended_features/standalone_translation_window");
+    require(configuration.setValue(standaloneKey, false, storage::ConfigurationWriteOrigin::Remote),
+            "save synchronized changes to the standalone preference");
+    flushEvents();
+    require(modal->isOpen() && controller->translating() &&
+                result->toPlainText() == QStringLiteral("translated result"),
+            "a remote preference leaves work in an existing standalone window intact");
+    require(configuration.setValue(standaloneKey, true, storage::ConfigurationWriteOrigin::Remote),
+            "restore the preference for later requests");
     const QString snapshotDirectory = qEnvironmentVariable("SNOW_TRANSLATION_QA_DIR");
     if (!snapshotDirectory.isEmpty()) {
         require(QDir().mkpath(snapshotDirectory),

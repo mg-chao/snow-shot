@@ -62,7 +62,7 @@ class SystemTrayController final : public QObject {
     [[nodiscard]] int screenshotDelaySeconds() const;
     void setGlobalShortcuts(GlobalShortcutAction action,
                             const shortcuts::ShortcutBindingList& shortcuts);
-    void setMenuOptions(const QStringList& options);
+    void setMenuOptions(const QStringList& options, bool preserveInputPause = false);
     [[nodiscard]] QStringList menuOptions() const;
     void setQuickActionChecked(GlobalShortcutAction action, bool checked);
     void setFocusedFullscreenSuppressionActive(bool active);

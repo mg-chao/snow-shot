@@ -100,9 +100,12 @@ inline bool settingsValue(const settings::SettingsFieldDescriptor& field, const 
     using Kind = settings::SettingsFieldKind;
     if (!field.definition || field.kind == Kind::Action)
         return false;
-    if (field.kind != Kind::GlobalMouseAction && !field.configurationKey.isEmpty() &&
-        !storage::ConfigurationSchema::normalize(field.configurationKey, json).valid)
-        return false;
+    storage::ConfigurationNormalization normalized;
+    if (field.kind != Kind::GlobalMouseAction && !field.configurationKey.isEmpty()) {
+        normalized = storage::ConfigurationSchema::normalize(field.configurationKey, json);
+        if (!normalized.valid)
+            return false;
+    }
     switch (field.kind) {
     case Kind::Switch:
         if (!json.isBool())
@@ -140,10 +143,15 @@ inline bool settingsValue(const settings::SettingsFieldDescriptor& field, const 
     }
     case Kind::ShortcutAction:
     case Kind::LocalShortcut: {
-        bool valid = false;
-        const auto bindings = shortcuts::shortcutBindingsFromJson(json, true, 16, &valid);
-        if (!valid)
+        // The storage schema can salvage a list when loading a file. An explicit edit must
+        // accept every requested binding, including in an atomic multi-action swap.
+        if (!json.isArray() || normalized.value.toArray().size() != json.toArray().size())
             return false;
+        const auto policy = field.kind == Kind::ShortcutAction
+                                ? shortcuts::ShortcutPolicy::Native
+                                : shortcuts::ShortcutPolicy::Application;
+        const auto bindings = shortcuts::shortcutBindingsFromJson(normalized.value, true, -1,
+                                                                  nullptr, nullptr, true, policy);
         *value = QVariant::fromValue(bindings);
         return true;
     }
@@ -200,9 +208,7 @@ inline bool settingsValue(const settings::SettingsFieldDescriptor& field, const 
         // Keep strict JSON shape checks above, then submit the same canonical layout
         // the storage backend will accept so runtime writes can settle successfully.
         layout = {};
-        if (!decodeLayout(
-                storage::ConfigurationSchema::normalize(field.configurationKey, json).value,
-                &layout))
+        if (!decodeLayout(normalized.value, &layout))
             return false;
         *value = QVariant::fromValue(layout);
         return true;

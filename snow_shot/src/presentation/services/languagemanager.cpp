@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/languagemanager.h"
+#include "snow_shot/storage/applicationstorage.h"
 #include "snow_shot/storage/settingsadapters.h"
 
 #include "locale/locale.h"
@@ -20,6 +21,7 @@ constexpr auto SYSTEM_LANGUAGE_PREFERENCE = "system";
 constexpr auto SOURCE_LANGUAGE_LOCALE = "en_US";
 constexpr auto CATALOG_RESOURCE_PREFIX = ":/i18n/";
 constexpr const char* LANGUAGE_NAME_SOURCE = QT_TRANSLATE_NOOP("LanguageCatalog", "Language name");
+const QString kLanguage = QStringLiteral("interface/language");
 
 struct ParsedLocale {
     QString name;
@@ -86,17 +88,24 @@ void LanguageManager::initialize() {
     snow_shot::storage::InterfaceSettings settings;
     const QString savedValue = settings.language();
     QString initialPreference = canonicalPreference(savedValue);
-    if (initialPreference.isEmpty() ||
-        (initialPreference != QString::fromLatin1(SYSTEM_LANGUAGE_PREFERENCE) &&
-         !m_catalogResources.contains(initialPreference))) {
+    if (!supportsPreference(initialPreference)) {
         initialPreference = QString::fromLatin1(SYSTEM_LANGUAGE_PREFERENCE);
     }
 
-    if (applyPreference(initialPreference, false)) {
-        if (savedValue.trimmed() != initialPreference) {
-            settings.setLanguage(initialPreference);
-        }
-    }
+    auto& configuration = storage::ApplicationStorage::instance().configuration();
+    if (applyPreference(initialPreference, false) && savedValue.trimmed() != initialPreference)
+        configuration.setValue(kLanguage, initialPreference,
+                               storage::ConfigurationWriteOrigin::Internal);
+    connect(&configuration, &storage::ConfigurationStore::valuesCommitted, this,
+            [this](storage::ConfigurationWriteOrigin origin, const auto&, const auto& values) {
+                if (origin == storage::ConfigurationWriteOrigin::Explicit ||
+                    !values.contains(kLanguage))
+                    return;
+                const QString preference = canonicalPreference(values.value(kLanguage).toString());
+                if (preference != m_languagePreference && supportsPreference(preference)) {
+                    static_cast<void>(applyPreference(preference, false));
+                }
+            });
 }
 
 QList<LanguageCatalog> LanguageManager::availableLanguages() const {
@@ -111,15 +120,26 @@ QLocale LanguageManager::currentLocale() const {
     return m_currentLocale;
 }
 
+bool LanguageManager::isLanguageAvailable(const QString& languagePreference) {
+    const QString preference = canonicalPreference(languagePreference);
+    if (preference == QString::fromLatin1(SYSTEM_LANGUAGE_PREFERENCE))
+        return true;
+    initialize();
+    return supportsPreference(preference);
+}
+
+bool LanguageManager::supportsPreference(const QString& preference) const {
+    return preference == QString::fromLatin1(SYSTEM_LANGUAGE_PREFERENCE) ||
+           m_catalogResources.contains(preference);
+}
+
 bool LanguageManager::setLanguage(const QString& languagePreference) {
     if (!m_initialized) {
         initialize();
     }
 
     const QString normalizedPreference = canonicalPreference(languagePreference);
-    if (normalizedPreference.isEmpty() ||
-        (normalizedPreference != QString::fromLatin1(SYSTEM_LANGUAGE_PREFERENCE) &&
-         !m_catalogResources.contains(normalizedPreference))) {
+    if (!supportsPreference(normalizedPreference)) {
         emit languageChangeFailed(languagePreference);
         return false;
     }

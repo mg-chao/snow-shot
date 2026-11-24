@@ -233,11 +233,14 @@ void autoSaveAfterExecutionArchivesMigrateAndRoundTrip(const QTemporaryDir& temp
     const QString old = QStringLiteral("screenshot/auto_save_after_execution_actions");
     const QString key = QStringLiteral("export_tasks/screenshot_copy");
     const QJsonArray save{QStringLiteral("auto_save")};
-    const QJsonObject preferences{{old, QJsonArray{QStringLiteral("copy_scrolling_screenshot"),
-                                                   QStringLiteral("pin_to_screen")}},
-                                  {QStringLiteral("screenshot/copy_after_pinning_to_screen"), true},
-                                  {QStringLiteral("export_tasks/pinned_copy"),
-                                   QJsonArray{QStringLiteral("upload_to_cloud")}}};
+    const QJsonObject preferences{
+        {old,
+         QJsonArray{QStringLiteral("copy_scrolling_screenshot"), QStringLiteral("pin_to_screen")}},
+        {QStringLiteral("screenshot/copy_after_pinning_to_screen"), true},
+        {QStringLiteral("export_tasks/pinned_copy"), QJsonArray{QStringLiteral("upload_to_cloud")}},
+        {QStringLiteral("export_tasks/pinned_print"),
+         QJsonArray{QStringLiteral("unsupported-task")}},
+        {QStringLiteral("export_tasks/pinned_save"), QJsonArray{}}};
     const QString archive = temporary.filePath(QStringLiteral("legacy-tasks.zip"));
     writeZip(archive, {{QStringLiteral("manifest.json"), manifestBytes(7)},
                        {QStringLiteral("config.json"), configurationBytes(preferences)}});
@@ -247,6 +250,11 @@ void autoSaveAfterExecutionArchivesMigrateAndRoundTrip(const QTemporaryDir& temp
                 imported.values.value(QStringLiteral("export_tasks/screenshot_pin")) ==
                     QJsonArray{QStringLiteral("copy_to_clipboard"), QStringLiteral("auto_save")},
             "archives migrate both legacy sources before filtering unknown keys");
+    require(imported.explicitlyImported ==
+                    QSet<QString>{QStringLiteral("export_tasks/pinned_copy"),
+                                  QStringLiteral("export_tasks/pinned_save")} &&
+                imported.values.value(QStringLiteral("export_tasks/pinned_print")) == QJsonArray{},
+            "explicit empty lists import, while repaired malformed and migrated values stay local");
     storage::ConfigurationStore store(temporary.filePath(QStringLiteral("tasks.json")), true, true,
                                       60000);
     require(store.applySnapshot(imported.values, imported.schemaVersion) &&

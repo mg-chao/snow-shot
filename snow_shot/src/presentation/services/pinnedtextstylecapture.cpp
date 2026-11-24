@@ -4,6 +4,7 @@
 
 #include <QCoreApplication>
 #include <QFont>
+#include <QFontDatabase>
 #include <QFontInfo>
 #include <QGuiApplication>
 #include <QPalette>
@@ -41,8 +42,13 @@ snow_shot::storage::PinnedTextStyle ScreenshotClipboardContentReader::capturePin
     if (initialized)
         style.maximumWidth = settings.textMaximumWidth();
     QFont font = QGuiApplication::font();
-    if (initialized && !settings.textFontFamily().isEmpty())
-        font.setFamily(settings.textFontFamily());
+    const QString preferredFamily = initialized ? settings.textFontFamily() : QString();
+    if (!preferredFamily.isEmpty()) {
+        if (QFontDatabase::hasFamily(preferredFamily))
+            font.setFamily(preferredFamily);
+        else
+            font = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
+    }
     style.fontFamily = QFontInfo(font).family();
     if (style.fontFamily.isEmpty())
         style.fontFamily = font.family();

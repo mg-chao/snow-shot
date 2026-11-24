@@ -100,6 +100,7 @@ permissionForRenderer(settings::SettingsCustomRenderer renderer) {
     case Renderer::TextTranslationConfigurations:
     case Renderer::CustomAiModels:
     case Renderer::McpStatus:
+    case Renderer::CloudSettingsSync:
     case Renderer::StorageStatus:
     case Renderer::DrawingToolbarEditor:
     case Renderer::ScreenshotToolbarEditor:
@@ -731,7 +732,12 @@ class SettingsPageWidget::Impl {
                             return;
                         }
                         auto* control = createSettingsCustomWidget(
-                            payload.renderer, registry, definition, runtimeSession, list);
+                            payload.renderer, registry, definition, runtimeSession, list, [this] {
+                                settings::SettingsCommand command;
+                                command.kind = settings::SettingsCommandKind::Navigate;
+                                command.location = {QStringLiteral("account"), {}, {}};
+                                emit q.commandRequested(command);
+                            });
                         Q_ASSERT(control != nullptr);
                         if (control == nullptr) {
                             return;
@@ -1725,6 +1731,9 @@ void SettingsPageWidget::changeEvent(QEvent* event) {
 
 void SettingsPageWidget::showEvent(QShowEvent* event) {
     QWidget::showEvent(event);
+#if !SNOW_SHOT_EDITION_MINI
+    emit m_impl->runtimeSession.cloudSettingsSyncCheckRequested();
+#endif
     m_impl->runtimeSession.refreshPlatformSettings();
     m_impl->observePermissionPage(true);
     m_impl->requestVisibleSectionSync();

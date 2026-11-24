@@ -24,18 +24,23 @@ SelectedTextTranslationCoordinator::SelectedTextTranslationCoordinator(
                                       : [] { return QGuiApplication::screenAt(QCursor::pos()); }) {
     connect(m_capture, &SelectedTextTranslationController::textReady, this,
             [this](const QString& text) { routeText(text, m_standalone, m_screen); });
-    connect(&configuration, &storage::ConfigurationStore::valueChanged, this,
-            [this](const QString& key, const QJsonValue&) {
-                if (key != kMasterKey && key != kStandaloneKey) {
-                    return;
-                }
-                m_capture->cancel();
-                m_screen.clear();
-                if (!m_configuration.value(kMasterKey).toBool() ||
-                    !m_configuration.value(kStandaloneKey).toBool()) {
-                    m_window->close();
-                }
-            });
+    connect(
+        &configuration, &storage::ConfigurationStore::valuesCommitted, this,
+        [this](storage::ConfigurationWriteOrigin origin, const auto& before, const auto& values) {
+            const auto changed = [&before, &values](const QString& key) {
+                return values.contains(key) && before.value(key) != values.value(key);
+            };
+            if (origin == storage::ConfigurationWriteOrigin::Remote ||
+                (!changed(kMasterKey) && !changed(kStandaloneKey))) {
+                return;
+            }
+            m_capture->cancel();
+            m_screen.clear();
+            if (!m_configuration.value(kMasterKey).toBool() ||
+                !m_configuration.value(kStandaloneKey).toBool()) {
+                m_window->close();
+            }
+        });
 }
 
 SelectedTextTranslationCoordinator::~SelectedTextTranslationCoordinator() {
@@ -60,7 +65,7 @@ void SelectedTextTranslationCoordinator::presentText(const QString& text) {
 
 void SelectedTextTranslationCoordinator::routeText(const QString& text, bool standalone,
                                                    QScreen* screen) {
-    if (m_shutdown || !m_configuration.value(kMasterKey).toBool()) {
+    if (m_shutdown) {
         return;
     }
     if (standalone) {

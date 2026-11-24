@@ -148,13 +148,15 @@ TranslationPageWidget::TranslationPageWidget(QWidget* parent, SnowShotApiClient*
             row->addStretch();
         }
         fieldLayout->addLayout(row);
-        connect(select, &AdSelect::currentValueChanged, this, [this, index]() {
-            if (!m_syncing) {
-                m_controller->setPreferences(m_selects[0]->currentValue().toString(),
-                                             m_selects[1]->currentValue().toString(),
-                                             index == 2 ? m_selects[2]->currentValue().toString()
-                                                        : m_controller->preferences().modelId);
-            }
+        connect(select, &AdSelect::currentValueChanged, this, [this, index](const QVariant& value) {
+            if (m_syncing)
+                return;
+            if (index == 0)
+                m_controller->setPreferences({.sourceLanguage = value.toString()});
+            else if (index == 1)
+                m_controller->setPreferences({.targetLanguage = value.toString()});
+            else
+                m_controller->setPreferences({.modelId = value.toString()});
         });
     }
     m_selects[0]->setObjectName(QStringLiteral("translationSourceLanguage"));

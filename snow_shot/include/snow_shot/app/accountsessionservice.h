@@ -10,9 +10,11 @@
 #include <QPointer>
 #include <QSet>
 #include <QTimer>
+#include <QUrlQuery>
 
 #include <functional>
 #include <memory>
+#include <optional>
 
 class QNetworkAccessManager;
 class QNetworkReply;
@@ -87,6 +89,20 @@ class AccountSessionService final : public QObject {
     ~AccountSessionService() override;
     static AccountSessionService* forClient(SnowShotApiClient* client);
 
+    struct SettingsSyncAccount {
+        QString serviceUrl;
+        QString accountId;
+        bool authenticated = false;
+        bool canRestore = false;
+    };
+    using SettingsSyncCompletion = std::function<void(const QJsonObject&, int)>;
+
+    [[nodiscard]] SettingsSyncAccount settingsSyncAccount() const;
+    void requestSettingsSync(const QUrlQuery& query, const QJsonObject& update,
+                             SettingsSyncCompletion completion);
+    void cancelSettingsSyncRequest();
+    void restoreSettingsSyncSession();
+
     [[nodiscard]] bool signedIn() const {
         return !m_accessToken.isEmpty();
     }
@@ -136,6 +152,7 @@ class AccountSessionService final : public QObject {
     void changed();
     void requestFailed();
     void signedInChanged(bool signedIn);
+    void settingsSyncAccountChanged(bool discardPending);
     void registrationActivated();
 
   private:
@@ -149,8 +166,9 @@ class AccountSessionService final : public QObject {
     using Completion = std::function<void(const QJsonObject&, const RequestFailure&)>;
     void send(const QByteArray& method, const QString& path, const QJsonObject& body,
               Completion completion, bool authenticated = false, const QString& proof = {},
-              const QString& operation = {}, bool retried = false);
-    void refreshSession(std::function<void(bool)> completion);
+              const QString& operation = {}, bool retried = false,
+              std::optional<quint64> syncGeneration = std::nullopt);
+    void refreshSession(std::function<void(bool)> completion, bool quiet = false);
     void acceptSession(const QJsonObject& session, bool sameAccountRefresh = false);
     void acceptPurchase(const QJsonObject& request, bool registration);
     void retainPreviousRegistration();
@@ -192,6 +210,7 @@ class AccountSessionService final : public QObject {
     QTimer m_tokenRefresh;
     QSet<QNetworkReply*> m_replies;
     QString m_origin;
+    QString m_accountId;
     QString m_accessToken;
     QString m_refreshToken;
     QString m_error;
@@ -202,6 +221,8 @@ class AccountSessionService final : public QObject {
     QJsonObject m_captcha;
     QJsonArray m_transactions;
     quint64 m_generation = 0;
+    quint64 m_settingsSyncGeneration = 0;
+    QPointer<QNetworkReply> m_settingsSyncReply;
     bool m_busy = false;
     bool m_accountBusy = false;
     bool m_accountPageVisible = false;
@@ -209,6 +230,7 @@ class AccountSessionService final : public QObject {
     bool m_transactionsBusy = false;
     bool m_transactionsRefreshPending = false;
     bool m_refreshing = false;
+    bool m_reportRefreshFailure = false;
     QList<std::function<void(bool)>> m_refreshWaiters;
 };
 } // namespace snow_shot::app

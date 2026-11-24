@@ -1,5 +1,6 @@
 #include "snow_shot/storage/configurationarchive.h"
 #include "snow_shot/app/edition.h"
+#include "snow_shot/storage/cloudsyncconfiguration.h"
 #include "snow_shot/storage/configurationschema.h"
 #include "snow_shot/platform/minizippath.h"
 
@@ -345,6 +346,15 @@ ConfigurationArchiveReadResult ConfigurationArchive::read(const QString& archive
             ConfigurationSchema::normalize(it.key(), it.value());
         if (normalized.valid) {
             result.values.insert(it.key(), normalized.value);
+            const auto raw = configuration.value(it.key());
+            if (!raw.isUndefined()) {
+                const auto supplied = ConfigurationSchema::normalize(it.key(), raw);
+                const bool listIntact = !raw.isArray() || !supplied.value.isArray() ||
+                                        raw.toArray().size() == supplied.value.toArray().size();
+                if (supplied.valid && supplied.value == normalized.value && listIntact &&
+                    cloudSettingLayoutComplete(it.key(), raw))
+                    result.explicitlyImported.insert(it.key());
+            }
         }
     }
     if (result.values.isEmpty()) {

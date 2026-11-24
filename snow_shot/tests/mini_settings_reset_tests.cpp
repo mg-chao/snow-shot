@@ -81,6 +81,10 @@ static_assert(!HasAutomaticQrRecognition<storage::ScreenshotSettings>);
 static_assert(!HasTableQrEntry<storage::ScreenshotToolbarSettings>);
 
 void unsupportedSettingsRemainInert(settings::BuiltInSettingsBackend& backend) {
+    require(!settings::builtInSettingsRegistry().catalog().item(
+                {QStringLiteral("files-history"), QStringLiteral("storage-status"),
+                 QStringLiteral("storage.cloud-settings-sync")}),
+            "Mini omits the cloud settings sync entry");
     const auto before = storage::ApplicationStorage::instance().configuration().snapshot();
     for (const auto binding : {settings::SettingsSwitchBinding::TranslationPageEnabled,
                                settings::SettingsSwitchBinding::JumpToTranslationPage,

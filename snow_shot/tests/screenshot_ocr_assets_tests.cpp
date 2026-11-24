@@ -672,13 +672,24 @@ void everyModelMapsToItsOwnFilesAndCachesAreRetained() {
     ScreenshotOcrAssets assets(options);
     ScreenshotOcrResolvedAssets resolved;
     int readyCount = 0;
+    int failureCount = 0;
     QObject::connect(&assets, &ScreenshotOcrAssets::ready, &assets,
                      [&](const ScreenshotOcrResolvedAssets& result) {
                          resolved = result;
                          ++readyCount;
                      });
+    QObject::connect(&assets, &ScreenshotOcrAssets::failed, &assets,
+                     [&](const QString&) { ++failureCount; });
+    assets.prepare(false);
+    require(waitUntil([&] { return failureCount == 1; }, 5'000) && downloads.isEmpty() &&
+                !QDir(cache.path()).exists(QStringLiteral(".staging")),
+            "checking an uncached model does not download assets or alter the cache");
+    assets.prepare(false, true);
+    require(waitUntil([&] { return readyCount == 1; }, 5'000) &&
+                resolved.modelType == ScreenshotOcrModelType::Small && downloads.isEmpty(),
+            "a cache-only startup check finds the available alternative without downloading");
     assets.prepare();
-    require(waitUntil([&]() { return readyCount == 1; }, 5'000),
+    require(waitUntil([&]() { return readyCount == 2; }, 5'000),
             "the Medium model fixture should be acquired");
     require(resolved.modelType == ScreenshotOcrModelType::Medium &&
                 resolved.modelId == QStringLiteral("ppocrv6-medium-f5063c6") &&
@@ -693,12 +704,16 @@ void everyModelMapsToItsOwnFilesAndCachesAreRetained() {
             "Medium acquisition must download exactly its three role files");
 
     downloads.clear();
+    assets.prepare(false);
+    require(waitUntil([&] { return readyCount == 3; }, 5'000) && downloads.isEmpty(),
+            "checking a cached model makes it usable without downloading again");
+
     assets.setModelType(ScreenshotOcrModelType::ExtraSmall);
     processEventsFor(100);
     require(downloads.isEmpty(),
             "changing the OCR model selection must not start acquisition without demand");
     assets.prepare();
-    require(waitUntil([&]() { return readyCount == 2; }, 5'000),
+    require(waitUntil([&]() { return readyCount == 4; }, 5'000),
             "the Extra Small model fixture should be acquired");
     require(resolved.modelType == ScreenshotOcrModelType::ExtraSmall &&
                 resolved.modelId == QStringLiteral("ppocrv6-tiny-cd609a1") &&
@@ -714,7 +729,7 @@ void everyModelMapsToItsOwnFilesAndCachesAreRetained() {
     downloads.clear();
     assets.setModelType(ScreenshotOcrModelType::Small);
     assets.prepare();
-    require(waitUntil([&]() { return readyCount == 3; }, 5'000),
+    require(waitUntil([&]() { return readyCount == 5; }, 5'000),
             "the bundled Small model should be selected");
     require(resolved.modelType == ScreenshotOcrModelType::Small && resolved.offline &&
                 downloads.isEmpty(),

@@ -27,6 +27,8 @@
 #include <optional>
 
 namespace snow_shot::storage {
+class ConfigurationStore;
+enum class ConfigurationWriteOrigin;
 class CloudUploadConfigurationSettings final {
   public:
     [[nodiscard]] CloudUploadSettings settings() const;
@@ -346,10 +348,19 @@ class DrawingSettings final {
 // Applies partial updates across local shortcut scopes in one commit. Each affected
 // scope is validated against its complete resulting assignment before any values change.
 [[nodiscard]] bool setLocalShortcutValuesAtomic(const QMap<QString, QJsonValue>& values);
+[[nodiscard]] bool setLocalShortcutValuesAtomic(const QMap<QString, QJsonValue>& values,
+                                                ConfigurationWriteOrigin origin);
+[[nodiscard]] bool localShortcutChangesValid(const QMap<QString, QJsonValue>& current,
+                                             const QMap<QString, QJsonValue>& changes,
+                                             bool validateUnchanged = false);
 
 // Keeps the shared color and per-tool appearance preferences consistent in one commit.
 // Also accepts drawing section reset values; disabling materializes the current color.
 [[nodiscard]] bool setDrawingStyleValues(QMap<QString, QJsonValue> values);
+[[nodiscard]] bool setDrawingStyleValues(QMap<QString, QJsonValue> values,
+                                         ConfigurationWriteOrigin origin);
+[[nodiscard]] bool applyDrawingColorPolicy(const ConfigurationStore& configuration,
+                                           QMap<QString, QJsonValue>& values);
 
 class ScreenshotShortcutSettings final {
   public:
