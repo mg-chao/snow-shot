@@ -326,7 +326,7 @@
         </message>
         <message>
             <source>Height (points)</source>
-            <translation>Высота (точки)</translation>
+            <translation>Высота (в точках)</translation>
         </message>
         <message>
             <source>Lock aspect ratio</source>
@@ -374,7 +374,7 @@
         </message>
         <message>
             <source>Width (points)</source>
-            <translation>Ширина (точки)</translation>
+            <translation>Ширина (в точках)</translation>
         </message>
         <message>
             <source>X coordinate</source>
@@ -559,7 +559,7 @@
         </message>
         <message>
             <source>Switch screenshot history</source>
-            <translation>Переключить историю скриншотов</translation>
+            <translation>Переключиться между записями истории скриншотов</translation>
         </message>
         <message>
             <source>Vertical scroll</source>

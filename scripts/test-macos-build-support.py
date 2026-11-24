@@ -36,7 +36,7 @@ def bash_executable():
 def write_qt_kit(prefix, static=True, architectures=('arm64', 'x64')):
     translations = prefix / 'translations'
     translations.mkdir(parents=True, exist_ok=True)
-    for language in ('zh_CN', 'zh_TW'):
+    for language in ('zh_CN', 'zh_TW', 'ru'):
         (translations / f'qtbase_{language}.qm').touch()
     for module in ('Qt6', 'Qt6Core'):
         directory = prefix / 'lib/cmake' / module
@@ -173,7 +173,7 @@ class QtKitValidation(unittest.TestCase):
     def test_stock_dialog_catalogs_are_required_without_an_english_catalog(self):
         self.assertFalse((self.prefix / 'translations/qtbase_en_US.qm').exists())
         self.run_validator('--kit-only')
-        for language in ('zh_CN', 'zh_TW'):
+        for language in ('zh_CN', 'zh_TW', 'ru'):
             path = self.prefix / 'translations' / f'qtbase_{language}.qm'
             path.unlink()
             result = self.run_validator('--kit-only', success=False)
@@ -574,6 +574,7 @@ include([==[{(ROOT / 'cmake/SnowShotMiniMacOS.cmake').as_posix()}]==])
                 self.assertTrue(all(line and 'Snow Shot' in line for line in lines))
         self.assertIn('应用程序', ''.join(groups['zh-Hans'].itertext()))
         self.assertIn('應用程式', ''.join(groups['zh-Hant'].itertext()))
+        self.assertIn('Программы', ''.join(groups['ru'].itertext()))
 
     def test_product_metadata_and_native_translations(self):
         resources = ROOT / 'snow_shot/packaging/macos'
@@ -641,7 +642,7 @@ include([==[{(ROOT / 'cmake/SnowShotMiniMacOS.cmake').as_posix()}]==])
             files.extend([assets / 'ocr/asset-manifest.json',
                           bundle / 'Contents/Resources/snow-shot.icns'])
             files.extend(bundle / ('Contents/Resources/' + language + '.lproj/InfoPlist.strings')
-                         for language in ('en', 'zh-Hans', 'zh-Hant'))
+                         for language in ('en', 'zh-Hans', 'zh-Hant', 'ru'))
             files.extend(bundle / ('Contents/Resources/snow-shot-mini/licenses/' + relative)
                          for relative in ('LICENSE', 'components/snow_rust_ffi/COPYRIGHT',
                                           'third-party/qt/LICENSES/Qt-GPL-exception-1.0.txt',
@@ -716,7 +717,7 @@ include([==[{(ROOT / 'cmake/SnowShotMiniMacOS.cmake').as_posix()}]==])
 
     def test_native_languages_match_the_application_catalogs(self):
         plist = plistlib.loads((ROOT / 'snow_shot/packaging/macos/Info.plist.in').read_bytes())
-        native_languages = {'en_US': 'en', 'zh_CN': 'zh-Hans', 'zh_TW': 'zh-Hant'}
+        native_languages = {'en_US': 'en', 'zh_CN': 'zh-Hans', 'zh_TW': 'zh-Hant', 'ru': 'ru'}
         catalog_languages = {ET.parse(path).getroot().attrib['language']
                              for path in (ROOT / 'snow_shot/i18n').rglob('*.ts')}
         self.assertEqual(set(plist['CFBundleLocalizations']),

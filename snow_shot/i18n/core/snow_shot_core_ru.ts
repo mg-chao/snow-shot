@@ -43,7 +43,7 @@
             <source>Capture, annotate, recognize text, and record your screen,
 so every moment on screen can be expressed clearly and shared easily</source>
             <translation>Скриншоты, разметка, распознавание текста и запись экрана —
-чтобы каждый момент на экране был понятен и легко делился</translation>
+чтобы вы могли наглядно показать, что происходит на экране, и легко поделиться этим</translation>
         </message>
         <message>
             <source>Changelog</source>
@@ -95,7 +95,7 @@ so every moment on screen can be expressed clearly and shared easily</source>
         </message>
         <message>
             <source>Discover more features and ways to use it</source>
-            <translation>Узнайте больше о возможностях и способах их использования</translation>
+            <translation>Узнайте больше о функциях и о том, как ими пользоваться</translation>
         </message>
         <message>
             <source>Discussion and support · group no. %1</source>
@@ -147,7 +147,7 @@ so every moment on screen can be expressed clearly and shared easily</source>
         </message>
         <message>
             <source>Make the next experience better</source>
-            <translation>Сделайте следующий опыт лучше</translation>
+            <translation>Помогите улучшить приложение</translation>
         </message>
         <message>
             <source>Official website</source>
@@ -901,7 +901,7 @@ so every moment on screen can be expressed clearly and shared easily</source>
         </message>
         <message>
             <source>Your credits cannot cover this Expert Model request. Purchase credits from Account to continue</source>
-            <translation>Средств не хватает для запроса к экспертной модели. Пополните баланс в разделе «Аккаунт», чтобы продолжить</translation>
+            <translation>Недостаточно кредитов для запроса к экспертной модели. Чтобы продолжить, купите кредиты в разделе «Аккаунт»</translation>
         </message>
         <message>
             <source>Your daily free allowance is exhausted. Try again after it resets</source>

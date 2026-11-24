@@ -410,7 +410,7 @@
         <name>ImageSplitPreviewCanvas</name>
         <message>
             <source>Click a ruler to add a split line; drag a line to move it. Select a line and press Delete to remove it. Drag with the middle mouse button to pan; scroll to zoom</source>
-            <translation>Щёлкните по линейке, чтобы добавить линию разделения; перетащите линию, чтобы переместить её. Выберите линию и нажмите Delete, чтобы удалить. Средняя кнопка мыши перемещает холст, колесо — масштабирует</translation>
+            <translation>Щёлкните по линейке, чтобы добавить линию разделения; перетащите линию, чтобы переместить её. Выберите линию и нажмите Delete, чтобы удалить. Чтобы переместить холст, перетащите его, удерживая среднюю кнопку мыши. Для масштабирования прокрутите колесо</translation>
         </message>
         <message>
             <source>Image splitting preview</source>
@@ -687,7 +687,7 @@
         </message>
         <message>
             <source>Drag an image to move or swap it; drag selection handles to scale around its center. Drag with the middle mouse button to pan; scroll to zoom</source>
-            <translation>Перетащите изображение, чтобы переместить или поменять его местами; тяните маркеры выделения, чтобы масштабировать его относительно центра. Средняя кнопка мыши перемещает холст, колесо — масштабирует</translation>
+            <translation>Перетащите изображение, чтобы переместить или поменять его местами; тяните маркеры выделения, чтобы масштабировать его относительно центра. Чтобы переместить холст, перетащите его, удерживая среднюю кнопку мыши. Для масштабирования прокрутите колесо</translation>
         </message>
         <message>
             <source>Drag image files here, or choose add images</source>
@@ -1175,7 +1175,7 @@
         </message>
         <message>
             <source>Drag an image to move or swap it; drag its selection handles to scale proportionally around its center. Drag with the middle mouse button to pan; scroll to zoom</source>
-            <translation>Перетащите изображение, чтобы переместить или поменять его местами; тяните маркеры выделения, чтобы пропорционально масштабировать его относительно центра. Средняя кнопка мыши перемещает холст, колесо — масштабирует</translation>
+            <translation>Перетащите изображение, чтобы переместить или поменять его местами; тяните маркеры выделения, чтобы пропорционально масштабировать его относительно центра. Чтобы переместить холст, перетащите его, удерживая среднюю кнопку мыши. Для масштабирования прокрутите колесо</translation>
         </message>
         <message>
             <source>Drag image files here, or choose add images</source>
@@ -1679,7 +1679,7 @@ Files:
         </message>
         <message>
             <source>Pin to screen management</source>
-            <translation>Управление закреплёнными изображениями</translation>
+            <translation>Управление закреплёнными окнами</translation>
         </message>
         <message>
             <source>Pinned images and text will appear here</source>
@@ -2045,7 +2045,7 @@ Files:
         </message>
         <message>
             <source>Disable hide at top</source>
-            <translation>Отключить скрытие сверху</translation>
+            <translation>Отключить скрытие у верхнего края экрана</translation>
         </message>
         <message>
             <source>Disable lock mode</source>
@@ -2061,7 +2061,7 @@ Files:
         </message>
         <message>
             <source>Enable hide at top</source>
-            <translation>Включить скрытие сверху</translation>
+            <translation>Включить скрытие у верхнего края экрана</translation>
         </message>
         <message>
             <source>Enable lock mode</source>
@@ -2093,7 +2093,7 @@ Files:
         </message>
         <message>
             <source>Hide at top</source>
-            <translation>Скрытие сверху</translation>
+            <translation>Скрытие у верхнего края экрана</translation>
         </message>
         <message>
             <source>Hide other windows</source>
@@ -2526,7 +2526,7 @@ Files:
         </message>
         <message>
             <source>Delete every group with no pinned windows other than closed ones? Closed pinned windows saved in those groups will also be permanently deleted. This action cannot be undone</source>
-            <translation>Удалить все группы, в которых нет закреплённых окон, кроме закрытых? Закрытые закреплённые окна, сохранённые в этих группах, также будут удалены безвозвратно. Это действие нельзя отменить</translation>
+            <translation>Удалить все пустые группы и группы, в которых остались только закрытые закреплённые окна? Закрытые закреплённые окна, сохранённые в этих группах, также будут удалены безвозвратно. Это действие нельзя отменить</translation>
         </message>
         <message>
             <source>Delete group</source>

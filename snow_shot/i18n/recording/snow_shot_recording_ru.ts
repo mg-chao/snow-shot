@@ -74,7 +74,7 @@
         </message>
         <message>
             <source>Finalizing recording...</source>
-            <translation>Завершение записи…</translation>
+            <translation>Завершение экспорта записи…</translation>
         </message>
         <message>
             <source>Keep source files</source>
@@ -205,11 +205,11 @@
         </message>
         <message>
             <source>Trim end</source>
-            <translation>Конец обрезки</translation>
+            <translation>Конец фрагмента</translation>
         </message>
         <message>
             <source>Trim start</source>
-            <translation>Начало обрезки</translation>
+            <translation>Начало фрагмента</translation>
         </message>
     </context>
     <context>
@@ -247,7 +247,7 @@
         </message>
         <message>
             <source>Keyboard recording failed: %1</source>
-            <translation>Ошибка записи с клавиатуры: %1</translation>
+            <translation>Не удалось записать нажатия клавиш: %1</translation>
         </message>
         <message>
             <source>Motion preview unavailable: %1</source>

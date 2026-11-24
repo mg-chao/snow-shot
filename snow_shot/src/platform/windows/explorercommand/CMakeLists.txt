@@ -31,7 +31,7 @@ endforeach()
 configure_file(supportedformats.h.in generated/supportedformats.h @ONLY)
 
 # Use the package's existing localized titles, keeping native resources independent of Qt.
-foreach(_language en-US zh-CN zh-TW)
+foreach(_language en-US zh-CN zh-TW ru-RU)
     set(_path "${_snow_explorer_root}/packaging/msix/Strings/${_language}/Resources.resw")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_path}")
     file(READ "${_path}" _source)

@@ -6113,9 +6113,12 @@ Unavailable: %2</translation>
     </context>
     <context>
         <name>snow_shot::app::AccountSessionService</name>
-        <message>
+        <message numerus="yes">
             <source>%1 credits</source>
-            <translation>%1 credits</translation>
+            <translation>
+                <numerusform>%1 credit</numerusform>
+                <numerusform>%1 credits</numerusform>
+            </translation>
         </message>
         <message>
             <source>Confirm your password</source>

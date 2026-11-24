@@ -341,7 +341,7 @@
         </message>
         <message>
             <source>The selected files exceed the update restart limit</source>
-            <translation>Выбранные файлы превышают лимит перезапусков при обновлении</translation>
+            <translation>Слишком много файлов для передачи при перезапуске после обновления</translation>
         </message>
         <message>
             <source>The server changed an already published release</source>
@@ -429,11 +429,11 @@
         </message>
         <message>
             <source>Unsafe update file inventory</source>
-            <translation>Небезопасный перечень файлов обновления</translation>
+            <translation>В списке файлов обновления есть небезопасные пути</translation>
         </message>
         <message>
             <source>Unsupported update recovery journal</source>
-            <translation>Неподдерживаемый журнал восстановления обновления</translation>
+            <translation>Формат журнала восстановления обновления не поддерживается</translation>
         </message>
         <message>
             <source>Unsupported update release</source>
@@ -484,11 +484,11 @@
         <name>UpdateProgress</name>
         <message>
             <source>%1 / %2 bytes</source>
-            <translation>%1 / %2 байт</translation>
+            <translation>Байты: %1 / %2</translation>
         </message>
         <message>
             <source>%1 / %2 files</source>
-            <translation>%1 / %2 файлов</translation>
+            <translation>Файлы: %1 / %2</translation>
         </message>
         <message>
             <source>Backing up application files</source>

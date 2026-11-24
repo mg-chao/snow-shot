@@ -23,7 +23,7 @@ class QtTranslationRelease(unittest.TestCase):
         self.source.mkdir()
         self.translations = self.root / 'Qt kit/translations'
         self.translations.mkdir(parents=True)
-        for language in ('zh_CN', 'zh_TW'):
+        for language in ('zh_CN', 'zh_TW', 'ru'):
             (self.translations / f'qtbase_{language}.qm').touch()
 
     def configure(self, success=True, custom_translation_path=False):
@@ -54,7 +54,7 @@ function(qt_add_lrelease)
                 message(FATAL_ERROR "English incorrectly requires an external Qt catalog")
             endif()
         elseif(NOT arg_MERGE_QT_TRANSLATIONS OR NOT arg_QT_TRANSLATION_CATALOGS STREQUAL "qtbase")
-            message(FATAL_ERROR "Chinese stock-widget catalogs were not merged")
+            message(FATAL_ERROR "Localized stock-widget catalogs were not merged")
         endif()
         list(APPEND qm_files "${{arg_QM_OUTPUT_DIRECTORY}}/${{name}}.qm")
     endforeach()
@@ -66,10 +66,10 @@ foreach(edition IN ITEMS full mini)
         "${{CMAKE_CURRENT_BINARY_DIR}}/${{edition}}-ts"
         "${{CMAKE_CURRENT_BINARY_DIR}}/${{edition}}-qm" outputs)
     list(LENGTH outputs count)
-    if(NOT count EQUAL 3)
+    if(NOT count EQUAL 4)
         message(FATAL_ERROR "An edition lost a locale resource")
     endif()
-    foreach(locale IN ITEMS en_US zh_CN zh_TW)
+    foreach(locale IN ITEMS en_US zh_CN zh_TW ru)
         if(NOT "${{CMAKE_CURRENT_BINARY_DIR}}/${{edition}}-qm/snow_shot_${{locale}}.qm" IN_LIST outputs)
             message(FATAL_ERROR "An edition's catalog resource path changed")
         endif()
@@ -87,7 +87,7 @@ endforeach()
         self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
         return result.stdout + result.stderr
 
-    def test_english_and_chinese_catalogs_keep_their_edition_resources(self):
+    def test_catalogs_keep_their_edition_resources(self):
         self.assertFalse((self.translations / 'qtbase_en_US.qm').exists())
         output = self.configure()
         self.assertNotIn('Warning', output)
@@ -100,6 +100,10 @@ endforeach()
         (self.translations / 'qtbase_zh_TW.qm').unlink()
         self.assertIn('qtbase_zh_TW.qm', self.configure(success=False))
 
+    def test_a_missing_russian_catalog_is_rejected(self):
+        (self.translations / 'qtbase_ru.qm').unlink()
+        self.assertIn('qtbase_ru.qm', self.configure(success=False))
+
     def test_qt_custom_translation_install_path_is_supported(self):
         self.configure(custom_translation_path=True)
 
@@ -107,13 +111,19 @@ endforeach()
 @unittest.skipUnless(os.environ.get('SNOW_TEST_QT_TRANSLATION_KIT'),
                      'Set SNOW_TEST_QT_TRANSLATION_KIT to verify the installed Qt Linguist tools')
 class InstalledQtTranslationRelease(unittest.TestCase):
-    def test_native_release_merges_stock_dialogs_only_into_chinese(self):
+    def test_native_release_merges_stock_dialogs_into_localized_catalogs(self):
         kit = Path(os.environ['SNOW_TEST_QT_TRANSLATION_KIT']).resolve()
         (ROOT / 'build').mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='qt-native-translation-', dir=ROOT / 'build') as directory:
             source = Path(directory) / 'source'
             source.mkdir()
-            for language in ('en_US', 'zh_CN', 'zh_TW'):
+            for language in ('en_US', 'zh_CN', 'zh_TW', 'ru'):
+                forms = ['%n item', '%n items']
+                if language == 'ru':
+                    forms = ['%n предмет', '%n предмета', '%n предметов']
+                elif language.startswith('zh_'):
+                    forms = ['%n 个项目']
+                plural_forms = ''.join(f'<numerusform>{form}</numerusform>' for form in forms)
                 (source / f'snow_shot_{language}.ts').write_text(
                     '<?xml version="1.0" encoding="utf-8"?>\n'
                     f'<TS version="2.1" language="{language}"><context>'
@@ -122,8 +132,7 @@ class InstalledQtTranslationRelease(unittest.TestCase):
                     '<message><source>Identity message</source>'
                     '<translation>Identity message</translation></message>'
                     '<message numerus="yes"><source>%n item(s)</source><translation>'
-                    '<numerusform>%n item</numerusform><numerusform>%n items</numerusform>'
-                    '</translation></message></context></TS>\n',
+                    f'{plural_forms}</translation></message></context></TS>\n',
                     encoding='utf-8')
             (source / 'CMakeLists.txt').write_text(f'''
 cmake_minimum_required(VERSION 3.25)
@@ -151,7 +160,7 @@ file(GENERATE OUTPUT "${{CMAKE_CURRENT_BINARY_DIR}}/lconvert-path.txt"
                                     text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             converter = (binary / 'lconvert-path.txt').read_text()
-            for language in ('en_US', 'zh_CN', 'zh_TW'):
+            for language in ('en_US', 'zh_CN', 'zh_TW', 'ru'):
                 catalog = binary / f'{language}.ts'
                 result = subprocess.run([converter, '-i', str(binary / 'qm' / f'snow_shot_{language}.qm'),
                                          '-o', str(catalog)], text=True, capture_output=True)

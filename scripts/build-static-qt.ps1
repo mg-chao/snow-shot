@@ -757,7 +757,7 @@ if (-not (Test-Path -LiteralPath $qtConfig -PathType Leaf)) {
     throw "Qt $QtVersion installation did not produce $qtConfig"
 }
 if (-not (Test-SnowQtTranslationKit -Qt6Dir (Join-Path $installPrefix "lib/cmake/Qt6"))) {
-    throw "The installed Qt kit does not provide Simplified and Traditional Chinese stock-dialog translations."
+    throw "The installed Qt kit does not provide Simplified Chinese, Traditional Chinese, and Russian stock-dialog translations."
 }
 if (-not (Test-InstalledQtSystemCodecs -Prefix $installPrefix -Configuration $Configuration -Architecture $Architecture)) {
     throw "The installed Qt targets do not export the audited $Configuration codec/LTCG/timezone feature policy."

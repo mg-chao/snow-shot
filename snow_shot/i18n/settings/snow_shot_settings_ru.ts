@@ -89,7 +89,7 @@
         </message>
         <message>
             <source>I have read and agree to the %1 and %2</source>
-            <translation>Я прочитал и принимаю %1 и %2</translation>
+            <translation>Я прочитал(а) и принимаю документы «%1» и «%2»</translation>
         </message>
         <message>
             <source>I've paid</source>
@@ -205,7 +205,7 @@
         </message>
         <message>
             <source>Scan with your own WeChat account. An existing temporary account will be linked and signed in automatically using these desktop credentials. Otherwise, select a package and confirm your order. The WeChat link cannot be changed</source>
-            <translation>Отсканируйте код своим аккаунтом WeChat. Существующий временный аккаунт будет привязан и автоматически войдёт с указанными здесь учётными данными. Иначе выберите тариф и подтвердите заказ. Привязку WeChat изменить нельзя</translation>
+            <translation>Отсканируйте код своим аккаунтом WeChat. Если у вас уже есть временный аккаунт, он будет привязан с помощью имени пользователя и пароля, введённых на компьютере, после чего вы автоматически войдёте в Snow Shot. Если временного аккаунта нет, выберите пакет и подтвердите покупку. Привязку WeChat изменить нельзя</translation>
         </message>
         <message>
             <source>Sign in</source>
@@ -548,7 +548,7 @@
         </message>
         <message>
             <source>Default destination</source>
-            <translation>Место по умолчанию</translation>
+            <translation>Место загрузки по умолчанию</translation>
         </message>
         <message>
             <source>Delete</source>
@@ -640,7 +640,7 @@
         </message>
         <message>
             <source>Virtual hosted</source>
-            <translation>Виртуальный хостинг</translation>
+            <translation>По имени виртуального хоста</translation>
         </message>
     </context>
     <context>
@@ -1067,7 +1067,7 @@
         </message>
         <message>
             <source>Approval required. Allow Snow Shot in System Settings &gt; General &gt; Login Items</source>
-            <translation>Требуется одобрение. Разрешите Snow Shot в разделе «Системные настройки &gt; Основные &gt; Элементы входа»</translation>
+            <translation>Требуется одобрение. Разрешите Snow Shot в разделе «Системные настройки &gt; Основные &gt; Объекты входа и расширения»</translation>
         </message>
         <message>
             <source>Could not change launch at login: %1</source>
@@ -1079,7 +1079,7 @@
         </message>
         <message>
             <source>macOS did not apply the launch-at-login change. Check Login Items in System Settings</source>
-            <translation>macOS не применила изменение автозапуска при входе. Проверьте «Элементы входа» в системных настройках</translation>
+            <translation>macOS не применила изменение автозапуска при входе. Проверьте «Объекты входа и расширения» в системных настройках</translation>
         </message>
     </context>
     <context>
@@ -1815,7 +1815,7 @@
         </message>
         <message>
             <source>Automatically enable annotation mode in new pin to screen windows opened with edit with Snow Shot</source>
-            <translation>Автоматически включать режим разметки в новых закреплённых окнах, открытых через «Изменить в Snow Shot»</translation>
+            <translation>Автоматически включать режим разметки в новых закреплённых окнах, открытых через «Редактировать в Snow Shot»</translation>
         </message>
         <message>
             <source>Automatically exit screen recording after the recording is saved</source>
@@ -2027,7 +2027,7 @@
         </message>
         <message>
             <source>Choose automatic window or window sub-element selection, or select manually</source>
-            <translation>Выберите автоматический захват окна или его дочерних элементов либо выделяйте вручную</translation>
+            <translation>Выберите автоматическое выделение окна или его дочерних элементов либо выделяйте область вручную</translation>
         </message>
         <message>
             <source>Choose how Windows throttles the application's execution speed</source>
@@ -2219,7 +2219,7 @@
         </message>
         <message>
             <source>Choose which inputs to disable</source>
-            <translation>Выберите, какие источники ввода отключать</translation>
+            <translation>Выберите функции ввода, которые нужно отключать</translation>
         </message>
         <message>
             <source>Choose which tasks run after a successful image export</source>
@@ -2639,7 +2639,7 @@
         </message>
         <message>
             <source>Disable global mouse</source>
-            <translation>Отключить глобальную мышь</translation>
+            <translation>Отключить глобальные жесты мышью</translation>
         </message>
         <message>
             <source>Disable global shortcuts</source>
@@ -2651,7 +2651,7 @@
         </message>
         <message>
             <source>Disable/enable global mouse</source>
-            <translation>Отключить/включить глобальную мышь</translation>
+            <translation>Отключить/включить глобальные жесты мышью</translation>
         </message>
         <message>
             <source>Disable/enable global shortcuts</source>
@@ -3003,7 +3003,7 @@
         </message>
         <message>
             <source>Global mouse</source>
-            <translation>Глобальная мышь</translation>
+            <translation>Глобальные жесты мышью</translation>
         </message>
         <message>
             <source>Global mouse gestures</source>
@@ -3055,7 +3055,7 @@
         </message>
         <message>
             <source>Hide at top</source>
-            <translation>Скрывать сверху</translation>
+            <translation>Скрытие у верхнего края экрана</translation>
         </message>
         <message>
             <source>Hide or show all windows in the current group</source>
@@ -3251,7 +3251,7 @@
         </message>
         <message>
             <source>Keep selection width and height consistent</source>
-            <translation>Сохранять соотношение ширины и высоты выделения</translation>
+            <translation>Сохранять ширину и высоту выделения одинаковыми</translation>
         </message>
         <message>
             <source>Keep the Snow Shot save dialog open after saving to show the result</source>
@@ -3635,7 +3635,7 @@
         </message>
         <message>
             <source>Open pin to screen management</source>
-            <translation>Открыть управление закреплёнными изображениями</translation>
+            <translation>Открыть управление закреплёнными окнами</translation>
         </message>
         <message>
             <source>Open screenshot history</source>
@@ -3655,7 +3655,7 @@
         </message>
         <message>
             <source>Open the pin to screen management page in the main window</source>
-            <translation>Открыть страницу управления закреплёнными изображениями в главном окне</translation>
+            <translation>Открыть страницу управления закреплёнными окнами в главном окне</translation>
         </message>
         <message>
             <source>Open the screenshot history page in the main window</source>
@@ -3687,7 +3687,7 @@
         </message>
         <message>
             <source>Overlay</source>
-            <translation>Оверлей</translation>
+            <translation>Заполнить</translation>
         </message>
         <message>
             <source>PDF</source>
@@ -3711,7 +3711,7 @@
         </message>
         <message>
             <source>Pause the selected inputs while a matching focused window occupies an entire monitor</source>
-            <translation>Приостанавливать выбранные источники ввода, когда активное окно соответствует фильтру и занимает весь монитор</translation>
+            <translation>Приостанавливать выбранные функции ввода, если активное окно соответствует фильтру и занимает весь экран</translation>
         </message>
         <message>
             <source>Performance</source>
@@ -3763,7 +3763,7 @@
         </message>
         <message>
             <source>Pin to screen management</source>
-            <translation>Управление закреплёнными изображениями</translation>
+            <translation>Управление закреплёнными окнами</translation>
         </message>
         <message>
             <source>Pin to screen shortcut</source>
@@ -4075,7 +4075,7 @@
         </message>
         <message>
             <source>Resize scrolling screenshots automatically to remain inside the monitor</source>
-            <translation>Автоматически изменять размер прокручиваемого скриншота, чтобы он помещался на мониторе</translation>
+            <translation>Автоматически изменять размер окна скриншота с прокруткой, чтобы оно помещалось на экране</translation>
         </message>
         <message>
             <source>Resize window</source>
@@ -4427,7 +4427,7 @@
         </message>
         <message>
             <source>Scrolling screenshot</source>
-            <translation>Прокручиваемый скриншот</translation>
+            <translation>Скриншот с прокруткой</translation>
         </message>
         <message>
             <source>Secondary target language</source>
@@ -4911,7 +4911,7 @@
         </message>
         <message>
             <source>Start scrolling capture in the confirmed screenshot selection</source>
-            <translation>Начинать прокручиваемый захват в подтверждённой области скриншота</translation>
+            <translation>Начинать скриншот с прокруткой в подтверждённой области выделения</translation>
         </message>
         <message>
             <source>Start/copy screen recording</source>
@@ -4971,7 +4971,7 @@
         </message>
         <message>
             <source>System settings</source>
-            <translation>Параметры системы</translation>
+            <translation>Системные настройки</translation>
         </message>
         <message>
             <source>System tray</source>
@@ -5075,7 +5075,7 @@
         </message>
         <message>
             <source>Toggle automatic disabling of the selected inputs in fullscreen windows. This shortcut stays active while automatic disabling is enabled</source>
-            <translation>Включать и отключать автоматическое отключение выбранных источников ввода в полноэкранных окнах. Эта комбинация остаётся активной, пока автоотключение включено</translation>
+            <translation>Переключать автоматическое отключение выбранных функций ввода в полноэкранных окнах. Это сочетание клавиш действует и при включённом автоотключении</translation>
         </message>
         <message>
             <source>Toggle cursor visibility</source>
@@ -5418,7 +5418,7 @@
         </message>
         <message>
             <source>Could not open System Settings. Open System Settings &gt; Privacy &amp; Security &gt; %1</source>
-            <translation>Не удалось открыть Параметры системы. Откройте «Параметры системы &gt; Конфиденциальность и безопасность &gt; %1»</translation>
+            <translation>Не удалось открыть Системные настройки. Откройте «Системные настройки &gt; Конфиденциальность и безопасность &gt; %1»</translation>
         </message>
         <message>
             <source>Global mouse actions need access to: %1</source>
@@ -5710,7 +5710,7 @@ Unavailable: %2</source>
         </message>
         <message>
             <source>The new directory must be separate from the current storage directory</source>
-            <translation>Новый каталог должен быть отдельным: он не может совпадать с текущим каталогом хранилища или вкладываться в него</translation>
+            <translation>Новый и текущий каталоги хранилища должны быть разными. Ни один из них не может находиться внутри другого</translation>
         </message>
         <message>
             <source>The new storage directory is active, but some old files could not be removed: %1</source>
@@ -6113,9 +6113,13 @@ Unavailable: %2</source>
     </context>
     <context>
         <name>snow_shot::app::AccountSessionService</name>
-        <message>
+        <message numerus="yes">
             <source>%1 credits</source>
-            <translation>%1 кредитов</translation>
+            <translation>
+                <numerusform>%1 кредит</numerusform>
+                <numerusform>%1 кредита</numerusform>
+                <numerusform>%1 кредитов</numerusform>
+            </translation>
         </message>
         <message>
             <source>Confirm your password</source>
@@ -6158,15 +6162,15 @@ Unavailable: %2</source>
         <name>snow_shot::presentation::GlobalMouseManager</name>
         <message>
             <source>Allow Snow Shot in System Settings &gt; Privacy &amp; Security &gt; Accessibility to use global mouse gestures</source>
-            <translation>Разрешите Snow Shot в «Параметры системы &gt; Конфиденциальность и безопасность &gt; Универсальный доступ», чтобы использовать глобальные жесты мышью</translation>
+            <translation>Разрешите Snow Shot в «Системные настройки &gt; Конфиденциальность и безопасность &gt; Универсальный доступ», чтобы использовать глобальные жесты мышью</translation>
         </message>
         <message>
             <source>Allow Snow Shot in System Settings &gt; Privacy &amp; Security &gt; Input Monitoring to use global mouse gestures</source>
-            <translation>Разрешите Snow Shot в «Параметры системы &gt; Конфиденциальность и безопасность &gt; Мониторинг ввода», чтобы использовать глобальные жесты мышью</translation>
+            <translation>Разрешите Snow Shot в «Системные настройки &gt; Конфиденциальность и безопасность &gt; Мониторинг ввода», чтобы использовать глобальные жесты мышью</translation>
         </message>
         <message>
             <source>Checking global mouse permissions...</source>
-            <translation>Проверка разрешений для глобальной мыши…</translation>
+            <translation>Проверка разрешений для глобальных жестов мышью…</translation>
         </message>
         <message>
             <source>Global mouse gestures are paused while this session is inactive</source>

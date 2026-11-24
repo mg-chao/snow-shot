@@ -356,7 +356,11 @@ void localizedTitles(HMODULE module, IExplorerCommand* command) {
         {L"en-US\0", MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US)},
         {L"zh-CN\0", MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED)},
         {L"zh-TW\0", MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_TRADITIONAL)},
+        {L"ru-RU\0", MAKELANGID(LANG_RUSSIAN, SUBLANG_DEFAULT)},
         {L"de-DE\0en-US\0", MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US)}};
+    require(titleResource(module, MAKELANGID(LANG_RUSSIAN, SUBLANG_DEFAULT)) ==
+                L"Редактировать в Snow Shot",
+            "the DLL embeds the Russian edit command title");
     for (const auto& [names, language] : languages) {
         require(SetThreadPreferredUILanguages(MUI_LANGUAGE_NAME, names, &count) != FALSE,
                 "the test selects a Windows shell UI language preference");
