@@ -1,7 +1,7 @@
 # OCR runtime and V6 models
 
 Snow Shot uses CPU inference and optional GPU acceleration through the `simd-paddle-ocr-rs` Git submodule.
-Runtime **1.4.0** uses protocol **8**. Initialize submodules before building;
+Runtime **1.5.0** uses protocol **8**. Initialize submodules before building;
 the worker alone uses the library's pinned `nightly-2026-09-08` compiler.
 Other Rust packages keep their existing toolchain. The runtime takes verified
 local model paths, borrows child-owned BGR pixels, and returns owned text,
@@ -26,10 +26,11 @@ manifest, file types and sizes, completion markers, and bundled executable
 permissions and architecture. It does not hash the full files again, so same-size
 content changes after installation are not detected by startup validation.
 
-The default maximum-side detector policy selects limits of 960, 1500, or 2000
-according to the screenshot's longest side. Minimum-side mode uses 736. Accuracy
-First uses a recognition-width floor of 320; Speed First uses 48. Widths align to
-32 pixels. Recognition text and confidence can differ from the previous runtime.
+Text detection uses the library's default preprocessing and enlarges the short
+side toward 736 pixels within the library's image limits. Saved scaling
+preferences are ignored. Accuracy First uses the library defaults, including a
+recognition-width floor of 320. Speed First uses 48. Widths align to 32 pixels.
+Recognition text and confidence can differ from the previous runtime.
 The recognizer uses the model's Softmax probabilities for confidence. Empty
 lines and confidence below 0.5 are filtered. Residency defaults on in Full and off
 in Mini. Hot start defaults off in both editions and is effective only when
@@ -44,9 +45,9 @@ changing the preference; enabling it never enables residency or hot start.
 Windows builds require Python, CMake, and the C++ compiler for build-time
 shaderc compilation; deployed apps need no Vulkan SDK or shader compiler.
 
-Protocol 7 adds an acceleration preference to `PrepareSession`, plus separate
-configuration and asynchronous readiness messages. Image transfer and recognition
-result layouts are unchanged. Both sides explicitly reject older workers. See
+Protocol 8 uses a reserved resize byte and an acceleration preference in
+`PrepareSession`, plus separate configuration and asynchronous readiness messages.
+The host checks the exact worker version during the handshake. See
 [`PROTOCOL.md`](../../snow-crates/crates/snow-ocr-process/PROTOCOL.md).
 
 Recognition and callback delivery are FIFO across interactive and prefetch work.
@@ -74,7 +75,7 @@ Windows x64 and ARM64 ZIPs contain exactly the versioned worker executable and
 `runtime-manifest.json`. There are no inference DLLs. The trusted descriptors in
 this directory are generated from the actual built bytes, including archive and
 entry hashes. Preparation creates local artifacts; publication is a release step.
-Keep all earlier published archives unchanged. Publish the exact pinned 1.4.0
+Keep all earlier published archives unchanged. Publish the exact pinned 1.5.0
 archives before distributing this application revision.
 
 ```powershell
@@ -115,10 +116,10 @@ Supply verified models as `<model-root>/<cache-id>/<filename>` for real inferenc
 $env:SNOW_TEST_OCR_TEXT_FIXTURE = (Resolve-Path snow_shot/tests/baselines/ocr-model-versions.png).Path
 $test = 'build/windows-msvc-debug/snow_shot/test-bin/Debug/snow-shot-ocr-recognition-service-tests.exe'
 $modelRoot = (Resolve-Path build/ocr-versioned-models).Path
-$worker = (Resolve-Path artifacts/snow-ocr-runtime-1.4.0/snow-ocr-process-1.4.0-windows-x64.exe).Path
+$worker = (Resolve-Path artifacts/snow-ocr-runtime-1.5.0/snow-ocr-process-1.5.0-windows-x64.exe).Path
 & $test "--model-root=$modelRoot" "--worker=$worker"
 & $test "--model-root=$modelRoot" "--worker=$worker" --resident-models
-& $test "--downloaded-runtime=$((Resolve-Path artifacts/snow-ocr-runtime-1.4.0-windows-x64.zip).Path)"
+& $test "--downloaded-runtime=$((Resolve-Path artifacts/snow-ocr-runtime-1.5.0-windows-x64.zip).Path)"
 ```
 
 The downloaded-runtime check copies the prepared archive and models through the
