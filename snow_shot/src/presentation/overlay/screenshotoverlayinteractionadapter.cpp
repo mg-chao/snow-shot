@@ -106,17 +106,20 @@ bool ScreenshotOverlayEventAdapter::handleEffectDoubleClick(ScreenshotOverlayWin
     return m_inputHandler != nullptr && m_inputHandler->handleEffectDoubleClick(overlay, position);
 }
 
-void ScreenshotOverlayEventAdapter::handleUnhandledLeftDoubleClick() {
-    if (m_inputHandler != nullptr) {
-        m_inputHandler->handleUnhandledLeftDoubleClick();
-    }
+bool ScreenshotOverlayEventAdapter::backTakesPriority(ScreenshotOverlayWindow* overlay,
+                                                      const QPointF& point) const {
+    return m_inputHandler && m_inputHandler->backTakesPriority(overlay, point);
 }
 
-void ScreenshotOverlayEventAdapter::handleUnhandledMiddleClick(ScreenshotOverlayWindow* overlay,
-                                                               const QPointF& localPosition) {
-    if (m_inputHandler != nullptr) {
-        m_inputHandler->handleUnhandledMiddleClick(overlay, localPosition);
-    }
+bool ScreenshotOverlayEventAdapter::allowMouseCompletionBeforeSelection(
+    ScreenshotOverlayWindow* overlay, const QPointF& position) const {
+    return m_inputHandler && m_inputHandler->allowMouseCompletionBeforeSelection(overlay, position);
+}
+void ScreenshotOverlayEventAdapter::handleMouseCompletion(snow_shot::mouse::Action action,
+                                                          ScreenshotOverlayWindow* overlay,
+                                                          const QPointF& position) {
+    if (m_inputHandler)
+        m_inputHandler->handleMouseCompletion(action, overlay, position);
 }
 
 bool ScreenshotOverlayEventAdapter::handleOverlayWheel(ScreenshotOverlayWindow* overlay,

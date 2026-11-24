@@ -2,6 +2,7 @@
 #include "snow_shot/storage/cloudsyncconfiguration.h"
 
 #include "cloudsyncconfigurationkeys_p.h"
+#include "snow_shot/mouseoperations.h"
 
 #include "snow_shot/app/edition.h"
 #include "snow_shot/shortcuts/shortcutbinding.h"
@@ -74,6 +75,12 @@ bool layoutIds(const QString& key, const QJsonValue& raw, QSet<QString>& ids) {
 }
 
 bool platformSupportsCloudKey(const QString& key) {
+    if (key == u"screenshot/double_click_action" ||
+        key == u"screenshot/middle_mouse_button_action" ||
+        key == u"pin_to_screen/double_click_action" ||
+        key == u"pin_to_screen/middle_mouse_button_action")
+        return false; // Read directly when promoting a legacy cloud snapshot.
+
 #ifndef Q_OS_WIN
     if (key == QStringLiteral("system/annotation_mode_when_opening_for_editing") ||
         key == QStringLiteral("global_shortcuts/toggle_window_under_cursor_always_on_top"))
@@ -117,6 +124,9 @@ const QStringList& cloudSettingKeys() {
         result.reserve(static_cast<qsizetype>(std::size(detail::kCloudSettingKeys)));
         for (const auto* key : detail::kCloudSettingKeys)
             result.append(QString::fromLatin1(key));
+        for (const auto& a : mouse::definitions())
+            if (a.action != mouse::Action::Back)
+                result.append(a.key());
         return result;
     }();
     return keys;
@@ -129,7 +139,8 @@ bool cloudSettingSupported(const QString& key) {
 }
 
 bool cloudSettingPlatformSpecific(const QString& key) {
-    return key.startsWith(kGlobalShortcutPrefix) || key.startsWith(kGlobalMousePrefix) ||
+    return mouse::isKey(key) || key.startsWith(kGlobalShortcutPrefix) ||
+           key.startsWith(kGlobalMousePrefix) ||
            key.startsWith(QStringLiteral("screenshot_shortcuts/")) ||
            key.startsWith(QStringLiteral("drawing_shortcuts/")) ||
            key.startsWith(QStringLiteral("pin_to_screen_shortcuts/")) ||
@@ -207,6 +218,8 @@ QJsonValue cloudSettingLocalValue(const QString& key, const QJsonValue& cloud,
 
 bool cloudSettingShortcutChangesValid(const QMap<QString, QJsonValue>& current,
                                       const QMap<QString, QJsonValue>& changes) {
+    if (!mouse::changesValid(current, changes))
+        return false;
     QMap<QString, QJsonValue> appChanges;
     QMap<QString, QJsonValue> globalChanges;
     QMap<QString, QJsonValue> mouseChanges;

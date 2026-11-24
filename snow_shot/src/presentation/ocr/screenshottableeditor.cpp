@@ -1,5 +1,6 @@
 #include "snow_shot/shortcuts/shortcutbinding.h"
 #include "snow_shot/presentation/screenshottableeditor.h"
+#include "snow_shot/presentation/screenshotclipboardservice.h"
 
 #include "antd_icons.h"
 #include "theme/theme_manager.h"
@@ -662,6 +663,7 @@ bool ScreenshotTableEditor::copySelectionToClipboard() {
     if (!mimeData) {
         return false;
     }
+    static_cast<void>(ScreenshotClipboardService::reservePublication());
     QApplication::clipboard()->setMimeData(mimeData.release());
     return true;
 }
@@ -881,7 +883,12 @@ void ScreenshotTableEditor::showCellEditorContextMenu(QPlainTextEdit* editor,
     remove->setEnabled(writable && hasSelection);
     selectAll->setEnabled(!editor->document()->isEmpty());
 
-    connect(copy, &QAction::triggered, editor, &QPlainTextEdit::copy);
+    connect(copy, &QAction::triggered, editor, [editor] {
+        if (editor->textCursor().hasSelection()) {
+            static_cast<void>(ScreenshotClipboardService::reservePublication());
+            editor->copy();
+        }
+    });
     connect(cut, &QAction::triggered, editor, &QPlainTextEdit::cut);
     connect(paste, &QAction::triggered, editor, &QPlainTextEdit::paste);
     const QPointer<QPlainTextEdit> guardedEditor(editor);

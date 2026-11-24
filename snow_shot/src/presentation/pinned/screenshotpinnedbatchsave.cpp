@@ -603,7 +603,8 @@ void ScreenshotPinnedWindow::copyPinnedWindowText(
         }
     }
     if (!parts.isEmpty()) {
-        static_cast<void>(beginCopyRequest());
-        clipboard->setText(parts.join(u'\n'), QClipboard::Clipboard);
+        auto mime = std::make_unique<QMimeData>();
+        mime->setText(parts.join(u'\n'));
+        publishCopyMime(std::move(mime), beginCopyRequest());
     }
 }

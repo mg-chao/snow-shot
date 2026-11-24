@@ -85,6 +85,9 @@ class SettingsRuntimeSession final : public QObject {
     // Immediate reactive write API.  A rejected/failed write intentionally
     // keeps the attempted draft visible so the UI can offer retry or discard.
     bool submitDraft(const QString& fieldId, const QVariant& value);
+    [[nodiscard]] mouse::Bindings mouseBindings() const {
+        return m_backend.mouseBindings();
+    }
     bool submitExplicitDraft(const QString& fieldId, const QVariant& value);
     bool retry(const QString& fieldId);
     bool discard(const QString& fieldId);

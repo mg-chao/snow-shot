@@ -29,6 +29,7 @@
 #include "snow_shot/presentation/pinnedgeometry.h"
 #include "snow_shot/platform/physicalcursor.h"
 #include "../src/presentation/pinned/pinnedwindowplatform.h"
+#include "../src/presentation/pinned/screenshotpinnedgeometrymapping.h"
 #include "../src/presentation/pinned/screenshotclipboardplacementgeometry.h"
 #include <QNativeGestureEvent>
 #include <QDebug>
@@ -216,6 +217,7 @@ int macPinnedContentDragTests(
 #endif
 
 #if defined(Q_OS_WIN) || defined(_WIN32)
+#include <private/qevent_p.h>
 #include <qt_windows.h>
 #include <shellapi.h>
 #include <dwmapi.h>
@@ -362,6 +364,14 @@ class ObservedPinnedPlatform final : public snow_shot::presentation::PinnedWindo
 
 // Offscreen tests exercise restored state and queued DPI notifications without
 // installing the Windows HWND hooks required by present().
+static void firstClick(QWidget& receiver, const QPointF& local, Qt::MouseButton button) {
+    const auto global = receiver.mapToGlobal(local);
+    QMouseEvent press(QEvent::MouseButtonPress, local, global, button, button, {});
+    QCoreApplication::sendEvent(&receiver, &press);
+    QMouseEvent release(QEvent::MouseButtonRelease, local, global, button, {}, {});
+    QCoreApplication::sendEvent(&receiver, &release);
+}
+
 class ScreenshotPinnedWindowTestAccess {
   public:
     static const ScreenshotTextAnnotationDocument&
@@ -375,18 +385,6 @@ class ScreenshotPinnedWindowTestAccess {
     quickTextSnapshot(const ScreenshotPinnedWindow& window) {
         return window.m_textAnnotationSnapshot;
     }
-#ifdef Q_OS_WIN
-    static bool cropNativeInput(ScreenshotPinnedWindow& window, UINT type, WPARAM hit,
-                                LPARAM point) {
-        MSG message{};
-        message.hwnd = reinterpret_cast<HWND>(window.winId());
-        message.message = type;
-        message.wParam = hit;
-        message.lParam = point;
-        qintptr result = 0;
-        return window.nativeEvent(QByteArrayLiteral("windows_generic_MSG"), &message, &result);
-    }
-#endif
     static QPointF cropNativePoint(const ScreenshotPinnedWindow& window, const QPointF& local) {
         // A painted landmark uses the native pixel scale, independently of the
         // rounded widget extent used to interpret synthetic Qt pointer events.
@@ -445,7 +443,7 @@ class ScreenshotPinnedWindowTestAccess {
     }
     static void endCrop(ScreenshotPinnedWindow& window, const QPointF& point, bool cancel = false) {
         window.updateCropSelection(point);
-        window.endCropSelection(cancel, point.toPoint());
+        window.endCropSelection(cancel);
     }
     static QPointF cropDesktopPoint(const ScreenshotPinnedWindow& window, const QPointF& native) {
         const auto* screen = window.screen();
@@ -611,8 +609,14 @@ class ScreenshotPinnedWindowTestAccess {
             window.m_dragExport = std::make_unique<ScreenshotPinnedDragExport>();
         return *window.m_dragExport;
     }
+    static bool resizePressPending(const ScreenshotPinnedWindow& window) {
+        return window.m_mouseStroke && window.m_mouseStroke->resizeHandle &&
+               !window.m_mouseStroke->press.crossed;
+    }
     static bool exportGesture(const ScreenshotPinnedWindow& window) {
-        return window.m_exportDragOrigin.has_value();
+        return window.m_exportDragOrigin.has_value() ||
+               (window.m_mouseStroke &&
+                window.m_mouseStroke->press.drag == snow_shot::mouse::Action::Export);
     }
     static void invalidateExport(ScreenshotPinnedWindow& window) {
         window.invalidatePendingCopy();
@@ -940,10 +944,23 @@ class ScreenshotPinnedWindowTestAccess {
         window.m_ocrSupported = supported;
     }
     static void doubleForHideTest(ScreenshotPinnedWindow& window) {
-        static_cast<void>(window.handleDoubleClick(window.rect().center()));
+        const QPoint local = window.rect().center();
+        const QPoint global = window.mapToGlobal(local);
+        firstClick(window, local, Qt::LeftButton);
+        QMouseEvent press(QEvent::MouseButtonDblClick, local, global, Qt::LeftButton,
+                          Qt::LeftButton, {});
+        QMouseEvent release(QEvent::MouseButtonRelease, local, global, Qt::LeftButton, {}, {});
+        QApplication::sendEvent(&window, &press);
+        QApplication::sendEvent(&window, &release);
     }
     static void middleForHideTest(ScreenshotPinnedWindow& window) {
-        static_cast<void>(window.handleMiddleClick(window.rect().center()));
+        const QPoint local = window.rect().center();
+        const QPoint global = window.mapToGlobal(local);
+        QMouseEvent press(QEvent::MouseButtonPress, local, global, Qt::MiddleButton,
+                          Qt::MiddleButton, {});
+        QMouseEvent release(QEvent::MouseButtonRelease, local, global, Qt::MiddleButton, {}, {});
+        QApplication::sendEvent(&window, &press);
+        QApplication::sendEvent(&window, &release);
     }
 #ifdef Q_OS_WIN
     static bool startNativeShakeDrag(ScreenshotPinnedWindow& window) {
@@ -1238,6 +1255,9 @@ class ScreenshotPinnedWindowTestAccess {
     static void copyCurrentViewport(ScreenshotPinnedWindow& window) {
         window.copyCurrentViewport();
     }
+    static void copyCurrentAndClose(ScreenshotPinnedWindow& window) {
+        window.copyCurrentAndMaybeClose(true);
+    }
     static void copyRenderedImage(ScreenshotPinnedWindow& window,
                                   std::shared_ptr<ScreenshotExportArtifact> artifact) {
         window.copyRenderedImage(std::move(artifact));
@@ -1409,6 +1429,34 @@ void require(bool condition, const char* message) {
         throw std::runtime_error(message);
     }
 }
+
+#ifdef Q_OS_WIN
+bool hasNativeClientCursor(ScreenshotPinnedWindow& window, QPoint screenPixels,
+                           Qt::CursorShape cursor) {
+    const auto hit = SendMessageW(toNativeHwnd(window.winId()), WM_NCHITTEST, 0,
+                                  MAKELPARAM(screenPixels.x(), screenPixels.y()));
+    return hit == HTCLIENT && window.cursor().shape() == cursor;
+}
+
+// Enter Qt at the native window boundary without moving the desktop cursor. The Windows
+// plugin consults the live device state for injected WM_MOUSEMOVE messages.
+void sendClientMouse(ScreenshotPinnedWindow& window, QEvent::Type type, Qt::MouseButton button,
+                     Qt::MouseButtons held, const QPoint& screenPixels) {
+    const ScreenshotPinnedGeometryMapping mapping(window.currentNativeGeometry(), window.size(),
+                                                  window.devicePixelRatioF());
+    const QPointF local = mapping.localPosition(screenPixels);
+    const QPointF global = window.mapToGlobal(local);
+    if (type == QEvent::MouseButtonDblClick) {
+        // Qt first sends the second press to QWidgetWindow to establish the release
+        // receiver. Its double-click flag suppresses delivery of that press to the widget.
+        QMouseEvent press(QEvent::MouseButtonPress, local, local, global, button, held, {});
+        QMutableSinglePointEvent::setDoubleClick(&press, true);
+        QCoreApplication::sendEvent(window.windowHandle(), &press);
+    }
+    QMouseEvent event(type, local, local, global, button, held, {});
+    QCoreApplication::sendEvent(window.windowHandle(), &event);
+}
+#endif
 
 class SignalConnectionProbe : public QObject {
   public:
@@ -2111,11 +2159,8 @@ void pinnedSelectionRendersCachedOcrInCanvasCoordinates(bool restoreFromStorage 
             if (testInteractions) {
                 const QPoint corner =
                     nativePinnedResizeRim(window->currentNativeGeometry()).topLeft();
-                require(
-                    SendMessageW(toNativeHwnd(window->winId()), WM_NCHITTEST, 0,
-                                 MAKELPARAM(static_cast<WORD>(corner.x()),
-                                            static_cast<WORD>(corner.y()))) == HTTOPLEFT,
-                    "ordinary pinned resize borders must retain priority over caption dragging");
+                require(hasNativeClientCursor(*window, corner, Qt::SizeFDiagCursor),
+                        "ordinary pinned borders resolve the top-left resize handle");
             }
 #endif
             // The inherited overlay visibility is applied by the deferred
@@ -3196,7 +3241,7 @@ void pinnedRecognitionContextMenuCopiesLocally() {
         menu->close();
     });
     const QPoint localPosition = content->rect().center();
-    QContextMenuEvent event(QContextMenuEvent::Mouse, localPosition,
+    QContextMenuEvent event(QContextMenuEvent::Keyboard, localPosition,
                             content->mapToGlobal(localPosition));
     QApplication::sendEvent(content, &event);
     QApplication::processEvents();
@@ -3241,7 +3286,7 @@ void pinnedRecognitionContextMenuCopiesLocally() {
         menu->close();
     });
     const QPoint cellPosition = cellEditor->viewport()->rect().center();
-    QContextMenuEvent cellEvent(QContextMenuEvent::Mouse, cellPosition,
+    QContextMenuEvent cellEvent(QContextMenuEvent::Keyboard, cellPosition,
                                 cellEditor->viewport()->mapToGlobal(cellPosition));
     QApplication::sendEvent(cellEditor->viewport(), &cellEvent);
     QApplication::processEvents();
@@ -4038,6 +4083,8 @@ void pinnedMouseActionsToggleRecognition(Qt::MouseButton button) {
             "configure mouse recognition action");
     const auto activation = middle ? QEvent::MouseButtonPress : QEvent::MouseButtonDblClick;
     const auto send = [&](QWidget* receiver, QEvent::Type type, const QPoint& point) {
+        if (type == QEvent::MouseButtonDblClick)
+            firstClick(*receiver, point, button);
         QMouseEvent event(type, QPointF(point), QPointF(receiver->mapToGlobal(point)), button,
                           type == QEvent::MouseButtonRelease ? Qt::NoButton : button,
                           Qt::NoModifier);
@@ -4056,11 +4103,12 @@ void pinnedMouseActionsToggleRecognition(Qt::MouseButton button) {
                 "mouse recognition fixture starts with hidden cached results");
         const QPoint background(20, window.height() - 30);
         send(&window, activation, background);
+        require(!session->active(), "recognition waits for the matching release");
+        send(&window, QEvent::MouseButtonRelease, background);
         require(session->active() && action->isChecked() &&
                     session->mode() == ScreenshotRecognitionSessionController::Mode::Text,
                 "mouse action must show cached text results without a provider");
-        send(&window, QEvent::MouseButtonRelease, background);
-        require(session->active(), "mouse release must not toggle recognition again");
+
         waitForUi(20);
         auto* content = window.findChild<ScreenshotRecognitionWindow*>(
             QStringLiteral("screenshotPinnedRecognitionContent"));
@@ -4084,11 +4132,11 @@ void pinnedMouseActionsToggleRecognition(Qt::MouseButton button) {
         const QPoint contentBackground(20, content->height() - 30);
         require(content->isOcrBackgroundAt(contentBackground),
                 "toggle-off gesture must target draggable OCR background");
-        send(content, QEvent::MouseButtonDblClick, contentBackground);
+        send(content, activation, contentBackground);
+        send(content, QEvent::MouseButtonRelease, contentBackground);
         require(!session->active() && !action->isChecked(),
                 "a repeated mouse action must hide recognition results");
-        send(content, QEvent::MouseButtonRelease, contentBackground);
-        require(!session->active(), "release must leave recognition hidden");
+
         send(canvas, activation, canvas->mapFrom(&window, background));
         send(canvas, QEvent::MouseButtonRelease, canvas->mapFrom(&window, background));
         require(session->active() && action->isChecked(),
@@ -5859,16 +5907,12 @@ void pinnedContextMenuPreservesNativeGeometry(SnowCanvasRuntime&) {
                       static_cast<double>(pinnedWindow->width()) / nativeGeometry.width()),
                qRound((nativeContextPosition.y() - nativeGeometry.top()) *
                       static_cast<double>(pinnedWindow->height()) / nativeGeometry.height())));
-    require(SendMessage(pinnedHwnd, WM_NCHITTEST, 0,
-                        MAKELPARAM(static_cast<WORD>(nativeContextPosition.x()),
-                                   static_cast<WORD>(nativeContextPosition.y()))) == HTCAPTION,
-            "ordinary pinned content should use the native caption path");
-    SendMessage(pinnedHwnd, WM_NCRBUTTONDOWN, HTCAPTION,
-                MAKELPARAM(static_cast<WORD>(nativeContextPosition.x()),
-                           static_cast<WORD>(nativeContextPosition.y())));
-    SendMessage(pinnedHwnd, WM_NCRBUTTONUP, HTCAPTION,
-                MAKELPARAM(static_cast<WORD>(nativeContextPosition.x()),
-                           static_cast<WORD>(nativeContextPosition.y())));
+    require(hasNativeClientCursor(*pinnedWindow, nativeContextPosition, Qt::OpenHandCursor),
+            "the image interior routes the menu gesture through the client");
+    sendClientMouse(*pinnedWindow, QEvent::MouseButtonPress, Qt::RightButton, Qt::RightButton,
+                    nativeContextPosition);
+    sendClientMouse(*pinnedWindow, QEvent::MouseButtonRelease, Qt::RightButton, Qt::NoButton,
+                    nativeContextPosition);
 
     WINDOWPOS passiveGeometryProposal{};
     passiveGeometryProposal.hwnd = pinnedHwnd;
@@ -5889,9 +5933,9 @@ void pinnedContextMenuPreservesNativeGeometry(SnowCanvasRuntime&) {
     auto* menu = pinnedWindow->findChild<adqt::widgets::AdContextMenu*>(
         QStringLiteral("screenshotPinnedContextMenu"));
     require(menu != nullptr && menu->isVisible(),
-            "a native caption right-click should create and open the pinned context menu");
+            "a client right-click should create and open the pinned context menu");
     require((menu->pos() - expectedContextPosition).manhattanLength() <= 1,
-            "the native caption context menu should open at the Qt-global cursor position");
+            "the context menu should open at the Qt-global cursor position");
     require(pinnedWindow->currentNativeGeometry() == nativeGeometry,
             "opening the pinned context menu must not round the native window geometry");
     menu->hide();
@@ -8249,7 +8293,9 @@ void pinnedMiddleClickActions() {
         QCoreApplication::sendEvent(receiver, &event);
     };
     const auto press = [&](QWidget* receiver) {
-        send(receiver, QEvent::MouseButtonPress, receiver->rect().center());
+        const auto point = receiver->rect().center();
+        send(receiver, QEvent::MouseButtonPress, point);
+        send(receiver, QEvent::MouseButtonRelease, point);
     };
     require(settings.setMiddleMouseButtonAction(QStringLiteral("reset_zoom")), "configure reset");
     pinnedMenuPercentAction(*scale, 50)->trigger();
@@ -8262,7 +8308,7 @@ void pinnedMiddleClickActions() {
     require(settings.setMiddleMouseButtonAction(QStringLiteral("thumbnail_mode")),
             "configure middle-click thumbnail");
     press(window);
-    require(thumbnail->isChecked(), "window middle press must toggle exactly once");
+    require(thumbnail->isChecked(), "window middle click must toggle exactly once");
     send(window, QEvent::MouseButtonRelease, window->rect().center());
     require(thumbnail->isChecked(), "middle release must not execute another action");
     if (!offscreen) {
@@ -8270,7 +8316,7 @@ void pinnedMiddleClickActions() {
         require(thumbnail->isChecked(), "geometry animation must block middle-click");
     }
     waitForUi(300);
-    send(canvas, QEvent::MouseButtonDblClick, canvas->rect().center());
+    press(canvas);
     waitForUi(300);
     require(!thumbnail->isChecked(), "second physical middle press must dispatch exactly once");
     press(canvas);
@@ -8302,43 +8348,43 @@ void pinnedMiddleClickActions() {
         require(drawing != nullptr, "drawing action missing");
         drawing->setChecked(true);
         waitForUi(50);
-        // Entering drawing mode starts on the Resize window tool, where window
-        // gestures stay enabled by design; switch to the Select drawing tool
-        // so the canvas owns the input, as a user drawing would.
+        // Let the Select tool receive the middle press before the host binding.
         PhysicalKeyEvent selectPress(QEvent::KeyPress, Qt::Key_M, Qt::NoModifier);
         QCoreApplication::sendEvent(canvas, &selectPress);
         PhysicalKeyEvent selectRelease(QEvent::KeyRelease, Qt::Key_M, Qt::NoModifier);
         QCoreApplication::sendEvent(canvas, &selectRelease);
         waitForUi(50);
         press(canvas);
-        require(!thumbnail->isChecked(), "drawing mode must not dispatch middle-click actions");
+        require(thumbnail->isChecked(),
+                "an unused middle click can run its binding in annotation mode");
+        waitForUi(300);
+        press(canvas);
+        waitForUi(300);
         drawing->setChecked(false);
         waitForUi(50);
 #if defined(Q_OS_WIN) || defined(_WIN32)
-        const HWND hwnd = toNativeHwnd(window->winId());
-        const auto native = [&](UINT message, WPARAM hit) {
+        const auto nativeClick = [&] {
             const QPoint point = window->currentNativeGeometry().center();
-            SendMessageW(hwnd, message, hit,
-                         MAKELPARAM(static_cast<WORD>(point.x()), static_cast<WORD>(point.y())));
+            sendClientMouse(*window, QEvent::MouseButtonPress, Qt::MiddleButton, Qt::MiddleButton,
+                            point);
+            sendClientMouse(*window, QEvent::MouseButtonRelease, Qt::MiddleButton, Qt::NoButton,
+                            point);
         };
-        native(WM_NCMBUTTONDOWN, HTLEFT);
-        require(!thumbnail->isChecked(), "native resize regions must not dispatch middle-click");
-        native(WM_NCMBUTTONDOWN, HTCAPTION);
-        native(WM_NCMBUTTONUP, HTCAPTION);
+        nativeClick();
         waitForUi(300);
-        require(thumbnail->isChecked(), "native middle press/release must dispatch exactly once");
-        native(WM_NCMBUTTONDBLCLK, HTCAPTION);
+        require(thumbnail->isChecked(), "native middle click dispatches once");
+        nativeClick();
         waitForUi(300);
-        require(!thumbnail->isChecked(), "native second middle press must dispatch exactly once");
+        require(!thumbnail->isChecked(), "a later native middle click toggles back");
         require(settings.setMiddleMouseButtonAction(QStringLiteral("none")),
                 "configure native None");
-        native(WM_NCMBUTTONDOWN, HTCAPTION);
-        require(!thumbnail->isChecked(), "native None must preserve state");
+        nativeClick();
+        require(!thumbnail->isChecked(), "native None preserves state");
         pinnedMenuPercentAction(*scale, 50)->trigger();
         require(settings.setMiddleMouseButtonAction(QStringLiteral("reset_zoom")),
                 "configure native reset");
-        native(WM_NCMBUTTONDOWN, HTCAPTION);
-        require(window->currentNativeGeometry() == original, "native middle-click must reset zoom");
+        nativeClick();
+        require(window->currentNativeGeometry() == original, "native middle click resets zoom");
 #endif
     }
     bool removed = false;
@@ -8350,12 +8396,12 @@ void pinnedMiddleClickActions() {
 #if defined(Q_OS_WIN) || defined(_WIN32)
     if (!offscreen) {
         const QPoint point = window->currentNativeGeometry().center();
-        SendMessageW(toNativeHwnd(window->winId()), WM_NCMBUTTONDOWN, HTCAPTION,
-                     MAKELPARAM(static_cast<WORD>(point.x()), static_cast<WORD>(point.y())));
+        sendClientMouse(*window, QEvent::MouseButtonPress, Qt::MiddleButton, Qt::MiddleButton,
+                        point);
     } else
 #endif
     {
-        press(canvas);
+        send(canvas, QEvent::MouseButtonPress, canvas->rect().center());
     }
     require(guarded && guarded->isVisible(), "middle-click press must keep the pin open");
     releaseCloseGesture(*window, Qt::MiddleButton);
@@ -8371,7 +8417,13 @@ void pinnedDoubleClickResetsZoom() {
             "configure double-click Reset Zoom");
     ScreenshotPinnedWindow window;
     window.setAttribute(Qt::WA_DeleteOnClose, false);
-    require(window.present(cachedOcrPinConfig(nullptr)), "present double-click reset fixture");
+    const auto config = cachedOcrPinConfig(nullptr);
+    ScreenshotPinnedWindowTestAccess::setPhysicalCursor(
+        window, {true, [center = config.nativeGeometry.center()] { return center; }, {}});
+    require(window.present(config), "present double-click reset fixture");
+    translation_tests::waitUntil(
+        [&] { return ScreenshotPinnedWindowTestAccess::shakeContentReady(window); },
+        "the reset fixture must finish presentation");
     materializePinnedMenuTree(window);
     auto* canvas = window.findChild<SnowCanvasWidget*>();
     auto* thumbnail = window.findChild<QAction*>(QStringLiteral("screenshotPinnedThumbnailAction"));
@@ -8388,15 +8440,21 @@ void pinnedDoubleClickResetsZoom() {
             require(halfScale->isChecked(), "reset fixture starts at 50 percent zoom");
             if (fromThumbnail) {
                 thumbnail->setChecked(true);
-                waitForUi(300);
-                require(thumbnail->isChecked(), "reset fixture enters thumbnail mode");
+                translation_tests::waitUntil(
+                    [&] {
+                        return thumbnail->isChecked() &&
+                               !ScreenshotPinnedWindowTestAccess::isGeometryAnimating(window);
+                    },
+                    "reset fixture enters thumbnail mode");
             }
             QWidget* receiver = canvasReceiver ? static_cast<QWidget*>(canvas) : &window;
             const QPoint point = receiver->rect().center();
+            firstClick(*receiver, point, Qt::LeftButton);
             QMouseEvent event(QEvent::MouseButtonDblClick, QPointF(point),
                               QPointF(receiver->mapToGlobal(point)), Qt::LeftButton, Qt::LeftButton,
                               Qt::NoModifier);
             QCoreApplication::sendEvent(receiver, &event);
+            releaseCloseGesture(*receiver, Qt::LeftButton);
             require(fullScale->isChecked() && !thumbnail->isChecked() && window.isVisible() &&
                         window.currentNativeGeometry().size() == originalSize,
                     "double-click Reset Zoom restores 100 percent and leaves thumbnail mode");
@@ -8416,8 +8474,9 @@ void pinnedMouseDestroyActions(Qt::MouseButton button) {
         settings.setConfirmBeforeClosingWindow(previousClose);
         settings.setConfirmBeforeDestroyingWindow(previousDestroy);
     });
-    require(settings.setDoubleClickAction(QStringLiteral("destroy")) &&
-                settings.setMiddleMouseButtonAction(QStringLiteral("destroy")) &&
+    require((button == Qt::LeftButton
+                 ? settings.setDoubleClickAction(QStringLiteral("destroy"))
+                 : settings.setMiddleMouseButtonAction(QStringLiteral("destroy"))) &&
                 settings.setConfirmBeforeClosingWindow(true),
             "configure mouse Destroy independently of Close confirmation");
     for (const bool canvasReceiver : {false, true}) {
@@ -8454,6 +8513,8 @@ void pinnedMouseDestroyActions(Qt::MouseButton button) {
             QWidget* receiver = canvasReceiver ? static_cast<QWidget*>(canvas) : &window;
             const auto press = [&] {
                 const QPoint point = receiver->rect().center();
+                if (button == Qt::LeftButton)
+                    firstClick(*receiver, point, button);
                 QMouseEvent event(button == Qt::LeftButton ? QEvent::MouseButtonDblClick
                                                            : QEvent::MouseButtonPress,
                                   QPointF(point), QPointF(receiver->mapToGlobal(point)), button,
@@ -8514,21 +8575,26 @@ void pinnedOffscreenDoubleClickActions() {
     require(canvas != nullptr && thumbnail != nullptr, "offscreen double-click controls missing");
     const auto send = [](QWidget* receiver, Qt::MouseButton button = Qt::LeftButton) {
         const QPoint point = receiver->rect().center();
+        firstClick(*receiver, point, button);
         QMouseEvent event(QEvent::MouseButtonDblClick, QPointF(point),
                           QPointF(receiver->mapToGlobal(point)), button, button, Qt::NoModifier);
         QCoreApplication::sendEvent(receiver, &event);
     };
     require(settings.setDoubleClickAction(QStringLiteral("thumbnail_mode")), "configure toggle");
     send(window, Qt::MiddleButton);
+    releaseCloseGesture(*window, Qt::MiddleButton);
     require(!thumbnail->isChecked(), "offscreen non-left double-click must not toggle");
     send(window);
+    releaseCloseGesture(*window, Qt::LeftButton);
     require(thumbnail->isChecked(), "offscreen window double-click must enter thumbnail mode");
     waitForUi(300);
     send(canvas);
+    releaseCloseGesture(*canvas, Qt::LeftButton);
     waitForUi(300);
     require(!thumbnail->isChecked(), "offscreen canvas double-click must leave thumbnail mode");
     require(settings.setDoubleClickAction(QStringLiteral("none")), "configure offscreen None");
     send(canvas);
+    releaseCloseGesture(*canvas, Qt::LeftButton);
     require(guarded && !thumbnail->isChecked(), "offscreen None must leave the window unchanged");
     require(settings.setDoubleClickAction(QStringLiteral("close")), "configure offscreen Close");
     send(canvas);
@@ -8622,12 +8688,16 @@ void pinnedOcrDoubleClickCopiesLocally() {
             "pinned merged paragraph copies translated display text without changing source OCR");
     const QPoint background(12, content->height() - 20);
     require(content->isOcrBackgroundAt(background), "pinned fixture retains blank background");
+    firstClick(*content, background, Qt::LeftButton);
     QMouseEvent backgroundDoubleClick(QEvent::MouseButtonDblClick, QPointF(background),
                                       QPointF(content->mapToGlobal(background)), Qt::LeftButton,
                                       Qt::LeftButton, Qt::NoModifier);
     QApplication::sendEvent(content, &backgroundDoubleClick);
     require(window.isVisible(), "background Close waits for the second release");
-    releaseCloseGesture(window, Qt::LeftButton);
+    QMouseEvent backgroundRelease(QEvent::MouseButtonRelease, QPointF(background),
+                                  QPointF(content->mapToGlobal(background)), Qt::LeftButton, {},
+                                  {});
+    QApplication::sendEvent(content, &backgroundRelease);
     QElapsedTimer closing;
     closing.start();
     while (window.isVisible() && closing.elapsed() < 2000) {
@@ -8638,16 +8708,16 @@ void pinnedOcrDoubleClickCopiesLocally() {
 
 void pinnedOcrDoubleClickUsesDragRegion(bool middleClick = false) {
     const snow_shot::storage::PinToScreenSettings settings;
-    const QString previousAction = settings.doubleClickAction();
-    const QString previousMiddleAction = settings.middleMouseButtonAction();
-    const auto restoreMiddle =
-        qScopeGuard([&] { settings.setMiddleMouseButtonAction(previousMiddleAction); });
-    require(settings.setMiddleMouseButtonAction(QStringLiteral("close")),
-            "configure OCR middle-click");
+    const auto setAction = [&](const QString& value) {
+        return middleClick ? settings.setMiddleMouseButtonAction(value)
+                           : settings.setDoubleClickAction(value);
+    };
+    const QString previous =
+        middleClick ? settings.middleMouseButtonAction() : settings.doubleClickAction();
+    const auto restore = qScopeGuard([&] { setAction(previous); });
+    require(setAction(QStringLiteral("close")), "configure OCR mouse close");
     const auto eventType = middleClick ? QEvent::MouseButtonPress : QEvent::MouseButtonDblClick;
     const auto button = middleClick ? Qt::MiddleButton : Qt::LeftButton;
-    const auto restore = qScopeGuard([&] { settings.setDoubleClickAction(previousAction); });
-    require(settings.setDoubleClickAction(QStringLiteral("close")), "configure OCR double-click");
     QScreen* screen = QGuiApplication::primaryScreen();
     require(screen != nullptr, "a primary screen is required");
     QImage image(600, 360, QImage::Format_ARGB32_Premultiplied);
@@ -8690,6 +8760,8 @@ void pinnedOcrDoubleClickUsesDragRegion(bool middleClick = false) {
     const QPoint background(20, content->height() - 30);
     require(!content->isOcrBackgroundAt(textPoint) && content->isOcrBackgroundAt(background),
             "OCR fixture must distinguish text and draggable background");
+    if (!middleClick)
+        firstClick(*content, textPoint, button);
     QMouseEvent textDoubleClick(eventType, QPointF(textPoint),
                                 QPointF(content->mapToGlobal(textPoint)), button, button,
                                 Qt::NoModifier);
@@ -8708,21 +8780,27 @@ void pinnedOcrDoubleClickUsesDragRegion(bool middleClick = false) {
                           QPointF(content->mapToGlobal(background)), button, button,
                           Qt::NoModifier);
         QCoreApplication::sendEvent(content, &reset);
+        QMouseEvent resetRelease(QEvent::MouseButtonRelease, QPointF(background),
+                                 QPointF(content->mapToGlobal(background)), button, {}, {});
+        QCoreApplication::sendEvent(content, &resetRelease);
         require(window->currentNativeGeometry() == before && content->isVisible(),
                 "reset zoom must leave text-only OCR geometry unchanged");
         require(settings.setMiddleMouseButtonAction(QStringLiteral("close")), "restore OCR Close");
     }
+    if (!middleClick)
+        firstClick(*content, background, button);
     QMouseEvent backgroundDoubleClick(eventType, QPointF(background),
                                       QPointF(content->mapToGlobal(background)), button, button,
                                       Qt::NoModifier);
     QCoreApplication::sendEvent(content, &backgroundDoubleClick);
     require(guarded && window->isVisible(), "OCR background close must wait for button release");
-    releaseCloseGesture(*window, button);
+    QMouseEvent closeRelease(QEvent::MouseButtonRelease, QPointF(background),
+                             QPointF(content->mapToGlobal(background)), button, {}, {});
+    QCoreApplication::sendEvent(content, &closeRelease);
     require(processUntilDeleted(guarded, 2000), "double-clicking OCR drag background must close");
 }
 
 void enlargedPinnedThumbnailRemainsVisible() {
-    const CursorPositionRestorer cursorRestorer;
     QScreen* screen = QGuiApplication::primaryScreen();
     require(screen != nullptr, "enlarged thumbnail requires a screen");
     const QRect screenRect = ScreenshotGeometryMapper::physicalRectForScreen(*screen);
@@ -8737,11 +8815,17 @@ void enlargedPinnedThumbnailRemainsVisible() {
     config.automaticTextRecognition = false;
     auto* window = new ScreenshotPinnedWindow();
     QPointer<ScreenshotPinnedWindow> guarded(window);
+    QPoint physicalCursor = screenRect.center();
+    ScreenshotPinnedWindowTestAccess::setPhysicalCursor(
+        *window, {true, [&] { return std::optional<QPoint>(physicalCursor); },
+                  [&](QPoint position) {
+                      physicalCursor = position;
+                      return true;
+                  }});
     require(window->present(config), "enlarged thumbnail pin presentation failed");
     waitForUi(200);
     require(guarded && window->isVisible(), "enlarged pin must start visible");
     const QRect original = window->currentNativeGeometry();
-    setSystemCursorPosition(screenRect.center());
     materializePinnedMenuTree(*window);
     auto* thumbnail =
         window->findChild<QAction*>(QStringLiteral("screenshotPinnedThumbnailAction"));
@@ -8839,13 +8923,22 @@ void pinnedDoubleClickActions() {
         window->findChild<QAction*>(QStringLiteral("screenshotPinnedThumbnailAction"));
     require(canvas != nullptr && thumbnail != nullptr, "double-click pin controls missing");
     const QRect original = window->currentNativeGeometry();
-    const auto send = [](QWidget* receiver, const QPoint& point,
+    const auto down = [](QWidget* receiver, const QPoint& point,
                          Qt::MouseButton button = Qt::LeftButton) {
+        firstClick(*receiver, point, button);
         QMouseEvent event(QEvent::MouseButtonDblClick, QPointF(point),
                           QPointF(receiver->mapToGlobal(point)), button, button, Qt::NoModifier);
         QCoreApplication::sendEvent(receiver, &event);
     };
-    for (const auto button : {Qt::RightButton, Qt::MiddleButton}) {
+    const auto send = [&](QWidget* receiver, QPoint point,
+                          Qt::MouseButton button = Qt::LeftButton) {
+        down(receiver, point, button);
+        QMouseEvent release(QEvent::MouseButtonRelease, QPointF(point),
+                            QPointF(receiver->mapToGlobal(point)), button, {}, {});
+        QCoreApplication::sendEvent(receiver, &release);
+    };
+    // An unmodified right click opens the popup and changes the input receiver.
+    for (const auto button : {Qt::BackButton, Qt::MiddleButton}) {
         send(window, window->rect().center(), button);
         require(!thumbnail->isChecked(), "non-left double-click must not toggle thumbnail mode");
     }
@@ -8882,9 +8975,7 @@ void pinnedDoubleClickActions() {
     require(drawing != nullptr, "drawing action missing");
     drawing->setChecked(true);
     waitForUi(50);
-    // Entering drawing mode starts on the Resize window tool, where window
-    // gestures stay enabled by design; switch to the Select drawing tool so
-    // the canvas owns the input, as a user drawing would.
+    // Select leaves a double-click on empty canvas unhandled.
     auto* editor = window->findChild<ScreenshotPinnedEditController*>();
     require(editor && editor->toolbarWindow() && editor->toolbarWindow()->palette() &&
                 editor->toolbarWindow()->palette()->activateToolShortcut(
@@ -8892,27 +8983,38 @@ void pinnedDoubleClickActions() {
                 !editor->resizeWindowToolActive(),
             "select the drawing tool before testing canvas double-click input");
     send(canvas, canvas->rect().center());
-    require(!thumbnail->isChecked(), "drawing input must not trigger the double-click action");
-    drawing->setChecked(false);
-    waitForUi(50);
+    require(thumbnail->isChecked(), "an unhandled canvas double-click runs the bound action");
+    thumbnail->setChecked(false);
+    translation_tests::waitUntil(
+        [&] {
+            return !ScreenshotPinnedWindowTestAccess::isGeometryAnimating(*window) &&
+                   window->currentNativeGeometry() == original;
+        },
+        "the pin returns from the canvas thumbnail before the next gesture");
 
 #if defined(Q_OS_WIN) || defined(_WIN32)
     if (QGuiApplication::platformName() != QStringLiteral("offscreen")) {
         const HWND hwnd = toNativeHwnd(window->winId());
-        const auto nativeDoubleClick = [&](const QPoint& point, WPARAM hit) {
-            SendMessageW(hwnd, WM_NCLBUTTONDBLCLK, hit,
-                         MAKELPARAM(static_cast<WORD>(point.x()), static_cast<WORD>(point.y())));
+        const auto nativeDoubleClick = [&](const QPoint& point) {
+            sendClientMouse(*window, QEvent::MouseButtonPress, Qt::LeftButton, Qt::LeftButton,
+                            point);
+            sendClientMouse(*window, QEvent::MouseButtonRelease, Qt::LeftButton, Qt::NoButton,
+                            point);
+            sendClientMouse(*window, QEvent::MouseButtonDblClick, Qt::LeftButton, Qt::LeftButton,
+                            point);
+            sendClientMouse(*window, QEvent::MouseButtonRelease, Qt::LeftButton, Qt::NoButton,
+                            point);
         };
         for (const QString& action : {QStringLiteral("none"), QStringLiteral("thumbnail_mode")}) {
             require(settings.setDoubleClickAction(action), "configure native double-click");
-            nativeDoubleClick(window->currentNativeGeometry().center(), HTCAPTION);
+            nativeDoubleClick(window->currentNativeGeometry().center());
             waitForUi(300);
             require(thumbnail->isChecked() == (action == QStringLiteral("thumbnail_mode")) &&
                         !window->isMaximized(),
-                    "native caption double-click must dispatch once without maximizing");
+                    "native client double-click must dispatch once without maximizing");
         }
         selection.toggleSelection(window);
-        nativeDoubleClick(window->currentNativeGeometry().center(), HTCAPTION);
+        nativeDoubleClick(window->currentNativeGeometry().center());
         waitForUi(300);
         require(!thumbnail->isChecked() && window->currentNativeGeometry() == original &&
                     selection.selectedCount() == 0,
@@ -8920,8 +9022,8 @@ void pinnedDoubleClickActions() {
         const QPoint border(nativePinnedResizeRim(original).left(), original.center().y());
         require(SendMessageW(hwnd, WM_NCHITTEST, 0,
                              MAKELPARAM(static_cast<WORD>(border.x()),
-                                        static_cast<WORD>(border.y()))) == HTLEFT,
-                "resize border must not become a double-click caption");
+                                        static_cast<WORD>(border.y()))) == HTCLIENT,
+                "resize border routes configurable gestures through the client");
     }
 #endif
     require(settings.setDoubleClickAction(QStringLiteral("thumbnail_mode")), "configure toggle");
@@ -8940,7 +9042,7 @@ void pinnedDoubleClickActions() {
                          removed = intent == snow_shot::storage::PinnedWindowCloseIntent::Close;
                      });
     require(settings.setDoubleClickAction(QStringLiteral("close")), "configure Close on thumbnail");
-    send(canvas, canvas->rect().center());
+    down(canvas, canvas->rect().center());
     require(guarded && guarded->isVisible(), "close double-click must leave the thumbnail visible");
     releaseCloseGesture(*window, Qt::LeftButton);
     require(processUntilDeleted(guarded, 2000) && removed && otherGuard && other->isVisible(),
@@ -8948,17 +9050,20 @@ void pinnedDoubleClickActions() {
 #if defined(Q_OS_WIN) || defined(_WIN32)
     if (QGuiApplication::platformName() != QStringLiteral("offscreen")) {
         const QPoint center = other->currentNativeGeometry().center();
-        SendMessageW(toNativeHwnd(other->winId()), WM_NCLBUTTONDBLCLK, HTCAPTION,
-                     MAKELPARAM(static_cast<WORD>(center.x()), static_cast<WORD>(center.y())));
+        sendClientMouse(*other, QEvent::MouseButtonPress, Qt::LeftButton, Qt::LeftButton, center);
+        sendClientMouse(*other, QEvent::MouseButtonRelease, Qt::LeftButton, Qt::NoButton, center);
+        sendClientMouse(*other, QEvent::MouseButtonDblClick, Qt::LeftButton, Qt::LeftButton,
+                        center);
     } else
 #endif
     {
-        send(other, other->rect().center());
+        down(other, other->rect().center());
     }
     require(otherGuard && otherGuard->isVisible(), "native double-click must wait for release");
 #if defined(Q_OS_WIN) || defined(_WIN32)
     if (QGuiApplication::platformName() != QStringLiteral("offscreen")) {
-        SendMessageW(toNativeHwnd(other->winId()), WM_NCLBUTTONUP, HTCAPTION, 0);
+        sendClientMouse(*other, QEvent::MouseButtonRelease, Qt::LeftButton, Qt::NoButton,
+                        other->currentNativeGeometry().center());
     } else
 #endif
     {
@@ -9588,17 +9693,16 @@ void pinnedControlsPresenceFollowsLiveCursor() {
     settleInto([&] { return !panel->isVisible(); }, "outside must hide controls");
 
     setSystemCursorPosition(frame.center());
-    settleInto([&] { return panel->isVisible(); },
-               "entering the non-client image must reveal controls");
-    const auto nonClientTracked = [hwnd] {
+    settleInto([&] { return panel->isVisible(); }, "entering the image must reveal controls");
+    const auto clientTracked = [hwnd] {
         TRACKMOUSEEVENT tracking{};
         tracking.cbSize = sizeof(tracking);
         tracking.dwFlags = TME_QUERY;
         tracking.hwndTrack = hwnd;
         return TrackMouseEvent(&tracking) && tracking.hwndTrack == hwnd &&
-               (tracking.dwFlags & (TME_LEAVE | TME_NONCLIENT)) == (TME_LEAVE | TME_NONCLIENT);
+               (tracking.dwFlags & (TME_LEAVE | TME_NONCLIENT)) == TME_LEAVE;
     };
-    settleInto(nonClientTracked, "non-client entry must arm leave tracking");
+    settleInto(clientTracked, "client entry must arm leave tracking");
 
     const QPoint button = ScreenshotPinnedWindowTestAccess::nativePoint(
         window, edit->mapTo(&window, edit->rect().center()));
@@ -9611,14 +9715,12 @@ void pinnedControlsPresenceFollowsLiveCursor() {
     // Use the content-side resize band to exercise the transition from child controls.
     const QPoint resizeCorner =
         snow_shot::presentation::pinnedContentRect(frame).topLeft() + QPoint(1, 1);
-    require(SendMessageW(hwnd, WM_NCHITTEST, 0,
-                         MAKELPARAM(static_cast<WORD>(resizeCorner.x()),
-                                    static_cast<WORD>(resizeCorner.y()))) == HTTOPLEFT,
+    require(hasNativeClientCursor(window, resizeCorner, Qt::SizeFDiagCursor),
             "the live pointer fixture must target an input-bearing resize corner");
     setSystemCursorPosition(resizeCorner);
     settleInto([&] { return panel->isVisible(); },
                "crossing onto the resize frame must preserve hover");
-    settleInto(nonClientTracked, "resize-frame entry must arm non-client leave tracking");
+    settleInto(clientTracked, "resize-frame entry must retain client leave tracking");
     SendMessageW(hwnd, WM_MOUSELEAVE, 0, 0);
     waitForUi(150);
     require(panel->isVisible(), "a late client leave must not hide the resize frame");
@@ -10157,52 +10259,33 @@ void pinnedScalingAndAspectLockedResizing(SnowCanvasRuntime&) {
     const QPoint hitTestCenter = hitTestGeometry.center();
     struct NativeHitTestCase {
         QPoint position;
-        LRESULT expected;
+        Qt::CursorShape expected;
     };
     const std::vector<NativeHitTestCase> hitTestCases{
-        {{hitTestGeometry.left(), hitTestGeometry.top()}, HTTOPLEFT},
-        {{hitTestRight, hitTestGeometry.top()}, HTTOPRIGHT},
-        {{hitTestRight, hitTestBottom}, HTBOTTOMRIGHT},
-        {{hitTestGeometry.left(), hitTestBottom}, HTBOTTOMLEFT},
-        {{hitTestCenter.x(), hitTestGeometry.top()}, HTTOP},
-        {{hitTestRight, hitTestCenter.y()}, HTRIGHT},
-        {{hitTestCenter.x(), hitTestBottom}, HTBOTTOM},
-        {{hitTestGeometry.left(), hitTestCenter.y()}, HTLEFT},
+        {{hitTestGeometry.left(), hitTestGeometry.top()}, Qt::SizeFDiagCursor},
+        {{hitTestRight, hitTestGeometry.top()}, Qt::SizeBDiagCursor},
+        {{hitTestRight, hitTestBottom}, Qt::SizeFDiagCursor},
+        {{hitTestGeometry.left(), hitTestBottom}, Qt::SizeBDiagCursor},
+        {{hitTestCenter.x(), hitTestGeometry.top()}, Qt::SizeVerCursor},
+        {{hitTestRight, hitTestCenter.y()}, Qt::SizeHorCursor},
+        {{hitTestCenter.x(), hitTestBottom}, Qt::SizeVerCursor},
+        {{hitTestGeometry.left(), hitTestCenter.y()}, Qt::SizeHorCursor},
     };
     for (const NativeHitTestCase& testCase : hitTestCases) {
-        require(nativeHitTest(testCase.position) == testCase.expected,
+        require(hasNativeClientCursor(*pinnedWindow, testCase.position, testCase.expected),
                 "WM_NCHITTEST should expose every expected resize border");
     }
     require(WindowFromPoint(POINT{hitTestCenter.x(), hitTestCenter.y()}) == pinnedHwnd &&
-                nativeHitTest(hitTestCenter) == HTCAPTION,
-            "ordinary image content should hit the single pinned surface as a caption");
+                hasNativeClientCursor(*pinnedWindow, hitTestCenter, Qt::OpenHandCursor),
+            "ordinary image content should hit the single pinned surface with the move cursor");
     {
-        const CursorPositionRestorer restoreCursorPosition;
         setPinnedWindowHovered(*pinnedWindow, false);
         require(controlsPanel->isHidden(),
-                "the native caption hover test should start with hidden controls");
-        // This synthetic non-client message must reveal controls synchronously.
-        // Pumping the desktop afterward can deliver an unrelated real pointer leave;
-        // pinnedControlsPresenceFollowsLiveCursor covers actual pointer tracking.
-        SendMessage(
-            pinnedHwnd, WM_NCMOUSEMOVE, HTCAPTION,
-            MAKELPARAM(static_cast<WORD>(hitTestCenter.x()), static_cast<WORD>(hitTestCenter.y())));
+                "the client hover fixture should start with hidden controls");
+        sendClientMouse(*pinnedWindow, QEvent::MouseMove, Qt::NoButton, Qt::NoButton,
+                        hitTestCenter);
         require(controlsPanel->isVisible(),
-                "a native caption hover should reveal the pinned controls");
-
-        const HCURSOR resizeCursor = LoadCursor(nullptr, IDC_SIZEWE);
-        require(resizeCursor != nullptr, "the horizontal resize cursor should load");
-        const HCURSOR previousCursor = SetCursor(resizeCursor);
-        const LRESULT cursorHandled =
-            SendMessage(pinnedHwnd, WM_SETCURSOR, reinterpret_cast<WPARAM>(pinnedHwnd),
-                        MAKELPARAM(HTCAPTION, WM_MOUSEMOVE));
-        const HCURSOR appliedCursor = GetCursor();
-        SetCursor(previousCursor);
-        require(
-            cursorHandled == TRUE &&
-                pinnedWindow->windowHandle()->cursor().shape() == Qt::OpenHandCursor &&
-                appliedCursor != resizeCursor,
-            "the pinned caption should replace a stale resize cursor with its open-hand cursor");
+                "hovering the pinned content should reveal the controls");
     }
     setPinnedWindowHovered(*pinnedWindow, true);
     const QPoint controlsCenter = controlsPanel->geometry().center();
@@ -10366,7 +10449,7 @@ void pinnedScalingAndAspectLockedResizing(SnowCanvasRuntime&) {
                             : nullptr;
     require(editController != nullptr && editPalette != nullptr &&
                 editController->resizeWindowToolActive() &&
-                nativeHitTest(editModeGeometry.center()) == HTCAPTION,
+                hasNativeClientCursor(*pinnedWindow, editModeGeometry.center(), Qt::OpenHandCursor),
             "drawing mode must default to Resize window with a draggable interior");
     ScreenshotFloatingToolPaletteWindow* editToolbar = editController->toolbarWindow();
     require(editToolbar != nullptr && editToolbar->isVisible(),
@@ -10380,19 +10463,19 @@ void pinnedScalingAndAspectLockedResizing(SnowCanvasRuntime&) {
             "a no-motion native interaction must restore the toolbar, geometry, and tool");
     const QPoint editModeResizePoint(nativePinnedResizeRim(editModeGeometry).right(),
                                      editModeGeometry.center().y());
-    require(nativeHitTest(editModeResizePoint) == HTRIGHT,
+    require(hasNativeClientCursor(*pinnedWindow, editModeResizePoint, Qt::SizeHorCursor),
             "Resize window must preserve the native right-edge hit band");
 
     require(editPalette->activateToolShortcut(ScreenshotToolPalette::Tool::Select) &&
                 editPalette->activeToolForTests() == ScreenshotToolPalette::Tool::Select &&
                 !editController->resizeWindowToolActive() &&
                 nativeHitTest(editModeGeometry.center()) == HTCLIENT &&
-                nativeHitTest(editModeResizePoint) == HTRIGHT,
+                hasNativeClientCursor(*pinnedWindow, editModeResizePoint, Qt::SizeHorCursor),
             "Select must keep the interior client-interactive while preserving edge resizing");
     require(editPalette->activateDrawingShortcut(QStringLiteral("shape")) &&
                 editPalette->activeToolForTests() == ScreenshotToolPalette::Tool::Shape &&
                 nativeHitTest(editModeGeometry.center()) == HTCLIENT &&
-                nativeHitTest(editModeResizePoint) == HTRIGHT,
+                hasNativeClientCursor(*pinnedWindow, editModeResizePoint, Qt::SizeHorCursor),
             "drawing tools must preserve both canvas input and native edge resizing");
 
     QRect drawingProposal = editModeGeometry;
@@ -10403,7 +10486,7 @@ void pinnedScalingAndAspectLockedResizing(SnowCanvasRuntime&) {
                 qRectForNativeRect(drawingNative) != drawingProposal,
             "drawing mode must constrain accepted WM_SIZING proposals to the image ratio");
     ScreenshotPinnedWindowTestAccess::setRecognitionInteraction(*pinnedWindow, true);
-    require(nativeHitTest(editModeResizePoint) == HTRIGHT,
+    require(hasNativeClientCursor(*pinnedWindow, editModeResizePoint, Qt::SizeHorCursor),
             "recognition modes must preserve native edge resizing");
     ScreenshotPinnedWindowTestAccess::setRecognitionInteraction(*pinnedWindow, false);
     drawingAction->setChecked(false);
@@ -10422,8 +10505,9 @@ void pinnedScalingAndAspectLockedResizing(SnowCanvasRuntime&) {
     while (thumbnailSettle.elapsed() < 2000) {
         waitForUi(50);
         thumbnailGeometry = pinnedWindow->currentNativeGeometry();
-        if (nativeHitTest(QPoint(thumbnailGeometry.right(), thumbnailGeometry.center().y())) ==
-            HTCAPTION) {
+        if (hasNativeClientCursor(*pinnedWindow,
+                                  QPoint(thumbnailGeometry.right(), thumbnailGeometry.center().y()),
+                                  Qt::OpenHandCursor)) {
             thumbnailBorderDraggable = true;
             break;
         }
@@ -10478,25 +10562,21 @@ void pinnedNativeBordersCrossWithoutSystemSizing() {
         const QRect original = window.currentNativeGeometry();
         const int margin = snow_shot::presentation::pinnedShadowMargin();
         const HWND hwnd = toNativeHwnd(window.winId());
-        const QPoint pressed = original.topLeft() + QPoint(original.width(), original.height());
-        // Exercise native capture and geometry routing with a deterministic
-        // physical pointer, independent of desktop cursor permissions/input.
+        const QPoint pressed = nativePinnedResizeRim(original).bottomRight();
+        const QSize content = snow_shot::presentation::pinnedContentRect(original).size();
         physicalCursor = pressed;
-        SendMessage(hwnd, WM_NCLBUTTONDOWN, HTBOTTOMRIGHT, MAKELPARAM(pressed.x(), pressed.y()));
+        sendClientMouse(window, QEvent::MouseButtonPress, Qt::LeftButton, Qt::LeftButton, pressed);
+        physicalCursor = pressed - QPoint(content.width() + 120, content.height() + 60);
+        sendClientMouse(window, QEvent::MouseMove, Qt::NoButton, Qt::LeftButton, physicalCursor);
         require(ScreenshotPinnedWindowTestAccess::interactionActive(window) && GetCapture() == hwnd,
-                "native border must start captured application resizing");
-        physicalCursor = original.topLeft() + QPoint(2 * margin, 2 * margin) - QPoint(120, 60);
-        QMouseEvent move(QEvent::MouseMove, QPointF(), QPointF(QCursor::pos()), Qt::NoButton,
-                         Qt::LeftButton, Qt::NoModifier);
-        QCoreApplication::sendEvent(&window, &move);
+                "crossing the threshold on the border must start captured application resizing");
         require(window.currentNativeGeometry() ==
                     QRect(original.topLeft() - QPoint(120, 60),
                           snow_shot::presentation::pinnedOuterSize(QSize(120, 60))),
                 "native crossing must use physical pointer distances at every display scale");
-        physicalCursor = original.topLeft() + QPoint(2 * margin, 2 * margin) - QPoint(60, 30);
-        QMouseEvent release(QEvent::MouseButtonRelease, QPointF(), QPointF(QCursor::pos()),
-                            Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
-        QCoreApplication::sendEvent(&window, &release);
+        physicalCursor = pressed - QPoint(content.width() + 60, content.height() + 30);
+        sendClientMouse(window, QEvent::MouseButtonRelease, Qt::LeftButton, Qt::NoButton,
+                        physicalCursor);
         waitForUi(30);
         const QRect releasedGeometry(original.topLeft() - QPoint(60, 30),
                                      snow_shot::presentation::pinnedOuterSize(QSize(60, 30)));
@@ -10520,13 +10600,14 @@ void pinnedNativeBordersCrossWithoutSystemSizing() {
                 "native crossing must never mirror the image");
         for (QScreen* destination : QGuiApplication::screens()) {
             const QRect before = window.currentNativeGeometry();
-            const QPoint start = before.topLeft() + QPoint(before.width(), before.height());
+            const QPoint start = nativePinnedResizeRim(before).bottomRight();
             physicalCursor = start;
-            SendMessage(hwnd, WM_NCLBUTTONDOWN, HTBOTTOMRIGHT, MAKELPARAM(start.x(), start.y()));
+            sendClientMouse(window, QEvent::MouseButtonPress, Qt::LeftButton, Qt::LeftButton,
+                            start);
             const QPoint end =
                 ScreenshotGeometryMapper::physicalRectForScreen(*destination).center();
             physicalCursor = end;
-            QCoreApplication::sendEvent(&window, &move);
+            sendClientMouse(window, QEvent::MouseMove, Qt::NoButton, Qt::LeftButton, end);
             auto effective = screenshot_pinned_resize_geometry::DragHandle::BottomRight;
             QRect expected;
             require(screenshot_pinned_resize_geometry::dragResizeRect(
@@ -10535,6 +10616,7 @@ void pinnedNativeBordersCrossWithoutSystemSizing() {
                         window.currentNativeGeometry() == expected,
                     "cross-display pointer resize must retain the physical anchor and scale");
             SendMessage(hwnd, WM_CANCELMODE, 0, 0);
+            sendClientMouse(window, QEvent::MouseButtonRelease, Qt::LeftButton, Qt::NoButton, end);
             require(window.currentNativeGeometry() == before &&
                         !ScreenshotPinnedWindowTestAccess::interactionActive(window),
                     "native cancellation must restore the exact starting rectangle");
@@ -10582,22 +10664,22 @@ void pinnedResizeWindowNativeInteractions() {
             hwnd, WM_NCHITTEST, 0,
             MAKELPARAM(static_cast<WORD>(position.x()), static_cast<WORD>(position.y())));
     };
-    const auto requireAllResizeHits = [&nativeHitTest](const QRect& geometry, const char* message) {
+    const auto requireAllResizeHits = [&window](const QRect& geometry, const char* message) {
         const int right = geometry.left() + geometry.width() - 1;
         const int bottom = geometry.top() + geometry.height() - 1;
         const QPoint center = geometry.center();
-        const std::pair<QPoint, LRESULT> hitTests[] = {
-            {{geometry.left(), geometry.top()}, HTTOPLEFT},
-            {{right, geometry.top()}, HTTOPRIGHT},
-            {{right, bottom}, HTBOTTOMRIGHT},
-            {{geometry.left(), bottom}, HTBOTTOMLEFT},
-            {{center.x(), geometry.top()}, HTTOP},
-            {{right, center.y()}, HTRIGHT},
-            {{center.x(), bottom}, HTBOTTOM},
-            {{geometry.left(), center.y()}, HTLEFT},
+        const std::pair<QPoint, Qt::CursorShape> hitTests[] = {
+            {{geometry.left(), geometry.top()}, Qt::SizeFDiagCursor},
+            {{right, geometry.top()}, Qt::SizeBDiagCursor},
+            {{right, bottom}, Qt::SizeFDiagCursor},
+            {{geometry.left(), bottom}, Qt::SizeBDiagCursor},
+            {{center.x(), geometry.top()}, Qt::SizeVerCursor},
+            {{right, center.y()}, Qt::SizeHorCursor},
+            {{center.x(), bottom}, Qt::SizeVerCursor},
+            {{geometry.left(), center.y()}, Qt::SizeHorCursor},
         };
         for (const auto& [position, expected] : hitTests) {
-            require(nativeHitTest(position) == expected, message);
+            require(hasNativeClientCursor(*window, position, expected), message);
         }
     };
 
@@ -10607,12 +10689,8 @@ void pinnedResizeWindowNativeInteractions() {
     const QRect resizeRim = nativePinnedResizeRim(geometry);
     requireAllResizeHits(resizeRim,
                          "Resize window must expose all four edges and all four corners");
-    require(nativeHitTest(geometry.center()) == HTCAPTION,
-            "Resize window must expose eligible interior content as HTCAPTION");
-    require(SendMessage(hwnd, WM_SETCURSOR, reinterpret_cast<WPARAM>(hwnd),
-                        MAKELPARAM(HTCAPTION, WM_MOUSEMOVE)) == TRUE &&
-                window->windowHandle()->cursor().shape() == Qt::OpenHandCursor,
-            "Resize window must apply native open-hand caption feedback");
+    require(hasNativeClientCursor(*window, geometry.center(), Qt::OpenHandCursor),
+            "Resize window provides move feedback over the interior");
 
     ScreenshotFloatingToolPaletteWindow* toolbarWindow = controller->toolbarWindow();
     const QPoint manualPosition = toolbarWindow->contentPosition() + QPoint(24, 16);
@@ -10863,6 +10941,44 @@ void pinnedClickThenWheelNative() {
     const double before = Access::scale(window);
     nativeWheel();
     require(Access::scale(window) > before, "native wheel must zoom after clicking a pin");
+
+    std::array<BYTE, 256> originalKeys{};
+    require(GetKeyboardState(originalKeys.data()), "read thread modifiers for native wheel input");
+    const auto restoreKeys = qScopeGuard([&] { SetKeyboardState(originalKeys.data()); });
+    const auto modifiedWheel = [&](int delta, Qt::KeyboardModifiers modifiers) {
+        auto keys = originalKeys;
+        keys[VK_SHIFT] = modifiers.testFlag(Qt::ShiftModifier) ? 0x80 : 0;
+        keys[VK_CONTROL] = modifiers.testFlag(Qt::ControlModifier) ? 0x80 : 0;
+        keys[VK_MENU] = modifiers.testFlag(Qt::AltModifier) ? 0x80 : 0;
+        require(SetKeyboardState(keys.data()), "set modifiers for the native wheel message");
+        const QPoint position = window.currentNativeGeometry().center();
+        const int flags = (keys[VK_SHIFT] ? MK_SHIFT : 0) | (keys[VK_CONTROL] ? MK_CONTROL : 0);
+        SendMessageW(hwnd, WM_MOUSEWHEEL, MAKEWPARAM(flags, delta),
+                     MAKELPARAM(position.x(), position.y()));
+        waitForUi(80);
+    };
+    const double scale = Access::scale(window);
+    const int width = window.currentNativeGeometry().width();
+    modifiedWheel(WHEEL_DELTA, Qt::AltModifier);
+    require(Access::scale(window) == scale + 1 && window.currentNativeGeometry().width() > width,
+            "native Alt+wheel enlarges the pin by one percentage point");
+
+    using namespace snow_shot::mouse;
+    auto& store = snow_shot::storage::ApplicationStorage::instance().configuration();
+    require(store.setValues(
+                {{definition(Action::FineZoom).key(),
+                  encode({Kind::Wheel, Qt::NoButton, Qt::ShiftModifier})},
+                 {definition(Action::FineOpacity).key(),
+                  encode({Kind::Wheel, Qt::NoButton, Qt::ControlModifier | Qt::AltModifier})}}),
+            "assign modified wheels on an open native pin");
+    modifiedWheel(-WHEEL_DELTA, Qt::ShiftModifier);
+    require(Access::scale(window) == scale && window.currentNativeGeometry().width() == width,
+            "rebound native Shift+wheel restores the previous zoom and width");
+    Access::setGeneralOpacity(window, 85);
+    modifiedWheel(-WHEEL_DELTA, Qt::ControlModifier | Qt::AltModifier);
+    require(Access::opacity(window) == 84 && qAbs(window.windowOpacity() - 0.84) < 1.0 / 255 &&
+                Access::scale(window) == scale,
+            "native Ctrl+Alt+wheel adjusts opacity by one point");
 }
 #endif
 
@@ -11757,9 +11873,8 @@ void pinnedHideToTopIntegration(bool native) {
     const snow_shot::storage::PinToScreenShortcutSettings shortcuts;
     const QString oldDouble = settings.doubleClickAction();
     const QString oldMiddle = settings.middleMouseButtonAction();
-    require(settings.setDoubleClickAction(QStringLiteral("hide_to_top")) &&
-                settings.setMiddleMouseButtonAction(QStringLiteral("hide_to_top")),
-            "mouse settings must accept hide-to-top");
+    require(settings.setDoubleClickAction(QStringLiteral("hide_to_top")),
+            "assign hide-to-top to the double-click");
     QScreen* screen = QGuiApplication::primaryScreen();
     const auto monitor = screenshot_pinned_hide_to_top::screenGeometry(screen);
     ScreenshotPinnedWindow::Config config;
@@ -11813,6 +11928,8 @@ void pinnedHideToTopIntegration(bool native) {
     require(controller.active(), "double-click must toggle mode on");
     ScreenshotPinnedWindowTestAccess::doubleForHideTest(window);
     require(!controller.active(), "stationary double-click must toggle mode off");
+    require(settings.setMiddleMouseButtonAction(QStringLiteral("hide_to_top")),
+            "transfer hide-to-top to middle click");
     ScreenshotPinnedWindowTestAccess::middleForHideTest(window);
     require(controller.active(), "middle-click must toggle mode on");
     ScreenshotPinnedWindowTestAccess::middleForHideTest(window);
@@ -12787,9 +12904,8 @@ void pinnedLockNative() {
                 "native geometry proposals must be constrained while locked");
     }
     Access::setLock(window, false);
-    require(SendMessageW(hwnd, WM_NCHITTEST, 0, MAKELPARAM(resizeCorner.x(), resizeCorner.y())) ==
-                HTTOPLEFT,
-            "unlock must restore native resize hit testing");
+    require(hasNativeClientCursor(window, resizeCorner, Qt::SizeFDiagCursor),
+            "unlock must restore the top-left resize handle");
     window.close();
 }
 #endif
@@ -14059,11 +14175,8 @@ void pinnedTransparentLayerNativeHitTesting() {
                                  "the outermost pixel of the resize band must hit the pin");
     require(!hitsNative(window, outsideResizeEdge),
             "the very next pixel outside the resize band must pass through");
-    const auto nativeHitTest = [&](const QPoint& point) {
-        return SendMessageW(toNativeHwnd(window.winId()), WM_NCHITTEST, 0,
-                            MAKELPARAM(point.x(), point.y()));
-    };
-    require(nativeHitTest(resizeEdge) == HTLEFT && nativeHitTest(outsideResizeEdge) != HTLEFT,
+    require(hasNativeClientCursor(window, resizeEdge, Qt::SizeHorCursor) &&
+                !hasNativeClientCursor(window, outsideResizeEdge, Qt::SizeHorCursor),
             "the resize hit boundary must match the painted boundary");
 #endif
 #ifdef Q_OS_MACOS
@@ -16016,7 +16129,10 @@ void pinnedHiddenTextSelectionOffscreen() {
     }
     require(copiedImage == config.imageSource.materializedImage,
             "hidden layer is excluded from image-copy pixels");
+    first.activateWindow();
     content->setFocus();
+    translation_tests::waitUntil([&] { return content->hasFocus(); },
+                                 "restore focus to selectable text after asynchronous image copy");
     sendShortcut(*content, Qt::Key_A, Qt::ControlModifier);
     require(ScreenshotPinnedWindowTestAccess::displayedRecognition(first).selectedText() ==
                 QStringLiteral("Saved OCR"),
@@ -16174,10 +16290,12 @@ void pinnedAltDragIgnoresTextSelectionOffscreen() {
         const QPoint origin = target->mapToGlobal(textStart);
         const QPoint delta(24, 18);
         mouse(QEvent::MouseButtonPress, origin, Qt::AltModifier, Qt::LeftButton);
-        require(Access::interactionActive(window) && !content->textSelectionActive() &&
-                    selectedText().isEmpty() && !Access::exportGesture(window),
-                "Alt text press starts a window move without selecting text or exporting");
+        require(!Access::interactionActive(window) && !content->textSelectionActive() &&
+                    !Access::exportGesture(window),
+                "force move reserves the text press until the threshold");
         mouse(QEvent::MouseMove, origin + delta, Qt::AltModifier, Qt::LeftButton);
+        require(Access::interactionActive(window) && selectedText().isEmpty(),
+                "drag over text starts a window move");
         const qreal dpr = window.screen()->devicePixelRatio();
         const QPoint physicalDelta(qRound(delta.x() * dpr), qRound(delta.y() * dpr));
         require(window.currentNativeGeometry() == geometry.translated(physicalDelta),
@@ -16204,9 +16322,9 @@ void pinnedAltDragIgnoresTextSelectionOffscreen() {
         content->clearTextSelection();
         const QPoint doubleClickPosition = target->mapToGlobal(textStart);
         mouse(QEvent::MouseButtonDblClick, doubleClickPosition, Qt::AltModifier, Qt::LeftButton);
-        require(Access::interactionActive(window) && !content->textSelectionActive() &&
+        require(!Access::interactionActive(window) && !content->textSelectionActive() &&
                     selectedText().isEmpty() && !window.persistenceSnapshot().thumbnailMode,
-                "Alt double-click starts movement without text selection or the pin action");
+                "Alt double-click waits for movement and preserves the window");
         mouse(QEvent::MouseButtonRelease, doubleClickPosition, Qt::NoModifier, Qt::NoButton);
         require(!Access::interactionActive(window) && !content->textSelectionActive() &&
                     selectedText().isEmpty() &&
@@ -16362,10 +16480,10 @@ void pinnedHiddenFormattedTextSelectionOffscreen() {
                 QApplication::sendEvent(layer->viewport(), &event);
             };
             controlPointer(QEvent::MouseButtonPress, Qt::LeftButton);
-            require(Access::exportGesture(window), "Ctrl press still reserves image drag export");
+            require(!Access::exportGesture(window),
+                    "selectable formatted text owns its modified left press");
             controlPointer(QEvent::MouseButtonRelease, Qt::NoButton);
-            require(!Access::exportGesture(window) && item->textCursor().selectedText() == selected,
-                    "Ctrl click releases export ownership without changing text selection");
+            require(!Access::exportGesture(window), "a click on formatted text does not export");
             sendShortcut(*layer, Qt::Key_A, Qt::ControlModifier);
             require(QTextDocumentFragment(item->textCursor()).toPlainText() == decoded->plainText,
                     "Ctrl+A selects the native formatted document");
@@ -17556,6 +17674,16 @@ QList<QUrl> exportedClipboardUrls() {
 #endif
 }
 
+QList<QUrl> batchClipboardUrls() {
+    // Batch URL lists use the Qt clipboard on the offscreen platform. Image and
+    // original-file exports exercise the native clipboard even in these Windows tests.
+    if (QGuiApplication::platformName() == QStringLiteral("offscreen")) {
+        const auto* mime = QApplication::clipboard()->mimeData();
+        return mime ? mime->urls() : QList<QUrl>{};
+    }
+    return exportedClipboardUrls();
+}
+
 std::optional<ScreenshotClipboardContentSnapshot> exportedClipboardSnapshot(bool fileCopy) {
 #ifdef Q_OS_WIN
     // Both image and file exports publish to Win32, separate from Qt's offscreen clipboard.
@@ -17855,7 +17983,8 @@ void pinnedHiddenTextSelectionDragExportOffscreen() {
             "text-selection highlights are excluded from exported pixels and file");
         return Qt::IgnoreAction;
     });
-    for (const QPoint origin : {textStart, blank}) {
+    {
+        const QPoint origin = blank;
         const int previousExecutions = executions;
         const QPoint destination = origin + QPoint(QApplication::startDragDistance() + 3, 0);
         mouse(QEvent::MouseButtonPress, origin, Qt::ControlModifier, Qt::LeftButton);
@@ -17880,7 +18009,7 @@ void pinnedHiddenTextSelectionDragExportOffscreen() {
                        << QApplication::activeWindow();
         require(executions == previousExecutions + 1 && !Access::exportGesture(window) &&
                     !exporter.busy(),
-                "Ctrl drag from text or background completes image export and releases ownership");
+                "Ctrl drag from the background exports the image and releases ownership");
         mouse(QEvent::MouseButtonRelease, destination, Qt::ControlModifier, Qt::NoButton);
         require(
             window.currentNativeGeometry() == geometry &&
@@ -17889,6 +18018,10 @@ void pinnedHiddenTextSelectionDragExportOffscreen() {
                 !Access::displayedRecognition(window).textSelectionActive() && !session->active(),
             "image export preserves window geometry, hidden text selection, and recognition mode");
     }
+    mouse(QEvent::MouseButtonPress, textStart, Qt::ControlModifier, Qt::LeftButton);
+    require(!Access::exportGesture(window), "selectable text takes priority over a bound drag");
+    mouse(QEvent::MouseMove, textEnd, Qt::ControlModifier, Qt::LeftButton);
+    mouse(QEvent::MouseButtonRelease, textEnd, Qt::ControlModifier, Qt::NoButton);
     selectText();
     session->activate(ScreenshotRecognitionSessionController::Mode::Text);
     require(!Access::hiddenSelection(window), "display recognition results explicitly");
@@ -18069,9 +18202,15 @@ void pinnedDragExportOffscreen() {
     waitForUi(20);
     auto* canvas = window.findChild<SnowCanvasWidget*>();
     require(canvas, "drag canvas exists");
+    Qt::MouseButton exportButton = Qt::LeftButton;
     const auto mouse = [&](QEvent::Type type, QPoint position, Qt::KeyboardModifiers modifiers,
                            Qt::MouseButtons buttons) {
-        const auto button = type == QEvent::MouseMove ? Qt::NoButton : Qt::LeftButton;
+        const bool exportGesture = modifiers == Qt::ControlModifier;
+        const auto button = type == QEvent::MouseMove ? Qt::NoButton
+                            : exportGesture           ? exportButton
+                                                      : Qt::LeftButton;
+        if (exportGesture && buttons.testFlag(Qt::LeftButton))
+            buttons = exportButton;
         QMouseEvent event(type, position, canvas->mapToGlobal(position), button, buttons,
                           modifiers);
         QApplication::sendEvent(canvas, &event);
@@ -18106,7 +18245,7 @@ void pinnedDragExportOffscreen() {
         origin = canvas->rect().center();
         destination = origin + QPoint(QApplication::startDragDistance() + 3, 0);
         mouse(QEvent::MouseButtonPress, origin, Qt::ControlModifier, Qt::LeftButton);
-        require(Access::exportGesture(window), "Ctrl press reserves export gesture");
+        require(Access::exportGesture(window), "bound press reserves image export");
     };
     const auto move = [&] {
         mouse(QEvent::MouseMove, destination, Qt::ControlModifier, Qt::LeftButton);
@@ -18168,6 +18307,13 @@ void pinnedDragExportOffscreen() {
     require(normalize(expected) != normalize(beforeDrawing),
             "viewport contains current annotations");
     const auto document = Access::dragDocument(window);
+    // The drawing tool owns its primary press. Export still works on an unused button.
+    exportButton = Qt::ForwardButton;
+    using namespace snow_shot::mouse;
+    require(snow_shot::storage::ApplicationStorage::instance().configuration().setValue(
+                definition(Action::Export).key(),
+                encode({Kind::Drag, exportButton, Qt::ControlModifier})),
+            "rebind image export while a drawing tool is active");
     press();
     move();
     wait([&] { return executions == 5; }, "editing supports drag export");
@@ -18393,7 +18539,7 @@ void pinnedCtrlHoverKeepsWindowCursorOffscreen() {
             controller->activateResizeWindowTool();
         }
         require(!canvas->interactionEnabled(), "viewing and resize-window tools disable drawing");
-        require(hit(center, Qt::NoModifier) == HTCAPTION, "ordinary hover uses native caption");
+        require(hit(center, Qt::NoModifier) == HTCLIENT, "ordinary hover reaches the client");
         move(center, Qt::NoModifier);
         require(canvas->cursor().shape() == Qt::OpenHandCursor, "hover starts with window cursor");
         changes.count = 0;
@@ -18402,16 +18548,16 @@ void pinnedCtrlHoverKeepsWindowCursorOffscreen() {
         for (const auto modifiers :
              {Qt::KeyboardModifiers(Qt::ControlModifier), Qt::ControlModifier | Qt::ShiftModifier,
               Qt::KeyboardModifiers(Qt::NoModifier)}) {
+            require(hit(center, modifiers) == HTCLIENT, "every modifier set reaches Qt");
+            move(center, modifiers);
+            const auto cursor = canvas->cursor().shape();
+            changes.count = 0;
             for (int i = 0; i < 8; ++i) {
                 const QPoint local = center + QPoint(i, i);
-                require(hit(local, modifiers) ==
-                            (modifiers.testFlag(Qt::ControlModifier) ? HTCLIENT : HTCAPTION),
-                        "Ctrl routes export input to Qt without changing ordinary hit testing");
-                require(canvas->cursor().shape() == Qt::OpenHandCursor,
-                        "native Ctrl hit testing must retain window cursor ownership");
+                require(hit(local, modifiers) == HTCLIENT, "native hover preserves client input");
                 move(local, modifiers);
-                require(canvas->cursor().shape() == Qt::OpenHandCursor && changes.count == 0,
-                        "repeated native hit tests and Qt moves must not toggle the cursor");
+                require(canvas->cursor().shape() == cursor && changes.count == 0,
+                        "repeated native hit tests and Qt moves must keep the same cursor");
             }
         }
         QKeyEvent release(QEvent::KeyRelease, Qt::Key_Control, Qt::NoModifier);
@@ -18421,8 +18567,10 @@ void pinnedCtrlHoverKeepsWindowCursorOffscreen() {
                     Access::dragDocument(window) == document,
                 "disabled drawing input must preserve cursor, snapping, and document state");
         const QPoint resizeCorner = Access::contentViewport(window).topLeft().toPoint();
-        require(hit(resizeCorner, Qt::ControlModifier) == HTTOPLEFT,
-                "Ctrl must preserve native resize borders");
+        require(hit(resizeCorner, Qt::NoModifier) == HTCLIENT &&
+                    Access::decorationResizeHandle(window, resizeCorner) == 0 &&
+                    canvas->cursor().shape() == Qt::SizeFDiagCursor,
+                "the default move binding identifies the top-left resize border");
     }
     window.close();
 }
@@ -18458,16 +18606,15 @@ void pinnedOcrBoxSelectionNativeRouting() {
     const QPoint blank = content->mapTo(&window, QPoint(12, 12));
     require(hit(blank, Qt::NoModifier) == HTCLIENT && hit(text, Qt::NoModifier) == HTCLIENT,
             "visible text and blank areas route ordinary selection input to Qt");
-    require(hit(blank, Qt::AltModifier) == HTCAPTION && hit(text, Qt::AltModifier) == HTCAPTION &&
-                hit(text, Qt::ControlModifier | Qt::AltModifier) == HTCAPTION,
-            "Alt moves the pin over visible OCR text and background");
-    require(hit(blank, Qt::ControlModifier) == HTCAPTION &&
-                hit(blank, Qt::ControlModifier | Qt::AltModifier) == HTCAPTION,
-            "visible OCR preserves existing Ctrl movement and Ctrl precedence");
+    for (Qt::KeyboardModifiers keys :
+         {Qt::KeyboardModifiers(Qt::AltModifier), Qt::KeyboardModifiers(Qt::ControlModifier),
+          Qt::ControlModifier | Qt::AltModifier})
+        require(hit(blank, keys) == HTCLIENT && hit(text, keys) == HTCLIENT,
+                "the recognition surface receives every modifier set for exact binding resolution");
     const QPoint resizeCorner = Access::contentViewport(window).topLeft().toPoint();
-    require(hit(resizeCorner, Qt::NoModifier) == HTTOPLEFT &&
-                hit(resizeCorner, Qt::AltModifier) == HTTOPLEFT,
-            "OCR box selection and Alt movement preserve native resize handles");
+    require(hit(resizeCorner, Qt::NoModifier) == HTCLIENT &&
+                Access::decorationResizeHandle(window, resizeCorner) == 0,
+            "the top-left OCR border remains available to the configured resize drag");
     Access::setLock(window, true);
     require(hit(blank, Qt::NoModifier) == HTCLIENT && hit(blank, Qt::AltModifier) == HTCLIENT &&
                 hit(text, Qt::AltModifier) == HTCLIENT,
@@ -18549,11 +18696,11 @@ void pinnedOcrBoxSelectionNativeRouting() {
     session->deactivate();
     require(Access::hiddenSelection(window) && !content->boxSelectionEnabled(),
             "hidden text selection does not activate box selection");
-    require(hit(blank, Qt::NoModifier) == HTCAPTION && hit(blank, Qt::AltModifier) == HTCAPTION &&
-                hit(blank, Qt::ControlModifier) == HTCLIENT &&
-                hit(text, Qt::NoModifier) == HTCLIENT && hit(text, Qt::AltModifier) == HTCAPTION &&
-                hit(text, Qt::ControlModifier | Qt::AltModifier) == HTCAPTION,
-            "hidden text selection preserves ordinary routing and allows Alt movement over text");
+    require(hit(blank, Qt::NoModifier) == HTCLIENT && hit(blank, Qt::ControlModifier) == HTCLIENT &&
+                hit(text, Qt::NoModifier) == HTCLIENT && hit(text, Qt::AltModifier) == HTCLIENT &&
+                Access::pointerMoveEnabled(window, text, Qt::AltModifier) &&
+                !Access::pointerMoveEnabled(window, text, Qt::NoModifier),
+            "hidden text retains selection while the force-move binding can drag across text");
     window.close();
 }
 
@@ -18577,10 +18724,11 @@ void pinnedDragExportNativeHitTest() {
     const QPoint imagePoint = Access::contentViewport(window).center().toPoint();
     require(Access::exportEligible(window, imagePoint),
             "native fixture targets the image interior");
-    require(hit(imagePoint, false) == HTCAPTION, "ordinary image drag uses native caption");
+    require(hit(imagePoint, false) == HTCLIENT, "ordinary image drag reaches the client");
     require(hit(imagePoint, true) == HTCLIENT, "Ctrl image drag is delivered to Qt");
     const QPoint resizeCorner = Access::contentViewport(window).topLeft().toPoint();
-    require(hit(resizeCorner, true) == HTTOPLEFT, "Ctrl leaves resize borders native");
+    require(hit(resizeCorner, true) == HTCLIENT && !Access::exportEligible(window, resizeCorner),
+            "the resize border is excluded from image export");
     const snow_shot::storage::PinToScreenSettings settings;
     require(settings.setTextSelectionOnRecognitionResults(QStringLiteral("always")),
             "enable hidden selection for native drag routing");
@@ -18603,15 +18751,15 @@ void pinnedDragExportNativeHitTest() {
             "native drag fixture maps text and background through the current display scale");
     require(hit(text, false) == HTCLIENT && hit(text, true) == HTCLIENT,
             "hidden text receives Qt input for selection and Ctrl image dragging");
-    require(hit(text, false, true) == HTCAPTION,
-            "Alt over hidden text routes directly to native window movement");
-    require(hit(text, false) == HTCLIENT, "releasing Alt restores native text-selection routing");
-    require(hit(blank, false) == HTCAPTION && hit(blank, true) == HTCLIENT,
-            "Ctrl routes hidden selection background to Qt instead of native window movement");
-    require(hit(resizeCorner, true) == HTTOPLEFT,
-            "hidden selection Ctrl dragging preserves native resize borders");
-    require(hit(resizeCorner, false, true) == HTTOPLEFT,
-            "Alt text dragging preserves native resize borders");
+    require(hit(text, false, true) == HTCLIENT &&
+                Access::pointerMoveEnabled(window, text, Qt::AltModifier),
+            "force move over text receives client input");
+    require(hit(blank, false) == HTCLIENT && hit(blank, true) == HTCLIENT &&
+                Access::exportEligible(window, blank),
+            "hidden selection background can start the configured export drag");
+    require(hit(resizeCorner, false, true) == HTCLIENT &&
+                Access::decorationResizeHandle(window, resizeCorner) == 0,
+            "force move preserves the resize border around text");
     window.close();
 }
 #endif
@@ -18768,16 +18916,18 @@ void pinnedOcrBoxSelectionOffscreen() {
                 Access::displayedRecognition(window).selectedText() ==
                     source.lines[1].text + QLatin1Char('\n') + source.lines[2].text,
             "controlled box release commits the final edge rectangle");
-    const QPoint resizeEdge = content->mapFrom(&window, QPoint(1, 1));
+    const QPoint resizeEdge =
+        content->mapFrom(&window, Access::contentViewport(window).topLeft().toPoint());
     pointer(QEvent::MouseButtonPress, resizeEdge, Qt::NoModifier);
+    pointer(QEvent::MouseMove, resizeEdge - QPoint(17, 17), Qt::NoModifier);
     require(Access::interactionActive(window) && !content->lineBoxSelectionActive(),
-            "an initial edge press keeps controlled window resizing precedence");
-    pointer(QEvent::MouseButtonRelease, resizeEdge, Qt::NoModifier);
+            "a drag starting at the edge keeps controlled window resizing precedence");
+    pointer(QEvent::MouseButtonRelease, resizeEdge - QPoint(17, 17), Qt::NoModifier);
     const QPoint moveOrigin = window.currentNativeGeometry().topLeft();
     pointer(QEvent::MouseButtonPress, blank, Qt::AltModifier, true);
-    require(Access::interactionActive(window) && !content->lineBoxSelectionActive(),
-            "Alt blank dragging must begin the existing controlled window move");
     pointer(QEvent::MouseMove, blank + QPoint(19, 13), Qt::NoModifier);
+    require(Access::interactionActive(window) && !content->lineBoxSelectionActive(),
+            "Alt blank dragging begins the controlled move at the threshold");
     pointer(QEvent::MouseButtonRelease, blank + QPoint(19, 13), Qt::NoModifier);
     require(!Access::interactionActive(window) && !content->lineBoxSelectionActive() &&
                 window.currentNativeGeometry().topLeft() != moveOrigin,
@@ -18816,7 +18966,8 @@ void pinnedOcrBoxSelectionOffscreen() {
         require(!Access::pointerMoveEnabled(window, windowText, Qt::AltModifier),
                 "Alt over recognized text respects the pinned window lock");
         Access::setLock(window, false);
-        for (const auto modifiers : {Qt::ControlModifier | Qt::AltModifier}) {
+        {
+            const auto modifiers = Qt::AltModifier;
             content->clearOcrSelection();
             Access::selectHiddenText(window);
             const QRect before = window.currentNativeGeometry();
@@ -18827,10 +18978,8 @@ void pinnedOcrBoxSelectionOffscreen() {
             require(content->cursor().shape() == Qt::OpenHandCursor,
                     "Alt hovering recognized text displays the window move cursor");
             pointer(QEvent::MouseButtonPress, text, modifiers, true);
-            require(Access::interactionActive(window) && !content->lineBoxSelectionActive() &&
-                        !Access::displayedRecognition(window).hasTextSelection() &&
-                        !Access::displayedRecognition(window).textSelectionActive(),
-                    "Alt text press starts window dragging and clears OCR selection");
+            require(!Access::interactionActive(window) && !content->lineBoxSelectionActive(),
+                    "force move waits for the pointer to cross the drag threshold");
             const QPointF destination = origin + QPointF(19, 13);
             for (const auto type : {QEvent::MouseMove, QEvent::MouseButtonRelease}) {
                 QMouseEvent event(
@@ -19371,8 +19520,9 @@ void pinnedSharedImageExportOffscreen() {
                 settings.setCopyImageFileToClipboard(false),
             "change shared settings while materialization is pending");
     deliverSnapshot(config.imageSource.materializedImage);
-    wait([&] { return !Access::exportArtifact(window); }, "snapshot copy completes");
     const QString snapshotPath = directory.filePath(QStringLiteral("snapshot.bmp"));
+    wait([&] { return !Access::exportArtifact(window) && QFileInfo::exists(snapshotPath); },
+         "snapshot copy and the independent automatic save complete");
     QFile snapshotFile(snapshotPath);
     const auto snapshotUrls = exportedClipboardUrls();
     require(snapshotUrls.size() == 1, "deferred file copy publishes one URL");
@@ -20105,8 +20255,13 @@ void pinnedContentReplacement() {
             ++snapshots;
             return ScreenshotClipboardContentReader::snapshotMimeData(input, dpr, Qt::white);
         }
-        void setMimeData(std::unique_ptr<QMimeData> data) override {
+        ScreenshotClipboardCommitHandle
+        publish(QObject*, std::unique_ptr<QMimeData> data,
+                ScreenshotClipboardService::PublicationId,
+                ScreenshotClipboardService::CommitCompletion done) override {
             output = std::move(data);
+            done({});
+            return {};
         }
     };
     auto clipboardAccess = std::make_unique<MemoryClipboard>();
@@ -20148,10 +20303,12 @@ void pinnedContentReplacement() {
     materializePinnedMenuTree(window);
     auto* showMain =
         window.findChild<QAction*>(QStringLiteral("screenshotPinnedShowMainInterfaceAction"));
-    require(menu && load && file && clipboard && close && management && showMain &&
-                management->menu() != nullptr &&
-                // Always on Top, border, shadow, separator, Hide All to Top, then Load content.
-                management->menu()->actions().indexOf(load) == 5 && load->isEnabled(),
+    auto* batch = window.findChild<QAction*>(QStringLiteral("screenshotPinnedBatchActionsAction"));
+    require(menu && load && file && clipboard && close && management && showMain && batch &&
+                management->menu() && management->menu()->actions().contains(batch) &&
+                management->menu()->actions().indexOf(load) ==
+                    management->menu()->actions().indexOf(batch) + 1 &&
+                load->isEnabled(),
             "replacement submenu must be available after materialization");
     require(menu->actionIcon(clipboard) ==
                 snow_shot::presentation::icons::custom::outlined::PinClipboard(),
@@ -21572,10 +21729,12 @@ void pinnedInteractionsReleasePointerRouting() {
             const QPointF start = pin.mapToGlobal(resize ? QPoint(pin.width() - 2, pin.height() / 2)
                                                          : pin.rect().center());
             sendPointer(pin, QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton);
-            require(ScreenshotPinnedWindowTestAccess::interactionActive(pin),
-                    "window-delivered press must begin the controlled interaction");
+            require(!ScreenshotPinnedWindowTestAccess::interactionActive(pin),
+                    "window-delivered press waits for the drag threshold");
             const QPointF end = start + QPointF(20, 10);
             sendPointer(pin, QEvent::MouseMove, end, Qt::NoButton, Qt::LeftButton);
+            require(ScreenshotPinnedWindowTestAccess::interactionActive(pin),
+                    "motion beyond the threshold begins the controlled interaction");
             sendPointer(pin, QEvent::MouseButtonRelease, end, Qt::LeftButton, Qt::NoButton);
             require(!ScreenshotPinnedWindowTestAccess::interactionActive(pin) &&
                         QWidget::mouseGrabber() == nullptr,
@@ -21638,7 +21797,9 @@ void pinnedControlledResizeCursorReturnsToDrawingTool() {
     require(drawingCursor != Qt::SizeHorCursor && drawingCursor != Qt::SizeVerCursor &&
                 drawingCursor != Qt::SizeFDiagCursor && drawingCursor != Qt::SizeBDiagCursor,
             "drawing tool must start with its own cursor");
-    for (const QPoint& edge : {QPoint(1, center.y()), QPoint(center.x(), 1), QPoint(1, 1)}) {
+    const auto content = ScreenshotPinnedWindowTestAccess::contentViewport(window).toRect();
+    for (const QPoint& edge : {QPoint(content.left(), center.y()),
+                               QPoint(center.x(), content.top()), content.topLeft()}) {
         move(edge);
         require(canvas->cursor().shape() != drawingCursor,
                 "edge hover must take cursor ownership from the drawing tool");
@@ -24129,12 +24290,7 @@ void pinnedMultiSelectionRoutingAndIndicator() {
     fixture.resetWrites();
     auto* canvas = first.findChild<SnowCanvasWidget*>();
     require(canvas != nullptr, "selection routing exercises the embedded canvas");
-    const QPoint routingPoint = first.rect().center();
-    require(fixture.selection.isSelectable(&first) &&
-                !fixture.selection.routesPointerToClient(first, routingPoint, Qt::NoModifier) &&
-                fixture.selection.routesPointerToClient(first, routingPoint, Qt::ControlModifier) &&
-                !fixture.selection.routesPointerToClient(first, routingPoint, Qt::AltModifier),
-            "native selection routing must use its sampled modifiers before Qt key delivery");
+    require(fixture.selection.isSelectable(&first), "ordinary content can join a selection");
     const QByteArray document = Access::dragDocument(first);
     const auto snapshot = first.persistenceSnapshot();
     pinnedSelectionClick(*canvas, Qt::ControlModifier);
@@ -24271,17 +24427,14 @@ void pinnedMultiSelectionPointerThresholds() {
                                 Qt::LeftButton);
     pinnedSelectionDesktopMouse(*canvas, QEvent::MouseMove, origin + delta, Qt::ControlModifier,
                                 Qt::LeftButton);
-    QCoreApplication::processEvents();
+    translation_tests::waitUntil([&] { return exports == 1; },
+                                 "selected pin completes its own export");
     pinnedSelectionDesktopMouse(*canvas, QEvent::MouseButtonRelease, origin + delta,
                                 Qt::ControlModifier);
-    require(fixture.selection.selectedCount() == 2 && exports == 0 &&
-                QLineF(first.persistenceSnapshot().placement.position,
-                       beforeFirst.placement.position + delta)
-                        .length() < .51 &&
-                QLineF(second.persistenceSnapshot().placement.position,
-                       beforeSecond.placement.position + delta)
-                        .length() < .51,
-            "modifier drag on a move-eligible selected pin moves the group and never exports");
+    require(fixture.selection.selectedCount() == 2 && exports == 1 &&
+                first.persistenceSnapshot().placement.position == beforeFirst.placement.position &&
+                second.persistenceSnapshot().placement.position == beforeSecond.placement.position,
+            "exporting a selected pin preserves selection and the positions of its peers");
     const QPointF releaseOrigin = canvas->mapToGlobal(canvas->rect().center());
     const auto releaseBefore = first.persistenceSnapshot();
     pinnedSelectionDesktopMouse(*canvas, QEvent::MouseButtonPress, releaseOrigin, Qt::NoModifier,
@@ -24360,7 +24513,7 @@ void pinnedMultiSelectionPointerThresholds() {
                                 Qt::ControlModifier);
     require(first.currentNativeGeometry() == contentFirst &&
                 second.currentNativeGeometry() == contentSecond &&
-                fixture.selection.selectedCount() == 2 && exports == 0,
+                fixture.selection.selectedCount() == 2 && exports == 1,
             "modifier drag on an editable body preserves content input without exporting or moving "
             "peers");
 }
@@ -25115,7 +25268,7 @@ void pinnedMultiSelectionFileExports() {
     pinnedSelectionAction(copyMenu, QStringLiteral("screenshotPinnedSelectionCopyFilesToClipboard"))
         .trigger();
     pinned_batch_test::waitForSave();
-    const auto urls = exportedClipboardUrls();
+    const auto urls = batchClipboardUrls();
     require(urls.size() == 2 && QImage(urls[0].toLocalFile()).size() == QSize(90, 60) &&
                 QImage(urls[1].toLocalFile()).size() == QSize(120, 80) &&
                 fixture.selection.selectedCount() == 2,
@@ -25172,7 +25325,7 @@ void pinnedMultiSelectionFileExports() {
     staleCopy.trigger();
     staleSave.trigger();
     accept.stop();
-    require(!Access::batchSaving() && exportedClipboardUrls() == urls && !folderPrompted,
+    require(!Access::batchSaving() && batchClipboardUrls() == urls && !folderPrompted,
             "stale selected file-export actions cannot copy files or open a save dialog");
 }
 
@@ -26619,12 +26772,14 @@ void pinnedMultiSelectionPerformance() {
         for (const auto& window : fixture.windows)
             beforeZoom.append(window->currentNativeGeometry());
         const auto zoomMemory = snow::test_support::memorySnapshot();
+        qint64 geometryNs = 0;
         samples.clear();
         timer.restart();
         for (int frame = 0; frame < 120; ++frame) {
             const auto start = timer.nsecsElapsed();
             require(fixture.selection.scaleBy(&leader, frame % 2 == 0 ? 110 : 100),
                     "benchmark zoom applies the shared top-left scale");
+            geometryNs += timer.nsecsElapsed() - start;
             QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
             samples.push_back(timer.nsecsElapsed() - start);
         }
@@ -26647,6 +26802,7 @@ void pinnedMultiSelectionPerformance() {
         const auto afterZoomMemory = snow::test_support::memorySnapshot();
         std::cout << "multi-selection stage=zoom windows=" << count
                   << " frames=120 mean_ms=" << static_cast<double>(zoomElapsed) / 120.0 / 1000000.0
+                  << " mean_geometry_ms=" << static_cast<double>(geometryNs) / 120.0 / 1000000.0
                   << " p50_ms=" << static_cast<double>(samples.at(59)) / 1000000.0
                   << " p95_ms=" << static_cast<double>(samples.at(113)) / 1000000.0
                   << " paint_events=" << probe.paints << " move_events=" << probe.moves
@@ -28651,6 +28807,7 @@ void pinnedAnimatedImages(bool transformsOnly = false) {
 #include "screenshot_pinned_menu_lifetime_tests.h"
 #include "pinned_export_snapshot_tests.h"
 #include "pinned_copy_ordering_tests.h"
+#include "pinned_mouse_operation_tests.h"
 #ifdef SNOW_SHOT_LIVE_WINDOW_BENCHMARK
 #include "screenshot_pinned_crop_performance_benchmark.h"
 #endif
@@ -28675,6 +28832,10 @@ int main(int argc, char* argv[]) {
         // without this, lazily initialized storage lands in the developer's
         // real AppData (see IsolatedPinnedStorage).
         IsolatedPinnedStorage processStorage;
+        if (app.arguments().contains(QStringLiteral("--mouse-operations-only"))) {
+            pinned_mouse_operation_tests::run();
+            return 0;
+        }
         if (app.arguments().contains(QStringLiteral("--accessibility-only"))) {
             pinned_accessibility_tests::run();
             return 0;

@@ -32,6 +32,26 @@ ConfigurationStore& cache() {
     return storage.configuration();
 }
 
+// Older in-process callers still configure gestures by choosing an action. Transfer
+// that gesture atomically so a live window sees the same bindings as the settings page.
+bool setLegacyMouseAction(const QString& key, mouse::Category category, mouse::Binding gesture,
+                          const QString& target) {
+    if (!ConfigurationSchema::normalize(key, target).valid)
+        return false;
+    mouse::Values edits{{key, target}};
+    const auto bindings = cache().mouseBindings();
+    for (const auto& action : mouse::definitions()) {
+        if (action.category != category || action.kind != mouse::Kind::Click ||
+            action.action == mouse::Action::Back)
+            continue;
+        if (QLatin1StringView(action.id) == target)
+            edits.insert(action.key(), mouse::encode(gesture));
+        else if (mouse::conflict(bindings.get(action.action), gesture))
+            edits.insert(action.key(), QJsonObject{});
+    }
+    return cache().setValues(edits);
+}
+
 QStringList stringList(const QJsonValue& value) {
     QStringList result;
     for (const QJsonValue& item : value.toArray()) {
@@ -1139,7 +1159,9 @@ QString ScreenshotSettings::doubleClickAction() const {
 }
 
 bool ScreenshotSettings::setDoubleClickAction(const QString& action) const {
-    return cache().setValue(QStringLiteral("screenshot/double_click_action"), action);
+    return setLegacyMouseAction(QStringLiteral("screenshot/double_click_action"),
+                                mouse::Category::Screenshot,
+                                {mouse::Kind::DoubleClick, Qt::LeftButton}, action);
 }
 
 QString ScreenshotSettings::middleMouseButtonAction() const {
@@ -1147,7 +1169,9 @@ QString ScreenshotSettings::middleMouseButtonAction() const {
 }
 
 bool ScreenshotSettings::setMiddleMouseButtonAction(const QString& action) const {
-    return cache().setValue(QStringLiteral("screenshot/middle_mouse_button_action"), action);
+    return setLegacyMouseAction(QStringLiteral("screenshot/middle_mouse_button_action"),
+                                mouse::Category::Screenshot, {mouse::Kind::Click, Qt::MiddleButton},
+                                action);
 }
 
 bool ScreenshotSettings::quickSelectionModification() const {
@@ -2869,7 +2893,9 @@ QString PinToScreenSettings::doubleClickAction() const {
 }
 
 bool PinToScreenSettings::setDoubleClickAction(const QString& action) const {
-    return cache().setValue(QStringLiteral("pin_to_screen/double_click_action"), action);
+    return setLegacyMouseAction(QStringLiteral("pin_to_screen/double_click_action"),
+                                mouse::Category::Pinned, {mouse::Kind::DoubleClick, Qt::LeftButton},
+                                action);
 }
 
 QString PinToScreenSettings::middleMouseButtonAction() const {
@@ -2877,7 +2903,9 @@ QString PinToScreenSettings::middleMouseButtonAction() const {
 }
 
 bool PinToScreenSettings::setMiddleMouseButtonAction(const QString& action) const {
-    return cache().setValue(QStringLiteral("pin_to_screen/middle_mouse_button_action"), action);
+    return setLegacyMouseAction(QStringLiteral("pin_to_screen/middle_mouse_button_action"),
+                                mouse::Category::Pinned, {mouse::Kind::Click, Qt::MiddleButton},
+                                action);
 }
 
 QColor PinToScreenSettings::borderColor() const {

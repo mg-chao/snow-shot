@@ -449,8 +449,8 @@ void gesturesAndAlignment() {
     require(Access::beginCrop(window, {240, 220}), "begin small selection");
     Access::endCrop(window, {249, 230});
     auto* menu = Access::contextMenu(window);
-    require(!window.persistenceSnapshot().cropRect && menu->isPopupVisible(),
-            "subminimum selection opens the existing menu");
+    require(!window.persistenceSnapshot().cropRect && !menu->isPopupVisible(),
+            "a subminimum crop drag leaves the menu closed");
     int menus = 0;
     QObject::connect(menu, &QMenu::aboutToShow, &window, [&] { ++menus; });
     QContextMenuEvent duplicate(QContextMenuEvent::Mouse, {20, 20}, {240, 220});
@@ -1147,21 +1147,23 @@ void nativeInput() {
     const QPoint origin = LiveAccess::contentGeometry(window).topLeft();
     const QPoint first = origin + QPoint(20, 20);
     const QPoint last = first + QPoint(40, 30);
-    require(Access::cropNativeInput(window, WM_NCRBUTTONDOWN, HTCAPTION,
-                                    MAKELPARAM(first.x(), first.y())),
-            "native crop press consumed");
-    require(Access::cropSelecting(window), "native caption begins the same crop controller");
-    require(
-        Access::cropNativeInput(window, WM_NCRBUTTONUP, HTCAPTION, MAKELPARAM(last.x(), last.y())),
-        "native crop release consumed");
+    const HWND hwnd = toNativeHwnd(window.winId());
+    require(SendMessageW(hwnd, WM_NCHITTEST, 0, MAKELPARAM(first.x(), first.y())) == HTCLIENT,
+            "native pin routes button input through its client");
+    sendClientMouse(window, QEvent::MouseButtonPress, Qt::RightButton, Qt::RightButton, first);
+    require(!Access::cropSelecting(window), "a native press keeps both click and crop possible");
+    sendClientMouse(window, QEvent::MouseMove, Qt::NoButton, Qt::RightButton, last);
+    require(Access::cropSelecting(window), "native motion past the threshold starts cropping");
+    sendClientMouse(window, QEvent::MouseButtonRelease, Qt::RightButton, Qt::NoButton, last);
     require(window.persistenceSnapshot().cropRect &&
                 LiveAccess::contentGeometry(window) == QRect(first, QSize(40, 30)),
             "native selection uses physical pixels");
     const auto crop = window.persistenceSnapshot().cropRect;
-    require(Access::cropNativeInput(window, WM_NCRBUTTONDOWN, HTCAPTION,
-                                    MAKELPARAM(last.x() - 5, last.y() - 5)),
-            "native interrupted press");
-    Access::cropNativeInput(window, WM_CANCELMODE, 0, 0);
+    sendClientMouse(window, QEvent::MouseButtonPress, Qt::RightButton, Qt::RightButton,
+                    first + QPoint(3, 3));
+    sendClientMouse(window, QEvent::MouseMove, Qt::NoButton, Qt::RightButton, last - QPoint(4, 4));
+    require(Access::cropSelecting(window), "begin a second native crop");
+    SendMessageW(hwnd, WM_CANCELMODE, 0, 0);
     require(!Access::cropSelecting(window) && window.persistenceSnapshot().cropRect == crop,
             "native cancellation preserves the preceding viewport");
     window.hide();

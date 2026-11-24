@@ -199,7 +199,7 @@ class Receiver final {
     }
 
     void verify(QWidget& target, Qt::MouseButton button = Qt::NoButton, bool doubleClick = false,
-                bool caption = false) {
+                bool pinnedSurface = false) {
         std::cerr << "Verifying native dismissal: button=" << static_cast<int>(button)
                   << " double-click=" << doubleClick << '\n';
         struct Observer final : QObject {
@@ -258,14 +258,12 @@ class Receiver final {
             const int y = (bounds.top + bounds.bottom) / 2;
             require(SetCursorPos(x, y) != FALSE, "position pointer over target");
             pump(30);
-            if (caption) {
-                require(SendMessageW(targetWindow, WM_NCHITTEST, 0, MAKELPARAM(x, y)) == HTCAPTION,
-                        "pinned gesture must exercise its native caption");
+            if (pinnedSurface) {
+                require(SendMessageW(targetWindow, WM_NCHITTEST, 0, MAKELPARAM(x, y)) == HTCLIENT,
+                        "the pinned surface must receive the configurable gesture");
             }
             const auto click = [&] {
-                // A caption down can enter USER32's synchronous move loop.
-                // Release from another thread so that loop cannot block its own
-                // test driver. Observe visibility while the button is still held.
+                // Observe visibility from another thread while the button is still held.
                 auto released = std::async(std::launch::async, [=] {
                     Sleep(60);
                     const bool visible = IsWindow(targetWindow) && IsWindowVisible(targetWindow);

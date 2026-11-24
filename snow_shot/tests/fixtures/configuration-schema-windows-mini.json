@@ -214,10 +214,10 @@
       "allowedStringValues": [],
       "defaultJsonType": 2,
       "defaultStringIsNull": false,
-      "defaultValue": 9,
+      "defaultValue": 10,
       "integerRange": [
-        9,
-        9,
+        10,
+        10,
         1
       ],
       "key": "storage/schema_version",
@@ -5660,6 +5660,355 @@
       "key": "export_tasks/pinned_upload",
       "maximumListItems": -1,
       "valueKind": "StringList"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {
+        "modifiers": [],
+        "operation": "left_double_click"
+      },
+      "integerRange": null,
+      "key": "screenshot_mouse/copy",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {},
+      "integerRange": null,
+      "key": "screenshot_mouse/save",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {},
+      "integerRange": null,
+      "key": "screenshot_mouse/quick_save",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {
+        "modifiers": [],
+        "operation": "middle_click"
+      },
+      "integerRange": null,
+      "key": "screenshot_mouse/pin",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {},
+      "integerRange": null,
+      "key": "screenshot_mouse/ocr",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {},
+      "integerRange": null,
+      "key": "screenshot_mouse/ocr_copy",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {},
+      "integerRange": null,
+      "key": "screenshot_mouse/cancel",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {
+        "modifiers": [],
+        "operation": "wheel"
+      },
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/zoom",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {
+        "modifiers": [
+          "alt"
+        ],
+        "operation": "wheel"
+      },
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/fine_zoom",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {
+        "modifiers": [
+          "ctrl"
+        ],
+        "operation": "wheel"
+      },
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/opacity",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {},
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/fine_opacity",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {},
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/copy",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {},
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/copy_and_close",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {
+        "modifiers": [
+          "shift"
+        ],
+        "operation": "right_click"
+      },
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/copy_text",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {},
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/save",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {
+        "modifiers": [],
+        "operation": "middle_click"
+      },
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/reset_zoom",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {
+        "modifiers": [],
+        "operation": "left_double_click"
+      },
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/thumbnail_mode",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {},
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/hide_to_top",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {},
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/show_text_recognition_results",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {},
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/close",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {},
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/destroy",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {
+        "modifiers": [],
+        "operation": "right_click"
+      },
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/menu",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {},
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/annotation_mode",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {
+        "modifiers": [
+          "ctrl"
+        ],
+        "operation": "left_click"
+      },
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/multi_select",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {
+        "modifiers": [],
+        "operation": "right_drag"
+      },
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/select_crop",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {
+        "modifiers": [
+          "shift"
+        ],
+        "operation": "left_drag"
+      },
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/pan_crop",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {
+        "modifiers": [],
+        "operation": "left_drag"
+      },
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/move_resize",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {
+        "modifiers": [
+          "alt"
+        ],
+        "operation": "left_drag"
+      },
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/force_move",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {
+        "modifiers": [
+          "ctrl"
+        ],
+        "operation": "left_drag"
+      },
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/drag_image",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
     }
   ]
 }

@@ -1775,6 +1775,39 @@ void skinControlsCommitAndRetranslate(const settings::SettingsRegistry& registry
                 session.reset(settings::SettingsSectionReset::Skin),
             "skin controls must restore English and the independent Skin defaults");
 }
+void inputSettingsPanelsNavigate(const settings::SettingsRegistry& registry,
+                                 settings::SettingsRuntimeSession& session) {
+    const QString shortcuts = QStringLiteral("shortcuts-mouse");
+    const QString mouse = QStringLiteral("mouse-operations");
+    for (const QString& pageId : {shortcuts, mouse}) {
+        SettingsPageWidget page(registry, pageId, session);
+        page.resize(880, 760);
+        page.show();
+        drainEvents();
+        auto* panel = page.findChild<QWidget*>(QStringLiteral("settings-related-") + pageId);
+        require(panel && panel->isVisible(), "both input settings pages show related settings");
+
+        settings::SettingsLocation destination;
+        QObject::connect(&page, &SettingsPageWidget::commandRequested, &page,
+                         [&](const settings::SettingsCommand& command) {
+                             require(command.kind == settings::SettingsCommandKind::Navigate,
+                                     "input settings links issue navigation commands");
+                             destination = command.location;
+                         });
+        for (const QString& target :
+             {pageId == shortcuts ? mouse : shortcuts, QStringLiteral("global-hotkeys"),
+              QStringLiteral("global-mouse")}) {
+            auto* link = panel->findChild<adqt::widgets::AdButton*>(
+                QStringLiteral("settings-link-%1-%2").arg(pageId, target));
+            require(link && link->isVisible() && !link->text().isEmpty(),
+                    "the panel links to the other input page and both global input pages");
+            link->click();
+            require(destination == settings::SettingsLocation{target, {}, {}},
+                    "each input settings link opens the intended page");
+        }
+    }
+}
+
 void relatedSettingsLayoutAndKeyboard(const settings::SettingsRegistry& registry,
                                       settings::SettingsRuntimeSession& session) {
     using snow_shot::presentation::styles::ThemeMode;
@@ -2356,6 +2389,7 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (application.arguments().contains(QStringLiteral("--navigation-only"))) {
+        inputSettingsPanelsNavigate(registry, session);
         relatedSettingsLayoutAndKeyboard(registry, session);
         reorganizedSettingsPreserveIndependentState(registry, session);
         pinnedSettingsGroups(registry, session);

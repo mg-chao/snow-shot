@@ -1185,10 +1185,9 @@ snapshotClipboardOnce(QClipboard* clipboard, qreal devicePixelRatio, AllocationC
                                              : AllocationCheck{};
 #if defined(Q_OS_WIN) || defined(_WIN32)
     std::optional<ScreenshotClipboardContentSnapshot> nativeSnapshot;
-    if (QGuiApplication::platformName() == QStringLiteral("windows"))
-        nativeSnapshot.emplace();
-    if (nativeSnapshot && OpenClipboard(nullptr)) {
+    if (QGuiApplication::platformName() == QStringLiteral("windows") && OpenClipboard(nullptr)) {
         const auto close = qScopeGuard([] { CloseClipboard(); });
+        nativeSnapshot.emplace();
         const std::pair<const wchar_t*, const char*> formats[] = {
             {L"PNG", "image/png"},         {L"GIF", "image/gif"},
             {L"WebP", "image/webp"},       {L"image/gif", "image/gif"},

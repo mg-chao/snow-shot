@@ -34,6 +34,8 @@
     "DrawingToolbarEditorSettingsWidget",
     "FloatingToolbarEditorSettingsWidget",
     "GlobalMouseRow",
+    "MouseOperationRow",
+    "MouseOperations",
     "LoginItemService",
     "MainWindowSkin",
     "PermissionGuide",

@@ -1,3 +1,4 @@
+#include "snow_shot/mouseoperations.h"
 #include "snow_shot/storage/configurationarchive.h"
 #include "snow_shot/app/edition.h"
 #include "snow_shot/storage/cloudsyncconfiguration.h"
@@ -347,7 +348,11 @@ ConfigurationArchiveReadResult ConfigurationArchive::read(const QString& archive
         if (normalized.valid) {
             result.values.insert(it.key(), normalized.value);
             const auto raw = configuration.value(it.key());
-            if (!raw.isUndefined()) {
+            if (raw.isUndefined() && mouse::isKey(it.key())) {
+                // Migration materializes a whole category only when its legacy settings
+                // were supplied. Include every resulting transfer in the import journal.
+                result.explicitlyImported.insert(it.key());
+            } else if (!raw.isUndefined()) {
                 const auto supplied = ConfigurationSchema::normalize(it.key(), raw);
                 const bool listIntact = !raw.isArray() || !supplied.value.isArray() ||
                                         raw.toArray().size() == supplied.value.toArray().size();

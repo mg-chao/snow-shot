@@ -55,8 +55,6 @@ class GlobalMouseRow final : public ActionRow {
     void syncModalValidation();
     [[nodiscard]] snow_shot::presentation::settings::SettingsGlobalMouseCombination
     modalCombination() const;
-    [[nodiscard]] QString activationKeyLabel(const QString& value) const;
-    [[nodiscard]] QString mouseButtonLabel(const QString& value) const;
 
     QString m_title;
     snow_shot::presentation::settings::SettingsGlobalMouseAction m_action;

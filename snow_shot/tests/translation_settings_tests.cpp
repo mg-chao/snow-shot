@@ -850,63 +850,22 @@ int main(int argc, char** argv) {
                     session.state(hotId).enabled && !backend.switchValue(acceleration) &&
                     !session.state(accelerationId).acceptedValue.toBool(),
                 "OCR category reset must restore residency and clear hot start and acceleration");
-        const auto pinBinding = settings::SettingsSelectBinding::PinDoubleClickAction;
-        const QString pinId = QStringLiteral("pin-to-screen.double-click-action");
-        require(backend.selectValue(pinBinding).toString() == QStringLiteral("thumbnail_mode") &&
-                    session.state(pinId).enabled,
-                "pinned double-click defaults to the enabled thumbnail selector");
-        for (const QString& action :
-             {QStringLiteral("none"), QStringLiteral("reset_zoom"),
-              QStringLiteral("thumbnail_mode"), QStringLiteral("hide_to_top"),
-              QStringLiteral("show_text_recognition_results"), QStringLiteral("close"),
-              QStringLiteral("destroy")}) {
-            require(backend.applySelectValue(pinBinding, action) &&
-                        backend.selectValue(pinBinding).toString() == action,
-                    "pinned double-click backend must apply every option");
-        }
-        require(!backend.applySelectValue(pinBinding, QStringLiteral("unsupported")) &&
-                    backend.selectValue(pinBinding).toString() == QStringLiteral("destroy"),
-                "pinned double-click backend must reject invalid actions");
-        require(backend.resetSection(settings::SettingsSectionReset::PinToScreenBehavior) &&
-                    backend.selectValue(pinBinding).toString() == QStringLiteral("thumbnail_mode"),
-                "resetting pin behavior must restore thumbnail double-click");
-        const auto middleBinding = settings::SettingsSelectBinding::PinMiddleClickAction;
-        const QString middleId = QStringLiteral("pin-to-screen.middle-mouse-button-action");
-        require(backend.selectValue(middleBinding).toString() == QStringLiteral("reset_zoom") &&
-                    session.state(middleId).enabled,
-                "pinned middle-click defaults to the enabled reset zoom selector");
-        for (const QString& action :
-             {QStringLiteral("none"), QStringLiteral("reset_zoom"),
-              QStringLiteral("thumbnail_mode"), QStringLiteral("hide_to_top"),
-              QStringLiteral("show_text_recognition_results"), QStringLiteral("close"),
-              QStringLiteral("destroy")}) {
-            require(backend.applySelectValue(middleBinding, action) &&
-                        backend.selectValue(middleBinding).toString() == action,
-                    "pinned middle-click backend must apply every option");
-        }
-        require(!backend.applySelectValue(middleBinding, QStringLiteral("unsupported")) &&
-                    backend.selectValue(middleBinding).toString() == QStringLiteral("destroy"),
-                "pinned middle-click backend must reject invalid actions");
-        require(backend.resetSection(settings::SettingsSectionReset::PinToScreenBehavior) &&
-                    backend.selectValue(middleBinding).toString() == QStringLiteral("reset_zoom"),
-                "resetting pin behavior must restore reset zoom middle-click");
-        require(
-            session.applySelectValue(pinBinding, QStringLiteral("show_text_recognition_results")) &&
-                backend.selectValue(pinBinding).toString() ==
-                    QStringLiteral("show_text_recognition_results") &&
-                backend.selectValue(middleBinding).toString() == QStringLiteral("reset_zoom") &&
-                session.applySelectValue(middleBinding,
-                                         QStringLiteral("show_text_recognition_results")) &&
-                backend.selectValue(pinBinding).toString() ==
-                    QStringLiteral("show_text_recognition_results") &&
-                backend.selectValue(middleBinding).toString() ==
-                    QStringLiteral("show_text_recognition_results"),
-            "runtime selectors must independently apply text recognition");
-        require(backend.resetSection(settings::SettingsSectionReset::PinToScreenBehavior) &&
-                    backend.selectValue(pinBinding).toString() ==
-                        QStringLiteral("thumbnail_mode") &&
-                    backend.selectValue(middleBinding).toString() == QStringLiteral("reset_zoom"),
-                "resetting recognition mouse actions must restore both defaults");
+        namespace mouse = snow_shot::mouse;
+        const mouse::Binding side{mouse::Kind::Click, Qt::BackButton, Qt::ShiftModifier};
+        require(backend.applyMouseOperation(mouse::Action::ResetZoom, side) &&
+                    backend.applyMouseOperation(mouse::Action::ShotPin, side) &&
+                    backend.resetSection(settings::SettingsSectionReset::PinToScreenBehavior) &&
+                    backend.mouseBindings().get(mouse::Action::ResetZoom) == side,
+                "resetting pinned interaction preserves mouse bindings");
+        require(backend.resetSection(settings::SettingsSectionReset::PinnedMouse) &&
+                    backend.mouseBindings().get(mouse::Action::ResetZoom) ==
+                        mouse::definition(mouse::Action::ResetZoom).factory &&
+                    backend.mouseBindings().get(mouse::Action::ShotPin) == side,
+                "resetting pinned mouse operations preserves screenshot bindings");
+        require(backend.resetSection(settings::SettingsSectionReset::ScreenshotMouse) &&
+                    backend.mouseBindings().get(mouse::Action::ShotPin) ==
+                        mouse::definition(mouse::Action::ShotPin).factory,
+                "screenshot mouse reset restores the factory binding");
         const auto fillBinding = settings::SettingsSelectBinding::OcrFillStyle;
         require(backend.selectValue(fillBinding).toString() == QStringLiteral("background_fill"),
                 "OCR fill defaults to Background Fill");

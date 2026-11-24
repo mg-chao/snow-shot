@@ -1,6 +1,7 @@
 #ifndef SNOW_SHOT_PRESENTATION_SCREENSHOTOVERLAYEVENTSINK_H
 #define SNOW_SHOT_PRESENTATION_SCREENSHOTOVERLAYEVENTSINK_H
 
+#include "snow_shot/mouseoperations.h"
 #include "snow_shot/image/screenshotregiongeometry.h"
 #include <QPoint>
 #include <QPointF>
@@ -34,6 +35,9 @@ class ScreenshotOverlayEventSink {
                                            const QPointF& localPosition) = 0;
     [[nodiscard]] virtual ScreenshotOverlayRightClickResult
     handleOverlayRightClick(ScreenshotOverlayWindow* overlay, const QPointF& localPosition) = 0;
+    virtual bool backTakesPriority(ScreenshotOverlayWindow*, const QPointF&) const {
+        return true;
+    }
     virtual void completeRightClickCancellation() {}
     virtual void updateOverlayModifiers(Qt::KeyboardModifiers, bool) {}
     virtual void clearOverlaySnapping() {}
@@ -50,8 +54,12 @@ class ScreenshotOverlayEventSink {
     virtual bool handleRegionDoubleClick(ScreenshotOverlayWindow*, const QPointF&) {
         return false;
     }
-    virtual void handleUnhandledLeftDoubleClick() {}
-    virtual void handleUnhandledMiddleClick(ScreenshotOverlayWindow*, const QPointF&) {}
+    virtual bool allowMouseCompletionBeforeSelection(ScreenshotOverlayWindow*,
+                                                     const QPointF&) const {
+        return false;
+    }
+    virtual void handleMouseCompletion(snow_shot::mouse::Action, ScreenshotOverlayWindow*,
+                                       const QPointF&) {}
     [[nodiscard]] virtual bool handleOverlayWheel(ScreenshotOverlayWindow* overlay,
                                                   const QWheelEvent& event) = 0;
     [[nodiscard]] virtual bool shouldBlockUnhandledOverlayKeyInput() const = 0;

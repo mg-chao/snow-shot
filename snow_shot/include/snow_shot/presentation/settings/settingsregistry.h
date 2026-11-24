@@ -27,6 +27,7 @@ enum class SettingsFieldKind {
     ShortcutAction,
     LocalShortcut,
     GlobalMouseAction,
+    MouseOperation,
     Action,
     Custom,
 };

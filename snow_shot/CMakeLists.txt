@@ -743,6 +743,7 @@ set(SNOW_SHOT_STORAGE_SOURCES
     src/storage/persistedwindowgeometry.cpp
     src/storage/pinnedwindowrepository.cpp
     src/storage/preparedpngimage.cpp
+    src/storage/mouseoperations.cpp
     src/storage/settingsadapters.cpp
     src/storage/storagedirectoryutils_p.h
     src/storage/storagelogging.cpp
@@ -1000,6 +1001,8 @@ set(SNOW_SHOT_SETTINGS_SOURCES
     src/presentation/components/aboutpagewidget.cpp
     src/presentation/components/infotooltipicon.cpp
     src/presentation/components/globalmouserow.cpp
+    src/presentation/components/mouseoperationrow.cpp
+    include/snow_shot/presentation/components/mouseoperationrow.h
     src/presentation/components/pathinput.cpp
     src/presentation/components/formfields.cpp
     src/presentation/settings/settingsformfield.cpp
@@ -2690,6 +2693,9 @@ if(SNOW_SHOT_BUILD_TESTS)
     set_tests_properties(snow-shot-scrolling-interval-settings-tests PROPERTIES
         LABELS "unit" TIMEOUT 60
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+    add_test(NAME snow-shot-pinned-mouse-operations-tests
+        COMMAND snow-shot-pinned-window-tests --mouse-operations-only -platform offscreen)
+    set_tests_properties(snow-shot-pinned-mouse-operations-tests PROPERTIES LABELS "unit" TIMEOUT 60)
     add_test(NAME snow-shot-pin-to-screen-storage-tests
         COMMAND snow-shot-application-storage-tests --pin-shortcuts-only)
     set_tests_properties(snow-shot-pin-to-screen-storage-tests PROPERTIES LABELS "unit")

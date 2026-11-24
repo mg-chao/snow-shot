@@ -128,6 +128,12 @@ int main(int argc, char** argv) {
             "Simplified Chinese management should use the same window terminology");
 
     require(manager.setLanguage(QStringLiteral("zh_TW")), "Traditional Chinese should load");
+    require(QCoreApplication::translate("MouseOperations", "Side button 1 (back) drag") ==
+                    QString::fromUtf8("側鍵 1（後退）拖曳") &&
+                QCoreApplication::translate("MouseOperations",
+                                            "Side button 2 (forward) single-click") ==
+                    QString::fromUtf8("側鍵 2（前進）單擊"),
+            "Traditional Chinese mouse gestures name the button, direction and action");
     require(QCoreApplication::translate("SettingsCatalog",
                                         "Keep selection width and height consistent") ==
                 QString::fromUtf8("保持選取範圍長寬一致"),

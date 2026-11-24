@@ -1373,8 +1373,12 @@ void configuredShortcutsRespectCapabilities() {
         std::optional<ScreenshotClipboardContentSnapshot> snapshot(qreal) override {
             return {};
         }
-        void setMimeData(std::unique_ptr<QMimeData>) override {
+        ScreenshotClipboardCommitHandle
+        publish(QObject*, std::unique_ptr<QMimeData>, ScreenshotClipboardService::PublicationId,
+                ScreenshotClipboardService::CommitCompletion done) override {
             ++writes;
+            done({});
+            return {};
         }
     };
     auto source = std::make_shared<FakeSource>();

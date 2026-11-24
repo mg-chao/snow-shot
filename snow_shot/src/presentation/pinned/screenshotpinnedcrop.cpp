@@ -17,9 +17,6 @@
 #include "snow_draw_engine_qt/snow_canvas_image.h"
 #include "snow_draw_engine_qt/snow_canvas_widget.h"
 #include <QApplication>
-#include <QContextMenuEvent>
-#include <QKeyEvent>
-#include <QMouseEvent>
 #include <QPainter>
 #include <QScopedValueRollback>
 #include <QFutureWatcher>
@@ -86,9 +83,18 @@ bool ScreenshotPinnedWindow::beginCropSelection(const QPointF& position) {
             .intersected(QRectF(geometry));
     if (!m_cropSelectionBounds.contains(position))
         return false;
-    m_cropContextSuppressed = false;
     m_cropSelectionOrigin = position;
     m_cropSelectionEnd = position;
+    if (!m_mouseStroke) {
+        // Crop can also be initiated directly by the presentation controller.
+        MouseStroke stroke;
+        stroke.press.drag = snow_shot::mouse::Action::Crop;
+        stroke.press.button = stroke.press.reportedButton = Qt::RightButton;
+        stroke.press.crossed = stroke.started = true;
+        stroke.receiver = this;
+        stroke.nativeOrigin = position;
+        m_mouseStroke = stroke;
+    }
     grabMouse();
     qApp->installEventFilter(this);
     return true;
@@ -127,14 +133,15 @@ void ScreenshotPinnedWindow::paintCropSelection(QPainter& painter, const QWidget
     snowCanvasPaintSelectionMarquee(painter, cropSelectionViewRect(target));
 }
 
-void ScreenshotPinnedWindow::endCropSelection(bool cancel, const QPoint& menuPosition) {
+void ScreenshotPinnedWindow::endCropSelection(bool cancel) {
     if (!m_cropSelectionOrigin)
         return;
     const QRectF selection = QRectF(*m_cropSelectionOrigin, m_cropSelectionEnd).normalized();
     QWidget* target = m_liveNativePresentation ? static_cast<QWidget*>(this) : m_canvas;
     const QRectF previous = cropSelectionViewRect(target);
     m_cropSelectionOrigin.reset();
-    m_cropContextSuppressed = true;
+    if (m_mouseStroke && m_mouseStroke->press.drag == snow_shot::mouse::Action::Crop)
+        m_mouseStroke.reset();
     qApp->removeEventFilter(this);
     if (QWidget::mouseGrabber() == this)
         releaseMouse();
@@ -142,10 +149,8 @@ void ScreenshotPinnedWindow::endCropSelection(bool cancel, const QPoint& menuPos
         target->update(crop_geometry::selectionRepaintRegion(previous, {}, target->rect()));
     if (cancel || !cropSelectionAllowed())
         return;
-    if (selection.width() < 10 || selection.height() < 10) {
-        showContextMenu(menuPosition);
+    if (selection.width() < 10 || selection.height() < 10)
         return;
-    }
     const qreal sx = 1.0 / m_cropSelectionScale;
     const qreal sy = sx;
     const QRectF canvas(
@@ -160,70 +165,35 @@ void ScreenshotPinnedWindow::endCropSelection(bool cancel, const QPoint& menuPos
     }
 }
 
-bool ScreenshotPinnedWindow::handleCropPointer(QObject* watched, QEvent* event) {
-    if (!event)
-        return false;
-    if (event->type() == QEvent::ContextMenu) {
-        const auto* context = static_cast<QContextMenuEvent*>(event);
-        if (context->reason() == QContextMenuEvent::Mouse &&
-            (m_cropSelectionOrigin || m_cropContextSuppressed)) {
-            event->accept();
-            return true;
-        }
+void ScreenshotPinnedWindow::cancelCropInteraction() {
+    if (m_mouseStroke && (m_mouseStroke->press.drag == snow_shot::mouse::Action::PanCrop ||
+                          m_mouseStroke->press.drag == snow_shot::mouse::Action::Crop))
+        cancelMouseOperation();
+    endCropSelection(true);
+}
+
+void ScreenshotPinnedWindow::updateCropPan(const QRectF& original, const QPointF& nativeDelta) {
+    const auto content = authoritativeContentNativeGeometry();
+    if (content.isEmpty())
+        return;
+    const auto mapping = crop_geometry::sourceToCanvas(m_originalPixelSize, m_imageTransform,
+                                                       m_backgroundCanvasRect);
+    const QSizeF visible = mapping.mapRect(original).size();
+    const QPointF canvasDelta(nativeDelta.x() * visible.width() / content.width(),
+                              nativeDelta.y() * visible.height() / content.height());
+    const auto inverse = mapping.inverted();
+    const auto desired = original.topLeft() + inverse.map(QPointF{}) - inverse.map(canvasDelta);
+    const QRectF next(
+        QPointF(std::clamp(desired.x(), 0.0,
+                           std::max(0.0, m_originalPixelSize.width() - original.width())),
+                std::clamp(desired.y(), 0.0,
+                           std::max(0.0, m_originalPixelSize.height() - original.height()))),
+        original.size());
+    if (m_cropRect != next) {
+        m_cropRect = next;
+        updateCanvasViewport();
+        scheduleLivePresentation();
     }
-    if (m_cropSelectionOrigin) {
-        if (event->type() == QEvent::Wheel || event->type() == QEvent::ScreenChangeInternal ||
-            event->type() == QEvent::DevicePixelRatioChange ||
-            (event->type() == QEvent::MouseButtonPress &&
-             static_cast<QMouseEvent*>(event)->button() != Qt::RightButton)) {
-            endCropSelection(true);
-            return false;
-        }
-        if ((watched == this &&
-             (event->type() == QEvent::Hide || event->type() == QEvent::WindowDeactivate ||
-              event->type() == QEvent::UngrabMouse)) ||
-            ((event->type() == QEvent::KeyPress || event->type() == QEvent::ShortcutOverride) &&
-             static_cast<QKeyEvent*>(event)->key() == Qt::Key_Escape)) {
-            endCropSelection(true);
-            event->accept();
-            return true;
-        }
-        if (event->type() == QEvent::MouseMove || event->type() == QEvent::MouseButtonRelease) {
-            auto* mouse = static_cast<QMouseEvent*>(event);
-            if (event->type() == QEvent::MouseButtonRelease && mouse->button() != Qt::RightButton)
-                return false;
-            if (event->type() == QEvent::MouseMove && !mouse->buttons().testFlag(Qt::RightButton)) {
-                endCropSelection(true);
-                return true;
-            }
-            const QPointF position = mouse->spontaneous() && physicalCursorPosition()
-                                         ? QPointF(*physicalCursorPosition())
-                                         : nativePositionForWindowPosition(
-                                               windowPositionForEvent(watched, mouse->position()));
-            updateCropSelection(position);
-            if (event->type() == QEvent::MouseButtonRelease)
-                endCropSelection(false, mouse->globalPosition().toPoint());
-            event->accept();
-            return true;
-        }
-    }
-    const auto* widget = qobject_cast<QWidget*>(watched);
-    if (watched != this && watched != m_canvas && watched != m_recognitionContent &&
-        (!widget || !m_recognitionContent || !m_recognitionContent->isAncestorOf(widget)))
-        return false;
-    if (event->type() == QEvent::MouseButtonPress) {
-        auto* mouse = static_cast<QMouseEvent*>(event);
-        if (mouse->button() == Qt::RightButton) {
-            m_cropContextSuppressed = false;
-            const auto local = windowPositionForEvent(watched, mouse->position());
-            if (!isControlsPanelPosition(local.toPoint()) &&
-                beginCropSelection(nativePositionForWindowPosition(local))) {
-                event->accept();
-                return true;
-            }
-        }
-    }
-    return false;
 }
 
 bool ScreenshotPinnedWindow::setCropCanvasRect(const QRectF& requested) {

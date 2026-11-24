@@ -229,7 +229,7 @@ struct Profile {
 
 QStringView bindingScope(const QString& key) {
     const auto scope = QStringView(key).left(key.indexOf(u'/'));
-    if (scope == u"global_mouse")
+    if (scope == u"global_mouse" || mouse::isKey(key))
         return scope;
     const auto* schema = storage::ConfigurationSchema::entry(key);
     if (schema && schema->valueKind == storage::ConfigurationValueKind::ShortcutList)
@@ -254,6 +254,13 @@ bool bindingsDependOnEachOther(const QString& first, const BindingChange& a, con
                                const BindingChange& b) {
     if (a.scope != b.scope)
         return false;
+    if (mouse::isKey(first)) {
+        const auto overlaps = [](const QJsonValue& a, const QJsonValue& b) {
+            return mouse::conflict(mouse::decode(a).value_or(mouse::Binding{}),
+                                   mouse::decode(b).value_or(mouse::Binding{}));
+        };
+        return overlaps(a.afterMouse, b.beforeMouse) || overlaps(b.afterMouse, a.beforeMouse);
+    }
     if (a.scope == u"global_mouse")
         return (a.afterMouse == b.beforeMouse && !a.afterMouse.toObject().isEmpty()) ||
                (b.afterMouse == a.beforeMouse && !b.afterMouse.toObject().isEmpty());
@@ -288,7 +295,7 @@ QList<QStringList> changeGroups(const Values& changes, const Values& before) {
         BindingChange entry;
         entry.scope = scope.toString();
         const auto previous = before.value(it.key());
-        if (scope == u"global_mouse") {
+        if (scope == u"global_mouse" || mouse::isKey(it.key())) {
             entry.beforeMouse = previous;
             entry.afterMouse = it.value();
         } else {
@@ -648,8 +655,16 @@ class CloudSettingsSyncService::Impl {
 
     [[nodiscard]] bool restoreProfileValues() {
         const auto current = store.snapshot();
+        // Older account profiles have only the shared mouse preferences. Restore a
+        // complete set before cloud migration so it cannot seed another account's bindings.
+        Values preferences;
+        for (auto it = profile.values.constBegin(); it != profile.values.constEnd(); ++it)
+            preferences.insert(it.key(), it.value());
+        mouse::migrate(preferences);
+        mouse::reconcile(preferences);
+
         Values patch;
-        for (auto it = profile.values.constBegin(); it != profile.values.constEnd(); ++it) {
+        for (auto it = preferences.cbegin(); it != preferences.cend(); ++it) {
             const auto local = current.value(it.key());
             const auto target = localValue(it.key(), it.value(), current);
             if (!target.isUndefined() && target != local)
@@ -924,6 +939,85 @@ class CloudSettingsSyncService::Impl {
         return result;
     }
 
+    void migrateMousePreferences(const QJsonObject& cloud, const Values& current,
+                                 Values& candidates) {
+        for (auto category : {mouse::Category::Screenshot, mouse::Category::Pinned}) {
+            const auto defaults = mouse::factoryValues(category);
+            const auto present = [&](const auto& keys, const auto& predicate) {
+                return std::any_of(keys.keyBegin(), keys.keyEnd(), predicate);
+            };
+            if (present(defaults, [&](const auto& key) { return cloud.contains(key); })) {
+                // The platform already has modern settings. Missing cloud entries use
+                // factory values unless this profile has recorded a modern local value.
+                for (auto it = defaults.cbegin(); it != defaults.cend(); ++it) {
+                    const auto& key = it.key();
+                    if (!cloud.contains(key) && !profile.values.contains(key) &&
+                        !profile.pending.contains(key) && !profile.localOnly.contains(key) &&
+                        it.value() != current.value(key))
+                        candidates.insert(key, it.value());
+                }
+                continue;
+            }
+            const QString prefix =
+                category == mouse::Category::Screenshot ? u"screenshot/"_s : u"pin_to_screen/"_s;
+            Values legacy;
+            for (const auto& suffix : {u"double_click_action"_s, u"middle_mouse_button_action"_s}) {
+                const QString key = prefix + suffix;
+                if (cloud.contains(key)) {
+                    const auto operation = cloud.value(key).toObject();
+                    legacy[key] = operation.value(u"op"_s) == u"reset"_s
+                                      ? store.defaultValue(key)
+                                      : operation.value(u"value"_s);
+                }
+            }
+            const bool customized = present(defaults, [&](const auto& key) {
+                return current.value(key) != defaults.value(key);
+            });
+            if (legacy.isEmpty() && !customized)
+                continue;
+            mouse::migrate(legacy);
+            // A legacy profile is projected into the live store before the first read. Only
+            // bindings actually recorded in the modern profile are evidence of a local choice.
+            QList<mouse::Binding> localBindings;
+            const auto keepLocal = [&](const QString& key) {
+                return profile.pending.contains(key) || profile.localOnly.contains(key) ||
+                       ((profile.joined || customized) && profile.values.contains(key));
+            };
+            for (auto it = defaults.cbegin(); it != defaults.cend(); ++it) {
+                if (keepLocal(it.key())) {
+                    if (const auto binding = mouse::decode(current.value(it.key())))
+                        localBindings.append(*binding);
+                }
+            }
+            for (auto it = defaults.cbegin(); it != defaults.cend(); ++it) {
+                const QString& key = it.key();
+                if (profile.localOnly.contains(key) || profile.pending.contains(key))
+                    continue;
+                auto value = current.value(key);
+                if (!keepLocal(key) && legacy.contains(key)) {
+                    value = legacy.value(key);
+                    const auto binding = mouse::decode(value);
+                    if (binding && std::any_of(localBindings.cbegin(), localBindings.cend(),
+                                               [&](const auto& local) {
+                                                   return mouse::conflict(*binding, local);
+                                               }))
+                        value = mouse::encode({});
+                }
+                if (value != current.value(key))
+                    candidates.insert(key, value);
+                PendingEdit edit;
+                edit.operation =
+                    operationFor(value, value == it.value() ? ConfigurationWriteOrigin::Reset
+                                                            : ConfigurationWriteOrigin::Explicit);
+                edit.base = missingOperation;
+                edit.fallback = it.value();
+                edit.sequence = ++profile.nextSequence;
+                edit.ifMissing = true;
+                profile.pending.insert(key, edit);
+            }
+        }
+    }
+
     bool acceptSnapshot(const QJsonObject& raw, const QString& revision, bool initialized,
                         Values resolvedEdits = {}) {
         const auto previous = profile;
@@ -974,6 +1068,7 @@ class CloudSettingsSyncService::Impl {
 
         const auto current = store.snapshot();
         Values candidates;
+        migrateMousePreferences(cloud, current, candidates);
         // A rolled-back swap member may never have had a cloud record.
         for (auto it = resolvedEdits.cbegin(); it != resolvedEdits.cend(); ++it) {
             if (cloud.contains(it.key()) || profile.pending.contains(it.key()))
@@ -1014,6 +1109,11 @@ class CloudSettingsSyncService::Impl {
         }
         for (auto it = changes.cbegin(); it != changes.cend(); ++it)
             profile.values.insert(it.key(), storage::cloudSettingValue(it.key(), it.value()));
+        for (const auto& action : mouse::definitions()) {
+            const auto key = action.key();
+            if (!profile.values.contains(key) && storage::cloudSettingSupported(key))
+                profile.values.insert(key, storage::cloudSettingValue(key, current.value(key)));
+        }
         profile.joined = true;
         profile.resume = false;
         if (!save(changes)) {

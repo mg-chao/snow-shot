@@ -2663,7 +2663,94 @@ void recordingPostProcessingPreferencesPersistAndValidate() {
     applicationStorage.shutdown();
 }
 
+void configurableMouseBindings() {
+    using namespace snow_shot::mouse;
+    const Binding leftDouble{Kind::DoubleClick, Qt::LeftButton};
+    const Binding middle{Kind::Click, Qt::MiddleButton};
+    const Binding side{Kind::Click, Qt::BackButton, Qt::ShiftModifier};
+    const Binding unbound{Kind::None, Qt::NoButton, Qt::AltModifier | Qt::ShiftModifier};
+    require(!allowed(definition(Action::ShotSave), {Kind::Click, Qt::LeftButton}) &&
+                !allowed(definition(Action::ShotSave), {Kind::DoubleClick, Qt::RightButton}) &&
+                !allowed(definition(Action::Back), {}) &&
+                allowed(definition(Action::ShotSave),
+                        {Kind::Click, Qt::RightButton, Qt::ShiftModifier}),
+            "fixed gestures and their modified alternatives");
+    for (auto kind : {Kind::Click, Kind::Drag, Kind::Wheel}) {
+        for (auto binding : choices(kind)) {
+            binding.modifiers = Qt::AltModifier | Qt::ShiftModifier;
+            require(decode(encode(binding)) == binding,
+                    "all operations round-trip with canonical modifiers");
+        }
+    }
+    QTemporaryDir temp;
+    require(temp.isValid(), "temporary mouse configuration");
+    const auto path = temp.filePath(QStringLiteral("config.json"));
+    {
+        storage::ConfigurationStore store(path, true, true, 0);
+        const auto check = [&](Category category, Binding gesture, std::optional<Action> expected) {
+            require(store.mouseAction(category, gesture) == expected,
+                    "cached action matches effective configuration");
+        };
+        check(Category::Screenshot, leftDouble, Action::ShotCopy);
+        check(Category::Pinned, middle, Action::ResetZoom);
+        require(
+            store.applySnapshot(
+                {{QStringLiteral("screenshot/double_click_action"), QStringLiteral("quick_save")},
+                 {QStringLiteral("screenshot/middle_mouse_button_action"),
+                  QStringLiteral("quick_save")},
+                 {QStringLiteral("pin_to_screen/double_click_action"), QStringLiteral("none")},
+                 {QStringLiteral("pin_to_screen/middle_mouse_button_action"),
+                  QStringLiteral("hide_to_top")}},
+                9),
+            "upgrade both legacy categories");
+        check(Category::Screenshot, leftDouble, Action::ShotQuickSave);
+        check(Category::Screenshot, middle, std::nullopt);
+        check(Category::Pinned, leftDouble, std::nullopt);
+        check(Category::Pinned, middle, Action::HideAtTop);
+        require(store.setValues({{definition(Action::ShotPin).key(), encode(side)},
+                                 {definition(Action::CopyClose).key(), encode(side)}}),
+                "categories can share a binding");
+        require(!store.setValue(definition(Action::Close).key(),
+                                encode({Kind::DoubleClick, Qt::BackButton, Qt::ShiftModifier})),
+                "reject a conflicting double-click while preserving the single-click");
+        check(Category::Pinned, side, Action::CopyClose);
+        check(Category::Screenshot,
+              {Kind::Click, Qt::BackButton, Qt::ShiftModifier | Qt::ControlModifier}, std::nullopt);
+        require(store.setValues({{definition(Action::CopyClose).key(), QJsonObject{}},
+                                 {definition(Action::Close).key(), encode(side)},
+                                 {definition(Action::PanCrop).key(),
+                                  encode({Kind::Drag, Qt::BackButton, Qt::ShiftModifier})}}),
+                "atomic transfers allow a drag on the same button and modifiers");
+        require(store.setValues(factoryValues(Category::Screenshot)), "reset only Screenshots");
+        check(Category::Screenshot, leftDouble, Action::ShotCopy);
+        check(Category::Screenshot, middle, Action::ShotPin);
+        check(Category::Pinned, side, Action::Close);
+        require(store.setValues({{definition(Action::PanCrop).key(), encode(unbound)},
+                                 {definition(Action::FineZoom).key(), encode(unbound)}}),
+                "multiple unbound actions can store the same modifiers");
+        check(Category::Pinned, unbound, std::nullopt);
+        require(store.flushNow().success, "persist mouse bindings");
+    }
+    storage::ConfigurationStore reopened(path, true, true, 0);
+    require(reopened.mouseBindings().get(Action::PanCrop) == unbound &&
+                reopened.mouseBindings().get(Action::FineZoom) == unbound,
+            "modifiers for unbound actions survive a configuration restart");
+    require(reopened.mouseAction(Category::Screenshot, leftDouble) == Action::ShotCopy &&
+                reopened.mouseAction(Category::Pinned, side) == Action::Close &&
+                reopened.mouseAction(Category::Pinned, middle) == Action::HideAtTop,
+            "saved bindings take precedence on restart");
+    require(reopened.applySnapshot(
+                {{definition(Action::ShotPin).key(), encode(side)},
+                 {QStringLiteral("screenshot/double_click_action"), QStringLiteral("quick_save")},
+                 {QStringLiteral("pin_to_screen/double_click_action"), QStringLiteral("none")}},
+                9) &&
+                reopened.mouseAction(Category::Screenshot, leftDouble) == Action::ShotCopy &&
+                !reopened.mouseAction(Category::Pinned, leftDouble),
+            "presence of new keys inhibits migration only for that category");
+}
+
 void screenshotMouseActionSettingsRoundTrip() {
+    configurableMouseBindings();
     QTemporaryDir temporary;
     require(temporary.isValid(), "create isolated screenshot mouse settings storage");
     const QString executable = QDir(temporary.path()).filePath(QStringLiteral("bin"));

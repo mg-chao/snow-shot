@@ -585,6 +585,8 @@ struct SnowCanvasWidget::Impl : public snow_canvas_runtime::Client {
     void clearTextStylePopupInteraction();
     void handleApplicationStateChanged(Qt::ApplicationState state);
 
+    std::function<bool(QMouseEvent*)> unhandledMouse;
+
   private:
     SnowCanvasWidgetInputHandler::Context inputHandlerContext();
     void applyInputProcessResult(const SnowCanvasWidgetInputHandler::ProcessResult& result);
@@ -3588,6 +3590,10 @@ bool SnowCanvasWidget::Impl::handleMousePress(QMouseEvent* event,
     return handled;
 }
 
+void SnowCanvasWidget::setUnhandledMouseHandler(std::function<bool(QMouseEvent*)> handler) {
+    m_impl->unhandledMouse = std::move(handler);
+}
+
 void SnowCanvasWidget::mousePressEvent(QMouseEvent* event) {
     const QPointer<SnowCanvasWidget> lifetime(this);
     if (m_impl->suppressTabletMouseEvent(event)) {
@@ -3605,6 +3611,10 @@ void SnowCanvasWidget::mousePressEvent(QMouseEvent* event) {
         m_impl->cancelMiddleClickTracking();
     }
     if (handled) {
+        return;
+    }
+    if (m_impl->unhandledMouse && m_impl->unhandledMouse(event)) {
+        event->accept();
         return;
     }
     QWidget::mousePressEvent(event);
@@ -3722,6 +3732,10 @@ void SnowCanvasWidget::mouseDoubleClickEvent(QMouseEvent* event) {
     if (handled) {
         return;
     }
+    if (m_impl->unhandledMouse && m_impl->unhandledMouse(event)) {
+        event->accept();
+        return;
+    }
     if (event != nullptr && event->button() == Qt::LeftButton) {
         event->accept();
         emit unhandledLeftDoubleClick();
@@ -3811,6 +3825,10 @@ void SnowCanvasWidget::mouseMoveEvent(QMouseEvent* event) {
     if (m_impl->handleMouseMove(event) || !lifetime) {
         return;
     }
+    if (m_impl->unhandledMouse && m_impl->unhandledMouse(event)) {
+        event->accept();
+        return;
+    }
     QWidget::mouseMoveEvent(event);
 }
 
@@ -3866,6 +3884,10 @@ void SnowCanvasWidget::mouseReleaseEvent(QMouseEvent* event) {
                              m_impl->finishMiddleClickTracking();
     const bool handled = m_impl->handleMouseRelease(event);
     if (!lifetime) {
+        return;
+    }
+    if (!handled && m_impl->unhandledMouse && m_impl->unhandledMouse(event)) {
+        event->accept();
         return;
     }
     if (middleClick && !handled) {

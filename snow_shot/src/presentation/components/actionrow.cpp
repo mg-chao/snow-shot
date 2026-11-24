@@ -1,6 +1,7 @@
 #include "snow_shot/presentation/components/actionrow.h"
 
 #include "snow_shot/presentation/components/icons/iconrenderutils.h"
+#include "snow_shot/presentation/components/shortcutconfigurationbutton.h"
 #include "snow_shot/presentation/styles/actionrowstyle.h"
 #include "snow_shot/presentation/styles/mainwindowcomponenttoken.h"
 #include "snow_shot/presentation/styles/thememanager.h"
@@ -22,7 +23,6 @@ ActionRow::ActionRow(
       m_titleIconSize(metric.fontSizeLG + metric.borderRadiusXS),
       m_rowBorderWidth(metric.lineWidth), m_rowBorderRadius(mainWindowMetric.cardRadius),
       m_useStableBorder(config.useStableBorder) {
-    setAccessibleName(config.title);
     setButtonStyle(m_compactPresentation ? ButtonStyle::Text : ButtonStyle::Outline);
     setAccentRole(AccentRole::Primary);
     setShape(Shape::Rounded);
@@ -48,7 +48,8 @@ ActionRow::ActionRow(
     auto* titleLayout = new QHBoxLayout(titleWrap);
     titleLayout->setContentsMargins(0, 0, 0, 0);
     titleLayout->setSpacing(metric.marginXS);
-    m_titleLabel = new QLabel(config.title, titleWrap);
+    m_titleLabel = new QLabel(titleWrap);
+    setRowTitle(config.title);
     m_titleLabel->setAttribute(Qt::WA_TransparentForMouseEvents, !config.interactiveTitle);
     titleLayout->addWidget(m_titleLabel, 0, Qt::AlignVCenter);
     if (!m_compactPresentation && adqt::icons::isValid(m_titleIconRef)) {
@@ -71,14 +72,29 @@ ActionRow::ActionRow(
     syncTitle();
 }
 
-void ActionRow::setConfigurationButton(adqt::widgets::AdButton* button) {
+void ActionRow::setRowTitle(const QString& title) {
+    m_titleLabel->setText(m_compactPresentation ? title + QStringLiteral(":") : title);
+    setAccessibleName(title);
+}
+
+ShortcutConfigurationButton* ActionRow::createConfigurationButton(
+    const snow_shot::presentation::styles::ThemeAliasMetricToken& metric,
+    const adqt::icons::IconRef& icon, int textMaxWidth) {
+    constexpr int compactTextMaxWidth = 100;
+    auto* button = new ShortcutConfigurationButton(
+        metric, m_compactPresentation ? compactTextMaxWidth : textMaxWidth, icon, this);
+    button->setFixedHeight(metric.controlHeight);
+    button->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    button->setTheme(m_colorScheme);
     m_configurationButton = button;
     button->installEventFilter(this);
     m_rowLayout->addWidget(button, 0, m_compactPresentation ? Qt::AlignVCenter : Qt::AlignRight);
     if (m_compactPresentation) {
+        button->setButtonStyle(ButtonStyle::Outline);
         m_rowLayout->addStretch(1);
     }
     syncTitle();
+    return button;
 }
 
 void ActionRow::applyTheme(const snow_shot::presentation::styles::ThemeColorScheme& scheme) {

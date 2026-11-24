@@ -998,36 +998,12 @@
             <translation>Activation keys</translation>
         </message>
         <message>
-            <source>Alt</source>
-            <translation>Alt</translation>
-        </message>
-        <message>
             <source>Cancel</source>
             <translation>Cancel</translation>
         </message>
         <message>
-            <source>Command</source>
-            <translation>Command</translation>
-        </message>
-        <message>
             <source>Configure mouse combination for %1</source>
             <translation>Configure mouse combination for %1</translation>
-        </message>
-        <message>
-            <source>Control</source>
-            <translation>Control</translation>
-        </message>
-        <message>
-            <source>Ctrl</source>
-            <translation>Ctrl</translation>
-        </message>
-        <message>
-            <source>Left-button drag</source>
-            <translation>Left-button drag</translation>
-        </message>
-        <message>
-            <source>Middle-button drag</source>
-            <translation>Middle-button drag</translation>
         </message>
         <message>
             <source>Mouse button</source>
@@ -1038,20 +1014,8 @@
             <translation>Mouse configuration for "%1"</translation>
         </message>
         <message>
-            <source>None</source>
-            <translation>None</translation>
-        </message>
-        <message>
             <source>OK</source>
             <translation>OK</translation>
-        </message>
-        <message>
-            <source>Option</source>
-            <translation>Option</translation>
-        </message>
-        <message>
-            <source>Right-button drag</source>
-            <translation>Right-button drag</translation>
         </message>
         <message>
             <source>Select a mouse button</source>
@@ -1062,28 +1026,8 @@
             <translation>Select at least one activation key</translation>
         </message>
         <message>
-            <source>Shift</source>
-            <translation>Shift</translation>
-        </message>
-        <message>
-            <source>Side button 1 (back) drag</source>
-            <translation>Side button 1 (back) drag</translation>
-        </message>
-        <message>
-            <source>Side button 2 (forward) drag</source>
-            <translation>Side button 2 (forward) drag</translation>
-        </message>
-        <message>
             <source>This mouse combination is already assigned to another action. Choose a different combination</source>
             <translation>This mouse combination is already assigned to another action. Choose a different combination</translation>
-        </message>
-        <message>
-            <source>Unset</source>
-            <translation>Unset</translation>
-        </message>
-        <message>
-            <source>Windows</source>
-            <translation>Windows</translation>
         </message>
     </context>
     <context>
@@ -1134,6 +1078,248 @@
         <message>
             <source>The skin image exceeds processing limits</source>
             <translation>The skin image exceeds processing limits</translation>
+        </message>
+    </context>
+    <context>
+        <name>MouseOperationRow</name>
+        <message>
+            <source>Keyboard modifiers</source>
+            <translation>Keyboard modifiers</translation>
+        </message>
+        <message>
+            <source>Mouse operation</source>
+            <translation>Mouse operation</translation>
+        </message>
+        <message>
+            <source>The mouse operation could not be saved.</source>
+            <translation>The mouse operation could not be saved.</translation>
+        </message>
+        <message>
+            <source>The unmodified left single-click is reserved for selection.</source>
+            <translation>The unmodified left single-click is reserved for selection.</translation>
+        </message>
+        <message>
+            <source>This gesture is assigned to %1.</source>
+            <translation>This gesture is assigned to %1.</translation>
+        </message>
+        <message>
+            <source>Unmodified right clicks are reserved for Go back one step.</source>
+            <translation>Unmodified right clicks are reserved for Go back one step.</translation>
+        </message>
+    </context>
+    <context>
+        <name>MouseOperations</name>
+        <message>
+            <source>Adjust opacity</source>
+            <translation>Adjust opacity</translation>
+        </message>
+        <message>
+            <source>Alt</source>
+            <translation>Alt</translation>
+        </message>
+        <message>
+            <source>Annotation mode</source>
+            <translation>Annotation mode</translation>
+        </message>
+        <message>
+            <source>Cancel screenshot</source>
+            <translation>Cancel screenshot</translation>
+        </message>
+        <message>
+            <source>Close</source>
+            <translation>Close</translation>
+        </message>
+        <message>
+            <source>Command</source>
+            <translation>Command</translation>
+        </message>
+        <message>
+            <source>Control</source>
+            <translation>Control</translation>
+        </message>
+        <message>
+            <source>Copy after text recognition</source>
+            <translation>Copy after text recognition</translation>
+        </message>
+        <message>
+            <source>Copy text to clipboard</source>
+            <translation>Copy text to clipboard</translation>
+        </message>
+        <message>
+            <source>Copy to clipboard</source>
+            <translation>Copy to clipboard</translation>
+        </message>
+        <message>
+            <source>Copy to clipboard and close</source>
+            <translation>Copy to clipboard and close</translation>
+        </message>
+        <message>
+            <source>Ctrl</source>
+            <translation>Ctrl</translation>
+        </message>
+        <message>
+            <source>Destroy</source>
+            <translation>Destroy</translation>
+        </message>
+        <message>
+            <source>Drag image</source>
+            <translation>Drag image</translation>
+        </message>
+        <message>
+            <source>Fine opacity adjustment</source>
+            <translation>Fine opacity adjustment</translation>
+        </message>
+        <message>
+            <source>Fine zoom</source>
+            <translation>Fine zoom</translation>
+        </message>
+        <message>
+            <source>Force window move</source>
+            <translation>Force window move</translation>
+        </message>
+        <message>
+            <source>Go back one step</source>
+            <translation>Go back one step</translation>
+        </message>
+        <message>
+            <source>Hide at top</source>
+            <translation>Hide at top</translation>
+        </message>
+        <message>
+            <source>Left-button double-click</source>
+            <translation>Left-button double-click</translation>
+        </message>
+        <message>
+            <source>Left-button drag</source>
+            <translation>Left-button drag</translation>
+        </message>
+        <message>
+            <source>Left-button single-click</source>
+            <translation>Left-button single-click</translation>
+        </message>
+        <message>
+            <source>Menu</source>
+            <translation>Menu</translation>
+        </message>
+        <message>
+            <source>Middle-button double-click</source>
+            <translation>Middle-button double-click</translation>
+        </message>
+        <message>
+            <source>Middle-button drag</source>
+            <translation>Middle-button drag</translation>
+        </message>
+        <message>
+            <source>Middle-button single-click</source>
+            <translation>Middle-button single-click</translation>
+        </message>
+        <message>
+            <source>Mouse wheel</source>
+            <translation>Mouse wheel</translation>
+        </message>
+        <message>
+            <source>Move or resize window</source>
+            <translation>Move or resize window</translation>
+        </message>
+        <message>
+            <source>Multi-select</source>
+            <translation>Multi-select</translation>
+        </message>
+        <message>
+            <source>None</source>
+            <translation>None</translation>
+        </message>
+        <message>
+            <source>Option</source>
+            <translation>Option</translation>
+        </message>
+        <message>
+            <source>Pan within crop</source>
+            <translation>Pan within crop</translation>
+        </message>
+        <message>
+            <source>Pin to screen</source>
+            <translation>Pin to screen</translation>
+        </message>
+        <message>
+            <source>Quick save</source>
+            <translation>Quick save</translation>
+        </message>
+        <message>
+            <source>Reset zoom</source>
+            <translation>Reset zoom</translation>
+        </message>
+        <message>
+            <source>Right-button double-click</source>
+            <translation>Right-button double-click</translation>
+        </message>
+        <message>
+            <source>Right-button drag</source>
+            <translation>Right-button drag</translation>
+        </message>
+        <message>
+            <source>Right-button single-click</source>
+            <translation>Right-button single-click</translation>
+        </message>
+        <message>
+            <source>Save as file</source>
+            <translation>Save as file</translation>
+        </message>
+        <message>
+            <source>Select crop region</source>
+            <translation>Select crop region</translation>
+        </message>
+        <message>
+            <source>Shift</source>
+            <translation>Shift</translation>
+        </message>
+        <message>
+            <source>Show text recognition results</source>
+            <translation>Show text recognition results</translation>
+        </message>
+        <message>
+            <source>Side button 1 (back) double-click</source>
+            <translation>Side button 1 (back) double-click</translation>
+        </message>
+        <message>
+            <source>Side button 1 (back) drag</source>
+            <translation>Side button 1 (back) drag</translation>
+        </message>
+        <message>
+            <source>Side button 1 (back) single-click</source>
+            <translation>Side button 1 (back) single-click</translation>
+        </message>
+        <message>
+            <source>Side button 2 (forward) double-click</source>
+            <translation>Side button 2 (forward) double-click</translation>
+        </message>
+        <message>
+            <source>Side button 2 (forward) drag</source>
+            <translation>Side button 2 (forward) drag</translation>
+        </message>
+        <message>
+            <source>Side button 2 (forward) single-click</source>
+            <translation>Side button 2 (forward) single-click</translation>
+        </message>
+        <message>
+            <source>Text recognition</source>
+            <translation>Text recognition</translation>
+        </message>
+        <message>
+            <source>Thumbnail mode</source>
+            <translation>Thumbnail mode</translation>
+        </message>
+        <message>
+            <source>Unset</source>
+            <translation>Unset</translation>
+        </message>
+        <message>
+            <source>Windows</source>
+            <translation>Windows</translation>
+        </message>
+        <message>
+            <source>Zoom</source>
+            <translation>Zoom</translation>
         </message>
     </context>
     <context>
@@ -2093,22 +2279,6 @@
             <translation>Choose the OCR model version and size to balance recognition speed and accuracy</translation>
         </message>
         <message>
-            <source>Choose the action for double-clicking a draggable area of a pinned screenshot</source>
-            <translation>Choose the action for double-clicking a draggable area of a pinned screenshot</translation>
-        </message>
-        <message>
-            <source>Choose the action for double-clicking while moving or annotating in a screenshot</source>
-            <translation>Choose the action for double-clicking while moving or annotating in a screenshot</translation>
-        </message>
-        <message>
-            <source>Choose the action for middle-clicking a draggable area of a pinned screenshot</source>
-            <translation>Choose the action for middle-clicking a draggable area of a pinned screenshot</translation>
-        </message>
-        <message>
-            <source>Choose the action for middle-clicking while moving or annotating in a screenshot</source>
-            <translation>Choose the action for middle-clicking while moving or annotating in a screenshot</translation>
-        </message>
-        <message>
             <source>Choose the bundled icon used in dark theme, or reuse the regular icon settings</source>
             <translation>Choose the bundled icon used in dark theme, or reuse the regular icon settings</translation>
         </message>
@@ -2277,6 +2447,10 @@
             <translation>Clear screenshot history?</translation>
         </message>
         <message>
+            <source>Click, wheel, and drag actions for pinned windows</source>
+            <translation>Click, wheel, and drag actions for pinned windows</translation>
+        </message>
+        <message>
             <source>Click-through</source>
             <translation>Click-through</translation>
         </message>
@@ -2287,10 +2461,6 @@
         <message>
             <source>Clipboard content</source>
             <translation>Clipboard content</translation>
-        </message>
-        <message>
-            <source>Close</source>
-            <translation>Close</translation>
         </message>
         <message>
             <source>Close window</source>
@@ -2715,10 +2885,6 @@
         <message>
             <source>Do not automatically select elements created with these tools</source>
             <translation>Do not automatically select elements created with these tools</translation>
-        </message>
-        <message>
-            <source>Double-click action</source>
-            <translation>Double-click action</translation>
         </message>
         <message>
             <source>Download automatically</source>
@@ -3509,8 +3675,20 @@
             <translation>Monitor center guide line color</translation>
         </message>
         <message>
+            <source>Mouse actions for the current selection or smart selection preview</source>
+            <translation>Mouse actions for the current selection or smart selection preview</translation>
+        </message>
+        <message>
             <source>Mouse combinations for screenshot actions</source>
             <translation>Mouse combinations for screenshot actions</translation>
+        </message>
+        <message>
+            <source>Mouse gestures for screenshots and pinned windows</source>
+            <translation>Mouse gestures for screenshots and pinned windows</translation>
+        </message>
+        <message>
+            <source>Mouse operations</source>
+            <translation>Mouse operations</translation>
         </message>
         <message>
             <source>Mouse pointer</source>
@@ -4087,10 +4265,6 @@
         <message>
             <source>Reset transform</source>
             <translation>Reset transform</translation>
-        </message>
-        <message>
-            <source>Reset zoom</source>
-            <translation>Reset zoom</translation>
         </message>
         <message>
             <source>Resident recognition process</source>
@@ -6139,9 +6313,9 @@ Unavailable: %2</translation>
         <message numerus="yes">
             <source>%1 credits</source>
             <translation>
-                <numerusform>%1 credit</numerusform>
-                <numerusform>%1 credits</numerusform>
-            </translation>
+            <numerusform>%1 credit</numerusform>
+            <numerusform>%1 credits</numerusform>
+        </translation>
         </message>
         <message>
             <source>Confirm your password</source>
@@ -6258,6 +6432,10 @@ Unavailable: %2</translation>
         <message>
             <source>Some custom API configurations are invalid and were ignored</source>
             <translation>Some custom API configurations are invalid and were ignored</translation>
+        </message>
+        <message>
+            <source>The mouse operation is already assigned.</source>
+            <translation>The mouse operation is already assigned.</translation>
         </message>
     </context>
 </TS>

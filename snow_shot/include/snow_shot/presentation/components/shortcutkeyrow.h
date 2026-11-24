@@ -87,7 +87,6 @@ class ShortcutKeyRow : public ActionRow {
   private:
     void openShortcutConfigDialog();
     [[nodiscard]] QString delayDisplayTitle() const;
-    [[nodiscard]] QString titleLabelText() const;
     bool adjustDelayFromWheel(QEvent* event);
     void syncDelayUnderline();
     void syncRegistrationStatus();

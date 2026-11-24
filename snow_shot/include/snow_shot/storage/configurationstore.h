@@ -3,6 +3,7 @@
 
 #include "snow_shot/storage/storageresult.h"
 
+#include "snow_shot/mouseoperations.h"
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QMap>
@@ -46,6 +47,9 @@ class ConfigurationStore final : public QObject {
     [[nodiscard]] QJsonValue defaultValue(const QString& key) const;
     [[nodiscard]] QMap<QString, QJsonValue> snapshot() const;
     [[nodiscard]] quint64 revision() const;
+    [[nodiscard]] mouse::Bindings mouseBindings() const;
+    [[nodiscard]] std::optional<mouse::Action> mouseAction(mouse::Category category,
+                                                           mouse::Binding binding) const;
     // Serializes the revision check with all configuration writers, including
     // nested writes made by runtime settings adapters.
     bool mutateIfRevision(quint64 expectedRevision, const std::function<bool()>& mutation,
@@ -120,6 +124,7 @@ class ConfigurationStore final : public QObject {
     QMutex m_ioMutex;
     const QMap<QString, QJsonValue> m_defaults;
     QMap<QString, QJsonValue> m_values;
+    mouse::Bindings m_mouseBindings;
     QJsonObject m_document;
     QString m_lastError;
     ConfigurationCompatibility m_compatibility = ConfigurationCompatibility::Current;

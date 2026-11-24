@@ -7636,8 +7636,11 @@ void regionEventsRemainOwnedByOverlay() {
             ++doubles;
             return true;
         }
-        void handleUnhandledLeftDoubleClick() override {
+        std::optional<snow_shot::mouse::Action> lastAction;
+        void handleMouseCompletion(snow_shot::mouse::Action action, ScreenshotOverlayWindow*,
+                                   const QPointF&) override {
             ++completions;
+            lastAction = action;
         }
     } sink;
     auto* canvas = new SnowCanvasWidget;
@@ -7655,6 +7658,34 @@ void regionEventsRemainOwnedByOverlay() {
     }
     require(sink.presses == 1 && sink.releases == 2 && sink.doubles == 1 && sink.completions == 0,
             "Qt double-click sequence must reach region handling without invoking completion");
+    {
+        namespace mouse = snow_shot::mouse;
+        auto& config = snow_shot::storage::ApplicationStorage::instance().configuration();
+        const auto key = mouse::definition(mouse::Action::ShotPin).key();
+        const auto previous = config.value(key);
+        const auto restore = qScopeGuard([&] { config.setValue(key, previous); });
+        require(config.setValue(key, mouse::encode({mouse::Kind::Click, Qt::BackButton})),
+                "rebind Pin to side button 1");
+        const auto send = [&](QEvent::Type type, Qt::MouseButton button, Qt::MouseButtons held,
+                              QPointF local, Qt::KeyboardModifiers keys = {}) {
+            QMouseEvent event(type, local, canvas->mapToGlobal(local), button, held, keys);
+            QApplication::sendEvent(canvas, &event);
+        };
+        for (auto button : {Qt::MiddleButton, Qt::BackButton}) {
+            send(QEvent::MouseButtonPress, button, button, point);
+            require(sink.completions == 0, "no action is dispatched on press");
+            send(QEvent::MouseButtonRelease, button, {}, point);
+        }
+        require(sink.completions == 1 && sink.lastAction == mouse::Action::ShotPin,
+                "only the rebound side button completes Pin");
+        send(QEvent::MouseButtonPress, Qt::BackButton, Qt::BackButton, point);
+        send(QEvent::MouseMove, Qt::NoButton, Qt::BackButton, point + QPointF(40, 0));
+        send(QEvent::MouseButtonRelease, Qt::BackButton, {}, point);
+        send(QEvent::MouseButtonPress, Qt::BackButton, Qt::BackButton, point, Qt::ShiftModifier);
+        send(QEvent::MouseButtonRelease, Qt::BackButton, {}, point, Qt::ShiftModifier);
+        require(sink.completions == 1,
+                "crossing the drag threshold and extra modifiers suppress completion");
+    }
     overlay.setRegionTypeControlVisible(true, ScreenshotRegionType::Polyline);
     QApplication::processEvents();
     auto* control = overlay.findChild<QWidget*>(QStringLiteral("screenshotRegionTypeControl"));
@@ -8632,10 +8663,21 @@ void overlayRightQuickSelection() {
     actions.cancelCapture = [&] { ++cancellations; };
     ScreenshotOverlayInputHandler handler(
         {capture, interaction, selection, intelligent, geometry, displays, actions});
-    NoopOverlayEventSink sink;
-    sink.rightClick = [&](ScreenshotOverlayWindow* window, const QPointF& point) {
-        return handler.handleRightClick(window, point);
-    };
+    class Sink final : public NoopOverlayEventSink {
+      public:
+        explicit Sink(ScreenshotOverlayInputHandler& handler) : m_handler(handler) {
+            rightClick = [&](ScreenshotOverlayWindow* window, const QPointF& point) {
+                return m_handler.handleRightClick(window, point);
+            };
+        }
+        bool backTakesPriority(ScreenshotOverlayWindow* window,
+                               const QPointF& point) const override {
+            return m_handler.backTakesPriority(window, point);
+        }
+
+      private:
+        ScreenshotOverlayInputHandler& m_handler;
+    } sink(handler);
     SnowCanvasRuntime runtime;
     require(runtime.setQuickSelectionDisabledTools({SnowCanvasTool::FreeDraw}),
             "disable left stroke selection in overlay");
@@ -9049,14 +9091,25 @@ void overlayRightClickClosesOnRelease(bool native = false) {
     Q_UNUSED(native)
 #endif
     auto* canvas = overlay.canvas();
-    QMouseEvent press(QEvent::MouseButtonPress, QPointF(50, 50), QPointF(200, 200), Qt::RightButton,
-                      Qt::RightButton, Qt::NoModifier);
-    QApplication::sendEvent(canvas, &press);
+    const QPointF start(1, 50);
+    const auto press = [&] {
+        QMouseEvent event(QEvent::MouseButtonPress, start, canvas->mapToGlobal(start),
+                          Qt::RightButton, Qt::RightButton, Qt::NoModifier);
+        QApplication::sendEvent(canvas, &event);
+        QApplication::processEvents();
+        require(overlay.isVisible(), "right press must leave screenshot overlay visible");
+    };
+    const auto release = [&](const QPointF& position) {
+        QMouseEvent event(QEvent::MouseButtonRelease, position, overlay.mapToGlobal(position),
+                          Qt::RightButton, Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(&overlay, &event);
+    };
+    press();
+    release(start + QPointF(50, 50));
     QApplication::processEvents();
-    require(overlay.isVisible(), "right press must leave screenshot overlay visible");
-    QMouseEvent release(QEvent::MouseButtonRelease, QPointF(-10, -10), QPointF(140, 140),
-                        Qt::RightButton, Qt::NoButton, Qt::NoModifier);
-    QApplication::sendEvent(&overlay, &release);
+    require(overlay.isVisible(), "right drag must leave screenshot overlay visible");
+    press();
+    release(QPointF(-1, start.y()));
     require(overlay.isVisible(), "close must wait until release dispatch finishes");
     QApplication::processEvents();
     require(!overlay.isVisible(), "right release must close screenshot overlay");

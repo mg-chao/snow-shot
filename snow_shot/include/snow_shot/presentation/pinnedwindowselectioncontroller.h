@@ -50,10 +50,7 @@ class PinnedWindowSelectionController final : public QObject {
     // Returns true when selection routing owns this context menu event.
     bool showContextMenu(ScreenshotPinnedWindow* window, const QPoint& globalPosition);
 
-    bool handlePointer(ScreenshotPinnedWindow* window, QObject* watched, QEvent* event);
-    [[nodiscard]] bool routesPointerToClient(const ScreenshotPinnedWindow& window,
-                                             const QPoint& position,
-                                             Qt::KeyboardModifiers modifiers) const;
+    void queueGeometryUpdate(const QPointF& position);
     bool beginGeometry(ScreenshotPinnedWindow* window, const QPointF& desktopPress,
                        std::optional<int> handle = {}, std::optional<QPoint> nativePress = {});
     void updateGeometry(const QPointF& desktopPosition);

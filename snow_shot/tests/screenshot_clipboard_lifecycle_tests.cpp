@@ -61,6 +61,28 @@ void commitCompletionMarksFinishedAndReleasesInputs() {
     }
 }
 
+void receiverDestroyedDuringMimePreparation() {
+    class LazyMime final : public QMimeData {
+      public:
+        explicit LazyMime(QObject* receiver) : owner(receiver) {}
+        QStringList formats() const override {
+            delete owner.data();
+            return QMimeData::formats();
+        }
+
+      private:
+        QPointer<QObject> owner;
+    };
+    QPointer<QObject> receiver = new QObject;
+    auto mime = std::make_unique<LazyMime>(receiver);
+    bool completed = false;
+    const auto handle = ScreenshotClipboardService::publishMimeData(
+        QApplication::clipboard(), receiver, std::move(mime),
+        ScreenshotClipboardService::reservePublication(), [&](auto) { completed = true; });
+    require(!receiver && !handle.isValid() && !completed,
+            "MIME preparation can retire the receiver before a clipboard attempt starts");
+}
+
 void abandonedReceiversReleaseInputsAndFinishHandles() {
     auto* receiver = new QObject;
     auto* mime = new QMimeData;
@@ -464,6 +486,7 @@ int main(int argc, char** argv) {
     }
     require(ScreenshotClipboardCommitHandle{}.isFinished(), "an empty handle has no pending work");
     commitCompletionMarksFinishedAndReleasesInputs();
+    receiverDestroyedDuringMimePreparation();
     abandonedReceiversReleaseInputsAndFinishHandles();
     clipboardFilesOutlivePublications();
     clipboardFilesSurviveReplacementAndApplicationExit();

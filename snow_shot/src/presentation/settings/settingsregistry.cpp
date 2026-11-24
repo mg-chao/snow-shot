@@ -37,6 +37,8 @@ SettingsFieldKind fieldKind(const SettingsItemPayload& payload) {
                 return SettingsFieldKind::ShortcutAction;
             } else if constexpr (std::is_same_v<Value, SettingsLocalShortcutDefinition>) {
                 return SettingsFieldKind::LocalShortcut;
+            } else if constexpr (std::is_same_v<Value, SettingsMouseOperationDefinition>) {
+                return SettingsFieldKind::MouseOperation;
             } else if constexpr (std::is_same_v<Value, SettingsGlobalMouseActionDefinition>) {
                 return SettingsFieldKind::GlobalMouseAction;
             } else if constexpr (std::is_same_v<Value, SettingsActionDefinition>) {
