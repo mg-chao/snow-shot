@@ -843,10 +843,6 @@ ScreenshotController::Impl::Impl(ScreenshotController& controller,
                            m_ocrRecognition != nullptr) {
                     m_ocrRecognition->setModelType(
                         screenshotOcrModelTypeFromValue(value.toString()));
-                } else if (key == QStringLiteral("text_recognition/detector_resize_policy") &&
-                           m_ocrRecognition != nullptr) {
-                    m_ocrRecognition->setDetectorResizePolicy(
-                        screenshotOcrDetectorResizePolicyFromValue(value.toString()));
                 } else if (key == QStringLiteral("text_recognition/text_detection_processing") &&
                            m_ocrRecognition != nullptr) {
                     m_ocrRecognition->setTextDetectionProcessing(
@@ -1301,10 +1297,6 @@ bool ScreenshotController::Impl::ensureRecognitionFeature() {
         screenshotOcrModelTypeFromValue(applicationStorage.configuration()
                                             .value(QStringLiteral("text_recognition/model_type"))
                                             .toString());
-    ocrOptions.detectorResizePolicy = screenshotOcrDetectorResizePolicyFromValue(
-        applicationStorage.configuration()
-            .value(QStringLiteral("text_recognition/detector_resize_policy"))
-            .toString());
     ocrOptions.textDetectionProcessing = screenshotOcrTextDetectionProcessingFromValue(
         applicationStorage.configuration()
             .value(QStringLiteral("text_recognition/text_detection_processing"))

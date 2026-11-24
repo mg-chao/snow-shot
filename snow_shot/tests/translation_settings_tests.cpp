@@ -963,28 +963,27 @@ int main(int argc, char** argv) {
                     translation.configuration().layoutProcessing == QStringLiteral("smart_merge"),
                 "reset Translation restores all seven settings");
 
-        const auto resizeBinding = settings::SettingsSelectBinding::OcrDetectorResizePolicy;
-        require(backend.selectValue(resizeBinding).toString() == QStringLiteral("max") &&
-                    backend.applySelectValue(resizeBinding, QStringLiteral("min")) &&
-                    backend.selectValue(resizeBinding).toString() == QStringLiteral("min") &&
-                    !backend.applySelectValue(resizeBinding, QStringLiteral("unsupported")) &&
-                    backend.selectValue(resizeBinding).toString() == QStringLiteral("min"),
-                "detector scaling must default to max and persist only supported policies");
-        require(
-            backend.applySelectValue(settings::SettingsSelectBinding::OcrModelType,
-                                     QStringLiteral("medium")) &&
-                backend.selectValue(settings::SettingsSelectBinding::OcrModelType).toString() ==
-                    QStringLiteral("medium") &&
-                !applicationStorage.configuration().setValue(
-                    QStringLiteral("text_recognition/direct_ml_acceleration"), true) &&
-                backend.resetSection(settings::SettingsSectionReset::TextRecognition) &&
-                backend.selectValue(settings::SettingsSelectBinding::OcrModelType).toString() ==
-                    QStringLiteral("small") &&
-                backend.selectValue(resizeBinding).toString() == QStringLiteral("max") &&
-                !applicationStorage.configuration()
-                     .value(QStringLiteral("text_recognition/direct_ml_acceleration"))
-                     .toBool(),
-            "obsolete acceleration settings are rejected and reset restores Small and max scaling");
+        const auto processingBinding = settings::SettingsSelectBinding::OcrTextDetectionProcessing;
+        require(backend.applySelectValue(processingBinding, QStringLiteral("speed_first")) &&
+                    backend.selectValue(processingBinding).toString() ==
+                        QStringLiteral("speed_first"),
+                "OCR processing must persist the selected mode");
+        require(backend.applySelectValue(settings::SettingsSelectBinding::OcrModelType,
+                                         QStringLiteral("medium")) &&
+                    backend.selectValue(settings::SettingsSelectBinding::OcrModelType).toString() ==
+                        QStringLiteral("medium") &&
+                    !applicationStorage.configuration().setValue(
+                        QStringLiteral("text_recognition/direct_ml_acceleration"), true) &&
+                    backend.resetSection(settings::SettingsSectionReset::TextRecognition) &&
+                    backend.selectValue(settings::SettingsSelectBinding::OcrModelType).toString() ==
+                        QStringLiteral("small") &&
+                    backend.selectValue(processingBinding).toString() ==
+                        QStringLiteral("accuracy_first") &&
+                    !applicationStorage.configuration()
+                         .value(QStringLiteral("text_recognition/direct_ml_acceleration"))
+                         .toBool(),
+                "obsolete acceleration settings are rejected and reset restores Small and accuracy "
+                "first");
     }
     require(storage::PinToScreenSettings().setDoubleClickAction(QStringLiteral("reset_zoom")),
             "save pinned double-click action before restart");

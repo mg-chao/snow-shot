@@ -2042,10 +2042,6 @@
             <translation>Выберите, как сетевые запросы подключаются через прокси</translation>
         </message>
         <message>
-            <source>Choose how text detection resizes images. Limiting the long side is faster; enlarging the short side may find smaller text</source>
-            <translation>Выберите, как изменяется размер изображения при обнаружении текста. Ограничение длинной стороны работает быстрее; увеличение короткой может выявить более мелкий текст.</translation>
-        </message>
-        <message>
             <source>Choose how the area behind recognized text is filled</source>
             <translation>Выберите способ заполнения области за распознанным текстом</translation>
         </message>
@@ -2790,10 +2786,6 @@
             <translation>Завершить запись экрана</translation>
         </message>
         <message>
-            <source>Enlarge short side (more detail)</source>
-            <translation>Увеличить короткую сторону (больше деталей)</translation>
-        </message>
-        <message>
             <source>Enter an HTTP or HTTPS address. Changes apply immediately. Clear to use the default server</source>
             <translation>Введите адрес HTTP или HTTPS. Изменения применяются сразу. Очистите поле, чтобы использовать сервер по умолчанию.</translation>
         </message>
@@ -3328,10 +3320,6 @@
         <message>
             <source>Limit how much disk space screenshot history can use</source>
             <translation>Ограничить место на диске для истории скриншотов</translation>
-        </message>
-        <message>
-            <source>Limit long side (faster)</source>
-            <translation>Ограничить по длинной стороне (быстрее)</translation>
         </message>
         <message>
             <source>Limit the width of pinned text, including padding</source>
@@ -5008,10 +4996,6 @@
         <message>
             <source>Text detection processing</source>
             <translation>Обработка обнаружения текста</translation>
-        </message>
-        <message>
-            <source>Text detection scaling</source>
-            <translation>Масштабирование обнаружения текста</translation>
         </message>
         <message>
             <source>Text recognition</source>

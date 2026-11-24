@@ -54,14 +54,7 @@ struct ScreenshotOcrColorSource {
     std::shared_ptr<ScreenshotOcrPresentation> presentation;
 };
 
-enum class ScreenshotOcrDetectorResizePolicy { Max, Min };
 enum class ScreenshotOcrTextDetectionProcessing { AccuracyFirst, SpeedFirst };
-
-[[nodiscard]] inline ScreenshotOcrDetectorResizePolicy
-screenshotOcrDetectorResizePolicyFromValue(const QString& value) {
-    return value == QStringLiteral("min") ? ScreenshotOcrDetectorResizePolicy::Min
-                                          : ScreenshotOcrDetectorResizePolicy::Max;
-}
 
 [[nodiscard]] inline ScreenshotOcrTextDetectionProcessing
 screenshotOcrTextDetectionProcessingFromValue(const QString& value) {
@@ -72,15 +65,14 @@ screenshotOcrTextDetectionProcessingFromValue(const QString& value) {
 
 struct ScreenshotOcrRuntimeConfiguration {
     ScreenshotOcrModelType modelType = ScreenshotOcrModelType::Small;
-    ScreenshotOcrDetectorResizePolicy detectorResizePolicy = ScreenshotOcrDetectorResizePolicy::Max;
     bool residentProcess = false;
     bool modelHotStart = false;
     ScreenshotOcrTextDetectionProcessing textDetectionProcessing =
         ScreenshotOcrTextDetectionProcessing::AccuracyFirst;
     bool hardwareAcceleration = false;
     bool operator==(const ScreenshotOcrRuntimeConfiguration& other) const {
-        return modelType == other.modelType && detectorResizePolicy == other.detectorResizePolicy &&
-               residentProcess == other.residentProcess && modelHotStart == other.modelHotStart &&
+        return modelType == other.modelType && residentProcess == other.residentProcess &&
+               modelHotStart == other.modelHotStart &&
                textDetectionProcessing == other.textDetectionProcessing &&
                hardwareAcceleration == other.hardwareAcceleration;
     }
@@ -166,8 +158,6 @@ class ScreenshotOcrRecognitionService final : public ScreenshotOcrRecognitionPor
         // Resolved proxy URL for component downloads. Empty means direct access.
         QString proxyUrl;
         ScreenshotOcrModelType modelType = ScreenshotOcrModelType::Small;
-        ScreenshotOcrDetectorResizePolicy detectorResizePolicy =
-            ScreenshotOcrDetectorResizePolicy::Max;
         ScreenshotOcrTextDetectionProcessing textDetectionProcessing =
             ScreenshotOcrTextDetectionProcessing::AccuracyFirst;
         bool hardwareAcceleration = false;
@@ -207,7 +197,6 @@ class ScreenshotOcrRecognitionService final : public ScreenshotOcrRecognitionPor
     [[nodiscard]] QString proxyUrl() const;
     void setProxyUrl(const QString& proxyUrl);
     void setModelType(ScreenshotOcrModelType modelType);
-    void setDetectorResizePolicy(ScreenshotOcrDetectorResizePolicy policy);
     void setTextDetectionProcessing(ScreenshotOcrTextDetectionProcessing processing);
     void setHardwareAcceleration(bool enabled);
     // Owner-thread desired configuration. Changes made during storage suspension are retained;

@@ -1,16 +1,13 @@
-use super::{Config, DetectorResizePolicy, TextDetectionProcessing, acceleration::Context};
+use super::{Config, TextDetectionProcessing, acceleration::Context};
 use simd_paddle_ocr_rs::{
-    cpu::{CpuContext, CpuOptions},
-    detector::{DetResizePolicy, DetectorOptions, DetectorPlan},
+    builder::OcrModelSet,
+    cpu::CpuContext,
     error::ErrorKind,
     image::{ImageError, ImageResult, ImageView, PixelFormat},
-    lines::{LineOptions, OrientedLinePlan},
     model::Model,
-    ocr::{OcrOptions, OcrPlan, OcrRequest, RunOptions},
-    recognizer::{Dictionary, RecognitionScoreMode, RecognizerOptions, RecognizerPlan},
-    runtime::{
-        CompileOptions, CompiledModel, Compiler, CompilerOptions, ExecutionLimits, ExecutionTarget,
-    },
+    ocr::{OcrRequest, RunOptions},
+    recognizer::{Dictionary, RecognitionScoreMode, RecognizerOptions},
+    runtime::ExecutionTarget,
 };
 use snow_memory::RasterBuffer;
 use std::{path::Path, sync::Arc, thread};
@@ -58,18 +55,8 @@ fn source_quad(mut points: [[f32; 2]; 4], width: usize, height: usize) -> [[f32;
     points
 }
 
-fn detector_limit(policy: DetectorResizePolicy, width: usize, height: usize) -> usize {
-    match policy {
-        DetectorResizePolicy::Min => 736,
-        DetectorResizePolicy::Max if width.max(height) < 960 => 960,
-        DetectorResizePolicy::Max if width.max(height) < 1500 => 1500,
-        DetectorResizePolicy::Max => 2000,
-    }
-}
-
 pub(super) struct Engine {
     request: OcrRequest,
-    policy: DetectorResizePolicy,
 }
 
 impl Engine {
@@ -79,7 +66,6 @@ impl Engine {
         drop(self.request);
         Ok(Self {
             request: plan.request()?,
-            policy: self.policy,
         })
     }
 
@@ -92,13 +78,6 @@ impl Engine {
     }
 
     pub fn run(&mut self, input: &InputImage) -> ImageResult<Vec<OcrLine>> {
-        self.request.set_detector_resize(
-            match self.policy {
-                DetectorResizePolicy::Max => DetResizePolicy::Max,
-                DetectorResizePolicy::Min => DetResizePolicy::Min,
-            },
-            detector_limit(self.policy, input.width, input.height),
-        )?;
         // The request owns reusable scratch. Copy only the accepted output before
         // it crosses the completion channel; never copy the input raster again.
         Ok(self
@@ -126,7 +105,6 @@ pub(super) fn make_engine(
         &config.recognizer_model,
         &config.dictionary,
         thread_budget,
-        config.detector_resize_policy,
         config.text_detection_processing,
         gpu,
     )
@@ -137,71 +115,47 @@ pub(super) fn make_engine_for_models(
     recognizer: &Path,
     dictionary: &Path,
     thread_budget: usize,
-    policy: DetectorResizePolicy,
     processing: TextDetectionProcessing,
     gpu: Option<Arc<Context>>,
 ) -> ImageResult<Engine> {
     let (detection, recognition) = prepare_pair(
         thread_budget > 1,
-        || load_compiled(detector, "detection", gpu.clone()),
-        || load_compiled(recognizer, "recognition", gpu.clone()),
+        || load_model(detector, "detection"),
+        || load_model(recognizer, "recognition"),
     )?;
     let bytes = std::fs::read(dictionary)
         .map_err(|error| ImageError::caused_by(ErrorKind::Io, "dictionary", error))?;
     let dictionary = Arc::new(Dictionary::from_utf8(&bytes)?);
-    let cpu = Arc::new(CpuContext::new(thread_budget.max(1))?);
-    let detector = DetectorPlan::new(
-        detection,
-        DetectorOptions::default(),
-        ExecutionLimits::default(),
-    )?;
-    let extractor = OrientedLinePlan::new(detector, None, LineOptions::default())?;
-    let recognizer = RecognizerPlan::new(
-        recognition,
-        dictionary,
-        RecognizerOptions {
-            min_width: processing.recognition_width(),
-            score_mode: RecognitionScoreMode::Probability,
-            ..Default::default()
-        },
-        ExecutionLimits::default(),
-    )?;
-    let plan = OcrPlan::new(
-        extractor,
-        recognizer,
-        OcrOptions::default(),
-        cpu,
-        CpuOptions::default(),
-        1,
-    )?;
-    Ok(Engine {
-        request: plan.request()?,
-        policy,
-    })
-}
-
-fn load_compiled(
-    path: &Path,
-    stage: &str,
-    gpu: Option<Arc<Context>>,
-) -> ImageResult<CompiledModel> {
-    let model = Model::load_path(path)
-        .map_err(|error| ImageError::caused_by(error.kind(), format!("{stage} model"), error))?;
     let target = if gpu.is_some() {
         ExecutionTarget::Gpu
     } else {
         ExecutionTarget::Cpu
     };
+    let mut builder = OcrModelSet::new(detection, recognition, dictionary, None)
+        .builder()
+        .cpu_context(Arc::new(CpuContext::new(thread_budget.max(1))?))
+        .execution_target(target)
+        .direction_classification(false);
     #[cfg(feature = "gpu")]
-    let options = CompilerOptions {
-        gpu,
-        ..Default::default()
-    };
-    #[cfg(not(feature = "gpu"))]
-    let options = CompilerOptions::default();
-    Compiler::new(options)
-        .compile(Arc::new(model), CompileOptions::default(), target)
-        .map_err(|error| ImageError::caused_by(error.kind(), format!("{stage} compilation"), error))
+    if let Some(gpu) = gpu {
+        builder = builder.gpu_context(gpu);
+    }
+    if processing == TextDetectionProcessing::SpeedFirst {
+        builder = builder.recognizer_options(RecognizerOptions {
+            min_width: 48,
+            score_mode: RecognitionScoreMode::Probability,
+            ..Default::default()
+        });
+    }
+    Ok(Engine {
+        request: builder.build()?.request()?,
+    })
+}
+
+fn load_model(path: &Path, stage: &str) -> ImageResult<Arc<Model>> {
+    Model::load_path(path)
+        .map(Arc::new)
+        .map_err(|error| ImageError::caused_by(error.kind(), format!("{stage} model"), error))
 }
 
 fn prepare_pair<A: Send, B>(
@@ -294,24 +248,5 @@ mod tests {
             source_quad(quad, 130, 70),
             [[5., 4.], [130., 13.05], [130., 66.], [0., 70.]]
         );
-    }
-
-    #[test]
-    fn resize_limits_preserve_policy_boundaries() {
-        for (width, expected) in [
-            (959, 960),
-            (960, 1500),
-            (1499, 1500),
-            (1500, 2000),
-            (3840, 2000),
-        ] {
-            assert_eq!(
-                detector_limit(DetectorResizePolicy::Max, width, 100),
-                expected
-            );
-            assert_eq!(detector_limit(DetectorResizePolicy::Min, width, 100), 736);
-        }
-        assert_eq!(TextDetectionProcessing::default().recognition_width(), 320);
-        assert_eq!(TextDetectionProcessing::SpeedFirst.recognition_width(), 48);
     }
 }

@@ -647,11 +647,6 @@ QVariant BuiltInSettingsBackend::selectValue(SettingsSelectBinding binding) cons
             .configuration()
             .value(QStringLiteral("text_recognition/model_type"))
             .toString();
-    case SettingsSelectBinding::OcrDetectorResizePolicy:
-        return storage::ApplicationStorage::instance()
-            .configuration()
-            .value(QStringLiteral("text_recognition/detector_resize_policy"))
-            .toString();
     case SettingsSelectBinding::OcrTextDetectionProcessing:
         return storage::ApplicationStorage::instance()
                            .configuration()
@@ -917,9 +912,6 @@ bool BuiltInSettingsBackend::applySelectValue(SettingsSelectBinding binding,
     case SettingsSelectBinding::OcrModelType:
         return storage::ApplicationStorage::instance().configuration().setValue(
             QStringLiteral("text_recognition/model_type"), value.toString());
-    case SettingsSelectBinding::OcrDetectorResizePolicy:
-        return storage::ApplicationStorage::instance().configuration().setValue(
-            QStringLiteral("text_recognition/detector_resize_policy"), value.toString());
     case SettingsSelectBinding::OcrTextDetectionProcessing:
         return storage::ApplicationStorage::instance().configuration().setValue(
             QStringLiteral("text_recognition/text_detection_processing"), value.toString());
@@ -3443,9 +3435,6 @@ SettingsResetResult BuiltInSettingsBackend::resetSectionWithResults(SettingsSect
             {QStringLiteral("text_recognition/model_type"),
              storage::ConfigurationSchema::defaultValue(
                  QStringLiteral("text_recognition/model_type"))},
-            {QStringLiteral("text_recognition/detector_resize_policy"),
-             storage::ConfigurationSchema::defaultValue(
-                 QStringLiteral("text_recognition/detector_resize_policy"))},
             {QStringLiteral("text_recognition/text_detection_processing"),
              storage::ConfigurationSchema::defaultValue(
                  QStringLiteral("text_recognition/text_detection_processing"))},

@@ -309,7 +309,7 @@ int runOcrLifecycleChild() {
             QDataStream output(&ready, QIODevice::WriteOnly);
             output.setByteOrder(QDataStream::LittleEndian);
             output << quint8(1) << quint32(0) << quint32(5);
-            output.writeRawData("1.4.0", 5);
+            output.writeRawData("1.5.0", 5);
             output << quint32(8);
             reply(2, 0, ready);
         } else if (kind == 19) {
@@ -816,45 +816,34 @@ void ocrProcessLifecycleTests() {
         require(detachIndex >= 0 && detachIndex < lastPrepare &&
                     countEvent("release") == initialReleases,
                 "hot reset must detach the image mapping and preserve compiled models");
-        require(
-            before.at(lastPrepare).startsWith("prepare 0000"),
-            "default warm session must request max-side detection and accuracy-first processing");
-        configuration.detectorResizePolicy = ScreenshotOcrDetectorResizePolicy::Min;
+        require(before.at(lastPrepare).startsWith("prepare 0000"),
+                "default warm session must send the reserved byte and accuracy-first processing");
+        configuration.textDetectionProcessing = ScreenshotOcrTextDetectionProcessing::SpeedFirst;
         service.setRuntimeConfiguration(configuration);
         require(waitUntil([&] { return countEvent("prepare ") == initialLoads + 3; }),
-                "detector scaling change must rebuild idle warm-up");
+                "processing change must rebuild the idle warm session");
+        require(countEvent("release") == initialReleases + 1,
+                "configuration changes must release the previous model session before loading");
         QByteArray latestPrepare;
         for (const auto& event : events()) {
             if (event.startsWith("prepare "))
                 latestPrepare = event;
         }
-        require(latestPrepare.startsWith("prepare 0100") && service.processId() == warmedPid,
-                "the min-side detector policy must reach the existing worker process");
-        require(countEvent("release") == initialReleases + 1,
-                "configuration changes must release the previous model session before loading");
-        configuration.textDetectionProcessing = ScreenshotOcrTextDetectionProcessing::SpeedFirst;
-        service.setRuntimeConfiguration(configuration);
-        require(waitUntil([&] { return countEvent("prepare ") == initialLoads + 4; }),
-                "processing change must rebuild the idle warm session");
-        for (const auto& event : events()) {
-            if (event.startsWith("prepare "))
-                latestPrepare = event;
-        }
-        require(latestPrepare.startsWith("prepare 0101") && service.processId() == warmedPid,
-                "speed-first processing must reach the existing worker without changing detection");
+        require(latestPrepare.startsWith("prepare 0001") && service.processId() == warmedPid,
+                "speed-first processing must reach the existing worker");
         service.setTextDetectionProcessing(ScreenshotOcrTextDetectionProcessing::SpeedFirst);
         QCoreApplication::processEvents();
-        require(countEvent("prepare ") == initialLoads + 4,
+        require(countEvent("prepare ") == initialLoads + 3,
                 "reapplying the selected processing mode must preserve the existing warm session");
         configuration.textDetectionProcessing = ScreenshotOcrTextDetectionProcessing::AccuracyFirst;
         service.setTextDetectionProcessing(configuration.textDetectionProcessing);
-        require(waitUntil([&] { return countEvent("prepare ") == initialLoads + 5; }),
+        require(waitUntil([&] { return countEvent("prepare ") == initialLoads + 4; }),
                 "restoring accuracy first must rebuild the warm session");
         for (const auto& event : events()) {
             if (event.startsWith("prepare "))
                 latestPrepare = event;
         }
-        require(latestPrepare.startsWith("prepare 0100") && service.processId() == warmedPid,
+        require(latestPrepare.startsWith("prepare 0000") && service.processId() == warmedPid,
                 "accuracy-first processing must be restored without replacing the worker");
         configuration.modelHotStart = false;
         const int released = countEvent("release");
