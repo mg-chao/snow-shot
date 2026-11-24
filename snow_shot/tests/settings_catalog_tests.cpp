@@ -201,7 +201,8 @@ class CatalogTranslator final : public QTranslator {
   public:
     QString translate(const char* context, const char* sourceText, const char*,
                       int) const override {
-        if (QString::fromLatin1(context) != QStringLiteral("SettingsCatalog")) {
+        if (QString::fromLatin1(context) != QStringLiteral("SettingsCatalog") &&
+            QString::fromLatin1(context) != QStringLiteral("MouseOperations")) {
             return {};
         }
         const QString source = QString::fromUtf8(sourceText);
@@ -387,32 +388,26 @@ void screenshotInteractionCatalog() {
     const auto& catalog = settings::builtInSettingsRegistry().catalog();
     require(catalog.validationErrors().isEmpty(), "screenshot interaction settings must validate");
     const auto* functionPage = catalog.page(QStringLiteral("screenshots"));
-    const std::pair<QString, QString> pointerActions[] = {
-        {QStringLiteral("copy"), QStringLiteral("Copy to clipboard")},
-        {QStringLiteral("save"), QStringLiteral("Save as file")},
-        {QStringLiteral("quick_save"), QStringLiteral("Quick save")},
-        {QStringLiteral("pin"), QStringLiteral("Pin to screen")},
-        {QStringLiteral("ocr"), QStringLiteral("Text recognition")},
-        {QStringLiteral("ocr_copy"), QStringLiteral("Copy after text recognition")},
-        {QStringLiteral("cancel"), QStringLiteral("Cancel screenshot")},
-        {QStringLiteral("none"), QStringLiteral("None")},
-    };
-    for (const QString& itemId : {QStringLiteral("screenshot.double-click-action"),
-                                  QStringLiteral("screenshot.middle-mouse-button-action")}) {
-        const auto* item = catalog.item(
-            {QStringLiteral("screenshots"), QStringLiteral("screenshot-settings"), itemId});
-        require(item != nullptr, "Screenshots must expose both pointer action settings");
-        const auto& options = std::get<settings::SettingsSelectDefinition>(item->payload).options;
-        require(options.size() == 8, "both pointer action settings must expose eight choices");
-        for (qsizetype index = 0; index < options.size(); ++index) {
-            require(options.at(index).value == pointerActions[index].first &&
-                        options.at(index).label.translated() == pointerActions[index].second &&
-                        storage::ConfigurationSchema::normalize(item->configurationKey,
-                                                                options.at(index).value.toString())
-                            .valid,
-                    "pointer actions must share ordered, translated, schema-supported choices");
+    const auto* page = catalog.page(QStringLiteral("mouse-operations"));
+    require(page && page->sections.size() == 2 &&
+                page->sections[0].id == QStringLiteral("screenshots") &&
+                page->sections[1].id == QStringLiteral("pin-to-screen") &&
+                page->sections[0].items.size() == 7 && page->sections[1].items.size() == 22,
+            "mouse operations groups configurable actions in category order");
+    for (const auto& section : page->sections) {
+        require(section.itemLayout == settings::SettingsSectionItemLayout::TwoColumnGrid,
+                "mouse actions share the two-column shortcut layout");
+        for (const auto& item : section.items) {
+            const auto action =
+                std::get<settings::SettingsMouseOperationDefinition>(item.payload).action;
+            require(!item.configurationKey.isEmpty() &&
+                        item.configurationKey == snow_shot::mouse::definition(action).key() &&
+                        item.title.translated() == snow_shot::mouse::title(action),
+                    "each row uses its action definition");
         }
     }
+    require(!settings::builtInSettingsRegistry().field(QStringLiteral("mouse.screenshot.back")),
+            "the fixed Back action has no settings field");
     const auto* smartSelection =
         catalog.item({QStringLiteral("screenshots"), QStringLiteral("screenshot-settings"),
                       QStringLiteral("screenshot.smart-selection")});
@@ -600,9 +595,9 @@ void builtInCatalogIsCompleteAndValid() {
             }) != screenshotInterface->items.cend(),
         "selection center guide color must appear immediately below cursor guide color");
 #ifdef Q_OS_MACOS
-    require(catalog.pages().size() == 18, "macOS includes Account and App Permissions");
+    require(catalog.pages().size() == 19, "macOS includes Account and App Permissions");
 #else
-    require(catalog.pages().size() == 17, "other platforms include Account and pin management");
+    require(catalog.pages().size() == 18, "other platforms include Account and pin management");
 #endif
 
     for (const auto& pageId :
@@ -682,10 +677,8 @@ void builtInCatalogIsCompleteAndValid() {
         catalog.section(QStringLiteral("screenshots"), QStringLiteral("screenshot-settings"));
     require(quickModificationSection &&
                 quickModificationSection->title.translated() == QStringLiteral("Interaction") &&
-                quickModificationSection->items.at(4).id ==
-                    QStringLiteral("screenshot.middle-mouse-button-action") &&
-                quickModificationSection->items.at(5).id == quickModification->id,
-            "quick selection modification must immediately follow middle mouse button action");
+                quickModificationSection->items.at(3).id == quickModification->id,
+            "quick selection modification stays in screenshot interaction");
     screenshotInteractionCatalog();
     const auto* selectionResizeMode =
         catalog.item({QStringLiteral("screenshots"), QStringLiteral("screenshot-settings"),
@@ -770,13 +763,13 @@ void builtInCatalogIsCompleteAndValid() {
         }
     }
 #ifdef Q_OS_MACOS
-    require(sectionCount == 53, "macOS includes permissions and merged storage and desktop groups");
+    require(sectionCount == 55, "macOS includes permissions and merged storage and desktop groups");
 #elif defined(Q_OS_WIN)
     require(
-        sectionCount == 54,
+        sectionCount == 56,
         "Windows includes the context menu shortcut category with capture and recording groups");
 #else
-    require(sectionCount == 53,
+    require(sectionCount == 55,
             "catalog includes capture and recording groups with merged storage and desktop groups");
 #endif
     // Verify platform membership directly; shared features have their own binding and metadata
@@ -1360,68 +1353,13 @@ void builtInCatalogIsCompleteAndValid() {
                         .buttonLabel.translated() == QStringLiteral("Highlight color preset %1"),
             "highlight presets must immediately follow fill presets with accessible slot labels");
 
-    const auto* pinDoubleClick =
-        catalog.item({QStringLiteral("pinned-windows"), QStringLiteral("pin-to-screen-settings"),
-                      QStringLiteral("pin-to-screen.double-click-action")});
-    require(pinDoubleClick != nullptr &&
-                pinDoubleClick->title.translated() == QStringLiteral("Double-click action"),
-            "Pin to Screen must expose Double-click Action");
-    const auto& pinSelect = std::get<settings::SettingsSelectDefinition>(pinDoubleClick->payload);
-    require(pinSelect.binding == settings::SettingsSelectBinding::PinDoubleClickAction &&
-                pinSelect.options.size() == 7 &&
-                pinSelect.options[0].value == QStringLiteral("none") &&
-                pinSelect.options[0].label.translated() == QStringLiteral("None") &&
-                pinSelect.options[1].value == QStringLiteral("reset_zoom") &&
-                pinSelect.options[1].label.translated() == QStringLiteral("Reset zoom") &&
-                pinSelect.options[2].value == QStringLiteral("thumbnail_mode") &&
-                pinSelect.options[2].label.translated() == QStringLiteral("Thumbnail mode") &&
-                pinSelect.options[3].value == QStringLiteral("hide_to_top") &&
-                pinSelect.options[3].label.translated() == QStringLiteral("Hide at top") &&
-                pinSelect.options[4].value == QStringLiteral("show_text_recognition_results") &&
-                pinSelect.options[4].label.translated() ==
-                    QStringLiteral("Show text recognition results") &&
-                pinSelect.options[5].value == QStringLiteral("close") &&
-                pinSelect.options[5].label.translated() == QStringLiteral("Close") &&
-                pinSelect.options[6].value == QStringLiteral("destroy") &&
-                pinSelect.options[6].label.translated() == QStringLiteral("Destroy"),
-            "pinned double-click options must preserve the specified order, labels and values");
     require(
-        catalog.section(QStringLiteral("pinned-windows"), QStringLiteral("pin-to-screen-settings"))
-                ->items.at(1)
-                .id == pinDoubleClick->id,
-        "pinned double-click must follow mouse wheel zoom mode");
-
-    const auto* pinMiddleClick =
-        catalog.item({QStringLiteral("pinned-windows"), QStringLiteral("pin-to-screen-settings"),
-                      QStringLiteral("pin-to-screen.middle-mouse-button-action")});
-    require(pinMiddleClick != nullptr &&
-                pinMiddleClick->title.translated() == QStringLiteral("Middle mouse button action"),
-            "Pin to Screen must expose Middle Mouse Button Action");
-    const auto& middleSelect =
-        std::get<settings::SettingsSelectDefinition>(pinMiddleClick->payload);
-    require(middleSelect.binding == settings::SettingsSelectBinding::PinMiddleClickAction &&
-                middleSelect.options.size() == 7 &&
-                middleSelect.options[0].value == QStringLiteral("none") &&
-                middleSelect.options[0].label.translated() == QStringLiteral("None") &&
-                middleSelect.options[1].value == QStringLiteral("reset_zoom") &&
-                middleSelect.options[1].label.translated() == QStringLiteral("Reset zoom") &&
-                middleSelect.options[2].value == QStringLiteral("thumbnail_mode") &&
-                middleSelect.options[2].label.translated() == QStringLiteral("Thumbnail mode") &&
-                middleSelect.options[3].value == QStringLiteral("hide_to_top") &&
-                middleSelect.options[3].label.translated() == QStringLiteral("Hide at top") &&
-                middleSelect.options[4].value == QStringLiteral("show_text_recognition_results") &&
-                middleSelect.options[4].label.translated() ==
-                    QStringLiteral("Show text recognition results") &&
-                middleSelect.options[5].value == QStringLiteral("close") &&
-                middleSelect.options[5].label.translated() == QStringLiteral("Close") &&
-                middleSelect.options[6].value == QStringLiteral("destroy") &&
-                middleSelect.options[6].label.translated() == QStringLiteral("Destroy"),
-            "pinned middle-click options must preserve the specified order, labels and values");
-    require(
-        catalog.section(QStringLiteral("pinned-windows"), QStringLiteral("pin-to-screen-settings"))
-                ->items.at(2)
-                .id == pinMiddleClick->id,
-        "pinned middle-click must follow double-click action");
+        !catalog.item({QStringLiteral("pinned-windows"), QStringLiteral("pin-to-screen-settings"),
+                       QStringLiteral("pin-to-screen.double-click-action")}) &&
+            !catalog.item({QStringLiteral("pinned-windows"),
+                           QStringLiteral("pin-to-screen-settings"),
+                           QStringLiteral("pin-to-screen.middle-mouse-button-action")}),
+        "only Mouse operations configures pin click gestures");
 
     const auto* storagePage = catalog.page(QStringLiteral("files-history"));
     const auto* imageFormat =
@@ -1692,11 +1630,11 @@ void builtInCatalogIsCompleteAndValid() {
                 settingsGroup->pages.at(3).pageId == QStringLiteral("screenshots"),
             "Account follows General, with Appearance and Screenshots after it");
 #ifdef Q_OS_MACOS
-    constexpr int expectedSettingsPages = 12;
+    constexpr int expectedSettingsPages = 13;
     require(settingsGroup->pages.constLast().pageId == QStringLiteral("app-permissions"),
             "macOS App Permissions follows System settings");
 #else
-    constexpr int expectedSettingsPages = 11;
+    constexpr int expectedSettingsPages = 12;
 #endif
     require(settingsGroup->title.translated() == QStringLiteral("Settings") &&
                 settingsGroup->pages.size() == expectedSettingsPages &&
@@ -1705,9 +1643,10 @@ void builtInCatalogIsCompleteAndValid() {
                 settingsGroup->pages.at(6).pageId ==
                     QStringLiteral("text-recognition-translation") &&
                 settingsGroup->pages.at(7).pageId == QStringLiteral("shortcuts-mouse") &&
-                settingsGroup->pages.at(8).pageId == QStringLiteral("desktop-tools") &&
-                settingsGroup->pages.at(9).pageId == QStringLiteral("files-history") &&
-                settingsGroup->pages.at(10).pageId == QStringLiteral("connections-services"),
+                settingsGroup->pages.at(8).pageId == QStringLiteral("mouse-operations") &&
+                settingsGroup->pages.at(9).pageId == QStringLiteral("desktop-tools") &&
+                settingsGroup->pages.at(10).pageId == QStringLiteral("files-history") &&
+                settingsGroup->pages.at(11).pageId == QStringLiteral("connections-services"),
             "Settings navigation must group feature controls and shared preferences predictably");
     const auto* applicationShortcutsPage = catalog.page(QStringLiteral("shortcuts-mouse"));
     require(applicationShortcutsPage != nullptr &&
@@ -2284,7 +2223,7 @@ void builtInCatalogIsCompleteAndValid() {
         pinPage != nullptr && pinPage->sections.size() == 4 &&
             pinPage->sections.at(0).id == QStringLiteral("pin-to-screen-settings") &&
             pinPage->sections.at(0).title.translated() == QStringLiteral("Interaction") &&
-            pinPage->sections.at(0).items.size() == 15 &&
+            pinPage->sections.at(0).items.size() == 13 &&
             pinPage->sections.at(1).id == pinSection.id &&
             pinSection.title.translated() == QStringLiteral("Window interface") &&
             pinPage->sections.at(3).id == QStringLiteral("pin-to-screen-toolbar") &&
@@ -3316,13 +3255,13 @@ void searchIndexIsGeneratedAndRanked() {
             "search navigates directly to the selected text shortcut under Other");
     for (const QString& label : {QStringLiteral("Reset zoom"), QStringLiteral("Destroy")}) {
         const auto actions = index.search(label);
-        for (const QString& itemId : {QStringLiteral("pin-to-screen.double-click-action"),
-                                      QStringLiteral("pin-to-screen.middle-mouse-button-action")}) {
-            require(
-                std::any_of(actions.cbegin(), actions.cend(),
-                            [&](const auto& result) { return result.location.itemId == itemId; }),
-                "search must find both pinned mouse selectors by their shared action labels");
-        }
+        require(std::any_of(actions.cbegin(), actions.cend(),
+                            [](const auto& result) {
+                                return result.location.pageId ==
+                                           QStringLiteral("mouse-operations") &&
+                                       result.location.sectionId == QStringLiteral("pin-to-screen");
+                            }),
+                "search finds the pinned mouse action by name");
     }
     const auto translation = index.search(QStringLiteral("original image translation"));
     require(!translation.isEmpty() && translation.constFirst().location.itemId ==
@@ -3502,16 +3441,13 @@ void searchIndexRebuildsLocalizedFields() {
                                 return result.id == QStringLiteral("item:interface.theme");
                             }),
             "localized page titles rank first while localized item aliases remain searchable");
-    for (const QString& query :
-         {QStringLiteral("Localized Middle Action"), QStringLiteral("Localized Zoom Reset")}) {
-        const auto result = index.search(query);
-        require(std::any_of(result.cbegin(), result.cend(),
-                            [](const auto& item) {
-                                return item.location.itemId ==
-                                       QStringLiteral("pin-to-screen.middle-mouse-button-action");
-                            }),
-                "language changes must refresh middle-click titles and options in search");
-    }
+    const auto zoom = index.search(QStringLiteral("Localized Zoom Reset"));
+    require(std::any_of(zoom.cbegin(), zoom.cend(),
+                        [](const auto& item) {
+                            return item.location.itemId ==
+                                   QStringLiteral("mouse.pinned.reset_zoom");
+                        }),
+            "language changes refresh mouse action names in search");
     for (const QString& query : {QStringLiteral("Localized Automatic Selection"),
                                  QStringLiteral("Localized Child Target")}) {
         const auto results = index.search(query);
@@ -3520,11 +3456,12 @@ void searchIndexRebuildsLocalizedFields() {
                 "language changes must refresh smart-selection titles and options");
     }
     const auto cancellation = index.search(QStringLiteral("Localized Capture Cancellation"));
-    for (const auto& id : {QStringLiteral("screenshot.double-click-action"),
-                           QStringLiteral("screenshot.middle-mouse-button-action")})
-        require(std::any_of(cancellation.begin(), cancellation.end(),
-                            [&](const auto& result) { return result.location.itemId == id; }),
-                "both mouse actions must index the translated cancellation option");
+    require(std::any_of(cancellation.begin(), cancellation.end(),
+                        [](const auto& result) {
+                            return result.location.itemId ==
+                                   QStringLiteral("mouse.screenshot.cancel");
+                        }),
+            "screenshot cancellation is searchable in the new category");
     QCoreApplication::removeTranslator(&translator);
     index.rebuild();
     require(index.search(QStringLiteral("localized theme")).isEmpty(),

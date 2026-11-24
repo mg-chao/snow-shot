@@ -1,8 +1,10 @@
 #include "../src/platform/macos/windowshortcutinput_p.h"
+#include "snow_shot/presentation/mouseoperationinput.h"
 
 #import <AppKit/AppKit.h>
 
 #include <QApplication>
+#include <QAbstractEventDispatcher>
 #include <QKeyEvent>
 #include <QWidget>
 
@@ -107,11 +109,44 @@ void activationCanDestroyTheFilter() {
     require(filterKey(*filter, NSEventTypeKeyDown, NSEventModifierFlagControl) && filter == nullptr,
             "shortcut activation may destroy the owning manager and native filter safely");
 }
+
+void queuedMouseInputRetainsItsPhysicalButton() {
+    snow_shot::mouse::initializeNativeButtonInput();
+    const auto observe = [](NSEventType type, double timestamp, NSInteger windowNumber) {
+        NSEvent* native = [NSEvent mouseEventWithType:type
+                                             location:NSZeroPoint
+                                        modifierFlags:NSEventModifierFlagControl
+                                            timestamp:timestamp
+                                         windowNumber:windowNumber
+                                              context:nil
+                                          eventNumber:0
+                                           clickCount:1
+                                             pressure:1];
+        require(!QAbstractEventDispatcher::instance()->filterNativeEvent(
+                    QByteArrayLiteral("mac_generic_NSEvent"), native, nullptr),
+                "native mouse observation leaves Qt's event delivery in place");
+    };
+    observe(NSEventTypeLeftMouseDown, 1, 42);
+    observe(NSEventTypeRightMouseDown, 1, 43);
+    observe(NSEventTypeRightMouseDown, 2, 42);
+
+    QMouseEvent translated(QEvent::MouseButtonPress, QPointF{}, QPointF{}, Qt::RightButton,
+                           Qt::RightButton, Qt::MetaModifier);
+    using snow_shot::platform::macos::physicalMousePressButton;
+    translated.setTimestamp(1000);
+    require(physicalMousePressButton(translated, 42) == Qt::LeftButton &&
+                physicalMousePressButton(translated, 43) == Qt::RightButton,
+            "queued Qt presses keep their physical button even after later native events");
+    translated.setTimestamp(2000);
+    require(physicalMousePressButton(translated, 42) == Qt::RightButton,
+            "a physical Control-right press retains its own binding");
+}
 } // namespace
 
 int main(int argc, char** argv) {
     QApplication application(argc, argv);
     nativeInputPreservesDispatchAndPressOwnership();
     activationCanDestroyTheFilter();
+    queuedMouseInputRetainsItsPhysicalButton();
     return 0;
 }

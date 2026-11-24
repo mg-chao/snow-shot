@@ -1373,8 +1373,12 @@ void configuredShortcutsRespectCapabilities() {
         std::optional<ScreenshotClipboardContentSnapshot> snapshot(qreal) override {
             return {};
         }
-        void setMimeData(std::unique_ptr<QMimeData>) override {
+        ScreenshotClipboardCommitHandle
+        publish(QObject*, std::unique_ptr<QMimeData>, ScreenshotClipboardService::PublicationId,
+                ScreenshotClipboardService::CommitCompletion done) override {
             ++writes;
+            done({});
+            return {};
         }
     };
     auto source = std::make_shared<FakeSource>();
@@ -1406,6 +1410,24 @@ void configuredShortcutsRespectCapabilities() {
                 "configured forbidden shortcuts cannot close, thumbnail, hide, copy original, or "
                 "edit live pins");
     }
+    auto& store = snow_shot::storage::ApplicationStorage::instance().configuration();
+    const auto destroyKey = snow_shot::mouse::definition(snow_shot::mouse::Action::Destroy).key();
+    const auto restoreMouse =
+        qScopeGuard([&, old = store.value(destroyKey)] { store.setValue(destroyKey, old); });
+    require(store.setValue(destroyKey, snow_shot::mouse::encode(
+                                           {snow_shot::mouse::Kind::Click, Qt::BackButton})),
+            "bind a mouse button to Destroy");
+    const QPoint local = window.rect().center();
+    for (auto type : {QEvent::MouseButtonPress, QEvent::MouseButtonRelease}) {
+        QMouseEvent event(type, local, window.mapToGlobal(local), Qt::BackButton,
+                          type == QEvent::MouseButtonPress ? Qt::BackButton : Qt::NoButton,
+                          Qt::NoModifier);
+        QApplication::sendEvent(&window, &event);
+    }
+    QApplication::processEvents();
+    require(window.isVisible() && source->shutdowns == 0 &&
+                !window.findChild<QObject*>(QStringLiteral("screenshotPinnedDestroyConfirmation")),
+            "the bound Destroy click respects live pin capabilities");
     source->setState(State::Minimized);
     const int requests = source->requests;
     key(Qt::Key_F19);

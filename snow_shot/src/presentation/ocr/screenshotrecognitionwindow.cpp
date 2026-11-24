@@ -1,6 +1,7 @@
 #include "snow_shot/presentation/screenshotrecognitionwindow.h"
 #include "snow_shot/presentation/canvasstatusreadout.h"
 #include "snow_shot/presentation/crosshaircursor.h"
+#include "snow_shot/presentation/screenshotclipboardservice.h"
 #include "snow_shot/presentation/screenshotocrtextlayout.h"
 #include <QAbstractTextDocumentLayout>
 #include <QAbstractItemDelegate>
@@ -2451,6 +2452,11 @@ bool ScreenshotRecognitionWindow::copyVisibleContentToClipboard() {
     if (clipboard == nullptr) {
         return false;
     }
+    const auto copyText = [clipboard](const QString& text) {
+        static_cast<void>(ScreenshotClipboardService::reservePublication());
+        clipboard->setText(text);
+        return true;
+    };
 
     const QPointer<ScreenshotRecognitionWindow> lifetime(this);
     const auto owner = m_sessionOwner;
@@ -2472,11 +2478,13 @@ bool ScreenshotRecognitionWindow::copyVisibleContentToClipboard() {
         auto mime = provider();
         if (!lifetime || !lifetime->ownsAttachment(owner, token) || !mime)
             return false;
+        static_cast<void>(ScreenshotClipboardService::reservePublication());
         clipboard->setMimeData(mime.release());
         return true;
     }
 
     if (auto selected = textSelectionClipboardMimeData()) {
+        static_cast<void>(ScreenshotClipboardService::reservePublication());
         clipboard->setMimeData(selected.release());
         return true;
     }
@@ -2494,10 +2502,9 @@ bool ScreenshotRecognitionWindow::copyVisibleContentToClipboard() {
         const QTextCursor cursor = m_textEditor->textCursor();
 #if SNOW_SHOT_ENABLE_LATEX_RECOGNITION
         if (m_latexDocument) {
-            clipboard->setText(cursor.hasSelection() ? currentLatexSource(cursor.selectionStart(),
-                                                                          cursor.selectionEnd())
-                                                     : currentLatexSource());
-            return true;
+            return copyText(cursor.hasSelection()
+                                ? currentLatexSource(cursor.selectionStart(), cursor.selectionEnd())
+                                : currentLatexSource());
         }
 #endif
         text = cursor.hasSelection() ? QTextDocumentFragment(cursor).toPlainText()
@@ -2505,8 +2512,7 @@ bool ScreenshotRecognitionWindow::copyVisibleContentToClipboard() {
     }
 #if SNOW_SHOT_ENABLE_QR_RECOGNITION || SNOW_SHOT_ENABLE_LATEX_RECOGNITION
     else if (m_qrBrowser != nullptr) {
-        clipboard->setText(m_qrSource);
-        return true;
+        return copyText(m_qrSource);
     }
 #endif
     else if (m_ocrPresentation != nullptr) {
@@ -2525,14 +2531,14 @@ bool ScreenshotRecognitionWindow::copyVisibleContentToClipboard() {
         return false;
     }
     text.replace(QChar::ParagraphSeparator, QLatin1Char('\n'));
-    clipboard->setText(text);
-    return true;
+    return copyText(text);
 }
 
 bool ScreenshotRecognitionWindow::activeContentOwnsContextMenu(const QObject* watched) const {
     const auto* widget = qobject_cast<const QWidget*>(watched);
     return widget != nullptr &&
-           (focusInside(m_conversionView, widget) || focusInside(m_qrBrowser, widget) ||
+           ((widget == this && !m_showOriginalImage && m_ocrPresentation != nullptr) ||
+            focusInside(m_conversionView, widget) || focusInside(m_qrBrowser, widget) ||
             (m_textEditorEditingEnabled && focusInside(m_textEditor, widget)) ||
             focusInside(m_tableEditor, widget));
 }
@@ -2655,7 +2661,10 @@ void ScreenshotRecognitionWindow::populateTextEditorContextMenu(
             static_cast<void>(copyVisibleContentToClipboard());
             return;
         }
-        m_textEditor->copy();
+        if (m_textEditor->textCursor().hasSelection()) {
+            static_cast<void>(ScreenshotClipboardService::reservePublication());
+            m_textEditor->copy();
+        }
     });
     connect(cut, &QAction::triggered, m_textEditor, &QTextEdit::cut);
     connect(paste, &QAction::triggered, m_textEditor, &QTextEdit::paste);

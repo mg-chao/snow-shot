@@ -110,6 +110,7 @@ class ScreenshotRecognitionWindow final : public QWidget {
     void setEmbeddedPointerEventHandler(std::function<bool(QObject*, QEvent*)> handler) {
         m_embeddedPointerEventHandler = std::move(handler);
     }
+    [[nodiscard]] bool activeContentOwnsContextMenu(const QObject* watched) const;
     enum class PresentationMode {
         TopLevelWindow,
         EmbeddedChild,
@@ -296,7 +297,7 @@ class ScreenshotRecognitionWindow final : public QWidget {
     [[nodiscard]] QString latexPreviewStatus() const;
 #endif
     void installSelectionResizeEventFilters(QWidget* widget);
-    [[nodiscard]] bool activeContentOwnsContextMenu(const QObject* watched) const;
+
     void showOcrContextMenu(const QPoint& globalPosition);
     void showQrContextMenu(const QPoint& globalPosition);
     void showTextEditorContextMenu(const QPoint& globalPosition);

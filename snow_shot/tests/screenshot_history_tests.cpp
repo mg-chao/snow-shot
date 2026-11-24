@@ -2184,8 +2184,8 @@ void manualSelectionUsesSharedMarqueeTransaction() {
     require((handler.handleRightClick(nullptr, {}) == ScreenshotOverlayRightClickResult::Handled) &&
                 handler.handleWheel(nullptr, wheelInput({0, 120})),
             "external drags must consume ordinary right-click and wheel commands");
-    handler.handleUnhandledMiddleClick(nullptr, {});
-    handler.handleUnhandledLeftDoubleClick();
+    handler.handleMouseCompletion(snow_shot::mouse::Action::ShotPin, nullptr, {});
+    handler.handleMouseCompletion(snow_shot::mouse::Action::ShotCopy, nullptr, {});
     require(!selection.hasPixelSelection() && !interaction.dragging() &&
                 selectionConfirmedCount == 0 && handler.shouldBlockUnhandledKeyInput(),
             "ordinary overlay input must not create or confirm an external drag selection");
@@ -2632,12 +2632,7 @@ void eraserWheelUsesBrushCreationWidthOnly() {
 }
 
 void completionGesturesUseSharedEligibilityAcrossTools() {
-    const storage::ScreenshotSettings settings;
-    const QString originalDoubleClick = settings.doubleClickAction();
-    const QString originalMiddleClick = settings.middleMouseButtonAction();
-    require(settings.setDoubleClickAction(QStringLiteral("copy")) &&
-                settings.setMiddleMouseButtonAction(QStringLiteral("save")),
-            "failed to configure completion gestures");
+    using enum snow_shot::mouse::Action;
     ScreenshotCaptureState captureState;
     ScreenshotDisplaySession displays;
     ScreenshotGeometryMapper geometry;
@@ -2671,6 +2666,7 @@ void completionGesturesUseSharedEligibilityAcrossTools() {
         dispatched.append(actionId);
         return true;
     };
+    actions.cancelCapture = [&] { dispatched.append(QStringLiteral("cancel_screenshot")); };
     actions.copySelectionToClipboard = [&]() { ++directCopies; };
     ScreenshotOverlayInputHandler handler({
         captureState,
@@ -2682,55 +2678,31 @@ void completionGesturesUseSharedEligibilityAcrossTools() {
         std::move(actions),
     });
 
-    handler.handleUnhandledLeftDoubleClick();
-    handler.handleUnhandledMiddleClick(nullptr, {});
+    handler.handleMouseCompletion(ShotCopy, nullptr, {});
+    handler.handleMouseCompletion(ShotSave, nullptr, {});
     require(dispatched.isEmpty(),
             "completion gestures must not run while the initial selection is active");
 
     selection.setSelectionRect(QRectF(1, 2, 20, 21));
     interaction.confirmSelection();
-    handler.handleUnhandledLeftDoubleClick();
+    handler.handleMouseCompletion(ShotCopy, nullptr, {});
     require(dispatched == QStringList{QStringLiteral("copy_to_clipboard")},
             "double-click must use the Copy toolbar command for the confirmed Move tool");
 
     interaction.setCanvasTool(ScreenshotActiveTool::Shape);
-    handler.handleUnhandledMiddleClick(nullptr, {});
+    handler.handleMouseCompletion(ShotSave, nullptr, {});
     require(dispatched ==
                 QStringList{QStringLiteral("copy_to_clipboard"), QStringLiteral("save_as_file")},
             "middle-click must use its configured toolbar command for a drawing tool");
 
-    ScreenshotOverlayEventAdapter adapter;
-    adapter.setEventTargets(handler, [] {});
-    SnowCanvasRuntime runtime;
-    SnowCanvasWidget canvas(runtime);
-    canvas.setInteractionEnabled(false);
-    QObject::connect(
-        &canvas, &SnowCanvasWidget::unhandledMiddleClick, &canvas,
-        [&](const QPointF& position) { adapter.handleUnhandledMiddleClick(nullptr, position); });
-    const auto middleClickPreview = [&](const QPointF& pressPosition = QPointF(10, 10),
-                                        const QPointF& releasePosition = QPointF(10, 10)) {
-        QMouseEvent press(QEvent::MouseButtonPress, pressPosition, pressPosition, Qt::MiddleButton,
-                          Qt::MiddleButton, Qt::NoModifier);
-        QApplication::sendEvent(&canvas, &press);
-        require(dispatched.isEmpty(), "middle-click must wait for the release");
-        QMouseEvent release(QEvent::MouseButtonRelease, releasePosition, releasePosition,
-                            Qt::MiddleButton, Qt::NoButton, Qt::NoModifier);
-        QApplication::sendEvent(&canvas, &release);
-    };
-    const std::pair<QString, QString> commands[] = {
-        {QStringLiteral("copy"), QStringLiteral("copy_to_clipboard")},
-        {QStringLiteral("save"), QStringLiteral("save_as_file")},
-        {QStringLiteral("quick_save"), QStringLiteral("quick_save")},
-        {QStringLiteral("pin"), QStringLiteral("pin_to_screen")},
-        {QStringLiteral("ocr"), QStringLiteral("text_recognition")},
-        {QStringLiteral("ocr_copy"), QStringLiteral("text_recognition_copy")},
-        {QStringLiteral("cancel"), QStringLiteral("cancel_screenshot")},
-        {QStringLiteral("none"), QString()},
-    };
-    for (const auto& [setting, command] : commands) {
-        require(settings.setDoubleClickAction(setting) &&
-                    settings.setMiddleMouseButtonAction(setting),
-                "failed to configure toolbar completion action");
+    const std::pair<snow_shot::mouse::Action, QString> commands[] = {
+        {ShotCopy, QStringLiteral("copy_to_clipboard")},
+        {ShotSave, QStringLiteral("save_as_file")},
+        {ShotQuickSave, QStringLiteral("quick_save")},
+        {ShotPin, QStringLiteral("pin_to_screen")},
+        {ShotOcr, QStringLiteral("text_recognition")},
+        {ShotOcrCopy, QStringLiteral("text_recognition_copy")}};
+    for (const auto& [action, command] : commands) {
         const ScreenshotActiveTool tools[] = {
             ScreenshotActiveTool::Move,
             ScreenshotActiveTool::Select,
@@ -2765,13 +2737,9 @@ void completionGesturesUseSharedEligibilityAcrossTools() {
             } else {
                 interaction.setCanvasTool(tools[mode]);
             }
-            for (const bool middleClick : {false, true}) {
-                const auto trigger = [&]() {
-                    if (middleClick) {
-                        handler.handleUnhandledMiddleClick(nullptr, {});
-                    } else {
-                        handler.handleUnhandledLeftDoubleClick();
-                    }
+            {
+                const auto trigger = [&] {
+                    handler.handleMouseCompletion(action, nullptr, {10, 10});
                 };
                 dispatched.clear();
                 trigger();
@@ -2797,110 +2765,94 @@ void completionGesturesUseSharedEligibilityAcrossTools() {
         interaction.enterOverlayVisible(true);
         selection.setRegionType(ScreenshotRegionType::Rectangle);
         const QRect preview = selection.pixelSelection();
-        handler.handleUnhandledLeftDoubleClick();
-        require(dispatched.isEmpty(), "double-click requires a confirmed screenshot selection");
-        availableCommand =
-            setting == QStringLiteral("ocr_copy") ? QStringLiteral("text_recognition") : command;
+        const auto activatePreview = [&](QPointF position = {10, 10}) {
+            handler.handleMouseCompletion(action, nullptr, position);
+        };
+        availableCommand = action == ShotOcrCopy ? QStringLiteral("text_recognition") : command;
         shortcutInputAllowed = false;
-        middleClickPreview();
+        activatePreview();
         shortcutInputAllowed = true;
         require(dispatched.isEmpty() && selectionPreparations == 0 &&
                     interaction.intelligentSelecting(),
                 "text input must retain ownership during smart selection");
         commandEnabled = false;
-        middleClickPreview();
+        activatePreview();
         commandEnabled = true;
         require(dispatched.isEmpty() && selectionPreparations == 0 &&
                     interaction.intelligentSelecting(),
                 "an unavailable command must leave the smart selection preview intact");
-        const bool confirmsPreview = !command.isEmpty() && setting != QStringLiteral("cancel");
-        if (confirmsPreview) {
-            middleClickPreview(QPointF(preview.right(), preview.center().y()),
-                               QPointF(preview.right() + 1, preview.center().y()));
-            require(dispatched.isEmpty() && selectionPreparations == 0 &&
-                        captureState.sessionState == ScreenshotSessionState::OverlayVisible &&
-                        interaction.intelligentSelecting() && selection.pixelSelection() == preview,
-                    "a middle-button release outside the preview must leave it unconfirmed");
-        }
-        middleClickPreview();
-        require(dispatched == (command.isEmpty() ? QStringList{} : QStringList{command}) &&
-                    selectionPreparations == (confirmsPreview ? 1 : 0) &&
-                    interaction.intelligentSelecting() == !confirmsPreview &&
-                    selection.pixelSelection() == preview,
-                qPrintable(QStringLiteral("middle-click must dispatch %1 using the smart preview")
-                               .arg(setting)));
-        if (confirmsPreview) {
-            require(sessionStateAtDispatch == ScreenshotSessionState::Editing,
-                    "the smart selection must be confirmed before dispatching the command");
-        }
+        activatePreview(QPointF(preview.right() + 1, preview.center().y()));
+        require(dispatched.isEmpty() && selectionPreparations == 0 &&
+                    interaction.intelligentSelecting(),
+                "a release outside the preview leaves it unconfirmed");
+        activatePreview();
+        require(dispatched == QStringList{command} && selectionPreparations == 1 &&
+                    !interaction.intelligentSelecting() && selection.pixelSelection() == preview &&
+                    sessionStateAtDispatch == ScreenshotSessionState::Editing,
+                "every selection action can complete the smart preview under the pointer");
         dispatched.clear();
         interaction.enterOverlayVisible(false);
-        handler.handleUnhandledMiddleClick(nullptr, {});
+        handler.handleMouseCompletion(ShotSave, nullptr, {});
         require(dispatched.isEmpty(), "middle-click must defer to unfinished manual selection");
         interaction.confirmSelection();
         interaction.setCanvasTool(ScreenshotActiveTool::Ocr);
         require(interaction.enterSelectionDrag(ScreenshotSelectionDragMode::All),
                 "begin a selection drag before testing mouse action eligibility");
-        handler.handleUnhandledLeftDoubleClick();
-        handler.handleUnhandledMiddleClick(nullptr, {});
+        handler.handleMouseCompletion(ShotCopy, nullptr, {});
+        handler.handleMouseCompletion(ShotSave, nullptr, {});
         require(dispatched.isEmpty(), "mouse actions must defer to unfinished selection drags");
         interaction.finishDrag();
         interaction.confirmSelection();
         selection.setRegionType(ScreenshotRegionType::Polyline);
         selection.beginRegionOperation(ScreenshotSelectionModel::RegionOperation::Add);
-        handler.handleUnhandledLeftDoubleClick();
-        handler.handleUnhandledMiddleClick(nullptr, {});
+        handler.handleMouseCompletion(ShotCopy, nullptr, {});
+        handler.handleMouseCompletion(ShotSave, nullptr, {});
         require(dispatched.isEmpty(), "mouse actions must defer to region construction");
         selection.cancelRegionOperation();
-        handler.handleUnhandledLeftDoubleClick();
-        handler.handleUnhandledMiddleClick(nullptr, {});
-        require(dispatched == (command.isEmpty() ? QStringList{} : QStringList{command, command}),
+        handler.handleMouseCompletion(ShotCopy, nullptr, {});
+        handler.handleMouseCompletion(ShotSave, nullptr, {});
+        require(dispatched == QStringList{QStringLiteral("copy_to_clipboard"),
+                                          QStringLiteral("save_as_file")},
                 "each mouse action must resume after region construction ends");
         dispatched.clear();
         selection.clearSelection();
-        handler.handleUnhandledLeftDoubleClick();
-        handler.handleUnhandledMiddleClick(nullptr, {});
+        handler.handleMouseCompletion(ShotCopy, nullptr, {});
+        handler.handleMouseCompletion(ShotSave, nullptr, {});
         require(dispatched.isEmpty(), "mouse actions require a nonempty screenshot selection");
         selection.setSelectionRect(QRectF(1, 2, 20, 21));
     }
 
-    require(settings.setDoubleClickAction(QStringLiteral("copy")) &&
-                settings.setMiddleMouseButtonAction(QStringLiteral("copy")),
-            "failed to configure selection transaction regression");
     dispatched.clear();
     interaction.setCanvasTool(ScreenshotActiveTool::Ocr);
     require(interaction.enterSelectionDrag(ScreenshotSelectionDragMode::All),
             "begin a selection drag with a non-drawing tool");
-    handler.handleUnhandledLeftDoubleClick();
-    handler.handleUnhandledMiddleClick(nullptr, {});
+    handler.handleMouseCompletion(ShotCopy, nullptr, {});
+    handler.handleMouseCompletion(ShotSave, nullptr, {});
     require(dispatched.isEmpty(), "neither gesture may complete an unfinished selection drag");
     interaction.finishDrag();
     interaction.confirmSelection();
 
     selection.setRegionType(ScreenshotRegionType::Polyline);
     selection.beginRegionOperation(ScreenshotSelectionModel::RegionOperation::Add);
-    handler.handleUnhandledLeftDoubleClick();
-    handler.handleUnhandledMiddleClick(nullptr, {});
+    handler.handleMouseCompletion(ShotCopy, nullptr, {});
+    handler.handleMouseCompletion(ShotSave, nullptr, {});
     require(dispatched.isEmpty(), "both completion gestures must defer to region construction");
     selection.cancelRegionOperation();
-    handler.handleUnhandledLeftDoubleClick();
-    handler.handleUnhandledMiddleClick(nullptr, {});
-    require(dispatched == QStringList{QStringLiteral("copy_to_clipboard"),
-                                      QStringLiteral("copy_to_clipboard")},
+    handler.handleMouseCompletion(ShotCopy, nullptr, {});
+    handler.handleMouseCompletion(ShotSave, nullptr, {});
+    require(dispatched ==
+                QStringList{QStringLiteral("copy_to_clipboard"), QStringLiteral("save_as_file")},
             "both gestures resume after the region transaction ends");
     dispatched.clear();
     interaction.enterScrollingCapture();
 
-    require(settings.setDoubleClickAction(QStringLiteral("copy")) &&
-                settings.setMiddleMouseButtonAction(QStringLiteral("copy")),
-            "failed to configure empty selection regression");
     selection.clearSelection();
-    handler.handleUnhandledLeftDoubleClick();
-    handler.handleUnhandledMiddleClick(nullptr, {});
+    handler.handleMouseCompletion(ShotCopy, nullptr, {});
+    handler.handleMouseCompletion(ShotSave, nullptr, {});
     require(dispatched.isEmpty(), "scrolling completion requires a nonempty selection");
-    require(settings.setDoubleClickAction(originalDoubleClick) &&
-                settings.setMiddleMouseButtonAction(originalMiddleClick),
-            "failed to restore completion gesture settings");
+    handler.handleMouseCompletion(ShotCancel, nullptr, {});
+    require(dispatched == QStringList{QStringLiteral("cancel_screenshot")},
+            "Cancel works without any selection");
 }
 
 void colorCopyEndsCaptureOnlyAfterSuccessfulCopy() {

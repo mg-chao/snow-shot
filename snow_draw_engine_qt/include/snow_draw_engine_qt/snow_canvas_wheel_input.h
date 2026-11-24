@@ -27,6 +27,10 @@ class StepAccumulator final {
     }
 
     int consume(const QWheelEvent& event) {
+        return consume(event, event.angleDelta().y());
+    }
+
+    int consume(const QWheelEvent& event, int angleDelta) {
         if (event.phase() == Qt::ScrollMomentum)
             return 0;
         if (event.phase() == Qt::ScrollBegin || event.phase() == Qt::ScrollEnd)
@@ -38,7 +42,7 @@ class StepAccumulator final {
             m_modifiers = event.modifiers();
         }
         const bool precise = usesPreciseDelta(event);
-        const int delta = precise ? event.pixelDelta().y() : event.angleDelta().y();
+        const int delta = precise ? event.pixelDelta().y() : angleDelta;
         if (delta == 0)
             return 0;
         const int threshold = precise ? 100 : 120;

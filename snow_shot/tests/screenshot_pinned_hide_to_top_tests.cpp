@@ -53,30 +53,36 @@ struct Fixture {
     Controller controller;
 
     Fixture()
-        : controller(&owner, Controller::Hooks{
-                                 [this] { return nativeGeometry; },
-                                 [this] { return nativeGeometry.adjusted(-4, -4, 4, 4); },
-                                 [this](const QRect& rect) {
-                                     if (rejectGeometry) {
-                                         return false;
-                                     }
-                                     nativeGeometry = rect;
-                                     return true;
-                                 },
-                                 [this] { return opacity; }, [this] { return allocations++ % 13; },
-                                 [this] { ++activations; }, [this] { ++changes; },
-                                 [this] { return cursor; },
-                                 [this](const QPoint&) {
-                                     ++menus;
-                                     controller.exit();
-                                 },
-                                 [this](bool doubleClick) {
-                                     if (doubleClick) {
-                                         ++doubles;
-                                     } else {
-                                         ++middles;
-                                     }
-                                 }}) {
+        : controller(&owner,
+                     Controller::Hooks{
+                         [this] { return nativeGeometry; },
+                         [this] { return nativeGeometry.adjusted(-4, -4, 4, 4); },
+                         [this](const QRect& rect) {
+                             if (rejectGeometry) {
+                                 return false;
+                             }
+                             nativeGeometry = rect;
+                             return true;
+                         },
+                         [this] { return opacity; }, [this] { return allocations++ % 13; },
+                         [this] { ++activations; }, [this] { ++changes; },
+                         [this] { return cursor; },
+                         [this](const QPoint&) {
+                             ++menus;
+                             controller.exit();
+                         },
+                         [this](QObject*, QEvent* event) {
+                             if (event->type() == QEvent::MouseButtonDblClick) {
+                                 ++doubles;
+                                 return true;
+                             }
+                             if (event->type() == QEvent::MouseButtonPress &&
+                                 static_cast<QMouseEvent*>(event)->button() == Qt::MiddleButton) {
+                                 ++middles;
+                                 return true;
+                             }
+                             return false;
+                         }}) {
         owner.show();
     }
 
@@ -494,7 +500,7 @@ void themeAndActions() {
                             Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
     QCoreApplication::sendEvent(handle, &doubleClick);
     require(f.middles == 1 && f.doubles == 1, "handle mouse actions must route to their owner");
-    QContextMenuEvent context(QContextMenuEvent::Mouse, QPoint(3, 3), QPoint(103, 43));
+    QContextMenuEvent context(QContextMenuEvent::Keyboard, QPoint(3, 3), QPoint(103, 43));
     QCoreApplication::sendEvent(handle, &context);
     require(f.menus == 1 && !f.controller.active() && f.owner.isVisible(),
             "handle context menu must immediately exit the mode");

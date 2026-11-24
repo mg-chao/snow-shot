@@ -312,19 +312,23 @@ void resizeHitRegions(ScreenshotPinnedWindow& window) {
                              inner.topRight(),    QPoint(inner.right(), inner.center().y()),
                              inner.bottomRight(), QPoint(inner.center().x(), inner.bottom()),
                              inner.bottomLeft(),  QPoint(inner.left(), inner.center().y())};
-    const LRESULT hits[] = {HTTOPLEFT,     HTTOP,    HTTOPRIGHT,   HTRIGHT,
-                            HTBOTTOMRIGHT, HTBOTTOM, HTBOTTOMLEFT, HTLEFT};
+    const Qt::CursorShape cursors[] = {
+        Qt::SizeFDiagCursor, Qt::SizeVerCursor, Qt::SizeBDiagCursor, Qt::SizeHorCursor,
+        Qt::SizeFDiagCursor, Qt::SizeVerCursor, Qt::SizeBDiagCursor, Qt::SizeHorCursor};
     setPinnedWindowHovered(window, false);
     for (int index = 0; index < 8; ++index) {
         const QPoint point = points[index];
         const LPARAM position = MAKELPARAM(point.x(), point.y());
-        require(SendMessageW(shellHwnd, WM_NCHITTEST, 0, position) == hits[index] &&
-                    SendMessageW(host, WM_NCHITTEST, 0, position) == hits[index],
+        require(hasNativeClientCursor(window, point, cursors[index]) &&
+                    SendMessageW(host, WM_NCHITTEST, 0, position) == HTCLIENT,
                 "native live content exposes every resize handle beyond the painted border");
-        SendMessageW(host, WM_NCLBUTTONDOWN, hits[index], position);
+        sendClientMouse(window, QEvent::MouseButtonPress, Qt::LeftButton, Qt::LeftButton, point);
+        sendClientMouse(window, QEvent::MouseMove, Qt::NoButton, Qt::LeftButton,
+                        point + QPoint(QApplication::startDragDistance() * 2, 0));
         require(ScreenshotPinnedWindowTestAccess::interactionActive(window),
                 "pressing a native content resize band starts the shell's interaction");
-        ScreenshotPinnedWindowTestAccess::endControlled(window, true);
+        SendMessageW(shellHwnd, WM_CANCELMODE, 0, 0);
+        sendClientMouse(window, QEvent::MouseButtonRelease, Qt::LeftButton, Qt::NoButton, point);
         require(window.currentNativeGeometry() == original && nativeGeometry(host) == content,
                 "cancelling a native content resize preserves both surfaces' geometry");
         setPinnedWindowHovered(window, false);
@@ -381,14 +385,14 @@ void resizeWithNativePointer(ScreenshotPinnedWindow& window) {
         button.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
         require(SendInput(1, &button, sizeof(button)) == 1,
                 "press the native live resize band through Windows input");
-        const bool started = waitForPointer([&] {
-            return ScreenshotPinnedWindowTestAccess::interactionActive(window) &&
-                   GetCapture() == shellHwnd && GetActiveWindow() == shellHwnd;
-        });
+        const bool started = waitForPointer(
+            [&] { return ScreenshotPinnedWindowTestAccess::resizePressPending(window); });
         const QPoint end = start + QPoint(direction.x() * 32, direction.y() * 24);
         const bool moved = SetCursorPos(end.x(), end.y()) != FALSE;
         const bool resized = waitForPointer([&] {
-            return window.currentNativeGeometry().size() != before.size() &&
+            return ScreenshotPinnedWindowTestAccess::interactionActive(window) &&
+                   GetActiveWindow() == shellHwnd &&
+                   window.currentNativeGeometry().size() != before.size() &&
                    ScreenshotPinnedWindowTestAccess::nativeController(window)
                            .targetGeometry()
                            .size() != before.size() &&

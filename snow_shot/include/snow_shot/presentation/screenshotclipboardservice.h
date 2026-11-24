@@ -112,13 +112,28 @@ class ScreenshotClipboardService final {
     using PublicationId = quint64;
     using CommitCompletion = std::function<void(ScreenshotClipboardCommitResult)>;
 
-    // Reserve before asynchronous preparation and carry the ID through commit so request order
-    // wins over completion order.
-    [[nodiscard]] static PublicationId reservePublication();
+    // Reserve before an immediate Qt clipboard write or before asynchronous preparation.
+    // Carry the ID through a delayed commit so request order wins over completion order.
+    [[nodiscard]] static PublicationId reservePublication() {
+        const auto id = deferPublication();
+        claimPublication(id);
+        return id;
+    }
+    // On the GUI thread, also protect delayed work against writes by other clipboard users.
+    [[nodiscard]] static PublicationId reservePublication(QClipboard* clipboard);
+    [[nodiscard]] static bool publicationCurrent(PublicationId id);
     // Order a clipboard follow-up at action time. It takes precedence over older requests
     // only once it attempts to publish, so an unsuccessful primary action has no effect.
-    [[nodiscard]] static PublicationId deferPublication();
-    [[nodiscard]] static bool publicationSuperseded(PublicationId id);
+    [[nodiscard]] static PublicationId deferPublication() {
+        return s_publicationSequence.fetch_add(1, std::memory_order_relaxed) + 1;
+    }
+    [[nodiscard]] static bool publicationSuperseded(PublicationId id) {
+        return id < s_latestPublicationId.load(std::memory_order_acquire);
+    }
+    // Immediate UI copies make one attempt now. Contended native writes retry on the event loop.
+    [[nodiscard]] static ScreenshotClipboardCommitHandle
+    publishMimeData(QClipboard* clipboard, QObject* receiver, std::unique_ptr<QMimeData> mime,
+                    PublicationId id, CommitCompletion completion);
 
     // Callers snapshot image export settings before scheduling asynchronous preparation.
     [[nodiscard]] static ScreenshotClipboardPayload
@@ -157,6 +172,22 @@ class ScreenshotClipboardService final {
     [[nodiscard]] static bool publish(QClipboard* clipboard, ScreenshotClipboardPayload payload);
     [[nodiscard]] static bool publishImage(QClipboard* clipboard, const QImage& image,
                                            ScreenshotImageEncodingOptions encoding = {});
+
+  private:
+    static ScreenshotClipboardCommitHandle
+    startMimeCommit(QClipboard* clipboard, QObject* receiver, std::unique_ptr<QMimeData> mime,
+                    PublicationId id, CommitCompletion completion, bool immediate);
+    static bool claimPublication(PublicationId id) {
+        auto latest = s_latestPublicationId.load(std::memory_order_acquire);
+        while (id > latest) {
+            if (s_latestPublicationId.compare_exchange_weak(latest, id, std::memory_order_acq_rel))
+                return true;
+        }
+        return id != 0 && id == latest;
+    }
+
+    inline static std::atomic<PublicationId> s_publicationSequence{0};
+    inline static std::atomic<PublicationId> s_latestPublicationId{0};
 };
 
 // Owns cancellation for a set of publications on the GUI thread. Terminal operations

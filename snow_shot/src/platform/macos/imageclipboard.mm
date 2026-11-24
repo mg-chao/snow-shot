@@ -186,11 +186,12 @@ bool imageClipboardBitmapIsDerivedFromPng() {
     return NSPasteboard.generalPasteboard.changeCount == imagePasteboardOwner->native->revision;
 }
 
-bool publishImageClipboard(QClipboard* clipboard, const QByteArray& png,
-                           const QByteArray& placement, const QByteArray& appearance,
-                           const QString& filePath) {
+std::optional<quint64> publishImageClipboard(QClipboard* clipboard, const QByteArray& png,
+                                             const QByteArray& placement,
+                                             const QByteArray& appearance,
+                                             const QString& filePath) {
     if (clipboard == nullptr || png.isEmpty())
-        return false;
+        return std::nullopt;
     initializeImageClipboardConverter();
     if (!imagePasteboardOwner)
         imagePasteboardOwner = new ImagePasteboardOwner(QCoreApplication::instance());
@@ -220,6 +221,7 @@ bool publishImageClipboard(QClipboard* clipboard, const QByteArray& png,
                 setString:QUrl::fromLocalFile(filePath).toString(QUrl::FullyEncoded).toNSString()
                   forType:NSPasteboardTypeFileURL];
     }
+    const auto revision = static_cast<quint64>(owner->native->revision);
     owner->published = published;
     // Synchronize Qt's native reader to retire any previously owned QMimeData.
     // Reading here neither decodes the PNG nor changes the native clipboard.
@@ -228,6 +230,6 @@ bool publishImageClipboard(QClipboard* clipboard, const QByteArray& png,
         emit clipboard->dataChanged();
         emit clipboard->changed(QClipboard::Clipboard);
     }
-    return published;
+    return published ? std::optional(revision) : std::nullopt;
 }
 } // namespace snow_shot::platform::macos

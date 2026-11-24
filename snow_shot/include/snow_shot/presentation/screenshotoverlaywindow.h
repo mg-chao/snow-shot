@@ -1,9 +1,9 @@
 #ifndef SNOW_SHOT_PRESENTATION_SCREENSHOTOVERLAYWINDOW_H
 #define SNOW_SHOT_PRESENTATION_SCREENSHOTOVERLAYWINDOW_H
 
+#include "snow_shot/presentation/mouseoperationinput.h"
 #include "snow_shot/presentation/screenshotscrollingtypes.h"
 
-#include "snow_shot/presentation/mousereleaseactioncontroller.h"
 
 #include <QColor>
 #include <QJsonObject>
@@ -169,6 +169,13 @@ class ScreenshotOverlayWindow final : public QWidget {
     bool handleCanvasEvent(QEvent* event);
     bool handleCanvasKeyPress(QKeyEvent* event);
     bool handleCanvasMouseEvent(QMouseEvent* event);
+    bool handleCompletionPointer(QMouseEvent* event, bool deferSelection = false);
+    struct CompletionPress {
+        snow_shot::mouse::Press gesture;
+        std::optional<QPointF> selectionOrigin;
+    };
+    snow_shot::mouse::ClickSequence m_clickSequence;
+    std::optional<CompletionPress> m_completionPress;
     bool handleCanvasWheel(QWheelEvent* event);
     bool dispatchHandledMouseEvent(QMouseEvent* event);
     void initializeScreenshotSurface();
@@ -182,7 +189,6 @@ class ScreenshotOverlayWindow final : public QWidget {
 
     ScreenshotOverlayEventSink& m_eventSink;
     QMargins m_captureFrameMargins;
-    snow_shot::presentation::MouseReleaseActionController m_mouseReleaseAction;
     SnowCanvasWidget* m_canvas = nullptr;
     const QEvent* m_forwardedCanvasInputEvent = nullptr;
     bool m_forwardedCanvasInputGenuine = false;

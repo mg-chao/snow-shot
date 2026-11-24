@@ -2,6 +2,7 @@
 #define SNOW_SHOT_PRESENTATION_SETTINGS_SETTINGSCATALOG_H
 
 #include "icon_core.h"
+#include "snow_shot/mouseoperations.h"
 #include "snow_shot/presentation/globalshortcuttypes.h"
 #include "snow_shot/presentation/globalmousetypes.h"
 #include "snow_shot/presentation/translatabletext.h"
@@ -454,6 +455,10 @@ struct SettingsGlobalMouseActionDefinition {
     SettingsGlobalMouseAction action = SettingsGlobalMouseAction::ScreenshotCopy;
 };
 
+struct SettingsMouseOperationDefinition {
+    mouse::Action action;
+};
+
 struct SettingsCustomDefinition {
     SettingsCustomRenderer renderer = SettingsCustomRenderer::StorageStatus;
 };
@@ -491,14 +496,13 @@ struct TrayCommandManifest {
                                               int screenshotDelaySeconds = 3) const;
 };
 
-using SettingsItemPayload =
-    std::variant<SettingsSelectDefinition, SettingsSwitchDefinition, SettingsIntegerDefinition,
-                 SettingsMultiSelectDefinition, SettingsSliderDefinition, SettingsColorDefinition,
-                 SettingsColorPaletteDefinition, SettingsRadioDefinition,
-                 SettingsFilePathDefinition, SettingsDirectoryPathDefinition,
-                 SettingsTextDefinition, SettingsShortcutActionDefinition,
-                 SettingsLocalShortcutDefinition, SettingsActionDefinition,
-                 SettingsCustomDefinition, SettingsGlobalMouseActionDefinition>;
+using SettingsItemPayload = std::variant<
+    SettingsSelectDefinition, SettingsSwitchDefinition, SettingsIntegerDefinition,
+    SettingsMultiSelectDefinition, SettingsSliderDefinition, SettingsColorDefinition,
+    SettingsColorPaletteDefinition, SettingsRadioDefinition, SettingsFilePathDefinition,
+    SettingsDirectoryPathDefinition, SettingsTextDefinition, SettingsShortcutActionDefinition,
+    SettingsLocalShortcutDefinition, SettingsActionDefinition, SettingsCustomDefinition,
+    SettingsGlobalMouseActionDefinition, SettingsMouseOperationDefinition>;
 
 struct SettingsItemDefinition {
     // Item IDs are globally stable within a registry. They are used as the
@@ -517,6 +521,8 @@ enum class SettingsSectionReset {
     None,
     ScreenshotShortcuts,
     GlobalMouse,
+    ScreenshotMouse,
+    PinnedMouse,
     OtherShortcuts,
     GlobalPinToScreenShortcuts,
     GeneralSettings,

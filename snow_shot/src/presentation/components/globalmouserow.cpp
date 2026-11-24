@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/components/globalmouserow.h"
+#include "snow_shot/mouseoperations.h"
 #include "snow_shot/presentation/components/formfields.h"
 
 #include "snow_shot/presentation/components/icons/snowshoticons.h"
@@ -24,6 +25,7 @@
 namespace {
 namespace custom_outlined_icons = snow_shot::presentation::icons::custom::outlined;
 namespace settings = snow_shot::presentation::settings;
+namespace mouse = snow_shot::mouse;
 namespace fields = snow_shot::presentation::components::form_fields;
 
 constexpr int CONFIGURATION_MODAL_WIDTH = 520;
@@ -50,6 +52,27 @@ adqt::icons::IconRef actionIcon(settings::SettingsGlobalMouseAction action) {
     return {};
 }
 
+struct GlobalMouseChoice {
+    QString id;
+    mouse::Binding binding;
+};
+const GlobalMouseChoice mouseChoices[] = {
+    {QStringLiteral("left_drag"), {mouse::Kind::Drag, Qt::LeftButton}},
+    {QStringLiteral("right_drag"), {mouse::Kind::Drag, Qt::RightButton}},
+    {QStringLiteral("wheel_drag"), {mouse::Kind::Drag, Qt::MiddleButton}},
+    {QStringLiteral("side_button_1_drag"), {mouse::Kind::Drag, Qt::BackButton}},
+    {QStringLiteral("side_button_2_drag"), {mouse::Kind::Drag, Qt::ForwardButton}},
+    {QStringLiteral("none"), {}},
+};
+
+QString mouseButtonLabel(const QString& id) {
+    for (const auto& choice : mouseChoices) {
+        if (id == choice.id)
+            return mouse::operationLabel(choice.binding);
+    }
+    return id;
+}
+
 adqt::widgets::AdSelect::Option option(const QString& value, const QString& label) {
     adqt::widgets::AdSelect::Option result;
     result.value = value;
@@ -67,19 +90,15 @@ GlobalMouseRow::GlobalMouseRow(const QString& title, settings::SettingsGlobalMou
                 colorScheme, parent),
       m_title(title), m_action(action), m_runtimeSession(runtimeSession) {
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    const auto& metric = m_colorScheme.metricAlias;
     m_titleLabel->setObjectName(QStringLiteral("globalMouseActionLabel"));
     if (auto* icon = findChild<QLabel*>(QStringLiteral("actionRowTitleIcon"))) {
         icon->setObjectName(QStringLiteral("globalMouseActionIcon"));
     }
 
-    m_button = new ShortcutConfigurationButton(metric, COMBINATION_TEXT_MAX_WIDTH,
-                                               custom_outlined_icons::WheelMouse(), this);
+    m_button = createConfigurationButton(
+        colorScheme.metricAlias, custom_outlined_icons::WheelMouse(), COMBINATION_TEXT_MAX_WIDTH);
     m_button->setObjectName(QStringLiteral("globalMouseConfigurationButton"));
-    m_button->setFixedHeight(metric.controlHeight);
-    m_button->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     m_button->setRegistrationStatusTooltipVisible(false);
-    setConfigurationButton(m_button);
     connect(m_button, &QAbstractButton::clicked, this, [this]() { openConfigurationDialog(); });
 
     connect(&m_runtimeSession, &settings::SettingsRuntimeSession::globalMousePermissionChanged,
@@ -271,9 +290,9 @@ void GlobalMouseRow::syncButton() {
     const bool unset = m_combination.isUnset();
     QStringList keys;
     for (const QString& key : m_combination.sortedActivationKeys()) {
-        keys.push_back(activationKeyLabel(key));
+        keys.push_back(mouse::modifierLabel(key));
     }
-    m_button->setText(unset ? tr("Unset")
+    m_button->setText(unset ? mouse::bindingLabel({})
                             : tr("%1 + %2").arg(keys.join(QStringLiteral(" + ")),
                                                 mouseButtonLabel(m_combination.mouseButton)));
     m_button->setRegistrationStatus(
@@ -302,27 +321,17 @@ void GlobalMouseRow::syncModalText() {
     const QVariantList activation = m_activationSelect->currentValues();
     const QVariant mouseButton = m_mouseButtonSelect->currentValue();
     m_activationController->synchronize([this, &activation] {
-#ifdef Q_OS_MACOS
-        m_activationSelect->setOptions({option(QStringLiteral("command"), tr("Command")),
-                                        option(QStringLiteral("control"), tr("Control")),
-                                        option(QStringLiteral("option"), tr("Option")),
-                                        option(QStringLiteral("shift"), tr("Shift"))});
-#else
-        m_activationSelect->setOptions({option(QStringLiteral("windows"), tr("Windows")),
-                                        option(QStringLiteral("ctrl"), tr("Ctrl")),
-                                        option(QStringLiteral("alt"), tr("Alt")),
-                                        option(QStringLiteral("shift"), tr("Shift"))});
-#endif
+        QList<adqt::widgets::AdSelect::Option> options;
+        for (const QString& key : snow_shot::globalMouseActivationKeys())
+            options.append(option(key, mouse::modifierLabel(key)));
+        m_activationSelect->setOptions(options);
         m_activationSelect->setCurrentValues(activation);
     });
     m_mouseButtonController->synchronize([this, &mouseButton] {
-        m_mouseButtonSelect->setOptions(
-            {option(QStringLiteral("left_drag"), tr("Left-button drag")),
-             option(QStringLiteral("right_drag"), tr("Right-button drag")),
-             option(QStringLiteral("wheel_drag"), tr("Middle-button drag")),
-             option(QStringLiteral("side_button_1_drag"), tr("Side button 1 (back) drag")),
-             option(QStringLiteral("side_button_2_drag"), tr("Side button 2 (forward) drag")),
-             option(QStringLiteral("none"), tr("None"))});
+        QList<adqt::widgets::AdSelect::Option> options;
+        for (const auto& choice : mouseChoices)
+            options.append(option(choice.id, mouse::operationLabel(choice.binding)));
+        m_mouseButtonSelect->setOptions(options);
         if (mouseButton.isValid()) {
             m_mouseButtonSelect->setCurrentValue(mouseButton);
         }
@@ -383,46 +392,4 @@ settings::SettingsGlobalMouseCombination GlobalMouseRow::modalCombination() cons
     keys.sort();
     return {keys, m_mouseButtonSelect != nullptr ? m_mouseButtonSelect->currentValue().toString()
                                                  : QString()};
-}
-
-QString GlobalMouseRow::activationKeyLabel(const QString& value) const {
-#ifdef Q_OS_MACOS
-    if (value == QStringLiteral("command")) {
-        return tr("Command");
-    }
-    if (value == QStringLiteral("control")) {
-        return tr("Control");
-    }
-    if (value == QStringLiteral("option")) {
-        return tr("Option");
-    }
-#else
-    if (value == QStringLiteral("windows")) {
-        return tr("Windows");
-    }
-    if (value == QStringLiteral("ctrl")) {
-        return tr("Ctrl");
-    }
-    if (value == QStringLiteral("alt")) {
-        return tr("Alt");
-    }
-#endif
-    return value == QStringLiteral("shift") ? tr("Shift") : value;
-}
-
-QString GlobalMouseRow::mouseButtonLabel(const QString& value) const {
-    if (value == QStringLiteral("left_drag")) {
-        return tr("Left-button drag");
-    }
-    if (value == QStringLiteral("right_drag")) {
-        return tr("Right-button drag");
-    }
-    if (value == QStringLiteral("wheel_drag")) {
-        return tr("Middle-button drag");
-    }
-    if (value == QStringLiteral("side_button_1_drag")) {
-        return tr("Side button 1 (back) drag");
-    }
-    return value == QStringLiteral("side_button_2_drag") ? tr("Side button 2 (forward) drag")
-                                                         : value;
 }

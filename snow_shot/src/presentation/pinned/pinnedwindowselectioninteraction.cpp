@@ -81,22 +81,6 @@ struct PinnedWindowSelectionController::GeometryState {
         bool persistenceTimerActive = false;
         int persistenceTimerRemaining = 0;
     };
-    struct Press {
-        QPointer<ScreenshotPinnedWindow> owner;
-        QPointer<QWidget> receiver;
-        QPointF localPosition;
-        QPointF desktopPosition;
-        std::optional<QPoint> nativePosition;
-        std::optional<int> handle;
-        bool command = false;
-        bool consume = false;
-        bool move = false;
-        bool exportEligible = false;
-        bool spontaneous = false;
-        bool crossedThreshold = false;
-        Qt::KeyboardModifiers modifiers = Qt::NoModifier;
-        quint64 timestamp = 0;
-    };
 
     QList<Member> members;
     std::vector<double> originalScales;
@@ -106,13 +90,10 @@ struct PinnedWindowSelectionController::GeometryState {
     QPointF desktopPress;
     std::optional<QPoint> nativePress;
     std::optional<int> handle;
-    std::optional<Press> press;
     QPointF queuedPosition;
     bool updateQueued = false;
     bool active = false;
     bool ending = false;
-    bool escapeRelease = false;
-    bool forwarding = false;
 
     static std::shared_ptr<GeometryState>
     begin(PinnedWindowSelectionController& controller, ScreenshotPinnedWindow* owner,
@@ -274,7 +255,10 @@ struct PinnedWindowSelectionController::GeometryState {
                     window->invalidatePendingCopy();
                     window->m_scalePercent = std::clamp(scale, 10., 500.);
                 }
-                window->updateCanvasViewport();
+                // A held drag needs each intermediate viewport. A wheel step finishes the
+                // transaction immediately and refreshes every member in endGeometry().
+                if (grabber)
+                    window->updateCanvasViewport();
             }
         }
         if (resizing && owner)
@@ -290,20 +274,6 @@ bool PinnedWindowSelectionController::geometryActive() const {
 bool PinnedWindowSelectionController::usesSharedGeometry(
     const ScreenshotPinnedWindow* window) const {
     return window && isSelected(window) && selectedCount() >= 2 && isSelectable(window);
-}
-
-bool PinnedWindowSelectionController::routesPointerToClient(const ScreenshotPinnedWindow& window,
-                                                            const QPoint& position,
-                                                            Qt::KeyboardModifiers modifiers) const {
-    if (window.m_closing || !window.rect().contains(position))
-        return false;
-    if (window.m_selectionIndicator && window.m_selectionIndicator->isVisible() &&
-        window.m_selectionIndicator->geometry().contains(position))
-        return true;
-    if (!isSelectable(&window))
-        return false;
-    return selectedCount() > 0 || modifiers.testFlag(Qt::ControlModifier) ||
-           (m_geometryState && (m_geometryState->active || m_geometryState->press));
 }
 
 bool PinnedWindowSelectionController::beginGeometry(ScreenshotPinnedWindow* window,
@@ -443,11 +413,13 @@ void PinnedWindowSelectionController::endGeometry(bool cancel) {
         if (window == state->owner && window->m_editController)
             window->m_editController->endTemporaryResizeWindowTool();
         if (!window->m_closing) {
-            window->endAuxiliaryWindowInteraction();
-            window->updateCanvasViewport();
+            if (window->m_auxiliaryWindowInteractionActive)
+                window->endAuxiliaryWindowInteraction(); // Also updates the viewport.
+            else
+                window->updateCanvasViewport(); // Setup can fail before every member begins.
             window->updateControlsGeometry();
             window->refreshControlsPointerPresence();
-            window->refreshContextMenu();
+            window->refreshContextMenuIfVisible();
             const bool changed =
                 !cancel && (window->m_platformPlacement != member.placement ||
                             std::abs(window->m_scalePercent - member.scale) > .001);
@@ -465,8 +437,9 @@ void PinnedWindowSelectionController::cancelGeometry() {
 
 bool PinnedWindowSelectionController::cancelPointerInteraction(ScreenshotPinnedWindow* window) {
     const auto state = m_geometryState;
-    if (!window || !state || (!state->active && !state->press) ||
-        (state->owner != window && (!state->active || !isSelected(window))))
+    if (window && window->cancelMouseOperation())
+        return true;
+    if (!window || !state || !state->active || (state->owner != window && !isSelected(window)))
         return false;
     cancelGeometry();
     return true;
@@ -523,207 +496,24 @@ bool PinnedWindowSelectionController::alignSelection(SnowCanvasSelectionAlignmen
     return applied;
 }
 
-bool PinnedWindowSelectionController::handlePointer(ScreenshotPinnedWindow* window,
-                                                    QObject* watched, QEvent* event) {
-    if (!window || !event || !watched || !watched->isWidgetType())
-        return false;
-    auto state = m_geometryState;
-    if (state && state->escapeRelease && event->type() == QEvent::KeyRelease &&
-        shortcuts::commandKey(*static_cast<QKeyEvent*>(event)) == Qt::Key_Escape) {
-        m_geometryState.reset();
-        event->accept();
-        return true;
+void PinnedWindowSelectionController::queueGeometryUpdate(const QPointF& position) {
+    const auto state = m_geometryState;
+    if (!state || !state->active)
+        return;
+    state->queuedPosition = position;
+    if (!state->updateQueued) {
+        state->updateQueued = true;
+        QTimer::singleShot(0, this, [this, state] {
+            if (m_geometryState == state && state->active && state->updateQueued)
+                updateGeometry(state->queuedPosition);
+        });
     }
-    if (state && (state->active || state->press)) {
-        if ((event->type() == QEvent::ShortcutOverride || event->type() == QEvent::KeyPress) &&
-            shortcuts::commandKey(*static_cast<QKeyEvent*>(event)) == Qt::Key_Escape) {
-            if (event->type() == QEvent::KeyPress) {
-                cancelGeometry();
-                m_geometryState = std::make_shared<GeometryState>();
-                m_geometryState->owner = window;
-                m_geometryState->escapeRelease = true;
-            }
-            event->accept();
-            return true;
-        }
-        const bool ownerEvent = watched == window;
-        const bool pendingReceiverEvent = state->press && watched == state->press->receiver;
-        if ((ownerEvent &&
-             (event->type() == QEvent::Hide || event->type() == QEvent::WindowDeactivate ||
-              event->type() == QEvent::Close)) ||
-            (event->type() == QEvent::UngrabMouse &&
-             (watched == state->grabber || pendingReceiverEvent))) {
-            cancelGeometry();
-            return false;
-        }
-        if (event->type() == QEvent::MouseMove || event->type() == QEvent::MouseButtonRelease) {
-            auto* mouse = static_cast<QMouseEvent*>(event);
-            const bool release = event->type() == QEvent::MouseButtonRelease;
-            if (release && mouse->button() != Qt::LeftButton)
-                return false;
-            if (!release && !mouse->buttons().testFlag(Qt::LeftButton)) {
-                const bool consumed = state->active || (state->press && state->press->consume);
-                cancelGeometry();
-                return consumed;
-            }
-            if (state->active) {
-                if (release) {
-                    updateGeometry(mouse->globalPosition());
-                    endGeometry(false);
-                } else {
-                    state->queuedPosition = mouse->globalPosition();
-                    if (!state->updateQueued) {
-                        state->updateQueued = true;
-                        QTimer::singleShot(0, this, [this, state] {
-                            if (m_geometryState == state && state->active)
-                                updateGeometry(state->queuedPosition);
-                        });
-                    }
-                }
-                event->accept();
-                return true;
-            }
-            if (!state->press)
-                return false;
-            const auto press = *state->press;
-            const QPointF delta = mouse->globalPosition() - press.desktopPosition;
-            const bool threshold =
-                std::abs(delta.x()) + std::abs(delta.y()) >= QApplication::startDragDistance();
-            if (release && !press.crossedThreshold && !threshold) {
-                m_geometryState.reset();
-                if (press.command)
-                    toggleSelection(window);
-                else
-                    clearSelection();
-                if (press.consume)
-                    event->accept();
-                return press.consume;
-            }
-            if (!press.crossedThreshold && threshold) {
-                state->press->crossedThreshold = true;
-                if (!press.command && !isSelected(window))
-                    clearSelection();
-                if (usesSharedGeometry(window) &&
-                    (press.command ? press.move : (press.handle.has_value() || press.move))) {
-                    const auto handle = press.command ? std::optional<int>{} : press.handle;
-                    if (beginGeometry(window, press.desktopPosition, handle,
-                                      press.nativePosition)) {
-                        updateGeometry(mouse->globalPosition());
-                        if (release)
-                            endGeometry(false);
-                    } else {
-                        m_geometryState = state;
-                    }
-                    event->accept();
-                    return true;
-                }
-                if (press.command && press.exportEligible && !usesSharedGeometry(window) &&
-                    !release) {
-                    m_geometryState.reset();
-                    window->m_exportDragOrigin = press.desktopPosition.toPoint();
-                    window->m_exportDragSpontaneous = press.spontaneous;
-                    window->m_exportDragAborted = false;
-                    qApp->installEventFilter(window);
-                    window->beginExportDrag();
-                    event->accept();
-                    return true;
-                }
-                if (!press.command && (press.move || press.handle)) {
-                    m_geometryState.reset();
-                    if (window->beginControlledInteraction(press.desktopPosition, press.handle)) {
-                        if (press.handle)
-                            window->m_interactionNativePointer = press.nativePosition;
-                        window->updateControlledInteraction(mouse->globalPosition());
-                        if (release)
-                            window->endControlledInteraction(false);
-                    }
-                    event->accept();
-                    return true;
-                }
-                if (press.command && press.receiver) {
-                    // Click selection deferred the press. Restore the original
-                    // drawing/OCR/control gesture once its drag intent is known.
-                    const QScopedValueRollback<bool> forwarding(state->forwarding, true);
-                    QMouseEvent originalPress(QEvent::MouseButtonPress, press.localPosition,
-                                              press.desktopPosition, Qt::LeftButton, Qt::LeftButton,
-                                              press.modifiers);
-                    originalPress.setTimestamp(press.timestamp);
-                    QCoreApplication::sendEvent(press.receiver, &originalPress);
-                    m_geometryState.reset();
-                    return false;
-                }
-            }
-            if (release)
-                m_geometryState.reset();
-            return press.consume;
-        }
-        return false;
-    }
-    if (event->type() != QEvent::MouseButtonPress || window->m_closing || !window->m_presented)
-        return false;
-    auto* mouse = static_cast<QMouseEvent*>(event);
-    if (mouse->button() != Qt::LeftButton)
-        return false;
-    auto* widget = static_cast<QWidget*>(watched);
-    if (widget->window() != window)
-        return false;
-    if (window->m_selectionIndicator && (widget == window->m_selectionIndicator ||
-                                         window->m_selectionIndicator->isAncestorOf(widget)))
-        return false;
-    const bool command = mouse->modifiers().testFlag(Qt::ControlModifier);
-    const bool selectable = isSelectable(window);
-    if ((!command || !selectable) && selectedCount() == 0)
-        return false;
-    if (command && !selectable)
-        return false;
-    const QPointF local = window->windowPositionForEvent(watched, mouse->position());
-    const bool controls = window->isControlsPanelPosition(local.toPoint());
-    const auto handle = selectable && window->interactiveResizingEnabled() && !controls
-                            ? window->resizeHandleAt(local)
-                            : std::optional<int>{};
-    if (handle && window->m_cropRect)
-        return window->beginControlledInteraction(mouse->globalPosition(), handle);
-    const bool move = selectable && !controls &&
-                      window->windowMoveEligibleForPointer(local.toPoint(), mouse->modifiers());
-    if (!command && !handle && !move && window->m_recognitionContent != nullptr &&
-        window->m_recognitionContent->isVisible() &&
-        window->m_recognitionContent->boxSelectionEnabled() &&
-        (widget == window->m_recognitionContent ||
-         window->m_recognitionContent->isAncestorOf(widget))) {
-        // Recognition owns its text and box gestures. A pending group press would
-        // otherwise intercept Escape while leaving the recognition gesture alive.
-        return false;
-    }
-    state = std::make_shared<GeometryState>();
-    state->owner = window;
-    GeometryState::Press press;
-    press.owner = window;
-    press.receiver = widget;
-    press.localPosition = mouse->position();
-    press.desktopPosition = mouse->globalPosition();
-    if (mouse->spontaneous() && !window->m_platform->usesControlledInteraction())
-        press.nativePosition = window->physicalCursorPosition();
-    press.handle = handle;
-    press.command = command;
-    press.consume = command || handle.has_value() || move;
-    press.move = move;
-    press.exportEligible = window->exportDragEnabledAt(local.toPoint(), mouse->modifiers());
-    press.spontaneous = mouse->spontaneous();
-    press.modifiers = mouse->modifiers();
-    press.timestamp = mouse->timestamp();
-    state->press = press;
-    m_geometryState = state;
-    if (press.consume)
-        event->accept();
-    return press.consume;
 }
 
 bool PinnedWindowSelectionController::eventFilter(QObject* watched, QEvent* event) {
     if (event && event->type() == QEvent::LanguageChange)
         retranslateUi();
     if (!watched || !watched->isWidgetType() || !event)
-        return QObject::eventFilter(watched, event);
-    if (m_geometryState && m_geometryState->forwarding)
         return QObject::eventFilter(watched, event);
     if (m_geometryState && !m_geometryState->owner)
         cancelGeometry();
@@ -742,28 +532,13 @@ bool PinnedWindowSelectionController::eventFilter(QObject* watched, QEvent* even
             }
         }
     }
-    ScreenshotPinnedWindow* window = nullptr;
-    if (event->type() != QEvent::ContextMenu && m_geometryState &&
-        (m_geometryState->active || m_geometryState->press || m_geometryState->escapeRelease))
-        window = m_geometryState->owner;
-    if (!window) {
-        window = qobject_cast<ScreenshotPinnedWindow*>(widget->window());
-        if (!window || !m_windowIndex.contains(window))
-            return QObject::eventFilter(watched, event);
-    }
-    if (window->handleCropPointer(watched, event) || handlePointer(window, watched, event))
-        return true;
-    if (event->type() == QEvent::ContextMenu && !geometryActive()) {
-        if (watched == window->m_canvas && window->m_canvas->interactionEnabled()) {
-            // Let the canvas consume menus belonging to its right-button gestures first.
-            // Unhandled events propagate to the pin, which applies window-selection routing.
-            return false;
-        }
-        auto* context = static_cast<QContextMenuEvent*>(event);
-        if (showContextMenu(window, context->globalPos())) {
-            event->accept();
+    if (geometryActive() && m_geometryState->owner) {
+        auto* owner = m_geometryState->owner.data();
+        if (owner->handleMouseOperation(watched, event))
             return true;
-        }
+        if (!owner->m_startingMouseDrag && event->type() == QEvent::UngrabMouse &&
+            (watched == owner || (m_geometryState && watched == m_geometryState->grabber)))
+            cancelGeometry();
     }
     return QObject::eventFilter(watched, event);
 }

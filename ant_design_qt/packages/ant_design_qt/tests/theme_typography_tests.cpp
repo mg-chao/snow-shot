@@ -36,6 +36,26 @@ int main(int argc, char** argv) {
   QApplication::setFont(platformMenuFont, "QMenu");
   manager.applyTo(app);
 
+  // An unrelated window can carry its own scope while unscoped pins use the global tokens.
+  {
+    QWidget window;
+    QWidget scope;
+    QWidget child(&scope);
+    adqt::theme::ThemeOverride overrideValue;
+    overrideValue.primary = QColor("#167345");
+    manager.setScopeOverride(&scope, overrideValue);
+    require(manager.resolveTheme(&window).colorPrimary ==
+                    manager.globalResolvedTheme().values.colorPrimary &&
+                manager.resolveTheme(&child).colorPrimary ==
+                    manager.resolve(&child).values.colorPrimary &&
+                manager.resolveTheme(&window, &child).colorPrimary == *overrideValue.primary,
+            "token lookup respects global, ancestor and logical owner scopes");
+    manager.clearScopeOverride(&scope);
+    require(manager.resolveTheme(&child).colorPrimary ==
+                manager.globalResolvedTheme().values.colorPrimary,
+            "clearing the scope returns to the current global tokens");
+  }
+
   // The theme owns application typography: every surface resolving from the application
   // font renders smooth outlines at fractional device scale factors.
   requireSmoothOutlines(QApplication::font(),

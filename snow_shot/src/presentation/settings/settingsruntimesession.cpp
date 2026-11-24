@@ -1006,6 +1006,8 @@ QVariant SettingsRuntimeSession::readValue(const SettingsFieldDescriptor& descri
             } else if constexpr (std::is_same_v<Payload, SettingsLocalShortcutDefinition>) {
                 return shortcutListVariant(
                     m_backend.localShortcuts(payload.scope, payload.shortcutId));
+            } else if constexpr (std::is_same_v<Payload, SettingsMouseOperationDefinition>) {
+                return mouse::encode(m_backend.mouseBindings().get(payload.action));
             } else if constexpr (std::is_same_v<Payload, SettingsGlobalMouseActionDefinition>) {
                 return globalMouseCombinationVariant(
                     m_backend.globalMouseCombination(payload.action));
@@ -1100,6 +1102,9 @@ bool SettingsRuntimeSession::writeValue(const SettingsFieldDescriptor& descripto
             } else if constexpr (std::is_same_v<Payload, SettingsLocalShortcutDefinition>) {
                 return m_backend.applyLocalShortcuts(payload.scope, payload.shortcutId,
                                                      shortcutListValue(value));
+            } else if constexpr (std::is_same_v<Payload, SettingsMouseOperationDefinition>) {
+                const auto binding = mouse::decode(QJsonValue::fromVariant(value));
+                return binding && m_backend.applyMouseOperation(payload.action, *binding);
             } else if constexpr (std::is_same_v<Payload, SettingsGlobalMouseActionDefinition>) {
                 if (!value.canConvert<SettingsGlobalMouseCombination>()) {
                     return false;

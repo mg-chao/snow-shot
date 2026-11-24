@@ -81,6 +81,7 @@ ScreenshotOverlayWindow::ScreenshotOverlayWindow(ScreenshotOverlayEventSink& eve
     setWindowFlags(Qt::FramelessWindowHint | Qt::Tool | Qt::WindowStaysOnTopHint);
 #ifdef Q_OS_MACOS
     setWindowFlag(Qt::NoDropShadowWindowHint);
+    snow_shot::mouse::initializeNativeButtonInput();
 #endif
     setAttribute(Qt::WA_DeleteOnClose, false);
     setAttribute(Qt::WA_TranslucentBackground, true);
@@ -111,12 +112,8 @@ ScreenshotOverlayWindow::ScreenshotOverlayWindow(ScreenshotOverlayEventSink& eve
         m_canvas->installEventFilter(this);
         m_canvas->setFocusPolicy(Qt::StrongFocus);
         m_canvas->setMouseTracking(true);
-        connect(m_canvas, &SnowCanvasWidget::unhandledLeftDoubleClick, this,
-                [this]() { m_eventSink.handleUnhandledLeftDoubleClick(); });
-        connect(m_canvas, &SnowCanvasWidget::unhandledMiddleClick, this,
-                [this](const QPointF& position) {
-                    m_eventSink.handleUnhandledMiddleClick(this, m_canvas->mapTo(this, position));
-                });
+        m_canvas->setUnhandledMouseHandler(
+            [this](QMouseEvent* event) { return handleCompletionPointer(event); });
     }
 
     initializeScreenshotSurface();
@@ -898,6 +895,8 @@ bool ScreenshotOverlayWindow::event(QEvent* event) {
     }
     if (event != nullptr &&
         (event->type() == QEvent::Hide || event->type() == QEvent::WindowDeactivate)) {
+        m_completionPress.reset();
+        m_clickSequence.reset();
         m_eventSink.clearOverlaySnapping();
         m_eventSink.cancelEffectDrag();
         m_eventSink.leaveEffectEditors();
@@ -957,8 +956,14 @@ bool ScreenshotOverlayWindow::eventFilter(QObject* watched, QEvent* event) {
     if (watched == m_canvas && event != nullptr) {
         if (event->type() == QEvent::Leave)
             m_eventSink.leaveEffectEditors();
-        if (event->type() == QEvent::UngrabMouse || event->type() == QEvent::Hide)
+        if (event->type() == QEvent::UngrabMouse || event->type() == QEvent::Hide) {
+            m_completionPress.reset();
+            if (event->type() == QEvent::Hide)
+                m_clickSequence.reset();
+            else
+                m_clickSequence.cancelPress();
             m_eventSink.cancelEffectDrag();
+        }
     }
     if (watched == m_canvas && event != nullptr && event->type() == QEvent::Paint) {
         SNOW_SHOT_CAPTURE_PERF_COUNTER("presentation.window.canvas.paint_dispatches", 1);
@@ -988,9 +993,6 @@ void ScreenshotOverlayWindow::keyPressEvent(QKeyEvent* event) {
 
 bool ScreenshotOverlayWindow::nativeEvent(const QByteArray& eventType, void* message,
                                           qintptr* result) {
-    if (m_mouseReleaseAction.handleNativeEvent(message, result)) {
-        return true;
-    }
 #if defined(Q_OS_WIN) || defined(_WIN32)
     Q_UNUSED(eventType);
     if (message == nullptr || result == nullptr) {
@@ -1266,11 +1268,82 @@ bool ScreenshotOverlayWindow::handleCanvasKeyPress(QKeyEvent* event) {
     return false;
 }
 
+bool ScreenshotOverlayWindow::handleCompletionPointer(QMouseEvent* event, bool deferSelection) {
+    using namespace snow_shot::mouse;
+    if (!event)
+        return false;
+    const auto type = event->type();
+    if (type == QEvent::MouseButtonPress || type == QEvent::MouseButtonDblClick) {
+        if (m_completionPress && event->button() != m_completionPress->gesture.reportedButton)
+            return false;
+        auto gesture = resolvePress(Category::Screenshot, *event, m_clickSequence.kind(), *this);
+        m_completionPress.reset();
+        if (!gesture.click)
+            return false;
+        std::optional<QPointF> selectionOrigin;
+        if (deferSelection && gesture.reportedButton == Qt::LeftButton &&
+            m_eventSink.shouldHandleOverlayMouseEvent(this, event->position(), true))
+            selectionOrigin = event->position();
+        m_completionPress = CompletionPress{gesture, selectionOrigin};
+        return true;
+    }
+    if (!m_completionPress)
+        return false;
+    const bool released = type == QEvent::MouseButtonRelease;
+    auto& gesture = m_completionPress->gesture;
+    if (type != QEvent::MouseMove && (!released || event->button() != gesture.reportedButton))
+        return false;
+    if (!released && !event->buttons().testFlag(gesture.reportedButton)) {
+        m_completionPress.reset();
+        return false;
+    }
+    if (gesture.updateThreshold(event->globalPosition())) {
+        if (const auto origin = m_completionPress->selectionOrigin) {
+            const auto pressModifiers = gesture.keys;
+            m_completionPress.reset();
+            // Selection starts at the original press, including when the release first
+            // carries a position past the threshold.
+            m_eventSink.updateOverlayModifiers(pressModifiers, false);
+            m_eventSink.handleOverlayMousePress(this, *origin);
+            m_eventSink.updateOverlayModifiers(event->modifiers(), false);
+            m_eventSink.handleOverlayMouseMove(this, event->position());
+            if (released)
+                m_eventSink.handleOverlayMouseRelease(this, event->position());
+        } else if (released) {
+            m_completionPress.reset();
+        }
+        return true;
+    }
+    if (!released)
+        return true;
+
+    const auto action = *gesture.click;
+    m_completionPress.reset();
+    if (action == Action::Back) {
+        if (m_eventSink.handleOverlayRightClick(this, event->position()) ==
+            ScreenshotOverlayRightClickResult::CancelCapture) {
+            QMetaObject::invokeMethod(
+                this,
+                [this, generation = presentationGeneration()] {
+                    if (isVisible() && presentationGeneration() == generation)
+                        m_eventSink.completeRightClickCancellation();
+                },
+                Qt::QueuedConnection);
+        }
+    } else {
+        m_eventSink.handleMouseCompletion(action, this, event->position());
+    }
+    return true;
+}
+
 bool ScreenshotOverlayWindow::handleCanvasMouseEvent(QMouseEvent* event) {
     if (event == nullptr) {
         return false;
     }
     m_eventSink.updateOverlayModifiers(event->modifiers(), false);
+    m_clickSequence.observe(*event, *this);
+    const bool press =
+        event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseButtonDblClick;
 
     if (event->type() == QEvent::MouseButtonDblClick && event->button() == Qt::LeftButton &&
         m_eventSink.handleEffectDoubleClick(this, event->position())) {
@@ -1282,17 +1355,18 @@ bool ScreenshotOverlayWindow::handleCanvasMouseEvent(QMouseEvent* event) {
         event->accept();
         return true;
     }
-    if (event->type() == QEvent::MouseButtonPress && event->button() == Qt::RightButton) {
-        const auto action = m_eventSink.handleOverlayRightClick(this, event->position());
-        if (action == ScreenshotOverlayRightClickResult::CancelCapture) {
-            static_cast<void>(m_mouseReleaseAction.arm(
-                this, Qt::RightButton, [this] { m_eventSink.completeRightClickCancellation(); }));
-        }
-        if (action != ScreenshotOverlayRightClickResult::Ignored) {
-            event->accept();
-            return true;
-        }
-    }
+    if (m_completionPress &&
+        (event->type() == QEvent::MouseMove || event->type() == QEvent::MouseButtonRelease))
+        return handleCompletionPointer(event);
+    if (press && snow_shot::mouse::physicalButton(*event, *this) == Qt::LeftButton &&
+        m_eventSink.allowMouseCompletionBeforeSelection(this, event->position()) &&
+        handleCompletionPointer(event, true))
+        return true;
+    if (press && m_clickSequence.kind() == snow_shot::mouse::Kind::Click &&
+        snow_shot::mouse::physicalButton(*event, *this) == Qt::RightButton &&
+        snow_shot::mouse::modifiers(event->modifiers()) == Qt::NoModifier &&
+        m_eventSink.backTakesPriority(this, event->position()))
+        return handleCompletionPointer(event);
 
     // A drawing gesture owns the pointer until the canvas releases its grab. The
     // selection border may cross that gesture, but cannot take over its moves or release.

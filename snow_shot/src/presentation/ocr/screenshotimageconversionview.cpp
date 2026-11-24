@@ -1,4 +1,5 @@
 #include "snow_shot/presentation/screenshotimageconversionview.h"
+#include "snow_shot/presentation/screenshotclipboardservice.h"
 #include "snow_shot/presentation/screenshotimageconversionclipboard.h"
 #include "snow_shot/presentation/screenshotdocumentformatting.h"
 
@@ -155,6 +156,7 @@ bool ScreenshotImageConversionView::copyToClipboard() const {
     if (mimeData == nullptr) {
         return false;
     }
+    static_cast<void>(ScreenshotClipboardService::reservePublication());
     QApplication::clipboard()->setMimeData(mimeData.release(), QClipboard::Clipboard);
     return true;
 }

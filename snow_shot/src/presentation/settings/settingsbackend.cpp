@@ -2706,6 +2706,15 @@ void BuiltInSettingsBackend::refreshStorageStatusIfStale() {
     storage::ApplicationStorage::instance().requestStorageUsageRefreshIfStale();
 }
 
+mouse::Bindings BuiltInSettingsBackend::mouseBindings() const {
+    return storage::ApplicationStorage::instance().configuration().mouseBindings();
+}
+bool BuiltInSettingsBackend::applyMouseOperation(mouse::Action action, mouse::Binding binding) {
+    return action != mouse::Action::Back && mouse::allowed(mouse::definition(action), binding) &&
+           storage::ApplicationStorage::instance().configuration().setValue(
+               mouse::definition(action).key(), mouse::encode(binding));
+}
+
 SettingsResetResult BuiltInSettingsBackend::resetSectionWithResults(SettingsSectionReset reset) {
 #if !SNOW_SHOT_ENABLE_TEXT_TRANSLATION
     if (reset == SettingsSectionReset::Translation)
@@ -2735,6 +2744,10 @@ SettingsResetResult BuiltInSettingsBackend::resetSectionWithResults(SettingsSect
         return resetValues(values);
     };
     switch (reset) {
+    case SettingsSectionReset::ScreenshotMouse:
+        return resetValues(mouse::factoryValues(mouse::Category::Screenshot));
+    case SettingsSectionReset::PinnedMouse:
+        return resetValues(mouse::factoryValues(mouse::Category::Pinned));
     case SettingsSectionReset::WindowsContextMenuShortcuts:
         return applyContextMenuSettings(
             storage::ApplicationStorage::instance().configuration().value(kContextMenuModeKey),
@@ -2876,12 +2889,6 @@ SettingsResetResult BuiltInSettingsBackend::resetSectionWithResults(SettingsSect
                    {QStringLiteral("screenshot/auto_execute_after_text_recognition"),
                     storage::ConfigurationSchema::defaultValue(
                         QStringLiteral("screenshot/auto_execute_after_text_recognition"))},
-                   {QStringLiteral("screenshot/double_click_action"),
-                    storage::ConfigurationSchema::defaultValue(
-                        QStringLiteral("screenshot/double_click_action"))},
-                   {QStringLiteral("screenshot/middle_mouse_button_action"),
-                    storage::ConfigurationSchema::defaultValue(
-                        QStringLiteral("screenshot/middle_mouse_button_action"))},
                    {QStringLiteral("screenshot/quick_selection_modification"),
                     storage::ConfigurationSchema::defaultValue(
                         QStringLiteral("screenshot/quick_selection_modification"))},
@@ -3055,12 +3062,6 @@ SettingsResetResult BuiltInSettingsBackend::resetSectionWithResults(SettingsSect
             {QStringLiteral("pin_to_screen/duplicate_content_action"),
              storage::ConfigurationSchema::defaultValue(
                  QStringLiteral("pin_to_screen/duplicate_content_action"))},
-            {QStringLiteral("pin_to_screen/middle_mouse_button_action"),
-             storage::ConfigurationSchema::defaultValue(
-                 QStringLiteral("pin_to_screen/middle_mouse_button_action"))},
-            {QStringLiteral("pin_to_screen/double_click_action"),
-             storage::ConfigurationSchema::defaultValue(
-                 QStringLiteral("pin_to_screen/double_click_action"))},
             {QStringLiteral("pin_to_screen/mouse_wheel_zoom_mode"),
              storage::ConfigurationSchema::defaultValue(
                  QStringLiteral("pin_to_screen/mouse_wheel_zoom_mode"))},

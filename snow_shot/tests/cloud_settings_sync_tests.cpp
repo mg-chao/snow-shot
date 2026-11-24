@@ -815,6 +815,221 @@ void atomicShortcutSwap(const QString& path) {
             "the rejected swap preserves both previous server bindings");
 }
 
+void mousePreferencesOnUpgrade(const QString& path) {
+    using namespace snow_shot::mouse;
+    Service service;
+    service.set(u"A"_s, u"screenshot/double_click_action"_s, u"quick_save"_s);
+    service.set(u"A"_s, u"screenshot/middle_mouse_button_action"_s, u"quick_save"_s);
+    const auto menu = definition(Action::Menu).key();
+    const auto close = definition(Action::Close).key();
+    const Binding right{Kind::Click, Qt::RightButton};
+    const Binding side{Kind::DoubleClick, Qt::BackButton, Qt::ShiftModifier};
+    service.set(u"A"_s, menu, encode(side));
+    Device device(path, service);
+    device.signIn(u"A"_s);
+    device.check();
+    require(
+        device.store.mouseAction(Category::Screenshot, {Kind::DoubleClick, Qt::LeftButton}) ==
+                Action::ShotQuickSave &&
+            !device.store.mouseAction(Category::Screenshot, {Kind::Click, Qt::MiddleButton}) &&
+            device.store.mouseAction(Category::Pinned, side) == Action::Menu &&
+            service.operation(u"A"_s, definition(Action::ShotQuickSave).key()).value(u"value"_s) ==
+                encode({Kind::DoubleClick, Qt::LeftButton}),
+        "legacy cloud actions seed the current platform independently of new pinned preferences");
+    require(
+        device.store.setValues({{menu, encode(right)},
+                                {close, encode({Kind::Click, Qt::BackButton, Qt::ShiftModifier})}}),
+        "reassign the single-click family released by Menu");
+    device.check();
+    bool atomic = false;
+    for (const auto group : service.lastUpdate.value(u"groups"_s).toArray()) {
+        QSet<QString> changed;
+        for (const auto edit : group.toObject().value(u"changes"_s).toArray())
+            changed.insert(edit.toObject().value(u"key"_s).toString());
+        if (changed == QSet<QString>{menu, close})
+            atomic = true;
+    }
+    require(atomic, "a click and double-click transfer is synchronized as one group");
+}
+
+void signedOutMouseEditMergesWithLegacyCloud(const QString& path) {
+    using namespace snow_shot::mouse;
+    const auto fineOpacity = definition(Action::FineOpacity).key();
+    const Binding wheel{Kind::Wheel, Qt::NoButton, Qt::ShiftModifier};
+    const Binding doubleClick{Kind::DoubleClick, Qt::LeftButton};
+    Service service;
+    service.set(u"A"_s, u"pin_to_screen/double_click_action"_s, u"close"_s);
+    Device device(path, service);
+    require(device.store.setValue(fineOpacity, encode(wheel)), "customize the wheel before login");
+    device.signIn(u"A"_s);
+    device.check();
+    require(device.store.mouseAction(Category::Pinned, doubleClick) == Action::Close &&
+                device.store.mouseAction(Category::Pinned, wheel) == Action::FineOpacity &&
+                service.operation(u"A"_s, definition(Action::Close).key()).value(u"value"_s) ==
+                    encode(doubleClick) &&
+                service.operation(u"A"_s, fineOpacity).value(u"value"_s) == encode(wheel),
+            "first login merges the legacy cloud click with the customized local wheel");
+}
+
+void pendingLegacyMouseEditsOnUpgrade(const QString& path) {
+    using namespace snow_shot::mouse;
+    const auto pin = u"pin_to_screen/double_click_action"_s;
+    const auto shot = u"screenshot/double_click_action"_s;
+    const Binding doubleClick{Kind::DoubleClick, Qt::LeftButton};
+    const auto set = [](QString value) {
+        return QJsonObject{{u"op"_s, u"set"_s}, {u"value"_s, value}};
+    };
+    const auto edit = [&](QString base, QString desired, QString sequence) {
+        return QJsonObject{{u"operation"_s, set(desired)},
+                           {u"base"_s, set(base)},
+                           {u"fallback"_s, base},
+                           {u"sequence"_s, sequence}};
+    };
+    Service service;
+    {
+        Device device(path, service);
+        device.signIn(u"A"_s);
+        device.check();
+        const auto owner = device.store.cloudSyncState().value(u"owner"_s).toString();
+        device.account.signOut();
+        service.set(u"A"_s, pin, u"close"_s);
+        service.set(u"A"_s, shot, u"quick_save"_s);
+        auto state = device.store.cloudSyncState();
+        const QJsonObject profile{
+            {u"joined"_s, true},
+            {u"read"_s, true},
+            {u"revision"_s, QString::number(service.revisions.value(u"A"_s))},
+            {u"client_version"_s, QCoreApplication::applicationVersion()},
+            {u"sequence"_s, u"2"_s},
+            {u"values"_s, QJsonObject{{pin, u"reset_zoom"_s}, {shot, u"ocr"_s}}},
+            {u"confirmed"_s, QJsonObject{{pin, set(u"close"_s)}, {shot, set(u"save"_s)}}},
+            {u"pending"_s, QJsonObject{{pin, edit(u"close"_s, u"reset_zoom"_s, u"1"_s)},
+                                       {shot, edit(u"save"_s, u"ocr"_s, u"2"_s)}}}};
+        state[u"profiles"_s] = QJsonObject{{owner, profile}};
+        require(device.store.setCloudSyncState(state) && device.store.flushNow().success,
+                "persist a pre-upgrade account with two pending mouse edits");
+    }
+    Device device(path, service);
+    device.signIn(u"A"_s);
+    device.check();
+    require(device.store.mouseAction(Category::Pinned, doubleClick) == Action::ResetZoom &&
+                service.operation(u"A"_s, definition(Action::ResetZoom).key()).value(u"value"_s) ==
+                    encode(doubleClick) &&
+                service.operation(u"A"_s, pin) == set(u"close"_s),
+            "an unconflicted legacy edit is uploaded under its modern key only");
+    require(
+        device.store.mouseAction(Category::Screenshot, doubleClick) == Action::ShotQuickSave &&
+            service.operation(u"A"_s, definition(Action::ShotQuickSave).key()).value(u"value"_s) ==
+                encode(doubleClick) &&
+            service.operation(u"A"_s, shot) == set(u"quick_save"_s),
+        "a conflicting legacy edit yields to the newer cloud value");
+}
+
+void mousePreferencesStayWithTheirAccount(const QString& path) {
+    using namespace snow_shot::mouse;
+    const auto legacy = u"screenshot/double_click_action"_s;
+    const Binding doubleClick{Kind::DoubleClick, Qt::LeftButton};
+    Service service;
+    {
+        Device oldDevice(path, service);
+        oldDevice.signIn(u"B"_s);
+        oldDevice.check();
+        const auto profileKey = oldDevice.store.cloudSyncState().value(u"owner"_s).toString();
+        require(!profileKey.isEmpty(), "find the saved account profile");
+        oldDevice.account.signOut();
+        auto state = oldDevice.store.cloudSyncState();
+        state[u"signed_out"_s] = QJsonObject{};
+        state[u"profiles"_s] =
+            QJsonObject{{profileKey, QJsonObject{{u"joined"_s, true},
+                                                 {u"values"_s, QJsonObject{{legacy, u"save"_s}}}}}};
+        require(oldDevice.store.setCloudSyncState(state), "write a pre-upgrade account profile");
+        require(oldDevice.store.flushNow().success, "persist the pre-upgrade account profile");
+    }
+    service.set(u"A"_s, legacy, u"quick_save"_s);
+    service.set(u"B"_s, legacy, u"ocr"_s);
+    service.set(u"B"_s, u"screenshot/middle_mouse_button_action"_s, u"quick_save"_s);
+    Device device(path, service);
+    device.signIn(u"A"_s);
+    device.check();
+    require(device.store.mouseAction(Category::Screenshot, doubleClick) == Action::ShotQuickSave,
+            "account A uses its legacy quick save");
+    device.account.signOut();
+    service.holdRead = true;
+    device.signIn(u"B"_s);
+    waitUntil([&] { return service.held.size() == 1; }, "hold the account's first snapshot");
+    require(device.store.mouseAction(Category::Screenshot, doubleClick) == Action::ShotSave,
+            "offline restore uses the cached legacy action");
+    const Binding middle{Kind::Click, Qt::MiddleButton};
+    const auto cancel = definition(Action::ShotCancel).key();
+    require(device.store.setValues(
+                {{definition(Action::ShotPin).key(), encode({})}, {cancel, encode(middle)}}),
+            "transfer the middle click while offline");
+    service.holdRead = false;
+    service.release();
+    device.check();
+    require(device.store.mouseAction(Category::Screenshot, middle) == Action::ShotCancel &&
+                service.operation(u"B"_s, cancel).value(u"value"_s) == encode(middle),
+            "the explicit middle click takes precedence over a conflicting legacy cloud gesture");
+    require(device.store.mouseAction(Category::Screenshot, doubleClick) == Action::ShotOcr &&
+                service.operation(u"B"_s, definition(Action::ShotOcr).key()).value(u"value"_s) ==
+                    encode(doubleClick),
+            "the latest cloud legacy action supersedes the restored offline cache for account B");
+    device.account.signOut();
+    device.signIn(u"A"_s);
+    device.check();
+    require(device.store.mouseAction(Category::Screenshot, doubleClick) == Action::ShotQuickSave,
+            "switching back restores account A's migrated action");
+}
+
+void modernMouseSnapshotSupersedesLegacyClaims(const QString& path) {
+    using namespace snow_shot::mouse;
+    const auto legacy = u"screenshot/middle_mouse_button_action"_s;
+    const auto pin = definition(Action::ShotPin).key();
+    const auto save = definition(Action::ShotSave).key();
+    const auto quickSave = definition(Action::ShotQuickSave).key();
+    const auto cancel = definition(Action::ShotCancel).key();
+    const Binding middle{Kind::Click, Qt::MiddleButton};
+    const Binding side{Kind::Click, Qt::ForwardButton, Qt::ShiftModifier};
+    Service service;
+    {
+        Device olderDevice(path, service);
+        olderDevice.signIn(u"A"_s);
+        olderDevice.check();
+        const auto state = olderDevice.store.cloudSyncState();
+        const auto accountKey = state.value(u"owner"_s).toString();
+        require(!accountKey.isEmpty(), "find the joined account profile");
+        olderDevice.account.signOut();
+        auto legacyState = olderDevice.store.cloudSyncState();
+        legacyState[u"profiles"_s] = QJsonObject{
+            {accountKey, QJsonObject{{u"joined"_s, true},
+                                     {u"values"_s, QJsonObject{{legacy, u"quick_save"_s}}}}}};
+        require(olderDevice.store.setCloudSyncState(legacyState) &&
+                    olderDevice.store.flushNow().success,
+                "save the joined profile in its legacy format");
+    }
+    service.set(u"A"_s, legacy, u"quick_save"_s);
+    service.set(u"A"_s, pin, encode({}));
+    service.set(u"A"_s, save, encode(middle));
+    service.holdRead = true;
+    Device device(path, service);
+    device.signIn(u"A"_s);
+    waitUntil([&] { return service.held.size() == 1; }, "hold the first modern snapshot");
+    require(device.store.mouseAction(Category::Screenshot, middle) == Action::ShotQuickSave,
+            "the old profile initially restores the legacy gesture");
+    require(device.store.setValue(cancel, encode(side)),
+            "record a modern local edit while the first snapshot is in flight");
+    service.holdRead = false;
+    service.release();
+    device.check();
+    require(device.store.mouseAction(Category::Screenshot, middle) == Action::ShotSave &&
+                device.store.value(quickSave) == encode({}) &&
+                service.operation(u"A"_s, quickSave).isEmpty(),
+            "the partial modern snapshot replaces the migrated claim without uploading it");
+    require(device.store.mouseAction(Category::Screenshot, side) == Action::ShotCancel &&
+                service.operation(u"A"_s, cancel).value(u"value"_s) == encode(side),
+            "the pending modern local edit survives reconciliation");
+}
+
 void expertTranslationModel(const QString& path) {
     const auto model = u"screenshot_translation/model"_s;
     Service service;
@@ -996,6 +1211,11 @@ int main(int argc, char* argv[]) {
     blockedShortcutRollback(temp.filePath(u"rollback-confirmed.json"_s), true);
     blockedShortcutRollback(temp.filePath(u"rollback-local.json"_s), false);
     atomicShortcutSwap(temp.filePath(u"atomic-swap.json"_s));
+    mousePreferencesOnUpgrade(temp.filePath(u"mouse-operations.json"_s));
+    signedOutMouseEditMergesWithLegacyCloud(temp.filePath(u"mouse-signed-out.json"_s));
+    pendingLegacyMouseEditsOnUpgrade(temp.filePath(u"mouse-pending-upgrade.json"_s));
+    mousePreferencesStayWithTheirAccount(temp.filePath(u"mouse-operations-accounts.json"_s));
+    modernMouseSnapshotSupersedesLegacyClaims(temp.filePath(u"mouse-operations-upgrade.json"_s));
     unsupportedShortcutList(temp.filePath(u"unsupported-binding.json"_s));
     translationPreferenceEdits(temp.filePath(u"translation.json"_s));
     expertTranslationModel(temp.filePath(u"expert-model.json"_s));

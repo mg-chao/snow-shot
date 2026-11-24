@@ -81,7 +81,7 @@ void deferredCopiesYieldToBatch() {
                 Access::copyCurrentViewport(lazy);
             Access::batchCopy(sameOwner ? lazy : owner, {&target});
             pinned_batch_test::waitForSave();
-            const auto batch = exportedClipboardUrls();
+            const auto batch = batchClipboardUrls();
             require(batch.size() == 1 &&
                         QImage(batch.first().toLocalFile()).size() == QSize(90, 70),
                     "the newer batch publishes its target");
@@ -98,7 +98,7 @@ void deferredCopiesYieldToBatch() {
                 },
                 "older materialization and copy preparation settle");
             require(
-                exportedClipboardUrls() == batch,
+                batchClipboardUrls() == batch,
                 "older image, file and original copies cannot replace a newer batch on any pin");
         }
     }
@@ -175,20 +175,30 @@ void renderingCopiesYieldToNewRequests() {
                 Access::restoreOffscreen(text, config);
                 Access::copyOriginalContent(text);
             }
-            translation_tests::waitUntil([&] { return !Access::exportArtifact(second); },
-                                         "the newer copy completes");
-            const auto urls = exportedClipboardUrls();
+            const auto currentUrls = [&] {
+                return replacement == Replacement::Batch ? batchClipboardUrls()
+                                                         : exportedClipboardUrls();
+            };
+            // Snapshot materialization can precede the creation of a clipboard artifact.
+            // Wait for publication itself before allowing the older encoder to finish.
+            translation_tests::waitUntil(
+                [&] {
+                    if (Access::exportArtifact(second))
+                        return false;
+                    if (replacement == Replacement::Text)
+                        return QApplication::clipboard()->text() ==
+                               QStringLiteral("newer original text");
+                    if (replacement == Replacement::Batch || copyFile) {
+                        const auto urls = currentUrls();
+                        return urls.size() == 1 &&
+                               QImage(urls.first().toLocalFile()).size() == QSize(90, 70);
+                    }
+                    return exportedClipboardImage().size() == QSize(90, 70);
+                },
+                "the newer copy publishes its content");
+            const auto urls = currentUrls();
             const auto image = exportedClipboardImage();
             const auto text = QApplication::clipboard()->text();
-            if (replacement == Replacement::Text)
-                require(text == QStringLiteral("newer original text"),
-                        "new text reaches clipboard");
-            else if (replacement == Replacement::Batch || copyFile)
-                require(urls.size() == 1 &&
-                            QImage(urls.first().toLocalFile()).size() == QSize(90, 70),
-                        "the newer image file reaches clipboard");
-            else
-                require(image.size() == QSize(90, 70), "the newer raster reaches clipboard");
             QImage older(120, 80, QImage::Format_ARGB32_Premultiplied);
             older.fill(Qt::red);
             deliver(older);
@@ -198,7 +208,7 @@ void renderingCopiesYieldToNewRequests() {
                            ScreenshotExportCoordinator::shared().pendingJobCount() == 0;
                 },
                 "superseded rendering and clipboard publication settle");
-            require(exportedClipboardUrls() == urls && exportedClipboardImage() == image &&
+            require(currentUrls() == urls && exportedClipboardImage() == image &&
                         QApplication::clipboard()->text() == text,
                     "late image and file encoders cannot replace a newer batch, image or text");
             require(QDir(output.path()).entryList(QDir::Files).isEmpty(),
@@ -222,8 +232,79 @@ void pendingBatchYieldsToRecognitionCopy() {
     const QString copied = QApplication::clipboard()->text();
     require(copied == QStringLiteral("Saved OCR"), "recognized text reaches the clipboard");
     pinned_batch_test::waitForSave();
-    require(QApplication::clipboard()->text() == copied && exportedClipboardUrls().isEmpty(),
+    require(QApplication::clipboard()->text() == copied && batchClipboardUrls().isEmpty(),
             "a pending batch cannot replace a later recognized-text copy");
+}
+
+void verifyCopyAndCloseSuperseded(const QString& expected, const std::function<void()>& copy) {
+    auto config = cachedOcrPinConfig(nullptr);
+    config.recognitionResults = {};
+    config.recognitionVisible = false;
+    config.enableEditing = false;
+    ScreenshotImageLoadCallback deliver;
+    config.imageLoader = [&deliver](QObject*, ScreenshotImageLoadCallback ready) {
+        deliver = std::move(ready);
+    };
+    ScreenshotPinnedWindow source;
+    source.setAttribute(Qt::WA_DeleteOnClose, false);
+    const auto closeSource = qScopeGuard([&] { source.close(); });
+    require(source.present(config), "present the delayed copy-and-close source");
+    translation_tests::waitUntil([&] { return bool(deliver); }, "source starts loading");
+    Access::copyCurrentAndClose(source);
+
+    copy();
+    require(QApplication::clipboard()->text() == expected, "the newer copy reached the clipboard");
+    bool snapshotReady = false;
+    source.requestRenderedImageSnapshot([&](ScreenshotPinnedImageSnapshot snapshot) {
+        require(snapshot.source.isValid(), "the superseded source still has its image");
+        snapshotReady = true;
+    });
+    deliver(config.imageSource.materializedImage);
+    translation_tests::waitUntil(
+        [&] {
+            return snapshotReady && !Access::exportArtifact(source) &&
+                   ScreenshotExportCoordinator::shared().pendingJobCount() == 0;
+        },
+        "the superseded copy-and-close settles");
+    QCoreApplication::processEvents();
+    require(source.isVisible() && QApplication::clipboard()->text() == expected,
+            "the newer copy keeps the older pin open and retains the clipboard");
+}
+
+void copyAndCloseYieldsToRecognitionCopy() {
+    const snow_shot::storage::TextRecognitionSettings textSettings;
+    const auto oldFormatting = textSettings.defaultFormatting();
+    const auto restore = qScopeGuard([&] { textSettings.setDefaultFormatting(oldFormatting); });
+    require(textSettings.setDefaultFormatting(QStringLiteral("keep")),
+            "configure OCR to copy its visible text directly");
+    auto config = cachedOcrPinConfig(nullptr);
+    ScreenshotPinnedWindow text;
+    const auto closeText = qScopeGuard([&] { text.close(); });
+    auto* session = Access::hiddenSelectionOffscreen(text, config);
+    session->activate(ScreenshotRecognitionSessionController::Mode::Text);
+    auto* content = text.findChild<ScreenshotRecognitionWindow*>();
+    require(content && content->isVisible(), "show cached recognition text");
+
+    verifyCopyAndCloseSuperseded(QStringLiteral("Saved OCR"), [&] {
+        require(content->copyVisibleContentToClipboard(), "copy from the OCR content");
+    });
+}
+
+void copyAndCloseYieldsToColorSwatch() {
+    auto config = cachedOcrPinConfig(nullptr);
+    config.recognitionResults = {};
+    config.recognitionVisible = false;
+    config.originalClipboardContent.text = QStringLiteral("#336699");
+    snow_shot::storage::PinnedTextStyle style;
+    style.colorSwatch = true;
+    config.originalClipboardContent.textStyle = style;
+    ScreenshotPinnedWindow swatch;
+    swatch.setAttribute(Qt::WA_DeleteOnClose, false);
+    const auto close = qScopeGuard([&] { swatch.close(); });
+    require(swatch.present(config), "present a color swatch");
+    auto* button = swatch.findChild<QAbstractButton*>(QStringLiteral("pinnedColorCopy0"));
+    require(button && button->isVisible(), "show the swatch's hex copy button");
+    verifyCopyAndCloseSuperseded(QStringLiteral("#336699"), [&] { button->click(); });
 }
 
 void deferredSaveYieldsToNewCopy() {
@@ -292,6 +373,10 @@ void run() {
     latestDeferredCopyCompletes();
     renderingCopiesYieldToNewRequests();
     pendingBatchYieldsToRecognitionCopy();
+    copyAndCloseYieldsToRecognitionCopy();
+    copyAndCloseYieldsToColorSwatch();
+    const auto other = QStringLiteral("copied outside the pin");
+    verifyCopyAndCloseSuperseded(other, [&] { QApplication::clipboard()->setText(other); });
     deferredSaveYieldsToNewCopy();
 }
 } // namespace pinned_copy_ordering_tests

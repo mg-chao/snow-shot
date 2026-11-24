@@ -19,7 +19,9 @@
 #include "snow_shot/presentation/screenshotrecognitionwindow.h"
 #include "widgets/button.h"
 #include <QApplication>
+#include <QContextMenuEvent>
 #include <QKeyEvent>
+#include <QScopedValueRollback>
 #include <QMouseEvent>
 #include <QNativeGestureEvent>
 #include <QTimer>
@@ -32,6 +34,11 @@
 namespace platform = snow_shot::presentation;
 namespace resize_geometry = screenshot_pinned_resize_geometry;
 namespace {
+bool isGestureEscape(const QKeyEvent& event) {
+    const auto key = snow_shot::shortcuts::commandKey(event);
+    return key == Qt::Key_Escape || (key == Qt::Key_unknown && event.key() == Qt::Key_Escape);
+}
+
 Qt::CursorShape resizeCursor(int handle) {
     using H = resize_geometry::DragHandle;
     switch (H(handle)) {
@@ -156,9 +163,6 @@ void ScreenshotPinnedWindow::cancelExportDrag() {
 bool ScreenshotPinnedWindow::handleExportDrag(QObject* watched, QEvent* event) {
     if (!event)
         return false;
-    if (!m_exportDragOrigin && m_selectionController &&
-        m_selectionController->usesSharedGeometry(this))
-        return false;
     // Native dragging owns Escape/release and can deactivate its source window.
     if (m_dragExport && m_dragExport->dragging())
         return false;
@@ -185,13 +189,13 @@ bool ScreenshotPinnedWindow::handleExportDrag(QObject* watched, QEvent* event) {
             }
         }
         if (event->type() == QEvent::MouseButtonRelease &&
-            static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton) {
+            static_cast<QMouseEvent*>(event)->button() == m_exportButton) {
             cancelExportDrag();
             return true;
         }
         if (event->type() == QEvent::MouseMove) {
             auto* mouse = static_cast<QMouseEvent*>(event);
-            if (!mouse->buttons().testFlag(Qt::LeftButton)) {
+            if (!mouse->buttons().testFlag(m_exportButton)) {
                 cancelExportDrag();
                 return true;
             }
@@ -204,20 +208,7 @@ bool ScreenshotPinnedWindow::handleExportDrag(QObject* watched, QEvent* event) {
         }
         return false;
     }
-    if ((watched != this && watched != m_canvas && watched != m_recognitionContent) ||
-        event->type() != QEvent::MouseButtonPress)
-        return false;
-    auto* mouse = static_cast<QMouseEvent*>(event);
-    if (mouse->button() != Qt::LeftButton || !mouse->modifiers().testFlag(Qt::ControlModifier) ||
-        !exportDragEnabledAt(windowPositionForEvent(watched, mouse->position()).toPoint(),
-                             mouse->modifiers()))
-        return false;
-    m_exportDragOrigin = mouse->globalPosition().toPoint();
-    m_exportDragAborted = false;
-    m_exportDragSpontaneous = mouse->spontaneous();
-    qApp->installEventFilter(this);
-    event->accept();
-    return true;
+    return false;
 }
 
 void ScreenshotPinnedWindow::reconcilePlatformEnvironment(bool layoutChanged) {
@@ -353,6 +344,16 @@ bool ScreenshotPinnedWindow::beginControlledInteraction(const QPointF& desktopPo
         m_interactionGrabber = this;
         grabMouse();
     }
+    if (!m_mouseStroke) {
+        // Direct platform moves and the click-through handle have already begun a drag.
+        MouseStroke stroke;
+        stroke.press.button = stroke.press.reportedButton = Qt::LeftButton;
+        stroke.press.drag = snow_shot::mouse::Action::Move;
+        stroke.press.origin = desktopPosition;
+        stroke.press.crossed = stroke.started = true;
+        stroke.receiver = m_interactionGrabber;
+        m_mouseStroke = stroke;
+    }
     qApp->installEventFilter(this);
     setWindowDragCursor(handle ? resizeCursor(*handle) : Qt::ClosedHandCursor);
     return true;
@@ -472,6 +473,7 @@ void ScreenshotPinnedWindow::endControlledInteraction(bool cancel) {
         return;
     endWindowShake(cancel);
     const auto original = *m_interactionPlacement;
+    m_mouseStroke.reset();
     m_interactionPlacement.reset();
     m_interactionResizeHandle.reset();
     m_interactionNativePointer.reset();
@@ -514,119 +516,409 @@ void ScreenshotPinnedWindow::endControlledInteraction(bool cancel) {
     endAuxiliaryWindowInteraction();
 }
 
-bool ScreenshotPinnedWindow::handleLockedPointer(QObject* watched, QEvent* event) {
-    if (!m_lockedMode || m_closing || !event ||
-        (event->type() != QEvent::MouseButtonPress && event->type() != QEvent::MouseButtonDblClick))
-        return false;
-    const bool moveControl = watched == m_clickThroughMoveButton.get();
-    if (watched != this && watched != m_canvas && watched != m_recognitionContent && !moveControl)
-        return false;
-    auto* mouse = static_cast<QMouseEvent*>(event);
-    if (mouse->button() != Qt::LeftButton || (event->type() == QEvent::MouseButtonDblClick &&
-                                              !mouse->modifiers().testFlag(Qt::AltModifier)))
-        return false;
-    if (!moveControl) {
-        const QPointF local = windowPositionForEvent(watched, mouse->position());
-        const bool resize =
-            !m_geometryAnimating && !m_thumbnailMode && resizeHandleAt(local).has_value();
-        if (!resize && !windowMoveEligibleForPointer(local.toPoint(), mouse->modifiers()))
-            return false;
+void ScreenshotPinnedWindow::executeMouseClick(snow_shot::mouse::Action action,
+                                               const QPoint& global) {
+    using enum snow_shot::mouse::Action;
+    switch (action) {
+    case Copy:
+    case CopyClose:
+        copyCurrentAndMaybeClose(action == CopyClose);
+        break;
+    case CopyText:
+        copyPinnedWindowText(m_selectionController && m_selectionController->isSelected(this)
+                                 ? m_selectionController->selectedWindows()
+                                 : QList<QPointer<ScreenshotPinnedWindow>>{this});
+        break;
+    case Save:
+        saveAsFile();
+        break;
+    case ResetZoom:
+        applyScale(100);
+        break;
+    case Thumbnail:
+        if (!isLiveWindow()) {
+            if (m_selectionController)
+                m_selectionController->clearSelection();
+            setThumbnailMode(!m_thumbnailMode);
+        }
+        break;
+    case HideAtTop:
+        toggleHideToTop();
+        break;
+    case Recognition:
+        if (!isLiveWindow())
+            toggleTextRecognitionResults();
+        break;
+    case Close:
+        requestUserClose();
+        break;
+    case Destroy:
+        if (liveCommandAllowed(QStringLiteral("destroy_window")))
+            confirmDestroy();
+        break;
+    case Menu:
+        showContextMenu(global);
+        break;
+    case Annotation:
+        if (!isLiveWindow() && m_editController)
+            setEditMode(!m_editController->editMode());
+        break;
+    case MultiSelect:
+        if (m_selectionController)
+            m_selectionController->toggleSelection(this);
+        break;
+    default:
+        break;
     }
-    showLockedReadout();
-    mouse->accept();
+}
+
+void ScreenshotPinnedWindow::updateWindowDragCursor(const QPointF& local,
+                                                    Qt::KeyboardModifiers keys) {
+    using namespace snow_shot::mouse;
+    if (!m_presented || m_closing || m_selectionGeometryActive || m_interactionPlacement)
+        return;
+    if (m_windowDragActive) {
+        setWindowDragCursor(Qt::ClosedHandCursor);
+        return;
+    }
+    // Cursor feedback describes a primary-button drag at this point.
+    const auto action = match(Category::Pinned, {Kind::Drag, Qt::LeftButton, modifiers(keys)});
+    if (action == Action::Move || action == Action::ForceMove) {
+        if (interactiveResizingEnabled()) {
+            if (const auto handle = resizeHandleAt(local)) {
+                setWindowDragCursor(resizeCursor(*handle));
+                return;
+            }
+        }
+        if (windowMoveEnabledForPointer(
+                local.toPoint(), action == Action::ForceMove ? Qt::AltModifier : Qt::NoModifier)) {
+            setWindowDragCursor(Qt::OpenHandCursor);
+            return;
+        }
+    }
+    clearWindowDragCursor();
+}
+
+bool ScreenshotPinnedWindow::startMouseDrag(const MouseStroke& stroke, bool released,
+                                            bool spontaneous) {
+    using enum snow_shot::mouse::Action;
+    if (!stroke.press.drag)
+        return false;
+    switch (*stroke.press.drag) {
+    case Crop:
+        return beginCropSelection(stroke.nativeOrigin);
+    case PanCrop:
+        return stroke.panOrigin && cropSelectionAllowed();
+    case Move:
+    case ForceMove:
+        if (m_lockedMode) {
+            showLockedReadout();
+            return false;
+        }
+        if (m_selectionController && m_selectionController->usesSharedGeometry(this) &&
+            !(stroke.resizeHandle && m_cropRect))
+            return m_selectionController->beginGeometry(this, stroke.press.origin,
+                                                        stroke.resizeHandle, stroke.physicalOrigin);
+        if (m_selectionController && !m_selectionController->isSelected(this))
+            m_selectionController->clearSelection();
+        // Keep the native cross-display move and DPI anchoring on Windows.
+        if (spontaneous && !released && !m_platform->usesControlledInteraction() &&
+            !stroke.resizeHandle && stroke.press.reportedButton == Qt::LeftButton &&
+            startWindowMove(stroke.physicalOrigin))
+            return true;
+        if (!beginControlledInteraction(stroke.press.origin, stroke.resizeHandle))
+            return false;
+        if (stroke.resizeHandle)
+            m_interactionNativePointer = stroke.physicalOrigin;
+        return true;
+    case Export:
+        if (!released) {
+            m_exportButton = stroke.press.reportedButton;
+            m_exportDragOrigin = stroke.press.origin.toPoint();
+            m_exportDragAborted = false;
+            m_exportDragSpontaneous = spontaneous;
+            qApp->installEventFilter(this);
+            beginExportDrag();
+        }
+        return false;
+    default:
+        return false;
+    }
+}
+
+void ScreenshotPinnedWindow::finishMouseDrag(bool cancel) {
+    auto stroke = std::exchange(m_mouseStroke, std::nullopt);
+    if (!stroke || !stroke->started)
+        return;
+    using enum snow_shot::mouse::Action;
+    if (stroke->press.drag == PanCrop) {
+        if (cancel)
+            m_cropRect = stroke->panOrigin;
+        updateCropPresentation();
+        if (!cancel)
+            schedulePersistence();
+    } else if (stroke->press.drag == Crop) {
+        endCropSelection(cancel);
+    } else if (m_selectionGeometryActive && m_selectionController) {
+        m_selectionController->endGeometry(cancel);
+    } else if (m_interactionPlacement) {
+        endControlledInteraction(cancel);
+    }
+}
+
+bool ScreenshotPinnedWindow::cancelMouseOperation() {
+    if (!m_mouseStroke || m_startingMouseDrag)
+        return false;
+    finishMouseDrag(true);
     return true;
 }
 
-bool ScreenshotPinnedWindow::handleControlledPointer(QObject* watched, QEvent* event) {
-    if ((!m_platform->usesControlledInteraction() && !m_cropRect && !m_interactionPlacement &&
-         !m_controlledEscapeRelease) ||
-        !event)
+bool ScreenshotPinnedWindow::handleMouseOperation(QObject* watched, QEvent* event,
+                                                  bool toolFallback, bool topHandle) {
+    using namespace snow_shot::mouse;
+    if (!event || !m_presented || m_closing || m_destroying)
         return false;
-    if (m_controlledEscapeRelease && event->type() == QEvent::KeyRelease &&
-        snow_shot::shortcuts::commandKey(*static_cast<QKeyEvent*>(event)) == Qt::Key_Escape) {
+    const auto type = event->type();
+    auto& clickSequence = topHandle ? m_topHandleClickSequence : m_clickSequence;
+    if ((watched == this || topHandle) &&
+        (type == QEvent::WindowDeactivate || type == QEvent::Hide || type == QEvent::Close)) {
+        clickSequence.reset();
+    } else if (type == QEvent::UngrabMouse && (watched == this || watched == m_canvas ||
+                                               watched == m_recognitionContent || topHandle)) {
+        clickSequence.cancelPress();
+    }
+    if (m_startingMouseDrag)
+        return false;
+    if (type == QEvent::ContextMenu && m_recognitionContent &&
+        static_cast<QContextMenuEvent*>(event)->reason() == QContextMenuEvent::Mouse) {
+        const auto* widget = qobject_cast<QWidget*>(watched);
+        if (widget &&
+            (widget == m_recognitionContent || m_recognitionContent->isAncestorOf(widget))) {
+            // The release matcher owns mouse menus. Keep keyboard context menus local to OCR.
+            event->accept();
+            return true;
+        }
+    }
+    if (m_controlledEscapeRelease && type == QEvent::KeyRelease &&
+        isGestureEscape(*static_cast<QKeyEvent*>(event))) {
         m_controlledEscapeRelease = false;
         event->accept();
         return true;
     }
-    if (m_interactionPlacement) {
-        if (event->type() == QEvent::ShortcutOverride &&
-            snow_shot::shortcuts::commandKey(*static_cast<QKeyEvent*>(event)) == Qt::Key_Escape) {
-            event->accept();
-            return true;
-        }
-        if (event->type() == QEvent::KeyPress &&
-            snow_shot::shortcuts::commandKey(*static_cast<QKeyEvent*>(event)) == Qt::Key_Escape) {
-            m_controlledEscapeRelease = true;
-            endControlledInteraction(true);
-            event->accept();
-            return true;
-        }
-        if ((event->type() == QEvent::UngrabMouse && watched == m_interactionGrabber) ||
-            (event->type() == QEvent::WindowDeactivate && watched == this) ||
-            (event->type() == QEvent::Hide && watched == this)) {
-            endControlledInteraction(true);
+    if (m_mouseStroke) {
+        if (type == QEvent::Wheel && (m_mouseStroke->press.drag == Action::Crop ||
+                                      m_mouseStroke->press.drag == Action::PanCrop)) {
+            clickSequence.cancelPress();
+            cancelMouseOperation();
             return false;
         }
-        if (event->type() == QEvent::MouseMove || event->type() == QEvent::MouseButtonRelease) {
-            auto* mouse = static_cast<QMouseEvent*>(event);
-            // A release can be lost during input/session interruption. The next
-            // move's button state ends ownership; its hover position is not a
-            // drag target. Actual release events still apply their final position.
-            if (event->type() == QEvent::MouseMove && !mouse->buttons().testFlag(Qt::LeftButton)) {
-                endControlledInteraction(true);
-                return false;
+        if (((watched == this || topHandle) &&
+             (type == QEvent::WindowDeactivate || type == QEvent::Hide || type == QEvent::Close)) ||
+            (type == QEvent::UngrabMouse &&
+             (watched == this || watched == m_mouseStroke->receiver ||
+              watched == m_interactionGrabber || topHandle)) ||
+            type == QEvent::ScreenChangeInternal || type == QEvent::DevicePixelRatioChange) {
+            // Controlled moves support crossing screens. Crop uses the press-time mapping.
+            if ((type != QEvent::ScreenChangeInternal && type != QEvent::DevicePixelRatioChange) ||
+                m_mouseStroke->press.drag == Action::Crop ||
+                m_mouseStroke->press.drag == Action::PanCrop)
+                cancelMouseOperation();
+            return false;
+        }
+        if ((type == QEvent::KeyPress || type == QEvent::ShortcutOverride) &&
+            isGestureEscape(*static_cast<QKeyEvent*>(event))) {
+            if (type == QEvent::KeyPress) {
+                m_controlledEscapeRelease = true;
+                cancelMouseOperation();
             }
-            if (event->type() == QEvent::MouseButtonRelease && mouse->button() != Qt::LeftButton)
-                return false;
-            updateControlledInteraction(mouse->globalPosition());
-            if (event->type() == QEvent::MouseButtonRelease)
-                endControlledInteraction(false);
+            event->accept();
             return true;
         }
-        return false;
     }
-    if (m_recognitionContent != nullptr && m_recognitionContent->lineBoxSelectionActive()) {
-        clearWindowDragCursor();
-        return false;
-    }
-    const bool moveControl = watched == m_clickThroughMoveButton.get();
-    if (watched != this && watched != m_canvas && watched != m_recognitionContent && !moveControl)
-        return false;
-    if (event->type() == QEvent::Leave) {
-        clearWindowDragCursor();
-        return false;
-    }
-    if (event->type() != QEvent::MouseMove && event->type() != QEvent::MouseButtonPress &&
-        event->type() != QEvent::MouseButtonDblClick)
+    if (type != QEvent::MouseButtonPress && type != QEvent::MouseButtonDblClick &&
+        type != QEvent::MouseMove && type != QEvent::MouseButtonRelease)
         return false;
     auto* mouse = static_cast<QMouseEvent*>(event);
-    if (event->type() == QEvent::MouseButtonDblClick &&
-        !mouse->modifiers().testFlag(Qt::AltModifier))
+    const auto widget = qobject_cast<QWidget*>(watched);
+    const bool surface =
+        topHandle || watched == this || watched == m_canvas || watched == m_recognitionContent ||
+        (widget && m_recognitionContent && m_recognitionContent->isAncestorOf(widget));
+    if (!surface && !m_mouseStroke)
         return false;
-    if (event->type() == QEvent::MouseMove && mouse->buttons() != Qt::NoButton) {
-        // A canvas/OCR press inside content owns its subsequent movement, even
-        // when the captured pointer enters the reserved frame or an edge band.
-        clearWindowDragCursor();
+    clickSequence.observe(*mouse, topHandle ? *widget : *this);
+    if (m_selectionController &&
+        (type == QEvent::MouseButtonPress || type == QEvent::MouseButtonDblClick))
+        m_selectionController->resolvePendingSelectionClick(
+            this, !topHandle && clickSequence.kind() == Kind::DoubleClick);
+    const QPointF local =
+        topHandle ? QPointF(rect().center()) : mapFromGlobal(mouse->globalPosition());
+    if (m_mouseStroke && (type == QEvent::MouseMove || type == QEvent::MouseButtonRelease))
+        return continueMouseOperation(*mouse, local);
+    if (type == QEvent::MouseMove) {
+        if (surface && !topHandle && mouse->buttons() == Qt::NoButton) {
+            updateWindowDragCursor(local, mouse->modifiers());
+            // Recognition supplies its own text cursor on glyphs. On movable background the
+            // host owns the hover, including events delivered to a formatted text viewport.
+            if (m_windowDragCursorSet && widget && m_recognitionContent &&
+                (widget == m_recognitionContent || m_recognitionContent->isAncestorOf(widget))) {
+                mouse->accept();
+                return true;
+            }
+        }
         return false;
     }
-    const QPointF local = windowPositionForEvent(watched, mouse->position());
-    const auto handle =
-        interactiveResizingEnabled() && !moveControl ? resizeHandleAt(local) : std::nullopt;
-    if (event->type() == QEvent::MouseMove) {
-        if (handle) {
-            setWindowDragCursor(resizeCursor(*handle));
+    if (type == QEvent::MouseButtonRelease || m_mouseStroke || m_clickThroughActive ||
+        m_geometryAnimating || (!topHandle && isControlsPanelPosition(local.toPoint())))
+        return false;
+    return beginMouseOperation(watched, *mouse, local, toolFallback, topHandle);
+}
+
+bool ScreenshotPinnedWindow::continueMouseOperation(QMouseEvent& event, const QPointF& local) {
+    using namespace snow_shot::mouse;
+    const bool release = event.type() == QEvent::MouseButtonRelease;
+    const auto button = m_mouseStroke->press.reportedButton;
+    if (release && event.button() != button)
+        return false;
+    if (!release && !event.buttons().testFlag(button)) {
+        cancelMouseOperation();
+        return false;
+    }
+    const bool wasDrag = m_mouseStroke->press.crossed;
+    if (!m_mouseStroke->press.updateThreshold(event.globalPosition())) {
+        if (release) {
+            const auto stroke = *std::exchange(m_mouseStroke, std::nullopt);
+            if (stroke.press.click)
+                executeMouseClick(*stroke.press.click, event.globalPosition().toPoint());
+            else if (stroke.press.button == Qt::LeftButton && stroke.press.keys == Qt::NoModifier) {
+                if (m_recognitionContent && (m_ocrMode || m_hiddenTextSelection))
+                    m_recognitionContent->clearTextSelection();
+                if (stroke.clearSelection && m_selectionController) {
+                    const auto action =
+                        match(Category::Pinned, {Kind::DoubleClick, Qt::LeftButton});
+                    if (action == Action::CopyText || action == Action::Menu ||
+                        action == Action::MultiSelect)
+                        m_selectionController->deferSelectionClear(this);
+                    else
+                        m_selectionController->clearSelection();
+                }
+            }
+        }
+        event.accept();
+        return true;
+    }
+    if (!wasDrag) {
+        if (const auto timestamp = m_mouseStroke->recognitionPressTimestamp) {
+            auto stroke = std::exchange(m_mouseStroke, std::nullopt);
+            if (auto* receiver = qobject_cast<QWidget*>(stroke->receiver.data())) {
+                // Give the text selection the original press before its first drag update.
+                const QScopedValueRollback<bool> starting(m_startingMouseDrag, true);
+                const auto& press = stroke->press;
+                QMouseEvent replay(QEvent::MouseButtonPress, receiver->mapFromGlobal(press.origin),
+                                   press.origin, press.reportedButton, press.reportedButton,
+                                   press.keys, event.pointingDevice());
+                replay.setTimestamp(*timestamp);
+                QCoreApplication::sendEvent(receiver, &replay);
+            }
+            return false;
+        }
+        const auto stroke = *m_mouseStroke;
+        const QScopedValueRollback<bool> starting(m_startingMouseDrag, true);
+        const bool started = startMouseDrag(stroke, release, event.spontaneous());
+        if (!m_mouseStroke)
+            return true;
+        m_mouseStroke->started = started;
+        if (stroke.press.drag == Action::Export ||
+            (m_windowDragActive && !m_interactionPlacement && !m_selectionGeometryActive)) {
+            // QDrag and the native system move handle their own release.
+            m_mouseStroke.reset();
+            event.accept();
             return true;
         }
-        // Edge resizing owns the host cursor even when a drawing tool disables
-        // window dragging. Release that ownership outside the edge so the canvas
-        // tool (or the window move policy) can resolve the cursor again.
-        updateWindowDragCursor(local.toPoint(), mouse->modifiers());
-        return false;
     }
-    if (mouse->button() == Qt::LeftButton &&
-        (handle || moveControl || windowMoveEnabledForPointer(local.toPoint(), mouse->modifiers())))
-        return beginControlledInteraction(mouse->globalPosition(), handle);
-    return false;
+    if (m_mouseStroke->started)
+        updateMouseDrag(event.globalPosition(), local, release || !wasDrag);
+    if (release)
+        finishMouseDrag(false);
+    event.accept();
+    return true;
+}
+
+void ScreenshotPinnedWindow::updateMouseDrag(const QPointF& global, const QPointF& local,
+                                             bool immediate) {
+    using enum snow_shot::mouse::Action;
+    const auto action = m_mouseStroke->press.drag;
+    if (action == Crop || action == PanCrop) {
+        const auto native = nativePositionForWindowPosition(local);
+        if (action == Crop)
+            updateCropSelection(native);
+        else
+            updateCropPan(*m_mouseStroke->panOrigin, native - m_mouseStroke->nativeOrigin);
+    } else if (m_selectionGeometryActive && m_selectionController) {
+        if (immediate)
+            m_selectionController->updateGeometry(global);
+        else
+            m_selectionController->queueGeometryUpdate(global);
+    } else {
+        updateControlledInteraction(global);
+    }
+}
+
+bool ScreenshotPinnedWindow::beginMouseOperation(QObject* receiver, QMouseEvent& event,
+                                                 const QPointF& local, bool toolFallback,
+                                                 bool topHandle) {
+    using namespace snow_shot::mouse;
+    MouseStroke stroke;
+    const auto& clickSequence = topHandle ? m_topHandleClickSequence : m_clickSequence;
+    stroke.press = resolvePress(Category::Pinned, event, clickSequence.kind(),
+                                topHandle ? *static_cast<QWidget*>(receiver) : *this);
+    const bool force = stroke.press.drag == Action::ForceMove;
+    const auto semanticKeys = force ? Qt::AltModifier : Qt::NoModifier;
+    const bool geometry = force || stroke.press.drag == Action::Move;
+    if (geometry && !topHandle && (interactiveResizingEnabled() || m_lockedMode))
+        stroke.resizeHandle = resizeHandleAt(local);
+    if (topHandle ||
+        (geometry && !stroke.resizeHandle &&
+         !windowMoveEligibleForPointer(local.toPoint(), semanticKeys)) ||
+        (stroke.press.drag == Action::Export &&
+         !exportDragEnabledAt(local.toPoint(), Qt::NoModifier)) ||
+        (stroke.press.drag == Action::Crop && !cropSelectionAllowed()) ||
+        (stroke.press.drag == Action::PanCrop && (!m_cropRect || !cropSelectionAllowed())))
+        stroke.press.drag.reset();
+    if (!topHandle && !stroke.resizeHandle) {
+        if (!toolFallback && m_canvas && m_canvas->interactionEnabled() && !m_ocrMode &&
+            m_editController && m_editController->editMode())
+            return false;
+        if (!force && m_recognitionContent && m_recognitionContent->boxSelectionEnabled() &&
+            event.type() == QEvent::MouseButtonPress && stroke.press.button == Qt::LeftButton &&
+            stroke.press.keys == Qt::NoModifier)
+            return false;
+        if (!stroke.press.drag && (m_ocrMode || m_hiddenTextSelection) &&
+            (stroke.press.button == Qt::LeftButton || stroke.press.button == Qt::MiddleButton) &&
+            !windowDragEligibleAt(local.toPoint(), Qt::NoModifier)) {
+            // Leave word selection and the unmodified background shortcut for dismissing OCR
+            // intact. Other configured clicks can own the release over selectable content.
+            if (!stroke.press.click || (stroke.press.keys == Qt::NoModifier &&
+                                        (stroke.press.button == Qt::LeftButton ||
+                                         stroke.press.click == Action::Recognition)))
+                return false;
+            if (event.button() == Qt::LeftButton)
+                stroke.recognitionPressTimestamp = event.timestamp();
+        }
+    }
+    if (stroke.press.drag == Action::PanCrop)
+        stroke.panOrigin = m_cropRect;
+    stroke.clearSelection = !topHandle && stroke.press.button == Qt::LeftButton &&
+                            stroke.press.keys == Qt::NoModifier && m_selectionController &&
+                            m_selectionController->selectedCount() > 0;
+    if (!stroke.press.click && !stroke.press.drag && !stroke.clearSelection)
+        return false;
+    stroke.nativeOrigin = nativePositionForWindowPosition(local);
+    if (geometry && event.spontaneous() && !m_platform->usesControlledInteraction())
+        stroke.physicalOrigin = stroke.nativeOrigin.toPoint();
+    stroke.receiver = receiver;
+    m_mouseStroke = stroke;
+    event.accept();
+    return true;
 }
 
 void ScreenshotPinnedWindow::resetPinnedGestures() {
@@ -682,8 +974,13 @@ bool ScreenshotPinnedWindow::handlePinnedGesture(QObject* watched, QEvent* event
         return true;
     }
     const bool precise = platform::usesPreciseWheelDelta(*wheel);
-    const int delta = precise ? wheel->pixelDelta().y() : wheel->angleDelta().y();
-    if (wheel->modifiers().testFlag(Qt::ControlModifier)) {
+    const int angleDelta = platform::pinnedWheelAngleDelta(*wheel);
+    const int delta = precise ? wheel->pixelDelta().y() : angleDelta;
+    const auto action = wheelAction(*wheel);
+    if (!action)
+        return false;
+    if (*action == snow_shot::mouse::Action::Opacity ||
+        *action == snow_shot::mouse::Action::FineOpacity) {
         m_scrollWheelSteps.reset();
         if (!precise) {
             m_scrollOpacity = 0;
@@ -691,17 +988,21 @@ bool ScreenshotPinnedWindow::handlePinnedGesture(QObject* watched, QEvent* event
         }
         if (m_scrollOpacity == 0)
             m_scrollOpacity = m_opacityPercent;
-        const int step = snow_shot::storage::PinToScreenSettings().mouseWheelOpacityStep();
+        const int step = *action == snow_shot::mouse::Action::FineOpacity
+                             ? 1
+                             : snow_shot::storage::PinToScreenSettings().mouseWheelOpacityStep();
         m_scrollOpacity = std::clamp(m_scrollOpacity + delta * (step / 120.),
                                      double(screenshot_pinned_opacity::kMinimumOpacityPercent),
                                      double(screenshot_pinned_opacity::kMaximumOpacityPercent));
         setOpacityPercent(qRound(m_scrollOpacity));
     } else if (delta != 0) {
         m_scrollOpacity = 0;
-        const int steps = m_scrollWheelSteps.consume(*wheel);
+        const int steps = m_scrollWheelSteps.consume(*wheel, angleDelta);
         if (steps != 0) {
-            applyWheelScaleSteps(steps, nativePositionForWindowPosition(
-                                            windowPositionForEvent(watched, wheel->position())));
+            applyWheelScaleSteps(
+                steps,
+                nativePositionForWindowPosition(windowPositionForEvent(watched, wheel->position())),
+                *action == snow_shot::mouse::Action::FineZoom ? 1 : 0);
         }
     }
     wheel->accept();

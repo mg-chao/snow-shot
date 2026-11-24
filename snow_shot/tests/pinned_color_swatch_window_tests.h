@@ -17,9 +17,14 @@ void pinnedColorSwatchWindowTests() {
         std::optional<ScreenshotClipboardContentSnapshot> snapshot(qreal) override {
             return {};
         }
-        void setMimeData(std::unique_ptr<QMimeData> data) override {
+        ScreenshotClipboardCommitHandle
+        publish(QObject*, std::unique_ptr<QMimeData> data,
+                ScreenshotClipboardService::PublicationId,
+                ScreenshotClipboardService::CommitCompletion done) override {
             output = std::move(data);
             ++copies;
+            done({});
+            return {};
         }
     };
     const auto decode = [](const QString& text, qreal dpr) {

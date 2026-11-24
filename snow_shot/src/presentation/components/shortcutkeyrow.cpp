@@ -5,6 +5,7 @@
 
 #include "snow_shot/shortcuts/shortcutrecorder.h"
 #include "snow_shot/presentation/components/infotooltipicon.h"
+#include "snow_shot/presentation/components/icons/snowshoticons.h"
 #include "snow_shot/presentation/components/shortcutconfigurationbutton.h"
 #include "snow_shot/presentation/styles/mainwindowcomponenttoken.h"
 #include "snow_shot/presentation/styles/thememanager.h"
@@ -86,8 +87,6 @@ QColor registrationStatusColor(snow_shot::presentation::GlobalShortcutStatus sta
 }
 
 constexpr int SHORTCUT_CONFIG_MODAL_WIDTH = 520;
-constexpr int SHORTCUT_KEY_TEXT_MAX_WIDTH = 200;
-constexpr int COMPACT_SHORTCUT_KEY_TEXT_MAX_WIDTH = 100;
 
 class ShortcutRegistrationSuspensionGuard final : public QObject {
   public:
@@ -987,11 +986,9 @@ ShortcutKeyRow::ShortcutKeyRow(
         setToolTip(tr("Delay: %1 seconds").arg(m_delaySeconds));
     }
 
-    const QString initialTitle = delayDisplayTitle();
-    m_titleLabel->setText(titleLabelText());
+    setRowTitle(delayDisplayTitle());
     m_titleLabel->setObjectName(m_adjustableDelay ? QStringLiteral("delayTitleLabel")
                                                   : QStringLiteral("shortcutTitleLabel"));
-    setAccessibleName(initialTitle);
     m_titleLabel->setAttribute(Qt::WA_TransparentForMouseEvents, !m_adjustableDelay);
     if (m_adjustableDelay) {
         m_titleLabel->setCursor(Qt::SplitVCursor);
@@ -1001,20 +998,12 @@ ShortcutKeyRow::ShortcutKeyRow(
         m_delayUnderline->setAttribute(Qt::WA_TransparentForMouseEvents, true);
         m_delayUnderline->hide();
     }
-    auto* shortcutButton = new ShortcutConfigurationButton(
-        metric,
-        m_compactPresentation ? COMPACT_SHORTCUT_KEY_TEXT_MAX_WIDTH : SHORTCUT_KEY_TEXT_MAX_WIDTH,
-        this);
+    auto* shortcutButton = createConfigurationButton(
+        metric, snow_shot::presentation::icons::custom::outlined::Keyboard());
     shortcutButton->setObjectName(QStringLiteral("shortcutKeyButton"));
-    shortcutButton->setFixedHeight(metric.controlHeight);
-    if (m_compactPresentation) {
-        shortcutButton->setButtonStyle(adqt::widgets::AdButton::ButtonStyle::Outline);
-    }
-    shortcutButton->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     connect(shortcutButton, &QAbstractButton::clicked, this,
             &ShortcutKeyRow::openShortcutConfigDialog);
     m_shortcutButton = shortcutButton;
-    setConfigurationButton(shortcutButton);
 
     connect(&snow_shot::shortcuts::ShortcutDisplayService::instance(),
             &snow_shot::shortcuts::ShortcutDisplayService::displayChanged, this,
@@ -1038,11 +1027,7 @@ void ShortcutKeyRow::applyTheme(const snow_shot::presentation::styles::ThemeColo
 
 void ShortcutKeyRow::setTitle(const QString& title) {
     m_baseTitle = title;
-    const QString displayTitle = delayDisplayTitle();
-    if (m_titleLabel != nullptr) {
-        m_titleLabel->setText(titleLabelText());
-    }
-    setAccessibleName(displayTitle);
+    setRowTitle(delayDisplayTitle());
     syncDelayUnderline();
 }
 
@@ -1117,11 +1102,6 @@ QString ShortcutKeyRow::delayDisplayTitle() const {
     return m_baseTitle.contains(QStringLiteral("%1"))
                ? m_baseTitle.arg(m_delaySeconds)
                : tr("%1 (%2 s)").arg(m_baseTitle).arg(m_delaySeconds);
-}
-
-QString ShortcutKeyRow::titleLabelText() const {
-    const QString title = delayDisplayTitle();
-    return m_compactPresentation ? title + QStringLiteral(":") : title;
 }
 
 bool ShortcutKeyRow::adjustDelayFromWheel(QEvent* event) {

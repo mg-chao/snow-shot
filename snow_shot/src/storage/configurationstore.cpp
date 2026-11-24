@@ -177,8 +177,9 @@ MaterializedConfiguration materializeConfiguration(const QMap<QString, QJsonValu
     result.document = std::move(document);
     const bool mutateDocument = compatibility != ConfigurationCompatibility::FutureVersion;
     const bool replaceAll = policy == ConfigurationOverlayPolicy::ReplaceAll;
-    const QMap<QString, QJsonValue> currentOverlay =
+    QMap<QString, QJsonValue> currentOverlay =
         mutateDocument ? ConfigurationSchema::migrateLegacyValues(overlay) : overlay;
+    mouse::reconcile(currentOverlay);
     if (mutateDocument) {
         auto history = result.document.value(QStringLiteral("capture_history")).toObject();
         if (history.contains(QStringLiteral("enabled"))) {
@@ -462,6 +463,17 @@ QMap<QString, QJsonValue> ConfigurationStore::snapshot() const {
     return m_values;
 }
 
+mouse::Bindings ConfigurationStore::mouseBindings() const {
+    QMutexLocker locker(&m_mutex);
+    return m_mouseBindings;
+}
+
+std::optional<mouse::Action> ConfigurationStore::mouseAction(mouse::Category category,
+                                                             mouse::Binding binding) const {
+    QMutexLocker locker(&m_mutex);
+    return m_mouseBindings.match(category, binding);
+}
+
 quint64 ConfigurationStore::revision() const {
     QMutexLocker locker(&m_mutex);
     return m_revision;
@@ -573,6 +585,8 @@ bool ConfigurationStore::setValuesImpl(const QMap<QString, QJsonValue>& values,
                                        const QJsonObject* cloudSyncState) {
     QMutexLocker mutationLock(&m_mutationMutex);
     QMap<QString, QJsonValue> normalizedValues;
+    const bool mouseChanged = std::any_of(values.keyBegin(), values.keyEnd(),
+                                          [](const QString& key) { return mouse::isKey(key); });
     for (auto it = values.cbegin(); it != values.cend(); ++it) {
         if (!ConfigurationSchema::contains(it.key())) {
             rejectMutation(it.key(), QStringLiteral("The configuration key is not supported"));
@@ -587,6 +601,10 @@ bool ConfigurationStore::setValuesImpl(const QMap<QString, QJsonValue>& values,
         normalizedValues.insert(it.key(), normalized.value);
     }
 
+    if (mouseChanged && !mouse::changesValid(snapshot(), normalizedValues)) {
+        rejectMutation(normalizedValues.firstKey(), tr("The mouse operation is already assigned."));
+        return false;
+    }
     QVector<QPair<QString, QJsonValue>> changed;
     QMap<QString, QJsonValue> previous;
     bool documentChanged = false;
@@ -619,6 +637,8 @@ bool ConfigurationStore::setValuesImpl(const QMap<QString, QJsonValue>& values,
             else
                 m_document.insert(kCloudSyncStateKey, *cloudSyncState);
         }
+        if (mouseChanged)
+            m_mouseBindings = mouse::Bindings(m_values);
         documentChanged = stateChanged || !changed.isEmpty();
         if (documentChanged) {
             m_dirty = true;
@@ -729,6 +749,7 @@ bool ConfigurationStore::applySnapshot(const QMap<QString, QJsonValue>& values, 
                 materialized.document.insert(kCloudSyncStateKey,
                                              m_document.value(kCloudSyncStateKey));
             m_values = std::move(materialized.values);
+            m_mouseBindings = mouse::Bindings(m_values);
             m_document = std::move(materialized.document);
             m_dirty = true;
             ++m_revision;
@@ -919,6 +940,7 @@ void ConfigurationStore::load() {
     {
         QMutexLocker locker(&m_mutex);
         m_values = std::move(loaded);
+        m_mouseBindings = mouse::Bindings(m_values);
         m_document = std::move(document);
         m_compatibility = compatibility;
         m_dirty = dirty && compatibility != ConfigurationCompatibility::FutureVersion;

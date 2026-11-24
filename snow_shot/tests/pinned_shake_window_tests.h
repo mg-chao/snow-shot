@@ -1059,7 +1059,7 @@ void pinnedShakeNativeTests() {
             if (scenario == u"enable-during-handoff")
                 require(Settings().setShakeWindowToHideOthers(false),
                         "disable before native press");
-            require(Access::startNativeShakeDrag(window), "begin native system shake drag");
+            require(Access::startNativeMove(window), "begin native system shake drag");
             discardPostedSystemDrag(hwnd);
             if (scenario == u"toggle-during-handoff")
                 require(Settings().setShakeWindowToHideOthers(false), "disable native handoff");

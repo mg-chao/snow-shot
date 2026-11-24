@@ -50,6 +50,9 @@ class SnowCanvasWidget : public QWidget {
     using CommandKeyResolver = std::function<Qt::Key(const QKeyEvent&)>;
     void setCommandKeyResolver(CommandKeyResolver resolver);
 
+    // Called after canvas tools decline a mouse event, before QWidget propagates it.
+    void setUnhandledMouseHandler(std::function<bool(QMouseEvent*)> handler);
+
     SnowCanvasTool canvasTool() const;
     bool setCanvasTool(SnowCanvasTool tool);
 

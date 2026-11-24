@@ -235,6 +235,13 @@ class SettingsBackend : public QObject {
         return false;
     }
 
+    virtual mouse::Bindings mouseBindings() const {
+        return mouse::Bindings{};
+    }
+    virtual bool applyMouseOperation(mouse::Action, mouse::Binding) {
+        return false;
+    }
+
     virtual AppPermissionService* appPermissions() const {
         return nullptr;
     }
@@ -315,6 +322,8 @@ class BuiltInSettingsBackend final : public SettingsBackend {
         return m_permissions;
     }
 
+    mouse::Bindings mouseBindings() const override;
+    bool applyMouseOperation(mouse::Action action, mouse::Binding binding) override;
     GlobalMousePermissionState globalMousePermissionState() const override;
     void requestGlobalMousePermission() override;
     void openGlobalMousePermissionSettings() override;

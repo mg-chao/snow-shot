@@ -1,6 +1,7 @@
 #ifndef SNOW_SHOT_PRESENTATION_SCREENSHOTPINNEDWINDOW_H
 #define SNOW_SHOT_PRESENTATION_SCREENSHOTPINNEDWINDOW_H
 
+#include "snow_shot/presentation/mouseoperationinput.h"
 #include "snow_shot/presentation/screenshotexporttasks.h"
 #include "snow_shot/app/editionfeatures.h"
 #if SNOW_SHOT_ENABLE_LATEX_RECOGNITION
@@ -25,7 +26,6 @@
 
 #include <QByteArray>
 #include <QJsonObject>
-#include "snow_shot/presentation/mousereleaseactioncontroller.h"
 
 #include <QColor>
 #include <QDeadlineTimer>
@@ -123,7 +123,10 @@ class ScreenshotPinnedClipboard {
     virtual ~ScreenshotPinnedClipboard() = default;
     virtual const QMimeData* mimeData() const = 0;
     virtual std::optional<ScreenshotClipboardContentSnapshot> snapshot(qreal devicePixelRatio) = 0;
-    virtual void setMimeData(std::unique_ptr<QMimeData> data) = 0;
+    virtual ScreenshotClipboardCommitHandle
+    publish(QObject* receiver, std::unique_ptr<QMimeData> data,
+            ScreenshotClipboardService::PublicationId id,
+            ScreenshotClipboardService::CommitCompletion completion) = 0;
 };
 
 struct ScreenshotPinnedRecognitionProviders {
@@ -396,8 +399,6 @@ class ScreenshotPinnedWindow final : public QWidget {
     void moveEvent(QMoveEvent* event) override;
     void hideEvent(QHideEvent* event) override;
     void showEvent(QShowEvent* event) override;
-    void mousePressEvent(QMouseEvent* event) override;
-    void mouseDoubleClickEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
     void dragEnterEvent(QDragEnterEvent* event) override;
@@ -414,8 +415,34 @@ class ScreenshotPinnedWindow final : public QWidget {
     [[nodiscard]] bool cropActionsAllowed() const;
     bool beginCropSelection(const QPointF& nativePosition);
     void updateCropSelection(const QPointF& nativePosition);
-    void endCropSelection(bool cancel, const QPoint& menuPosition = {});
-    bool handleCropPointer(QObject* watched, QEvent* event);
+    void endCropSelection(bool cancel);
+    struct MouseStroke {
+        snow_shot::mouse::Press press;
+        QPointer<QObject> receiver;
+        QPointF nativeOrigin;
+        std::optional<QPoint> physicalOrigin;
+        std::optional<int> resizeHandle;
+        std::optional<QRectF> panOrigin;
+        std::optional<quint64> recognitionPressTimestamp;
+        bool clearSelection = false;
+        bool started = false;
+    };
+    snow_shot::mouse::ClickSequence m_clickSequence;
+    snow_shot::mouse::ClickSequence m_topHandleClickSequence;
+    std::optional<MouseStroke> m_mouseStroke;
+    bool m_startingMouseDrag = false;
+    bool handleMouseOperation(QObject* watched, QEvent* event, bool toolFallback = false,
+                              bool topHandle = false);
+    bool continueMouseOperation(QMouseEvent& event, const QPointF& local);
+    bool beginMouseOperation(QObject* receiver, QMouseEvent& event, const QPointF& local,
+                             bool toolFallback, bool topHandle);
+    void updateMouseDrag(const QPointF& global, const QPointF& local, bool immediate);
+    void cancelCropInteraction();
+    bool cancelMouseOperation();
+    void finishMouseDrag(bool cancel);
+    bool startMouseDrag(const MouseStroke& stroke, bool released, bool spontaneous);
+    void updateCropPan(const QRectF& original, const QPointF& nativeDelta);
+    void executeMouseClick(snow_shot::mouse::Action action, const QPoint& global);
     bool setCropCanvasRect(std::optional<QRectF> rect);
     void applyCrop();
     void cancelCrop();
@@ -435,7 +462,6 @@ class ScreenshotPinnedWindow final : public QWidget {
     QRectF m_cropSelectionCanvas;
     QRectF m_cropSelectionBounds;
     qreal m_cropSelectionScale = 1;
-    bool m_cropContextSuppressed = false;
     std::optional<QRectF> m_interactionCropRect;
     QRectF m_interactionCropCanvas;
     QRectF m_liveAppliedCrop;
@@ -521,7 +547,7 @@ class ScreenshotPinnedWindow final : public QWidget {
     void clearTextAnnotations();
     void textAnnotationsChanged();
     [[nodiscard]] ScreenshotTextAnnotationRenderSnapshot textAnnotationSnapshot() const;
-    [[nodiscard]] bool copyHiddenTextSelection();
+    [[nodiscard]] bool copyHiddenTextSelection(bool closeAfter = false);
     void updateOcrPresentation();
     void updateRecognitionContentGeometry();
     void updateOriginalImagePreviewVisibility();
@@ -549,10 +575,14 @@ class ScreenshotPinnedWindow final : public QWidget {
     void handleTableSplitRequested();
     void handleTableResetRequested();
     QPointF canvasPositionForViewPosition(const QPointF& position) const;
-    void copyEditToolbarContent();
+    void copyEditToolbarContent(bool closeAfter = false);
+    void copyCurrentAndMaybeClose(bool closeAfter);
+    bool scheduleCloseAfterPublication(ScreenshotClipboardService::PublicationId id);
+    void publishCopyMime(std::unique_ptr<QMimeData> mime,
+                         ScreenshotClipboardService::PublicationId id, bool selectedText = false);
     void copyCurrentViewport();
     using CopyOutputOptions = ScreenshotExportTasks;
-    void copyCurrentViewportWithOptions(CopyOutputOptions output);
+    void copyCurrentViewportWithOptions(CopyOutputOptions output, bool closeAfter);
     void copyOriginalContent();
     void copyOriginalImage(ScreenshotClipboardService::PublicationId publicationId);
     void loadImageFile();
@@ -598,7 +628,8 @@ class ScreenshotPinnedWindow final : public QWidget {
     void invalidatePendingCopy();
     void saveRecognitionSnapshot(ScreenshotRecognitionFileSnapshot snapshot, QString path,
                                  QString baseName = {}, bool automatic = false);
-    [[nodiscard]] ScreenshotClipboardService::PublicationId beginCopyRequest();
+    [[nodiscard]] ScreenshotClipboardService::PublicationId
+    beginCopyRequest(bool closeAfter = false);
     void copyRenderedImage(std::shared_ptr<ScreenshotExportArtifact> artifact);
     void copyRenderedImage(std::shared_ptr<ScreenshotExportArtifact> artifact,
                            const CopyOutputOptions& output,
@@ -614,7 +645,9 @@ class ScreenshotPinnedWindow final : public QWidget {
     void rebuildTransformedImage();
     void applyScale(int percent);
     void applyWheelScale(double percent, const QPointF& nativeCursor);
-    void applyWheelScaleSteps(int steps, const QPointF& nativeCursor);
+    void applyWheelScaleSteps(int steps, const QPointF& nativeCursor, int step = 0);
+    std::optional<snow_shot::mouse::Action> wheelAction(const QWheelEvent& event);
+    std::optional<snow_shot::mouse::Action> m_wheelAction;
     bool handleOpacityWheel(QObject* watched, QWheelEvent* event);
     bool handleScaleWheel(QObject* watched, QWheelEvent* event);
     QSize orientedInitialWindowSize() const;
@@ -683,7 +716,7 @@ class ScreenshotPinnedWindow final : public QWidget {
     [[nodiscard]] std::optional<QPoint> physicalCursorPosition() const;
     bool cursorMovementEnabled() const;
     bool moveCursorOnePixel(const QPoint& direction);
-    bool startWindowMove();
+    bool startWindowMove(std::optional<QPoint> nativePress = {});
     void finishWindowMove(bool cancel = false);
     void beginWindowShake(const QPointF& pointer, bool physical);
     void sampleWindowShake(const QPointF& pointer);
@@ -701,17 +734,15 @@ class ScreenshotPinnedWindow final : public QWidget {
     bool windowMoveEligibleForPointer(const QPoint& position,
                                       Qt::KeyboardModifiers modifiers) const;
     bool windowMoveEnabledForPointer(const QPoint& position, Qt::KeyboardModifiers modifiers) const;
-    bool handleDoubleClick(const QPoint& position);
-    bool handleMiddleClick(const QPoint& position);
-    void updateWindowDragCursor(const QPoint& position,
-                                Qt::KeyboardModifiers modifiers = Qt::NoModifier);
+    void
+    updateWindowDragCursor(const QPointF& position,
+                           Qt::KeyboardModifiers modifiers = QGuiApplication::keyboardModifiers());
     void setWindowDragCursor(Qt::CursorShape shape);
     void clearWindowDragCursor();
     bool nativeTrackSizeConstraintsEnabled() const;
     bool interactiveResizingEnabled() const;
     QPointF windowPositionForEvent(QObject* watched, const QPointF& position) const;
     QPointF nativePositionForWindowPosition(const QPointF& position) const;
-    QPoint globalPositionForNativePosition(const QPoint& position) const;
     bool isControlsPanelPosition(const QPoint& position) const;
     void refreshColorSwatch();
     void updateColorSwatchControls();
@@ -719,14 +750,13 @@ class ScreenshotPinnedWindow final : public QWidget {
     std::array<QRectF, 3> m_colorSwatchCopyRects{};
 
     void reconcilePlatformEnvironment(bool layoutChanged = false);
-    bool handleControlledPointer(QObject* watched, QEvent* event);
-    bool handleLockedPointer(QObject* watched, QEvent* event);
     bool handleExportDrag(QObject* watched, QEvent* event);
     bool exportDragEnabledAt(const QPoint& position,
                              Qt::KeyboardModifiers modifiers = Qt::NoModifier) const;
     void beginExportDrag();
     void cancelExportDrag();
     std::unique_ptr<ScreenshotPinnedDragExport> m_dragExport;
+    Qt::MouseButton m_exportButton = Qt::LeftButton;
     std::optional<QPoint> m_exportDragOrigin;
     bool m_exportDragSpontaneous = false;
     bool m_exportDragAborted = false;
@@ -759,11 +789,11 @@ class ScreenshotPinnedWindow final : public QWidget {
     SnowCanvasRuntime m_runtime;
     quint64 m_automationRevision = 0;
     std::unique_ptr<snow_shot::presentation::WindowShortcutManager> m_shortcutManager;
-    snow_shot::presentation::MouseReleaseActionController m_mouseReleaseAction;
     std::unique_ptr<snow_shot::platform::PhysicalCursor> m_physicalCursor;
     QMap<QString, quint64> m_pinnedShortcutBindings;
     QHash<QString, QString> m_pinnedShortcutDisplays;
     std::shared_ptr<ScreenshotExportArtifact> m_exportArtifact;
+    ScreenshotClipboardService::PublicationId m_closeAfterPublication = 0;
     ScreenshotClipboardService::PublicationId m_copyPublicationId = 0;
     struct PinnedRenderCache;
     std::unique_ptr<PinnedRenderCache> m_pinnedRenderCache;

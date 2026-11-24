@@ -43,7 +43,7 @@ class ScreenshotPinnedHideToTopController final : public QObject {
         std::function<void()> changed;
         std::function<std::optional<QPoint>()> cursor;
         std::function<void(const QPoint&)> contextMenu;
-        std::function<void(bool)> mouseAction;
+        std::function<bool(QObject*, QEvent*)> mouseAction;
     };
 
     ScreenshotPinnedHideToTopController(QWidget* owner, Hooks hooks);

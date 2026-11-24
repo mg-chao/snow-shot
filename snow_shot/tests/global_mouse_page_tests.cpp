@@ -1,3 +1,4 @@
+#include "snow_shot/presentation/components/mouseoperationrow.h"
 #include "snow_shot/presentation/globalmousetypes.h"
 #include "snow_shot/presentation/components/globalmouserow.h"
 #include "snow_shot/presentation/components/formfields.h"
@@ -26,6 +27,7 @@
 #include <QEvent>
 #include <QEnterEvent>
 #include <QHash>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLayout>
 #include <QListView>
@@ -104,6 +106,19 @@ void flushEvents() {
 
 class FakeSettingsBackend final : public settings::SettingsBackend {
   public:
+    snow_shot::mouse::Values bindings;
+    snow_shot::mouse::Bindings mouseBindings() const override {
+        return snow_shot::mouse::Bindings(bindings);
+    }
+    bool applyMouseOperation(snow_shot::mouse::Action action,
+                             snow_shot::mouse::Binding binding) override {
+        using namespace snow_shot::mouse;
+        const Values update{{definition(action).key(), encode(binding)}};
+        if (!changesValid(bindings, update))
+            return false;
+        bindings.insert(update);
+        return true;
+    }
     QVariant selectValue(settings::SettingsSelectBinding) const override {
         return {};
     }
@@ -275,7 +290,8 @@ class GlobalMouseTranslator final : public QTranslator {
             QString::fromUtf8(sourceText) == QStringLiteral("Global mouse gestures are ready")) {
             return QStringLiteral("Globale Mausgesten sind bereit.");
         }
-        if (QString::fromLatin1(context) != QStringLiteral("GlobalMouseRow")) {
+        if (QString::fromLatin1(context) != QStringLiteral("GlobalMouseRow") &&
+            QString::fromLatin1(context) != QStringLiteral("MouseOperations")) {
             return {};
         }
         const QHash<QString, QString> translations{
@@ -337,6 +353,136 @@ int selectCount(const QWidget& parent) {
         }
     }
     return count;
+}
+
+void mouseOperationsUseApplicationShortcutStyle() {
+    const auto& registry = settings::builtInSettingsRegistry();
+    FakeSettingsBackend backend;
+    settings::SettingsRuntimeSession session(registry, backend);
+    SettingsPageWidget shortcuts(registry, QStringLiteral("shortcuts-mouse"), session);
+    SettingsPageWidget operations(registry, QStringLiteral("mouse-operations"), session);
+    auto* shortcut = shortcuts.findChild<ShortcutKeyRow*>();
+    auto* mouse = operations.findChild<MouseOperationRow*>(settings::generatedObjectName(
+        QStringLiteral("settings-item"), QStringLiteral("mouse.screenshot.copy")));
+    require(shortcut && mouse, "both settings pages expose a binding row");
+    auto* shortcutLabel = shortcut->findChild<QLabel*>(QStringLiteral("shortcutTitleLabel"));
+    auto* mouseLabel = mouse->layout()->itemAt(0)->widget()->findChild<QLabel*>();
+    auto* shortcutButton = shortcut->findChild<ShortcutConfigurationButton*>();
+    auto* mouseButton = mouse->findChild<ShortcutConfigurationButton*>();
+    require(
+        mouseLabel && shortcutLabel && mouseButton && shortcutButton &&
+            mouseLabel->text() == mouse->accessibleName() + u':' &&
+            mouseLabel->font() == shortcutLabel->font() && mouse->height() == shortcut->height() &&
+            mouse->layout()->contentsMargins() == shortcut->layout()->contentsMargins() &&
+            mouse->layout()->spacing() == shortcut->layout()->spacing() &&
+            mouse->buttonStyle() == shortcut->buttonStyle() &&
+            mouseButton->buttonStyle() == shortcutButton->buttonStyle() &&
+            mouseButton->accentRole() == shortcutButton->accentRole() &&
+            mouseButton->height() == shortcutButton->height(),
+        "mouse operations use the compact application shortcut label, spacing, and button style");
+}
+
+void mouseOperationsPreventConflicts() {
+    namespace mouse = snow_shot::mouse;
+    const auto& registry = settings::builtInSettingsRegistry();
+    FakeSettingsBackend backend;
+    settings::SettingsRuntimeSession session(registry, backend);
+    SettingsPageWidget page(registry, QStringLiteral("mouse-operations"), session);
+    page.resize(900, 720);
+    page.show();
+    flushEvents();
+    require(!page.findChild<MouseOperationRow*>(settings::generatedObjectName(
+                QStringLiteral("settings-item"), QStringLiteral("mouse.screenshot.back"))),
+            "the mouse page omits the fixed Back action");
+    require(session.mouseBindings().match(mouse::Category::Screenshot,
+                                          {mouse::Kind::Click, Qt::RightButton}) ==
+                mouse::Action::Back,
+            "an unmodified screenshot right-click still matches Back");
+    auto* row = page.findChild<MouseOperationRow*>(settings::generatedObjectName(
+        QStringLiteral("settings-item"), QStringLiteral("mouse.pinned.close")));
+    require(row, "mouse close row exists");
+    auto* button = row->findChild<ShortcutConfigurationButton*>();
+    require(button, "mouse close row exposes the configuration button");
+    adqt::widgets::AdModal* modal = nullptr;
+    adqt::widgets::AdSelect* choice = nullptr;
+    adqt::widgets::AdSelect* mods = nullptr;
+    const auto openEditor = [&](bool keyboard = false) {
+        if (keyboard) {
+            require(row->focusPolicy() & Qt::TabFocus, "mouse rows participate in Tab navigation");
+            row->setFocus(Qt::TabFocusReason);
+            require(row->hasFocus(), "the mouse operation row accepts keyboard focus");
+            QKeyEvent press(QEvent::KeyPress, Qt::Key_Space, Qt::NoModifier);
+            QKeyEvent release(QEvent::KeyRelease, Qt::Key_Space, Qt::NoModifier);
+            QApplication::sendEvent(QApplication::focusWidget(), &press);
+            QApplication::sendEvent(QApplication::focusWidget(), &release);
+        } else {
+            button->click();
+        }
+        flushEvents();
+        modal = namedObject<adqt::widgets::AdModal>(*row, QStringLiteral("mouseOperationDialog"));
+        require(modal, "activating the mouse operation opens its configuration dialog");
+        choice = modal->contentWidget()->findChild<adqt::widgets::AdSelect*>(
+            QStringLiteral("mouseOperationChoice"));
+        mods = modal->contentWidget()->findChild<adqt::widgets::AdSelect*>(
+            QStringLiteral("mouseOperationModifiers"));
+        require(choice && mods, "mouse operation configuration has both fields");
+    };
+    openEditor(true);
+    require(mods->accessibleName() == QStringLiteral("Keyboard modifiers") &&
+                choice->accessibleName() == QStringLiteral("Mouse operation"),
+            "mouse operation selectors describe the modifiers and operation");
+    const auto choices = mouse::choices(mouse::Kind::Click);
+    choice->setCurrentValue(int(choices.indexOf({mouse::Kind::DoubleClick, Qt::RightButton})));
+    const auto labels = modal->contentWidget()->findChildren<QLabel*>();
+    require(!modal->acceptButton()->isEnabled() &&
+                std::any_of(
+                    labels.cbegin(), labels.cend(),
+                    [](QLabel* label) { return label->text().contains(QStringLiteral("Menu")); }),
+            "right double-click conflicts with the existing Menu assignment");
+    choice->setCurrentValue(int(choices.indexOf({mouse::Kind::Click, Qt::LeftButton})));
+    require(!modal->acceptButton()->isEnabled(), "unmodified left single-click is reserved");
+    choice->setCurrentValue(int(choices.indexOf({mouse::Kind::DoubleClick, Qt::RightButton})));
+    mods->setCurrentValues({int(Qt::ControlModifier)});
+    require(modal->acceptButton()->isEnabled(), "exact modified gesture is available");
+    modal->acceptButton()->click();
+    flushEvents();
+    require(backend.mouseBindings().get(mouse::Action::Close) ==
+                mouse::Binding{mouse::Kind::DoubleClick, Qt::RightButton, Qt::ControlModifier},
+            "confirm writes only the chosen action");
+    openEditor();
+    const int none = int(choices.indexOf(mouse::Binding{}));
+    choice->setCurrentValue(none);
+    require(mods->isEnabled() && mods->currentValues() == QVariantList{int(Qt::ControlModifier)},
+            "choosing None keeps the existing modifiers editable");
+    const QVariantList modifiers{int(Qt::ControlModifier), int(Qt::AltModifier)};
+    mods->setCurrentValues(modifiers);
+    require(modal->acceptButton()->isEnabled(), "modifiers can be saved with None");
+    modal->acceptButton()->click();
+    flushEvents();
+    require(backend.mouseBindings().get(mouse::Action::Close) ==
+                    mouse::Binding{mouse::Kind::None, Qt::NoButton,
+                                   Qt::ControlModifier | Qt::AltModifier} &&
+                button->text() == QStringLiteral("Unset") && button->toolTip() == button->text(),
+            "None preserves modifiers and the row shows that the action is unbound");
+    openEditor();
+    require(choice->currentValue() == none && mods->isEnabled() &&
+                mods->currentValues() == modifiers,
+            "reopening an unbound action restores the saved modifiers");
+    choice->setCurrentValue(int(choices.indexOf({mouse::Kind::Click, Qt::LeftButton})));
+    require(modal->acceptButton()->isEnabled(), "selecting a gesture uses the saved modifiers");
+    modal->acceptButton()->click();
+    flushEvents();
+    require(backend.mouseBindings().get(mouse::Action::Close) ==
+                mouse::Binding{mouse::Kind::Click, Qt::LeftButton,
+                               Qt::ControlModifier | Qt::AltModifier},
+            "the newly selected gesture is bound with both saved modifiers");
+#ifdef Q_OS_MACOS
+    const QString expected = QStringLiteral("Command+Option+Left-button single-click");
+#else
+    const QString expected = QStringLiteral("Ctrl+Alt+Left-button single-click");
+#endif
+    require(button->text() == expected,
+            "mouse operations show modifiers in their platform order with compact separators");
 }
 
 void globalMousePageRendersActionButtons() {
@@ -461,13 +607,17 @@ void globalMouseModalEditsOnlyOnAcceptedUniquePairs() {
                 mouseButton->currentValues().isEmpty() && !modal->acceptButton()->isEnabled(),
             "an Unset mouse modal must default only Windows and require a mouse selection");
 
-#ifdef Q_OS_MACOS
     QStringList labels;
     for (const auto& item : activation->options())
         labels.push_back(item.label);
+#ifdef Q_OS_MACOS
     require(labels == QStringList{QStringLiteral("Command"), QStringLiteral("Control"),
                                   QStringLiteral("Option"), QStringLiteral("Shift")},
             "macOS must display physical native modifier names");
+#else
+    require(labels == QStringList{QStringLiteral("Windows"), QStringLiteral("Ctrl"),
+                                  QStringLiteral("Alt"), QStringLiteral("Shift")},
+            "Windows must display its native modifier names");
 #endif
     auto* form = modal->contentWidget()->findChild<adqt::widgets::AdForm*>(
         QStringLiteral("globalMouseConfigurationForm"));
@@ -807,6 +957,15 @@ void globalMouseLanguageAndThemeChangesRefreshOpenUi() {
                 mouseButton->options().last().label == QStringLiteral("Keine"),
             "language changes must refresh button and open-modal text without losing selection");
 
+    namespace mouse = snow_shot::mouse;
+    const Qt::MouseButton buttons[] = {Qt::LeftButton, Qt::RightButton, Qt::MiddleButton,
+                                       Qt::BackButton, Qt::ForwardButton};
+    for (size_t i = 0; i < std::size(buttons); ++i) {
+        const auto label = mouse::operationLabel({mouse::Kind::Drag, buttons[i]});
+        require(mouseButton->options().at(static_cast<qsizetype>(i)).label == label,
+                "both settings pages use the same localized drag labels for all five buttons");
+    }
+
     styles::ThemeColorScheme scheme = styles::ThemeManager::instance().themeColorScheme();
     scheme.map.colorText = QColor(QStringLiteral("#123456"));
     page.applyTheme(scheme);
@@ -1011,6 +1170,8 @@ int main(int argc, char** argv) {
     QCoreApplication::setOrganizationName(QStringLiteral("SnowShotTests"));
     QCoreApplication::setApplicationName(QStringLiteral("global-mouse-page-tests"));
     globalMousePermissionGuidance();
+    mouseOperationsUseApplicationShortcutStyle();
+    mouseOperationsPreventConflicts();
     globalMousePageRendersActionButtons();
     noneClearsAssignedMouseBinding();
     globalMouseAndGlobalShortcutRowsSharePresentation();

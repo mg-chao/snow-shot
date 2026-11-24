@@ -439,7 +439,17 @@ ResolvedTheme ThemeManager::resolve(const QWidget* widget, const QWidget* logica
 }
 
 ThemeMapToken ThemeManager::resolveTheme(const QWidget* widget, const QWidget* logicalOwner) const {
-  return resolve(widget, logicalOwner).values;
+  // Token values depend on the theme configuration. A widget's palette is only
+  // needed by resolve(), and unrelated scopes do not change the global tokens.
+  if (!scopeStates_.isEmpty()) {
+    for (const QObject* scope = logicalOwner ? logicalOwner : widget; scope;
+         scope = scope->parent()) {
+      if (scopeStates_.contains(const_cast<QObject*>(scope))) {
+        return makeResolvedTheme(resolvedConfigFor(widget, logicalOwner)).values;
+      }
+    }
+  }
+  return resolved_.values;
 }
 
 qreal ThemeManager::backgroundOpacity(const QWidget* widget) const {

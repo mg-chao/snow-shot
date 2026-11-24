@@ -4,10 +4,12 @@
 
 #include <QApplication>
 #include <QMouseEvent>
+#include <QScopeGuard>
 #include <QKeyEvent>
 #include <QTabletEvent>
 #include <QWheelEvent>
 #include <QWindow>
+#include <private/qevent_p.h>
 #include <private/qhighdpiscaling_p.h>
 #include <qpa/qwindowsysteminterface.h>
 
@@ -27,6 +29,8 @@ class InputSink final : public ScreenshotOverlayEventSink {
     bool selecting = true;
     bool inputAllowed = true;
     bool requireGenuineInput = false;
+    bool deferSelection = false;
+    Qt::KeyboardModifiers pressModifiers;
     QVector<QPointF> presses;
     QVector<QPointF> moves;
     QVector<QPointF> releases;
@@ -53,7 +57,12 @@ class InputSink final : public ScreenshotOverlayEventSink {
                                        bool) const override {
         return selecting;
     }
+    bool allowMouseCompletionBeforeSelection(ScreenshotOverlayWindow*,
+                                             const QPointF&) const override {
+        return deferSelection;
+    }
     void handleOverlayMousePress(ScreenshotOverlayWindow*, const QPointF& point) override {
+        pressModifiers = modifiers;
         presses.append(point);
     }
     void handleOverlayMouseMove(ScreenshotOverlayWindow*, const QPointF& point) override {
@@ -67,9 +76,10 @@ class InputSink final : public ScreenshotOverlayEventSink {
         rightClicks.append(point);
         return ScreenshotOverlayRightClickResult::Handled;
     }
-    bool handleRegionDoubleClick(ScreenshotOverlayWindow*, const QPointF& point) override {
+    void handleMouseCompletion(snow_shot::mouse::Action action, ScreenshotOverlayWindow*,
+                               const QPointF& point) override {
+        require(action == snow_shot::mouse::Action::ShotCopy, "the configured gesture binds to Copy");
         doubleClicks.append(point);
-        return true;
     }
     bool handleOverlayWheel(ScreenshotOverlayWindow*, const QWheelEvent& event) override {
         ++wheels;
@@ -107,15 +117,26 @@ void runScreenshotOverlayInputTests() {
     InputSink sink;
     auto* canvas = new InputCanvas;
     ScreenshotOverlayWindow overlay(sink, canvas);
+    canvas->setInteractionEnabled(false);
     const auto mouse = [&](QEvent::Type type, const QPointF& point, Qt::MouseButton button,
-                           Qt::MouseButtons buttons, bool throughWindow = true) {
+                           Qt::MouseButtons buttons, bool throughWindow = true,
+                           Qt::KeyboardModifiers keys = Qt::ShiftModifier) {
         const QPointF windowPoint = canvas->mapTo(&overlay, point);
-        QMouseEvent event(type, windowPoint, windowPoint, canvas->mapToGlobal(point), button,
-                          buttons, Qt::ShiftModifier, Qt::MouseEventSynthesizedBySystem);
+        const QPointF global = canvas->mapToGlobal(point);
+        QObject* receiver = throughWindow ? static_cast<QObject*>(overlay.windowHandle())
+                                          : static_cast<QObject*>(&overlay);
+        if (throughWindow && type == QEvent::MouseButtonDblClick) {
+            // Qt delivers a flagged second press to QWidgetWindow to select the release receiver.
+            QMouseEvent press(QEvent::MouseButtonPress, windowPoint, windowPoint, global, button,
+                              buttons, keys, Qt::MouseEventSynthesizedBySystem);
+            press.setTimestamp(1234);
+            QMutableSinglePointEvent::setDoubleClick(&press, true);
+            QApplication::sendEvent(receiver, &press);
+        }
+        QMouseEvent event(type, windowPoint, windowPoint, global, button, buttons, keys,
+                          Qt::MouseEventSynthesizedBySystem);
         event.setTimestamp(1234);
-        QApplication::sendEvent(throughWindow ? static_cast<QObject*>(overlay.windowHandle())
-                                              : static_cast<QObject*>(&overlay),
-                                &event);
+        QApplication::sendEvent(receiver, &event);
     };
     QPointingDevice pen(QStringLiteral("edge tablet"), 95, QInputDevice::DeviceType::Stylus,
                         QPointingDevice::PointerType::Pen,
@@ -153,13 +174,22 @@ void runScreenshotOverlayInputTests() {
                             "edge hover must reach pointer presentation exactly once");
                     sink.rightClicks.clear();
                     sink.doubleClicks.clear();
-                    mouse(QEvent::MouseButtonPress, point, Qt::RightButton, Qt::RightButton);
-                    mouse(QEvent::MouseButtonRelease, point, Qt::RightButton, Qt::NoButton);
-                    mouse(QEvent::MouseButtonDblClick, point, Qt::LeftButton, Qt::LeftButton);
-                    mouse(QEvent::MouseButtonRelease, point, Qt::LeftButton, Qt::NoButton);
-                    require(sink.rightClicks == QVector<QPointF>{point} &&
-                                sink.doubleClicks == QVector<QPointF>{point},
-                            "right clicks and completion clicks must reach the display edges");
+                    mouse(QEvent::MouseButtonPress, point, Qt::RightButton, Qt::RightButton, true,
+                          Qt::NoModifier);
+                    mouse(QEvent::MouseButtonRelease, point, Qt::RightButton, Qt::NoButton, true,
+                          Qt::NoModifier);
+                    mouse(QEvent::MouseButtonPress, point, Qt::LeftButton, Qt::LeftButton, true,
+                          Qt::NoModifier);
+                    mouse(QEvent::MouseButtonRelease, point, Qt::LeftButton, Qt::NoButton, true,
+                          Qt::NoModifier);
+                    mouse(QEvent::MouseButtonDblClick, point, Qt::LeftButton, Qt::LeftButton, true,
+                          Qt::NoModifier);
+                    mouse(QEvent::MouseButtonRelease, point, Qt::LeftButton, Qt::NoButton, true,
+                          Qt::NoModifier);
+                    require(sink.rightClicks == QVector<QPointF>{point},
+                            "right clicks must reach the display edges");
+                    require(sink.doubleClicks == QVector<QPointF>{point},
+                            "completion double-clicks must reach the display edges");
                 }
             }
             const QPointF edge(319.75, 239.75);
@@ -252,5 +282,47 @@ void runScreenshotOverlayInputTests() {
             sink.requireGenuineInput = false;
             overlay.releaseNativeSurface();
         }
+    }
+
+    namespace mouseOperations = snow_shot::mouse;
+    auto& store = snow_shot::storage::ApplicationStorage::instance().configuration();
+    const auto key = mouseOperations::definition(mouseOperations::Action::ShotCopy).key();
+    const auto previous = store.value(key);
+    const auto restore = qScopeGuard([&] { store.setValue(key, previous); });
+    const auto keys = Qt::ControlModifier;
+    require(store.setValue(
+                key, mouseOperations::encode({mouseOperations::Kind::Click, Qt::LeftButton, keys})),
+            "bind screenshot Copy to a modified left click");
+    overlay.restoreNativeSurface();
+    overlay.show();
+    QApplication::processEvents();
+    sink.deferSelection = true;
+    sink.presses.clear();
+    sink.moves.clear();
+    sink.releases.clear();
+    sink.doubleClicks.clear();
+    const QPointF origin(80, 100);
+    const QPointF end = origin + QPointF(QApplication::startDragDistance() + 2, 5);
+
+    mouse(QEvent::MouseButtonPress, origin, Qt::LeftButton, Qt::LeftButton, true, keys);
+    require(sink.presses.isEmpty() && sink.doubleClicks.isEmpty(),
+            "the binding defers selection and completion while the click is held");
+    mouse(QEvent::MouseButtonRelease, origin, Qt::LeftButton, {}, true, Qt::NoModifier);
+    require(sink.doubleClicks == QVector<QPointF>{origin} && sink.presses.isEmpty() &&
+                sink.releases.isEmpty(),
+            "only Copy runs when release remains below the threshold");
+
+    for (const bool deliverMove : {true, false}) {
+        sink.presses.clear();
+        sink.moves.clear();
+        sink.releases.clear();
+        mouse(QEvent::MouseButtonPress, origin, Qt::LeftButton, Qt::LeftButton, true, keys);
+        if (deliverMove)
+            mouse(QEvent::MouseMove, end, Qt::NoButton, Qt::LeftButton, true, Qt::NoModifier);
+        mouse(QEvent::MouseButtonRelease, end, Qt::LeftButton, {}, true, Qt::NoModifier);
+        require(sink.presses == QVector<QPointF>{origin} && sink.pressModifiers == keys &&
+                    sink.moves == QVector<QPointF>{end} && sink.releases == QVector<QPointF>{end} &&
+                    sink.modifiers == Qt::NoModifier && sink.doubleClicks.size() == 1,
+                "a drag gets its original selection press and never invokes Copy");
     }
 }

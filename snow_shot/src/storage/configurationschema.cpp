@@ -1,4 +1,5 @@
 #include "snow_shot/globalmouseactivationkeys.h"
+#include "snow_shot/mouseoperations.h"
 #include "snow_shot/storage/configurationschema.h"
 #include "snow_shot/storage/exporttasks.h"
 #include "snow_shot/ocrtextoptions.h"
@@ -466,7 +467,7 @@ constexpr SchemaString kFloatingToolbarDropBehaviors[] = {u"pin_to_screen", u"im
                                                           u"image_splitting", u"image_editing"};
 constexpr SchemaAllowedValues kFloatingToolbarDropBehaviorValues = {
     kFloatingToolbarDropBehaviors, std::size(kFloatingToolbarDropBehaviors)};
-constexpr int kConfigurationSchemaVersion = 9;
+constexpr int kConfigurationSchemaVersion = 10;
 constexpr ConfigurationIntegerRange kSchemaRange1{kConfigurationSchemaVersion,
                                                   kConfigurationSchemaVersion, 1};
 constexpr SchemaString kSchemaStrings4[] = {u"system", u"light", u"dark"};
@@ -1899,6 +1900,11 @@ QVector<ConfigurationSchemaEntry> buildEntries() {
     for (const auto& row : exportTaskRows)
         result.push_back({row.key.toString(), QJsonArray{}, ConfigurationValueKind::StringList,
                           std::nullopt, exportTaskIds(row.allowed)});
+    for (const auto& action : mouse::definitions()) {
+        if (action.action != mouse::Action::Back)
+            result.push_back(
+                {action.key(), mouse::encode(action.factory), ConfigurationValueKind::Structured});
+    }
     for (ConfigurationSchemaEntry& entry : result) {
         if (!shortcutConfigurationKey(entry.key) ||
             entry.valueKind != ConfigurationValueKind::StringList) {
@@ -2789,6 +2795,13 @@ ConfigurationNormalization ConfigurationSchema::normalize(const QString& key,
     if (schemaEntry == nullptr) {
         return {};
     }
+    if (const auto* action = mouse::forKey(key)) {
+        const auto binding = mouse::decode(value);
+        if (!binding || !mouse::allowed(*action, *binding))
+            return {};
+        const auto normalized = mouse::encode(*binding);
+        return {normalized, true, normalized != value};
+    }
     if (key == QStringLiteral("context_menu_shortcuts/edit_with_snow_shot")) {
         if (!value.isArray() || value.toArray().size() > 1)
             return {};
@@ -3073,6 +3086,7 @@ bool ConfigurationSchema::parseIntegerVersion(const QJsonValue& value, int* vers
 
 QMap<QString, QJsonValue>
 ConfigurationSchema::migrateLegacyValues(QMap<QString, QJsonValue> values) {
+    mouse::migrate(values);
     const QString shutterKey = QStringLiteral("screenshot/shutter_sound_notification");
     const auto directSound = values.value(shutterKey);
     const auto normalSound =

@@ -7,6 +7,7 @@
 
 class QLabel;
 class QHBoxLayout;
+class ShortcutConfigurationButton;
 namespace snow_shot::presentation::styles {
 struct MainWindowComponentMetricToken;
 }
@@ -33,7 +34,10 @@ class ActionRow : public adqt::widgets::AdButton {
     virtual void applyTheme(const snow_shot::presentation::styles::ThemeColorScheme& scheme);
 
   protected:
-    void setConfigurationButton(adqt::widgets::AdButton* button);
+    ShortcutConfigurationButton*
+    createConfigurationButton(const snow_shot::presentation::styles::ThemeAliasMetricToken& metric,
+                              const adqt::icons::IconRef& icon, int textMaxWidth = 200);
+    void setRowTitle(const QString& title);
     void paintEvent(QPaintEvent* event) override;
     bool event(QEvent* event) override;
     bool eventFilter(QObject* watched, QEvent* event) override;

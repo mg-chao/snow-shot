@@ -1571,7 +1571,11 @@ Files:
         </message>
         <message numerus="yes">
             <source>%n pinned window(s)</source>
-            <translation><numerusform>%n закреплённое окно</numerusform><numerusform>%n закреплённых окна</numerusform><numerusform>%n закреплённых окон</numerusform></translation>
+            <translation>
+            <numerusform>%n закреплённое окно</numerusform>
+            <numerusform>%n закреплённых окна</numerusform>
+            <numerusform>%n закреплённых окон</numerusform>
+        </translation>
         </message>
         <message>
             <source>All sources</source>
@@ -1615,7 +1619,11 @@ Files:
         </message>
         <message numerus="yes">
             <source>Delete %n selected item(s)?</source>
-            <translation><numerusform>Удалить %n выбранный элемент?</numerusform><numerusform>Удалить %n выбранных элемента?</numerusform><numerusform>Удалить %n выбранных элементов?</numerusform></translation>
+            <translation>
+            <numerusform>Удалить %n выбранный элемент?</numerusform>
+            <numerusform>Удалить %n выбранных элемента?</numerusform>
+            <numerusform>Удалить %n выбранных элементов?</numerusform>
+        </translation>
         </message>
         <message>
             <source>Delete all pinned windows</source>
@@ -1743,7 +1751,11 @@ Files:
         </message>
         <message numerus="yes">
             <source>Selected %n item(s)</source>
-            <translation><numerusform>Выбран %n элемент</numerusform><numerusform>Выбрано %n элемента</numerusform><numerusform>Выбрано %n элементов</numerusform></translation>
+            <translation>
+            <numerusform>Выбран %n элемент</numerusform>
+            <numerusform>Выбрано %n элемента</numerusform>
+            <numerusform>Выбрано %n элементов</numerusform>
+        </translation>
         </message>
         <message>
             <source>Selected files</source>
@@ -1790,7 +1802,11 @@ Files:
         </message>
         <message numerus="yes">
             <source>%n screenshot(s)</source>
-            <translation><numerusform>%n скриншот</numerusform><numerusform>%n скриншота</numerusform><numerusform>%n скриншотов</numerusform></translation>
+            <translation>
+            <numerusform>%n скриншот</numerusform>
+            <numerusform>%n скриншота</numerusform>
+            <numerusform>%n скриншотов</numerusform>
+        </translation>
         </message>
         <message>
             <source>All sources</source>
@@ -1830,7 +1846,11 @@ Files:
         </message>
         <message numerus="yes">
             <source>Delete %n selected item(s)?</source>
-            <translation><numerusform>Удалить %n выбранный элемент?</numerusform><numerusform>Удалить %n выбранных элемента?</numerusform><numerusform>Удалить %n выбранных элементов?</numerusform></translation>
+            <translation>
+            <numerusform>Удалить %n выбранный элемент?</numerusform>
+            <numerusform>Удалить %n выбранных элемента?</numerusform>
+            <numerusform>Удалить %n выбранных элементов?</numerusform>
+        </translation>
         </message>
         <message>
             <source>Delete all</source>
@@ -1898,7 +1918,11 @@ Files:
         </message>
         <message numerus="yes">
             <source>Selected %n item(s)</source>
-            <translation><numerusform>Выбран %n элемент</numerusform><numerusform>Выбрано %n элемента</numerusform><numerusform>Выбрано %n элементов</numerusform></translation>
+            <translation>
+            <numerusform>Выбран %n элемент</numerusform>
+            <numerusform>Выбрано %n элемента</numerusform>
+            <numerusform>Выбрано %n элементов</numerusform>
+        </translation>
         </message>
         <message>
             <source>Start date</source>
@@ -1925,7 +1949,11 @@ Files:
         </message>
         <message numerus="yes">
             <source>%n window(s) displayed</source>
-            <translation><numerusform>Показано %n окно</numerusform><numerusform>Показано %n окна</numerusform><numerusform>Показано %n окон</numerusform></translation>
+            <translation>
+            <numerusform>Показано %n окно</numerusform>
+            <numerusform>Показано %n окна</numerusform>
+            <numerusform>Показано %n окон</numerusform>
+        </translation>
         </message>
         <message>
             <source>A pinned window is no longer available to save</source>
@@ -2001,7 +2029,11 @@ Files:
         </message>
         <message numerus="yes">
             <source>Copied %n file(s)</source>
-            <translation><numerusform>Скопирован %n файл</numerusform><numerusform>Скопировано %n файла</numerusform><numerusform>Скопировано %n файлов</numerusform></translation>
+            <translation>
+            <numerusform>Скопирован %n файл</numerusform>
+            <numerusform>Скопировано %n файла</numerusform>
+            <numerusform>Скопировано %n файлов</numerusform>
+        </translation>
         </message>
         <message>
             <source>Copied: %1; failed: %2</source>
@@ -2265,7 +2297,11 @@ Files:
         </message>
         <message numerus="yes">
             <source>Saved %n window(s)</source>
-            <translation><numerusform>Сохранено %n окно</numerusform><numerusform>Сохранено %n окна</numerusform><numerusform>Сохранено %n окон</numerusform></translation>
+            <translation>
+            <numerusform>Сохранено %n окно</numerusform>
+            <numerusform>Сохранено %n окна</numerusform>
+            <numerusform>Сохранено %n окон</numerusform>
+        </translation>
         </message>
         <message>
             <source>Saved: %1; failed: %2</source>
@@ -2585,7 +2621,11 @@ Files:
         <name>snow_shot::presentation::PinnedWindowSelectionController</name>
         <message numerus="yes">
             <source>%n selected window(s)</source>
-            <translation><numerusform>%n выбранное окно</numerusform><numerusform>%n выбранных окна</numerusform><numerusform>%n выбранных окон</numerusform></translation>
+            <translation>
+            <numerusform>%n выбранное окно</numerusform>
+            <numerusform>%n выбранных окна</numerusform>
+            <numerusform>%n выбранных окон</numerusform>
+        </translation>
         </message>
         <message>
             <source>Align bottom</source>
@@ -2649,11 +2689,19 @@ Files:
         </message>
         <message numerus="yes">
             <source>Destroy %n displayed window(s)? This action cannot be undone</source>
-            <translation><numerusform>Уничтожить %n отображаемое окно? Это действие нельзя отменить</numerusform><numerusform>Уничтожить %n отображаемых окна? Это действие нельзя отменить</numerusform><numerusform>Уничтожить %n отображаемых окон? Это действие нельзя отменить</numerusform></translation>
+            <translation>
+            <numerusform>Уничтожить %n отображаемое окно? Это действие нельзя отменить</numerusform>
+            <numerusform>Уничтожить %n отображаемых окна? Это действие нельзя отменить</numerusform>
+            <numerusform>Уничтожить %n отображаемых окон? Это действие нельзя отменить</numerusform>
+        </translation>
         </message>
         <message numerus="yes">
             <source>Destroy %n selected window(s)? This action cannot be undone</source>
-            <translation><numerusform>Уничтожить %n выбранное окно? Это действие нельзя отменить</numerusform><numerusform>Уничтожить %n выбранных окна? Это действие нельзя отменить</numerusform><numerusform>Уничтожить %n выбранных окон? Это действие нельзя отменить</numerusform></translation>
+            <translation>
+            <numerusform>Уничтожить %n выбранное окно? Это действие нельзя отменить</numerusform>
+            <numerusform>Уничтожить %n выбранных окна? Это действие нельзя отменить</numerusform>
+            <numerusform>Уничтожить %n выбранных окон? Это действие нельзя отменить</numerusform>
+        </translation>
         </message>
         <message>
             <source>Destroy displayed windows</source>

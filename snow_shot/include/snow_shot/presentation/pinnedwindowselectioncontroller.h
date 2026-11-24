@@ -11,6 +11,7 @@
 #include <QPointF>
 #include <QVector>
 #include <QSet>
+#include <QTimer>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -43,6 +44,8 @@ class PinnedWindowSelectionController final : public QObject {
     void toggleSelection(ScreenshotPinnedWindow* window);
     void deselectWindow(ScreenshotPinnedWindow* window);
     void clearSelection();
+    void deferSelectionClear(ScreenshotPinnedWindow* window);
+    void resolvePendingSelectionClick(ScreenshotPinnedWindow* window, bool doubleClick);
     void selectAll(const QList<QPointer<ScreenshotPinnedWindow>>& targets);
     void stitchWindows(const QList<QPointer<ScreenshotPinnedWindow>>& targets);
     void destroyWindows(ScreenshotPinnedWindow* owner,
@@ -50,10 +53,7 @@ class PinnedWindowSelectionController final : public QObject {
     // Returns true when selection routing owns this context menu event.
     bool showContextMenu(ScreenshotPinnedWindow* window, const QPoint& globalPosition);
 
-    bool handlePointer(ScreenshotPinnedWindow* window, QObject* watched, QEvent* event);
-    [[nodiscard]] bool routesPointerToClient(const ScreenshotPinnedWindow& window,
-                                             const QPoint& position,
-                                             Qt::KeyboardModifiers modifiers) const;
+    void queueGeometryUpdate(const QPointF& position);
     bool beginGeometry(ScreenshotPinnedWindow* window, const QPointF& desktopPress,
                        std::optional<int> handle = {}, std::optional<QPoint> nativePress = {});
     void updateGeometry(const QPointF& desktopPosition);
@@ -91,6 +91,8 @@ class PinnedWindowSelectionController final : public QObject {
     QSet<QString> m_destroyConfirmationIds;
     DestroyRecords m_destroyRecords;
     quint64 m_selectionRevision = 0;
+    QTimer m_selectionClearTimer;
+    QPointer<ScreenshotPinnedWindow> m_pendingClickWindow;
     struct GeometryState;
     std::shared_ptr<GeometryState> m_geometryState;
 };

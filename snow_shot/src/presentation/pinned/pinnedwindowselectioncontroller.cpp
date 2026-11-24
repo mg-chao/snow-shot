@@ -63,6 +63,10 @@ void translateAction(QAction* action, const char* source) {
 PinnedWindowSelectionController::PinnedWindowSelectionController(QObject* parent,
                                                                  DestroyRecords destroyRecords)
     : QObject(parent), m_destroyRecords(std::move(destroyRecords)) {
+    m_selectionClearTimer.setSingleShot(true);
+    m_selectionClearTimer.setTimerType(Qt::PreciseTimer);
+    connect(&m_selectionClearTimer, &QTimer::timeout, this,
+            &PinnedWindowSelectionController::clearSelection);
     if (qApp)
         qApp->installEventFilter(this);
 }
@@ -131,6 +135,8 @@ void PinnedWindowSelectionController::windowStateChanged(ScreenshotPinnedWindow*
 }
 
 void PinnedWindowSelectionController::notifySelectionChanged() {
+    m_selectionClearTimer.stop();
+    m_pendingClickWindow.clear();
     ++m_selectionRevision;
     if (m_contextMenu)
         m_contextMenu->hide();
@@ -158,6 +164,21 @@ void PinnedWindowSelectionController::deselectWindow(ScreenshotPinnedWindow* win
     if (window)
         window->setWindowSelected(false);
     notifySelectionChanged();
+}
+
+void PinnedWindowSelectionController::deferSelectionClear(ScreenshotPinnedWindow* window) {
+    m_pendingClickWindow = window;
+    m_selectionClearTimer.start(QApplication::doubleClickInterval());
+}
+
+void PinnedWindowSelectionController::resolvePendingSelectionClick(ScreenshotPinnedWindow* window,
+                                                                   bool doubleClick) {
+    if (!m_selectionClearTimer.isActive())
+        return;
+    m_selectionClearTimer.stop();
+    if (!doubleClick || window != m_pendingClickWindow)
+        clearSelection();
+    m_pendingClickWindow.clear();
 }
 
 void PinnedWindowSelectionController::clearSelection() {

@@ -725,6 +725,70 @@ void runChild(const QStringList& args) {
     require(child.exitStatus() == QProcess::NormalExit && child.exitCode() == 0,
             "native child failed");
 }
+void publishRichText(bool expectRetry) {
+    auto* clipboard = QApplication::clipboard();
+    const QString plain = QStringLiteral("Snow \u2603\nSecond line");
+    const QString html = QStringLiteral("<html><body><!--StartFragment--><b>\u2603</b>"
+                                        "<!--EndFragment--></body></html>");
+    const QString custom = QStringLiteral("application/x-snow-shot-table-html");
+    auto mime = std::make_unique<QMimeData>();
+    mime->setText(plain);
+    mime->setHtml(html);
+    mime->setData(custom, "<table></table>");
+    QObject receiver;
+    bool done = false;
+    const auto id = ScreenshotClipboardService::reservePublication(clipboard);
+    const auto handle = ScreenshotClipboardService::publishMimeData(
+        clipboard, &receiver, std::move(mime), id, [&](ScreenshotClipboardCommitResult result) {
+            require(result.succeeded() && !result.superseded &&
+                        (!expectRetry || result.attempts > 1),
+                    "rich text copy completes");
+            done = true;
+        });
+    require(handle.isValid() && done != expectRetry,
+            "a busy clipboard yields to the event loop and an available clipboard publishes now");
+    processUntil([&] { return done; });
+    const auto* result = clipboard->mimeData();
+    require(
+        result && result->text() == plain &&
+            result->html().contains(QStringLiteral("<b>\u2603</b>")) &&
+            result->data(custom).startsWith("<table></table>"),
+        "plain Unicode text, HTML and the private table representation all survive publication");
+    require(ScreenshotClipboardService::publicationCurrent(id),
+            "the commit recognizes its own change");
+    clipboard->setText(QStringLiteral("later copy"));
+    require(!ScreenshotClipboardService::publicationCurrent(id),
+            "a later write outside the service supersedes a queued close");
+}
+
+#ifdef Q_OS_WIN
+void withLockedClipboard(const std::function<void(std::jthread&)>& run) {
+    std::atomic_bool locked{false};
+    std::jthread locker([&](std::stop_token stop) {
+        bool opened = false;
+        for (int i = 0; i < 500 && !opened && !stop.stop_requested(); ++i) {
+            opened = OpenClipboard(nullptr) != FALSE;
+            if (!opened)
+                QThread::msleep(1);
+        }
+        locked.store(opened);
+        while (opened && !stop.stop_requested())
+            QThread::msleep(1);
+        if (opened)
+            CloseClipboard();
+    });
+    processUntil([&] { return locked.load(); });
+    run(locker);
+}
+void whileClipboardBusy(const std::function<void()>& publish) {
+    withLockedClipboard([&](std::jthread& locker) {
+        QObject timerReceiver;
+        QTimer::singleShot(40, &timerReceiver, [&] { locker.request_stop(); });
+        publish();
+    });
+}
+#endif
+
 void nativeRoundtrip() {
     auto* clipboard = QApplication::clipboard();
     ensureScreenshotClipboardPlacementMimeSupport();
@@ -756,6 +820,20 @@ void nativeRoundtrip() {
     scopedPublicationsPreservePlacement();
     publicationOrderAndCancellation();
     publishNativeImage();
+#if defined(Q_OS_WIN)
+    withLockedClipboard([](std::jthread& locker) {
+        // The native snapshot initially fails. Qt can read the same publication
+        // as soon as the other thread releases it, including both private formats.
+        std::jthread release([&] {
+            QThread::msleep(30);
+            locker.request_stop();
+        });
+        const auto snapshot =
+            ScreenshotClipboardContentReader::snapshot(QApplication::clipboard(), 1);
+        require(snapshot && snapshot->placement && snapshot->appearance,
+                "clipboard read after contention must preserve both private metadata formats");
+    });
+#endif
     runChild({QStringLiteral("--native-read")});
     runChild({QStringLiteral("--native-image-producer")});
     nativeRead();
@@ -763,26 +841,9 @@ void nativeRoundtrip() {
     const auto path = directory.filePath(QStringLiteral("copied.png"));
     require(image().save(path, "PNG"), "native file fixture");
 #if defined(Q_OS_WIN)
-    std::atomic_bool locked{false};
-    std::jthread locker([&](std::stop_token stop) {
-        bool opened = false;
-        for (int i = 0; i < 500 && !opened && !stop.stop_requested(); ++i) {
-            opened = OpenClipboard(nullptr) != FALSE;
-            if (!opened)
-                QThread::msleep(1);
-        }
-        locked.store(opened);
-        while (opened && !stop.stop_requested())
-            QThread::msleep(1);
-        if (opened)
-            CloseClipboard();
-    });
-    processUntil([&] { return locked.load(); });
-    QObject timerReceiver;
-    QTimer::singleShot(40, &timerReceiver, [&] { locker.request_stop(); });
-    publishFile(path, true);
-    locker.request_stop();
-    locker.join();
+    whileClipboardBusy([&] { publishFile(path, true); });
+    whileClipboardBusy([&] { publishRichText(true); });
+    publishFile(path);
 #else
     publishFile(path);
 #endif
@@ -812,6 +873,7 @@ int main(int argc, char** argv) {
             contentAndPayload();
             appearanceCodecAndContent();
             generalUrlsPreserveQtPublication();
+            publishRichText(false);
 #if defined(Q_OS_WIN)
             windowsFilePayloadPreservesShellFormats();
 #endif

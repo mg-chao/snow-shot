@@ -1,6 +1,7 @@
 #ifndef SNOW_SHOT_PRESENTATION_SCREENSHOTOVERLAYINPUTHANDLER_H
 #define SNOW_SHOT_PRESENTATION_SCREENSHOTOVERLAYINPUTHANDLER_H
 
+#include "snow_shot/mouseoperations.h"
 #include "snow_shot/presentation/screenshotoverlayeventsink.h"
 #include "snow_shot/presentation/screenshotselectionaspectratio.h"
 #include "snow_shot/presentation/screenshotselectiongeometry.h"
@@ -204,13 +205,14 @@ class ScreenshotOverlayInputHandler final {
     void completeRightClickCancellation();
     [[nodiscard]] ScreenshotOverlayRightClickResult
     handleRightClick(ScreenshotOverlayWindow* overlay, const QPointF& localPosition);
-    void handleUnhandledLeftDoubleClick();
+    bool backTakesPriority(ScreenshotOverlayWindow*, const QPointF&) const;
+    bool allowMouseCompletionBeforeSelection(ScreenshotOverlayWindow*, const QPointF&) const;
+    void handleMouseCompletion(snow_shot::mouse::Action, ScreenshotOverlayWindow*, const QPointF&);
     bool handleRegionDoubleClick(ScreenshotOverlayWindow* overlay, const QPointF& position);
     void setRegionType(ScreenshotRegionType type);
     bool cycleRegionType(bool reverse);
     bool removeRegionVertex();
     bool customRegionInputActive() const;
-    void handleUnhandledMiddleClick(ScreenshotOverlayWindow* overlay, const QPointF& localPosition);
     [[nodiscard]] bool handleWheel(ScreenshotOverlayWindow* overlay, const QWheelEvent& event);
     [[nodiscard]] bool shouldBlockUnhandledKeyInput() const;
     [[nodiscard]] bool activateMoveEntireSelectionShortcut();
@@ -242,8 +244,6 @@ class ScreenshotOverlayInputHandler final {
     void finishEffectDrag(ScreenshotOverlayWindow* overlay, const QPointF& localPosition);
     QPointer<QWidget> m_effectMouseGrab;
     bool m_consumeEffectRelease = false;
-    void executeConfiguredCompletionAction(const QString& action,
-                                           std::optional<QPointF> middleClickPosition);
     void beginSelectionDrag(ScreenshotOverlayWindow* overlay, const QPointF& virtualPosition,
                             ScreenshotSelectionDragMode dragMode,
                             const std::optional<QPointF>& latestEnd = std::nullopt);
