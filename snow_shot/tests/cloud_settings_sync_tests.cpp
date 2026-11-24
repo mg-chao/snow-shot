@@ -9,6 +9,8 @@
 
 #include <QElapsedTimer>
 #include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -301,6 +303,22 @@ void accountLifecycle(const QString& path) {
     service.set(u"A"_s, tasks, QJsonArray{u"auto_save"_s});
     Device device(path, service);
     require(device.store.setValue(theme, u"light"_s), "signed-out theme set");
+    QCoreApplication::processEvents();
+    device.sync.settingsOpened();
+    device.sync.syncNow();
+    require(!device.sync.checking() && service.reads == 0 && service.writes == 0 &&
+                device.store.flushNow().success && device.store.cloudSyncState().isEmpty(),
+            "a fresh signed-out client leaves the cloud journal empty");
+    const QSet<QString> imported{theme};
+    require(device.store.setValue(font, 22) &&
+                device.store.applySnapshot({{theme, u"light"_s}}, 0, &imported) &&
+                device.store.flushNow().success &&
+                ConfigurationStore(path, true, false)
+                    .cloudSyncState()
+                    .value(u"signed_out_local_only"_s)
+                    .toArray()
+                    .contains(font),
+            "a signed-out import checkpoints implicit defaults before the first account");
     service.holdRead = true;
     device.signIn(u"A"_s);
     waitUntil([&] { return service.held.size() == 1; }, "first sync held");
@@ -359,6 +377,11 @@ void accountLifecycle(const QString& path) {
 
     device.account.signOut();
     require(device.store.value(theme) == QJsonValue(u"system"_s), "sign-out keeps active settings");
+    require(device.store.setValue(font, device.store.value(font)) &&
+                device.store.flushNow().success,
+            "record an explicit signed-out choice in the independent baseline");
+    require(device.store.setValue(font, device.store.value(font)) && !device.store.isDirty(),
+            "repeating a signed-out choice needs no journal checkpoint");
     require(device.store.setValue(tasks, QJsonArray{u"auto_save"_s, u"upload_to_cloud"_s}),
             "only automatic upload changes while signed out");
     require(device.store.setValue(font, 21), "signed-out font change");
@@ -374,6 +397,75 @@ void accountLifecycle(const QString& path) {
     require(service.operation(u"B"_s, tasks).isEmpty() &&
                 device.store.value(tasks) == QJsonArray{u"upload_to_cloud"_s},
             "the device keeps automatic upload and excludes the previous account's export tasks");
+}
+
+void unchangedChecksShareNextFlush(const QString& path) {
+    Service service;
+    Device device(path, service);
+    device.signIn(u"A"_s);
+    waitUntil([&] { return device.sync.lastSuccessfulSync().isValid() && !device.sync.checking(); },
+              "first sync reaches its durable checkpoint");
+    const auto persistedTime = [&] {
+        const ConfigurationStore reloaded(path, true, false);
+        const auto state = reloaded.cloudSyncState();
+        const auto profile = state.value(u"profiles"_s)
+                                 .toObject()
+                                 .value(state.value(u"owner"_s).toString())
+                                 .toObject();
+        return QDateTime::fromString(profile.value(u"last_success"_s).toString(),
+                                     Qt::ISODateWithMs);
+    };
+    const auto first = device.sync.lastSuccessfulSync();
+    require(persistedTime() == first, "a substantive sync persists its success time");
+    QFile file(path);
+    require(file.open(QIODevice::ReadWrite) &&
+                file.setFileTime(QDateTime::fromMSecsSinceEpoch(1'600'000'000'000LL),
+                                 QFileDevice::FileModificationTime),
+            "mark the last configuration write before polling");
+    file.close();
+    const auto modified = QFileInfo(path).lastModified();
+    const int unchanged = service.unchanged;
+    device.check();
+    device.check();
+    require(service.unchanged == unchanged + 2 && device.sync.lastSuccessfulSync() > first &&
+                !device.store.isDirty() && persistedTime() == first &&
+                QFileInfo(path).lastModified() == modified,
+            "unchanged checks advance live status without rewriting configuration");
+    require(device.store.flushNow().success && persistedTime() == device.now,
+            "an explicit shutdown checkpoint includes the latest check time");
+    device.check();
+    const auto localKey = u"screen_recording/enable_microphone"_s;
+    require(device.store.setValue(localKey, !device.store.value(localKey).toBool()),
+            "a device-only preference schedules a normal save");
+    waitUntil([&] { return !device.store.isDirty(); }, "normal debounced save completes");
+    require(persistedTime() == device.now, "the normal save includes the deferred timestamp");
+}
+
+void signOutDuringStorageMove(const QString& path) {
+    Service service;
+    Device device(path, service);
+    device.signIn(u"A"_s);
+    device.check();
+    require(device.store.setValue(font, 27), "edit immediately before suspending storage");
+    device.store.suspendWrites(true);
+    device.account.signOut();
+    require(device.store.flushNow().success, "checkpoint accepted edits during suspension");
+    const ConfigurationStore checkpoint(path, true, false);
+    const auto state = checkpoint.cloudSyncState();
+    const auto owner = state.value(u"owner"_s).toString();
+    const auto profile = state.value(u"profiles"_s).toObject().value(owner).toObject();
+    const auto pending = profile.value(u"pending"_s).toObject().value(font).toObject();
+    require(!owner.isEmpty() && checkpoint.value(font).toInt() == 27 &&
+                pending.value(u"operation"_s).toObject().value(u"value"_s).toInt() == 27,
+            "the checkpoint keeps the preference and its original account's pending intent");
+    device.store.suspendWrites(false);
+    waitUntil([&] { return !device.store.isDirty(); }, "resumed storage persists sign-out");
+    require(ConfigurationStore(path, true, false)
+                .cloudSyncState()
+                .value(u"owner"_s)
+                .toString()
+                .isEmpty(),
+            "the deferred sign-out is saved after writes resume");
 }
 
 void workerEditsAcrossSignOut(const QString& path) {
@@ -890,6 +982,8 @@ int main(int argc, char* argv[]) {
     require(temp.isValid(), "temporary settings directory");
     runCloudSettingsLayoutTests();
     accountLifecycle(temp.filePath(u"device.json"_s));
+    unchangedChecksShareNextFlush(temp.filePath(u"unchanged.json"_s));
+    signOutDuringStorageMove(temp.filePath(u"suspend-sign-out.json"_s));
     workerEditsAcrossSignOut(temp.filePath(u"worker.json"_s));
     workerEditDuringSnapshot(temp.filePath(u"worker-snapshot.json"_s));
     workerCheckpointSurvivesRestart(temp.filePath(u"worker-checkpoint.json"_s));

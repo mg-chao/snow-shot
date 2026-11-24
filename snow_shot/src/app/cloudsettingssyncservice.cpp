@@ -341,8 +341,9 @@ class CloudSettingsSyncService::Impl {
             restoreJournal();
             this->store.setCloudSyncJournal(
                 [this](auto origin, const auto& before, const auto& after) {
-                    localEdits(origin, before, after);
-                });
+                    return localEdits(origin, before, after);
+                },
+                [this] { return journalState(); });
         });
         for (auto* timer : {&edits, &retry, &tray, &preferenceRetry})
             timer->setSingleShot(true);
@@ -373,7 +374,7 @@ class CloudSettingsSyncService::Impl {
     }
 
     ~Impl() {
-        store.setCloudSyncJournal({});
+        store.setCloudSyncJournal({}, {});
         account.cancelSettingsSyncRequest();
     }
 
@@ -390,7 +391,7 @@ class CloudSettingsSyncService::Impl {
     }
 
     [[nodiscard]] QDateTime lastSuccess() const {
-        return owner.isEmpty() ? QDateTime{} : durableLastSuccess;
+        return owner.isEmpty() ? QDateTime{} : lastCompletedSync;
     }
 
     void setEnabled(bool enable) {
@@ -423,6 +424,8 @@ class CloudSettingsSyncService::Impl {
     }
 
     void start(bool manual = false) {
+        if (!sessionAvailable)
+            return;
         store.afterPendingChanges([&] { startCheck(manual); });
     }
 
@@ -436,8 +439,8 @@ class CloudSettingsSyncService::Impl {
             signedOutLocalOnly = readKeySet(state.value(u"signed_out_local_only"_s));
             profiles = state.value(u"profiles"_s).toObject();
             owner = state.value(u"owner"_s).toString();
-            profile = Profile::read(profiles.value(owner).toObject());
-            durableLastSuccess = profile.lastSuccess;
+            profile = Profile::read(profiles.take(owner).toObject());
+            lastCompletedSync = profile.lastSuccess;
         }
     }
 
@@ -514,7 +517,7 @@ class CloudSettingsSyncService::Impl {
         running = false;
         forceEdits = false;
         editsDue = false;
-        profile.lastSuccess = durableLastSuccess;
+        profile.lastSuccess = lastCompletedSync;
         unsupported = false;
         failures = 0;
         edits.stop();
@@ -569,24 +572,27 @@ class CloudSettingsSyncService::Impl {
         haveBaseline = true;
     }
 
+    QJsonObject journalState() const {
+        auto accounts = profiles;
+        if (!owner.isEmpty())
+            accounts.insert(owner, profile.serialize());
+        return {{u"version"_s, 1},
+                {u"signed_out"_s, signedOut},
+                {u"signed_out_local_only"_s, writeKeySet(signedOutLocalOnly)},
+                {deferredOcrModelKey, deferredOcrModel},
+                {u"owner"_s, owner},
+                {u"profiles"_s, accounts}};
+    }
+
     bool save(Values remote = {}) {
         const auto colorToggle = remote.constFind(u"drawing/sync_tool_colors"_s);
         if (colorToggle != remote.cend() && colorToggle.value() != store.value(colorToggle.key()) &&
             !storage::applyDrawingColorPolicy(store, remote))
             return false;
-        if (!owner.isEmpty())
-            profiles.insert(owner, profile.serialize());
         const auto previousOcrModel = deferredOcrModel;
         if (remote.contains(ocrModelKey))
             deferredOcrModel = remote.value(ocrModelKey).toString();
-        const bool saved =
-            store.setCloudSyncState({{u"version"_s, 1},
-                                     {u"signed_out"_s, signedOut},
-                                     {u"signed_out_local_only"_s, writeKeySet(signedOutLocalOnly)},
-                                     {deferredOcrModelKey, deferredOcrModel},
-                                     {u"owner"_s, owner},
-                                     {u"profiles"_s, profiles}},
-                                    remote);
+        const bool saved = store.setCloudSyncState(journalState(), remote);
         if (!saved)
             deferredOcrModel = previousOcrModel;
         return saved;
@@ -617,7 +623,7 @@ class CloudSettingsSyncService::Impl {
                     profile = {};
                     restoreNeeded = false;
                 } else if (profiles.contains(owner)) {
-                    profile = Profile::read(profiles.value(owner).toObject());
+                    profile = Profile::read(profiles.take(owner).toObject());
                 } else {
                     profile = {};
                     profile.values = signedOut;
@@ -629,7 +635,7 @@ class CloudSettingsSyncService::Impl {
             }
             if (discard)
                 static_cast<void>(flush());
-            durableLastSuccess = profile.lastSuccess;
+            lastCompletedSync = profile.lastSuccess;
             unspecificEnabled = true;
         }
         emit q.changed();
@@ -659,34 +665,47 @@ class CloudSettingsSyncService::Impl {
         return !restoreNeeded;
     }
 
-    void localEdits(ConfigurationWriteOrigin origin, const Values& before, const Values& after) {
+    bool localEdits(ConfigurationWriteOrigin origin, const Values& before, const Values& after) {
         // Before the first account, the live configuration is the signed-out baseline.
         // An import can still mark implicit defaults as ineligible for first-use seeding.
         if (!haveBaseline && owner.isEmpty() && origin != ConfigurationWriteOrigin::ImportDefaults)
-            return;
-        if (std::none_of(after.keyBegin(), after.keyEnd(), storage::cloudSettingSupported))
-            return;
-        ensureBaseline(before);
-        if (after.contains(ocrModelKey))
-            deferredOcrModel.clear();
+            return false;
         bool queueChanged = false;
         bool valuesChanged = false;
         for (auto it = after.cbegin(); it != after.cend(); ++it) {
             const auto& key = it.key();
             if (!storage::cloudSettingSupported(key))
                 continue;
-            const auto previous = storage::cloudSettingValue(key, before.value(key));
+            if (!haveBaseline) {
+                ensureBaseline(before);
+                valuesChanged = true;
+            }
+            if (key == ocrModelKey && !deferredOcrModel.isEmpty()) {
+                deferredOcrModel.clear();
+                valuesChanged = true;
+            }
             const auto value = storage::cloudSettingValue(key, it.value());
-            if (key.startsWith(u"export_tasks/"_s) && value == previous &&
-                before.value(key) != it.value() && origin != ConfigurationWriteOrigin::Reset)
+            const auto oldLocal = before.value(key);
+            const bool exportTasks = key.startsWith(u"export_tasks/"_s);
+            const auto previous = oldLocal != it.value() && (!owner.isEmpty() || exportTasks)
+                                      ? storage::cloudSettingValue(key, oldLocal)
+                                      : value;
+            if (exportTasks && value == previous && oldLocal != it.value() &&
+                origin != ConfigurationWriteOrigin::Reset)
                 continue;
             if (owner.isEmpty()) {
-                signedOut.insert(key, value);
-                if (origin == ConfigurationWriteOrigin::ImportDefaults)
-                    signedOutLocalOnly.insert(key);
-                else
-                    signedOutLocalOnly.remove(key);
-                valuesChanged = true;
+                if (signedOut.value(key) != value) {
+                    signedOut.insert(key, value);
+                    valuesChanged = true;
+                }
+                const bool localOnly = origin == ConfigurationWriteOrigin::ImportDefaults;
+                if (signedOutLocalOnly.contains(key) != localOnly) {
+                    if (localOnly)
+                        signedOutLocalOnly.insert(key);
+                    else
+                        signedOutLocalOnly.remove(key);
+                    valuesChanged = true;
+                }
                 continue;
             }
             profile.values.insert(key, value);
@@ -725,13 +744,12 @@ class CloudSettingsSyncService::Impl {
                                       : previous;
             queueChanged = enqueue(key, operation, fallback) || queueChanged;
         }
-        if (valuesChanged)
-            save();
         if (queueChanged)
             QMetaObject::invokeMethod(&q, [this, editGeneration = generation] {
                 if (generation == editGeneration)
                     edits.start(options.editDelayMs);
             });
+        return valuesChanged;
     }
 
     bool enqueue(const QString& key, const QJsonObject& operation, const QJsonValue& fallback) {
@@ -800,7 +818,10 @@ class CloudSettingsSyncService::Impl {
                        revision == profile.revision) {
                 if (profile.layoutEdits.isEmpty() && profile.deferredBindings.isEmpty()) {
                     recentCheck.start();
-                    processUploads();
+                    if (profile.pending.isEmpty() && profile.platformInitialized)
+                        success(true);
+                    else
+                        processUploads();
                     return;
                 }
                 cloud = profile.confirmed;
@@ -1177,21 +1198,22 @@ class CloudSettingsSyncService::Impl {
         return saved;
     }
 
-    void success() {
+    void success(bool unchanged = false) {
         profile.lastSuccess = options.utcNow().toUTC();
-        if (!save()) {
-            profile.lastSuccess = durableLastSuccess;
+        const bool timestampOnly = unchanged && lastCompletedSync.isValid() && !store.isDirty();
+        if (!(timestampOnly ? store.deferCloudSyncStatus() : save())) {
+            profile.lastSuccess = lastCompletedSync;
             fail();
             return;
         }
         checkpoint([this](bool saved) {
             if (!saved) {
-                profile.lastSuccess = durableLastSuccess;
+                profile.lastSuccess = lastCompletedSync;
                 save();
                 fail();
                 return;
             }
-            durableLastSuccess = profile.lastSuccess;
+            lastCompletedSync = profile.lastSuccess;
             recentCheck.start();
             finish();
             emit q.changed();
@@ -1227,7 +1249,7 @@ class CloudSettingsSyncService::Impl {
     QTimer tray;
     QTimer preferenceRetry;
     QElapsedTimer recentCheck;
-    QDateTime durableLastSuccess;
+    QDateTime lastCompletedSync;
     bool haveBaseline = false;
     bool wasAuthenticated = false;
     bool sessionAvailable = false;
