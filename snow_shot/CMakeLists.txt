@@ -11828,7 +11828,7 @@ if(WIN32 AND NOT SNOW_SHOT_QT_STATIC)
     install(SCRIPT "${SNOW_SHOT_QT_DEPLOY_SCRIPT}")
 
     # Qt's deployment helper copies every Qt base translation catalog. Snow
-    # Shot ships only en_US, zh_CN, and zh_TW application catalogs, so retain
+    # Shot ships only en_US, zh_CN, zh_TW, and ru application catalogs, so retain
     # only the corresponding Qt catalogs in the final install tree.
     install(CODE [=[
         set(_snow_shot_qt_translation_dir
@@ -11837,6 +11837,8 @@ if(WIN32 AND NOT SNOW_SHOT_QT_STATIC)
             qt_en.qm
             qt_zh_CN.qm
             qt_zh_TW.qm
+            qt_ru.qm
+            qt_ru_RU.qm
         )
         if(IS_DIRECTORY "${_snow_shot_qt_translation_dir}")
             file(GLOB _snow_shot_qt_translation_catalogs

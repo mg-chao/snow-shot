@@ -15,6 +15,7 @@
 #include <QUuid>
 
 #include <algorithm>
+#include <limits>
 #include <utility>
 
 namespace snow_shot::app {
@@ -93,6 +94,16 @@ bool canDismissPreviousRegistration(const QJsonObject& entry) {
 }
 int remainingPollDelay(int delay, const QElapsedTimer& elapsed) {
     return static_cast<int>(std::max<qint64>(0, delay - elapsed.elapsed()));
+}
+
+qint64 wholeCredits(const QString& nanos) {
+    // Only the presentation drops fractional credits; account values remain in nano-yuan.
+    constexpr qint64 nanosPerCredit = 10000000;
+    return nanos.toLongLong() / nanosPerCredit;
+}
+
+QString formatWholeCredits(qint64 credits) {
+    return credits < 0 ? u'−' + QString::number(-credits) : QString::number(credits);
 }
 } // namespace
 
@@ -187,18 +198,17 @@ AccountSessionService* AccountSessionService::forClient(SnowShotApiClient* clien
 }
 
 QString AccountSessionService::formatCredits(const QString& nanos) {
-    return tr("%1 credits").arg(formatCreditAmount(nanos));
+    const qint64 credits = wholeCredits(nanos);
+    const qint64 magnitude = credits < 0 ? -credits : credits;
+    // Qt takes an int for numerus. Preserve the last two digits for larger amounts,
+    // without reducing them to the special cases for zero or one.
+    const int count = static_cast<int>(
+        magnitude <= std::numeric_limits<int>::max() ? magnitude : 100 + magnitude % 100);
+    return tr("%1 credits", nullptr, count).arg(formatWholeCredits(credits));
 }
 
 QString AccountSessionService::formatCreditAmount(const QString& nanos) {
-    bool valid = false;
-    const qint64 value = nanos.toLongLong(&valid);
-    if (!valid)
-        return QStringLiteral("0");
-    // Only the presentation drops fractional credits; account values remain in nano-yuan.
-    constexpr qint64 nanosPerCredit = 10000000;
-    const qint64 credits = value / nanosPerCredit;
-    return credits < 0 ? u'−' + QString::number(-credits) : QString::number(credits);
+    return formatWholeCredits(wholeCredits(nanos));
 }
 
 void AccountSessionService::send(const QByteArray& method, const QString& path,

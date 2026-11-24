@@ -21,6 +21,7 @@
     <Resource Language="en-US" />
     <Resource Language="zh-CN" />
     <Resource Language="zh-TW" />
+    <Resource Language="ru-RU" />
   </Resources>
   <Dependencies>
     <TargetDeviceFamily Name="Windows.Desktop" MinVersion="@MinVersion@" MaxVersionTested="10.0.26100.0" />

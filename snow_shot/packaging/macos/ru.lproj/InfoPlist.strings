@@ -1,0 +1,7 @@
+/* Native bundle names and privacy prompts; Qt catalogs are separate. */
+"CFBundleName" = "Snow Shot";
+"CFBundleDisplayName" = "Snow Shot";
+"NSAppleEventsUsageDescription" = "Snow Shot читает выбранные в Finder файлы изображений, чтобы закрепить их на экране.";
+"NSMicrophoneUsageDescription" = "Snow Shot записывает звук с микрофона при записи экрана, если включена запись звука с микрофона.";
+"NSAudioCaptureUsageDescription" = "Snow Shot записывает системный звук при записи экрана, если включена запись системного звука.";
+"NSCameraUsageDescription" = "Snow Shot записывает изображение с камеры при записи экрана, если включена запись с камеры.";

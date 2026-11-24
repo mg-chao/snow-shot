@@ -10,7 +10,7 @@ import re
 import xml.etree.ElementTree as ET
 
 
-LOCALES = ("en_US", "zh_CN", "zh_TW")
+LOCALES = ("en_US", "zh_CN", "zh_TW", "ru")
 DEFAULT_CATALOG_DIR = Path(__file__).resolve().parents[1] / "i18n"
 
 

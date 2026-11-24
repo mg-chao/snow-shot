@@ -19,6 +19,7 @@
         <string>en</string>
         <string>zh-Hans</string>
         <string>zh-Hant</string>
+        <string>ru</string>
     </array>
     <key>CFBundleVersion</key><string>${MACOSX_BUNDLE_BUNDLE_VERSION}</string>
     <key>CFBundleShortVersionString</key><string>${MACOSX_BUNDLE_SHORT_VERSION_STRING}</string>

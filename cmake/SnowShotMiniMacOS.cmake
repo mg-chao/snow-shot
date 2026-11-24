@@ -4,7 +4,7 @@ set_target_properties(snow_shot_mini PROPERTIES
     MACOSX_BUNDLE_ICON_FILE snow-shot.icns
     INSTALL_RPATH "@executable_path/../Frameworks" INSTALL_RPATH_USE_LINK_PATH TRUE)
 target_sources(snow_shot_mini PRIVATE "${_snow_macos_icon}")
-foreach(_language IN ITEMS en zh-Hans zh-Hant)
+foreach(_language IN ITEMS en zh-Hans zh-Hant ru)
     set(_strings "${CMAKE_CURRENT_SOURCE_DIR}/packaging/macos/mini/${_language}.lproj/InfoPlist.strings")
     set_source_files_properties("${_strings}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/${_language}.lproj")
     target_sources(snow_shot_mini PRIVATE "${_strings}")

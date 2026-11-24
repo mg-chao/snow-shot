@@ -126,7 +126,7 @@ target_sources(mini INTERFACE "$<$<CONFIG:Release>:path/screenshotqrcontroller.c
 
     def test_only_mini_translation_catalogs_are_allowed(self):
         self.configure('''
-target_sources(mini INTERFACE path/i18n/mini/snow_shot_en_US.qm)
+target_sources(mini INTERFACE path/i18n/mini/snow_shot_en_US.qm path/i18n/mini/snow_shot_ru.qm)
 ''')
 
     def test_source_filter_removes_full_only_automoc_headers_and_implementations(self):
@@ -137,7 +137,7 @@ snow_shot_mini_filter_sources(sources
     path/screenshotlatexrenderer.cpp path/screenshotlatexrenderer.h
     path/qrc_snow_shot_microtex.cpp path/snow_shot_microtex.qrc
     path/qrc_snow_shot_translations.cpp path/snow_shot_translations.qrc
-    path/snow_shot_en_US.qm path/snow_shot_zh_CN.qm path/snow_shot_zh_TW.qm
+    path/snow_shot_en_US.qm path/snow_shot_zh_CN.qm path/snow_shot_zh_TW.qm path/snow_shot_ru.qm
     path/screenshotocrcontroller.h)
 if(NOT sources STREQUAL "path/screenshotocrcontroller.h")
     message(FATAL_ERROR "Unexpected Mini sources: ${sources}")
