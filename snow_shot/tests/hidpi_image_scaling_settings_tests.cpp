@@ -146,21 +146,19 @@ void autoUsesOnlyIntersectingMonitors() {
 
 void directCaptureUsesCapturedBounds() {
     using namespace snow_shot::presentation;
-    DirectCaptureRequest request;
-    request.hiDpiImageScaling = QStringLiteral("auto");
-    request.scalingDisplays = {{{-100, 0, 100, 100}, 1.25}, {{0, 0, 100, 100}, 2.0}};
+    const QVector<ScreenshotHiDpiDisplay> displays{{{-100, 0, 100, 100}, 1.25},
+                                                   {{0, 0, 100, 100}, 2.0}};
     DirectCaptureFrame frame;
     frame.physicalBounds = {-80, 10, 50, 20};
-    require(directCaptureImageScale(request, frame) == 0.8,
+    require(directCaptureImageScale(u"auto", frame, displays) == 0.8,
             "direct captures must use their actual bounds instead of the cursor monitor");
     frame.physicalBounds = {-10, 10, 50, 20};
-    require(directCaptureImageScale(request, frame) == 1.0,
+    require(directCaptureImageScale(u"auto", frame, displays) == 1.0,
             "a direct window crossing different DPI monitors must remain unscaled in Auto");
     frame.logicalBounds = {10, 10, 50, 20};
-    require(directCaptureImageScale(request, frame) == 0.5,
+    require(directCaptureImageScale(u"auto", frame, displays) == 0.5,
             "point-based captures must intersect logical monitor bounds");
-    request.hiDpiImageScaling = QStringLiteral("225");
-    require(screenshotHiDpiImageSize({4500, 2250}, directCaptureImageScale(request, frame)) ==
+    require(screenshotHiDpiImageSize({4500, 2250}, directCaptureImageScale(u"225", frame, {})) ==
                 QSize(2000, 1000),
             "fixed direct capture scaling must use the exact reciprocal");
 }

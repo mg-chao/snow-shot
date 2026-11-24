@@ -36,6 +36,7 @@ struct DirectCaptureRequest {
     DirectCaptureTarget target = DirectCaptureTarget::CurrentMonitor;
     quintptr window = 0;
     QString monitorName;
+    QPointF monitorCursor;
     QDateTime requestedAt;
     std::function<void(const DirectCaptureFrame&)> afterCopy;
     bool copyFile = false;
@@ -44,6 +45,7 @@ struct DirectCaptureRequest {
     ScreenshotImageEncodingOptions encoding;
     ScreenshotCompressionLevel historyDisplayCompressionLevel = ScreenshotCompressionLevel::Medium;
     ScreenshotPdfOptions pdf;
+    QString exportDirectory;
     QString filenameFormat;
     bool restoreOriginalScreenColors = false;
     bool shutterSoundNotification = true;
@@ -52,11 +54,7 @@ struct DirectCaptureRequest {
     // Called on native capture threads with the fixed target's geometry before allocation.
     std::function<bool(QSize)> admitRaster;
     QString hiDpiImageScaling = QStringLiteral("disabled");
-    QVector<ScreenshotHiDpiDisplay> scalingDisplays;
     storage::ScreenshotExportContext exportContext;
-    bool nameSourceScreen = false;
-
-    void snapshotWindowNames(const QString& directory, const QPointF& monitorCursor);
 };
 
 struct DirectCaptureFrame {
@@ -73,11 +71,11 @@ struct DirectCaptureFrame {
     }
 };
 
-[[nodiscard]] inline qreal directCaptureImageScale(const DirectCaptureRequest& request,
-                                                   const DirectCaptureFrame& frame) {
+[[nodiscard]] inline qreal
+directCaptureImageScale(QStringView mode, const DirectCaptureFrame& frame,
+                        const QVector<ScreenshotHiDpiDisplay>& displays) {
     const QRect bounds = frame.logicalBounds.isEmpty() ? frame.physicalBounds : frame.logicalBounds;
-    return screenshotHiDpiImageScale(request.hiDpiImageScaling, QRectF(bounds),
-                                     request.scalingDisplays);
+    return screenshotHiDpiImageScale(mode, QRectF(bounds), displays);
 }
 
 struct DirectCapturePorts {
