@@ -38,7 +38,8 @@ struct StartupTransactionOperations {
 };
 AdministratorResult runRestartTransaction(
     const std::function<AdministratorResult(const std::function<bool()>&)>& prepare,
-    const std::function<bool()>& flush, const std::function<void()>& quit);
+    const std::function<bool()>& guard, const std::function<bool()>& flush,
+    const std::function<void()>& quit);
 AdministratorResult runStartupTransaction(const StartupTransactionOperations& operations);
 AdministratorState administratorState();
 std::optional<StartupMode> observedStartupMode();
@@ -47,7 +48,8 @@ QString canonicalAccountSid(const QString& accountOrSid);
 bool sameAccountSid(const QString& left, const QString& right);
 bool administratorOperationPending();
 void setAdministratorRestartGuard(std::function<bool()> guard);
-AdministratorResult changeStartupMode(StartupMode mode, const std::function<bool()>& persist);
+AdministratorResult changeStartupMode(StartupMode mode, const std::function<bool()>& persist,
+                                      const std::function<bool()>& flushBeforeRestart = {});
 AdministratorResult restartAsAdministrator(const std::function<bool()>& flush);
 // Returns -1 for an ordinary launch, 0 for a completed helper, or a failure exit code.
 // A successful restart handoff returns -1 after the parent has exited.
