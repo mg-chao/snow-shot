@@ -47,36 +47,19 @@ class DirectCaptureController::Impl {
         : owner(controller), worker(new QObject),
           workflow(DirectCapturePorts{
               [this](const auto& request, auto done) {
-                  artifact.reset();
                   emit owner.captureActivityChanged(QStringLiteral("direct"), true);
                   const bool queued = submit<DirectCaptureFrame>(
                       [request]() { return captureDirectTarget(request); },
-                      [this, request, done = std::move(done)](DirectCaptureFrame frame) mutable {
+                      [this, done = std::move(done)](DirectCaptureFrame frame) {
                           emit owner.captureActivityChanged(QStringLiteral("direct"), false);
-                          if (frame.isValid()) {
-                              auto source = ScreenshotExportSource::fromImage(frame.image);
-                              source.setOutputScale(directCaptureImageScale(request, frame));
-                              artifact = std::shared_ptr<ScreenshotExportArtifact>(
-                                  new ScreenshotExportArtifact(std::move(source),
-                                                               request.encoding.compressionLevel),
-                                  [](ScreenshotExportArtifact* finished) {
-                                      finished->deleteLater();
-                                  });
-                              auto context = request.exportContext;
-                              if (request.nameSourceScreen)
-                                  context.screen = screenshotScreenNameForNativeRegion(
-                                      frame.logicalBounds.isEmpty() ? frame.physicalBounds
-                                                                    : frame.logicalBounds);
-                              artifact->setExportContext(std::move(context));
-                          }
                           done(std::move(frame));
                       });
                   if (!queued)
                       emit owner.captureActivityChanged(QStringLiteral("direct"), false);
                   return queued;
               },
-              [this](const auto& request, const auto&, auto done) {
-                  return copy(request, std::move(done));
+              [this](const auto& request, const auto& frame, auto done) {
+                  return copy(request, frame, std::move(done));
               },
               [this](const auto& request, const auto& frame, auto done) {
                   return artifact &&
@@ -165,9 +148,29 @@ class DirectCaptureController::Impl {
             Qt::QueuedConnection);
     }
 
-    bool copy(const DirectCaptureRequest& request, DirectCapturePorts::CopyCompletion done) {
-        if (!artifact)
-            return false;
+    bool copy(const DirectCaptureRequest& request, const DirectCaptureFrame& frame,
+              DirectCapturePorts::CopyCompletion done) {
+        QVector<ScreenshotHiDpiDisplay> scalingDisplays;
+        if (request.hiDpiImageScaling == u"auto") {
+            for (QScreen* screen : QGuiApplication::screens()) {
+                const auto display = ScreenshotGeometryMapper::preCaptureDisplayModel(*screen);
+                scalingDisplays.append({QRectF(display.canvasRect), screen->devicePixelRatio()});
+            }
+        }
+        auto source = ScreenshotExportSource::fromImage(frame.image);
+        source.setOutputScale(
+            directCaptureImageScale(request.hiDpiImageScaling, frame, scalingDisplays));
+        artifact = std::shared_ptr<ScreenshotExportArtifact>(
+            new ScreenshotExportArtifact(std::move(source), request.encoding.compressionLevel),
+            [](ScreenshotExportArtifact* finished) { finished->deleteLater(); });
+        auto context = request.exportContext;
+        if (request.exportDirectory.contains(u"{SCREEN}") ||
+            request.filenameFormat.contains(u"{SCREEN}")) {
+            context.screen = screenshotScreenNameForNativeRegion(
+                frame.logicalBounds.isEmpty() ? frame.physicalBounds : frame.logicalBounds);
+        }
+        artifact->setExportContext(std::move(context));
+
         const auto id = ScreenshotClipboardService::reservePublication();
         const auto format = ScreenshotImageFileService::formatForKey(request.imageFormat);
         const auto prepared =
@@ -197,7 +200,7 @@ class DirectCaptureController::Impl {
                    : artifact->requestClipboard(&owner, prepared);
     }
 
-    void enqueue(DirectCaptureRequest result, const QPointF& monitorCursor = {}) {
+    void enqueue(DirectCaptureRequest result) {
         const storage::ScreenshotSettings settings;
         if (result.target == DirectCaptureTarget::CurrentMonitor) {
             result.captureBackend = capture::nativeBackendForNormalScreenshot(
@@ -208,10 +211,8 @@ class DirectCaptureController::Impl {
         result.restoreOriginalScreenColors = settings.restoreOriginalScreenColors();
         result.requestedAt = QDateTime::currentDateTime();
         auto tasks = ScreenshotExportTasks::capture(storage::ExportTrigger::ScreenshotCopy);
+        result.exportDirectory = tasks.directory;
         result.filenameFormat = tasks.options.filenameFormat;
-        result.snapshotWindowNames(tasks.directory, monitorCursor);
-        result.nameSourceScreen =
-            tasks.directory.contains(u"{SCREEN}") || result.filenameFormat.contains(u"{SCREEN}");
         if (tasks.selected) {
             tasks.reportError = [this](QString error) { emit owner.operationFailed(error, true); };
             result.afterCopy = [this, tasks](const DirectCaptureFrame& frame) mutable {
@@ -235,13 +236,6 @@ class DirectCaptureController::Impl {
                 .toString());
         result.pdf.pageSize = screenshot_pdf::pageSizeForKey(settings.pdfPageSize());
         result.hiDpiImageScaling = settings.hiDpiImageScaling();
-        if (result.hiDpiImageScaling == QStringLiteral("auto")) {
-            for (QScreen* screen : QGuiApplication::screens()) {
-                const auto display = ScreenshotGeometryMapper::preCaptureDisplayModel(*screen);
-                result.scalingDisplays.append(
-                    {QRectF(display.canvasRect), screen->devicePixelRatio()});
-            }
-        }
         workflow.enqueue(std::move(result));
     }
 
@@ -304,7 +298,6 @@ void DirectCaptureController::captureFocusedWindow() {
 
 void DirectCaptureController::captureCurrentMonitor() {
     DirectCaptureRequest request;
-    QPointF monitorCursor;
 #if defined(Q_OS_WIN)
     POINT cursor{};
     MONITORINFOEXW info{};
@@ -312,15 +305,15 @@ void DirectCaptureController::captureCurrentMonitor() {
     if (GetCursorPos(&cursor) && GetMonitorInfoW(MonitorFromPoint(cursor, MONITOR_DEFAULTTONULL),
                                                  reinterpret_cast<MONITORINFO*>(&info))) {
         request.monitorName = QString::fromWCharArray(info.szDevice);
-        monitorCursor = QPointF(cursor.x, cursor.y);
+        request.monitorCursor = QPointF(cursor.x, cursor.y);
     }
 #endif
 #ifdef Q_OS_MACOS
-    const quint32 id = platform::screenshotDisplayAtCursor(&monitorCursor);
+    const quint32 id = platform::screenshotDisplayAtCursor(&request.monitorCursor);
     if (id)
         request.monitorName = QStringLiteral("display:%1").arg(id);
 #endif
-    m_impl->enqueue(std::move(request), monitorCursor);
+    m_impl->enqueue(std::move(request));
 }
 
 bool DirectCaptureController::mcpCapture(
