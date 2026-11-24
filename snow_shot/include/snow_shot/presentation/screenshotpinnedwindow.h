@@ -576,8 +576,7 @@ class ScreenshotPinnedWindow final : public QWidget {
     QPointF canvasPositionForViewPosition(const QPointF& position) const;
     void copyEditToolbarContent(bool closeAfter = false);
     void copyCurrentAndMaybeClose(bool closeAfter);
-    void closeAfterPublication(ScreenshotClipboardService::PublicationId id,
-                               const ScreenshotClipboardCommitResult& result);
+    bool scheduleCloseAfterPublication(ScreenshotClipboardService::PublicationId id);
     void publishCopyMime(std::unique_ptr<QMimeData> mime,
                          ScreenshotClipboardService::PublicationId id, bool selectedText = false);
     void copyCurrentViewport();
@@ -716,7 +715,7 @@ class ScreenshotPinnedWindow final : public QWidget {
     [[nodiscard]] std::optional<QPoint> physicalCursorPosition() const;
     bool cursorMovementEnabled() const;
     bool moveCursorOnePixel(const QPoint& direction);
-    bool startWindowMove();
+    bool startWindowMove(std::optional<QPoint> nativePress = {});
     void finishWindowMove(bool cancel = false);
     void beginWindowShake(const QPointF& pointer, bool physical);
     void sampleWindowShake(const QPointF& pointer);

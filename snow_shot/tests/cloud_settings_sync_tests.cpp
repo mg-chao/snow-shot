@@ -760,6 +760,79 @@ void mousePreferencesOnUpgrade(const QString& path) {
     require(atomic, "a click and double-click transfer is synchronized as one group");
 }
 
+void signedOutMouseEditMergesWithLegacyCloud(const QString& path) {
+    using namespace snow_shot::mouse;
+    const auto fineOpacity = definition(Action::FineOpacity).key();
+    const Binding wheel{Kind::Wheel, Qt::NoButton, Qt::ShiftModifier};
+    const Binding doubleClick{Kind::DoubleClick, Qt::LeftButton};
+    Service service;
+    service.set(u"A"_s, u"pin_to_screen/double_click_action"_s, u"close"_s);
+    Device device(path, service);
+    require(device.store.setValue(fineOpacity, encode(wheel)), "customize the wheel before login");
+    device.signIn(u"A"_s);
+    device.check();
+    require(device.store.mouseAction(Category::Pinned, doubleClick) == Action::Close &&
+                device.store.mouseAction(Category::Pinned, wheel) == Action::FineOpacity &&
+                service.operation(u"A"_s, definition(Action::Close).key()).value(u"value"_s) ==
+                    encode(doubleClick) &&
+                service.operation(u"A"_s, fineOpacity).value(u"value"_s) == encode(wheel),
+            "first login merges the legacy cloud click with the customized local wheel");
+}
+
+void pendingLegacyMouseEditsOnUpgrade(const QString& path) {
+    using namespace snow_shot::mouse;
+    const auto pin = u"pin_to_screen/double_click_action"_s;
+    const auto shot = u"screenshot/double_click_action"_s;
+    const Binding doubleClick{Kind::DoubleClick, Qt::LeftButton};
+    const auto set = [](QString value) {
+        return QJsonObject{{u"op"_s, u"set"_s}, {u"value"_s, value}};
+    };
+    const auto edit = [&](QString base, QString desired, QString sequence) {
+        return QJsonObject{{u"operation"_s, set(desired)},
+                           {u"base"_s, set(base)},
+                           {u"fallback"_s, base},
+                           {u"sequence"_s, sequence}};
+    };
+    Service service;
+    {
+        Device device(path, service);
+        device.signIn(u"A"_s);
+        device.check();
+        const auto owner = device.store.cloudSyncState().value(u"owner"_s).toString();
+        device.account.signOut();
+        service.set(u"A"_s, pin, u"close"_s);
+        service.set(u"A"_s, shot, u"quick_save"_s);
+        auto state = device.store.cloudSyncState();
+        const QJsonObject profile{
+            {u"joined"_s, true},
+            {u"read"_s, true},
+            {u"revision"_s, QString::number(service.revisions.value(u"A"_s))},
+            {u"client_version"_s, QCoreApplication::applicationVersion()},
+            {u"sequence"_s, u"2"_s},
+            {u"values"_s, QJsonObject{{pin, u"reset_zoom"_s}, {shot, u"ocr"_s}}},
+            {u"confirmed"_s, QJsonObject{{pin, set(u"close"_s)}, {shot, set(u"save"_s)}}},
+            {u"pending"_s, QJsonObject{{pin, edit(u"close"_s, u"reset_zoom"_s, u"1"_s)},
+                                       {shot, edit(u"save"_s, u"ocr"_s, u"2"_s)}}}};
+        state[u"profiles"_s] = QJsonObject{{owner, profile}};
+        require(device.store.setCloudSyncState(state) && device.store.flushNow().success,
+                "persist a pre-upgrade account with two pending mouse edits");
+    }
+    Device device(path, service);
+    device.signIn(u"A"_s);
+    device.check();
+    require(device.store.mouseAction(Category::Pinned, doubleClick) == Action::ResetZoom &&
+                service.operation(u"A"_s, definition(Action::ResetZoom).key()).value(u"value"_s) ==
+                    encode(doubleClick) &&
+                service.operation(u"A"_s, pin) == set(u"close"_s),
+            "an unconflicted legacy edit is uploaded under its modern key only");
+    require(
+        device.store.mouseAction(Category::Screenshot, doubleClick) == Action::ShotQuickSave &&
+            service.operation(u"A"_s, definition(Action::ShotQuickSave).key()).value(u"value"_s) ==
+                encode(doubleClick) &&
+            service.operation(u"A"_s, shot) == set(u"quick_save"_s),
+        "a conflicting legacy edit yields to the newer cloud value");
+}
+
 void mousePreferencesStayWithTheirAccount(const QString& path) {
     using namespace snow_shot::mouse;
     const auto legacy = u"screenshot/double_click_action"_s;
@@ -1045,6 +1118,8 @@ int main(int argc, char* argv[]) {
     blockedShortcutRollback(temp.filePath(u"rollback-local.json"_s), false);
     atomicShortcutSwap(temp.filePath(u"atomic-swap.json"_s));
     mousePreferencesOnUpgrade(temp.filePath(u"mouse-operations.json"_s));
+    signedOutMouseEditMergesWithLegacyCloud(temp.filePath(u"mouse-signed-out.json"_s));
+    pendingLegacyMouseEditsOnUpgrade(temp.filePath(u"mouse-pending-upgrade.json"_s));
     mousePreferencesStayWithTheirAccount(temp.filePath(u"mouse-operations-accounts.json"_s));
     modernMouseSnapshotSupersedesLegacyClaims(temp.filePath(u"mouse-operations-upgrade.json"_s));
     unsupportedShortcutList(temp.filePath(u"unsupported-binding.json"_s));

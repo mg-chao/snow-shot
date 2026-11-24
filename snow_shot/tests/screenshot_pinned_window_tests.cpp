@@ -324,6 +324,8 @@ class ObservedPinnedPlatform final : public snow_shot::presentation::PinnedWindo
     bool rejectNext = false;
     bool biasNext = false;
     bool minimized = false;
+    bool acceptSystemMove = false;
+    QRect systemMoveStart;
     int applications = 0;
     GeometryUpdate lastUpdate = GeometryUpdate::PreserveContents;
     std::function<void()> notification;
@@ -340,6 +342,10 @@ class ObservedPinnedPlatform final : public snow_shot::presentation::PinnedWindo
         if (notification)
             notification();
         return true;
+    }
+    bool startSystemMove() override {
+        systemMoveStart = observed;
+        return acceptSystemMove;
     }
     QRect windowGeometry() const override {
         return readFails ? QRect() : observed;
@@ -962,10 +968,10 @@ class ScreenshotPinnedWindowTestAccess {
         QApplication::sendEvent(&window, &press);
         QApplication::sendEvent(&window, &release);
     }
-#ifdef Q_OS_WIN
-    static bool startNativeShakeDrag(ScreenshotPinnedWindow& window) {
-        return window.startWindowMove();
+    static bool startNativeMove(ScreenshotPinnedWindow& window, std::optional<QPoint> press = {}) {
+        return window.startWindowMove(press);
     }
+#ifdef Q_OS_WIN
     static bool beginPreviewNativeMove(ScreenshotPinnedWindow& window) {
         if (!window.m_nativeGeometryController->beginMove(QPoint())) {
             return false;
@@ -1780,9 +1786,7 @@ adqt::widgets::AdContextMenu* openPinnedContextMenu(ScreenshotPinnedWindow& wind
              QStringLiteral("screenshotPinnedContextMenu")))
         if (menu->isPopupVisible() && !menu->isRetiring())
             return menu;
-    QContextMenuEvent event(QContextMenuEvent::Mouse, QPoint(8, 8),
-                            window.mapToGlobal(QPoint(8, 8)));
-    QApplication::sendEvent(&window, &event);
+    firstClick(window, QPoint(8, 8), Qt::RightButton);
     for (auto* menu : window.findChildren<adqt::widgets::AdContextMenu*>(
              QStringLiteral("screenshotPinnedContextMenu")))
         if (menu->isPopupVisible() && !menu->isRetiring())
@@ -17983,8 +17987,7 @@ void pinnedHiddenTextSelectionDragExportOffscreen() {
             "text-selection highlights are excluded from exported pixels and file");
         return Qt::IgnoreAction;
     });
-    {
-        const QPoint origin = blank;
+    for (const QPoint origin : {textStart, blank}) {
         const int previousExecutions = executions;
         const QPoint destination = origin + QPoint(QApplication::startDragDistance() + 3, 0);
         mouse(QEvent::MouseButtonPress, origin, Qt::ControlModifier, Qt::LeftButton);
@@ -18009,7 +18012,7 @@ void pinnedHiddenTextSelectionDragExportOffscreen() {
                        << QApplication::activeWindow();
         require(executions == previousExecutions + 1 && !Access::exportGesture(window) &&
                     !exporter.busy(),
-                "Ctrl drag from the background exports the image and releases ownership");
+                "Ctrl drag from text or background exports the image and releases ownership");
         mouse(QEvent::MouseButtonRelease, destination, Qt::ControlModifier, Qt::NoButton);
         require(
             window.currentNativeGeometry() == geometry &&
@@ -18018,19 +18021,27 @@ void pinnedHiddenTextSelectionDragExportOffscreen() {
                 !Access::displayedRecognition(window).textSelectionActive() && !session->active(),
             "image export preserves window geometry, hidden text selection, and recognition mode");
     }
-    mouse(QEvent::MouseButtonPress, textStart, Qt::ControlModifier, Qt::LeftButton);
-    require(!Access::exportGesture(window), "selectable text takes priority over a bound drag");
-    mouse(QEvent::MouseMove, textEnd, Qt::ControlModifier, Qt::LeftButton);
-    mouse(QEvent::MouseButtonRelease, textEnd, Qt::ControlModifier, Qt::NoButton);
-    selectText();
     session->activate(ScreenshotRecognitionSessionController::Mode::Text);
     require(!Access::hiddenSelection(window), "display recognition results explicitly");
     mouse(QEvent::MouseButtonPress, textStart, Qt::ControlModifier, Qt::LeftButton);
+    mouse(QEvent::MouseMove, textEnd, Qt::ControlModifier, Qt::LeftButton);
     require(!Access::exportGesture(window) &&
                 Access::displayedRecognition(window).textSelectionActive(),
-            "displayed recognition keeps text-selection ownership of Ctrl dragging");
-    mouse(QEvent::MouseMove, textEnd, Qt::ControlModifier, Qt::LeftButton);
+            "displayed recognition handles Ctrl dragging once it crosses the click threshold");
     mouse(QEvent::MouseButtonRelease, textEnd, Qt::ControlModifier, Qt::NoButton);
+
+    session->deactivate();
+    require(Access::crop(window, config.canvasSourceRect.adjusted(0, 0, -40, -20)) &&
+                Access::hiddenSelection(window) && !content->isOcrBackgroundAt(textStart),
+            "the cropped pin still has selectable text at the drag origin");
+    const auto crop = window.persistenceSnapshot().cropRect;
+    const QPoint panEnd = textStart - QPoint(QApplication::startDragDistance() + 3, 0);
+    mouse(QEvent::MouseButtonPress, textStart, Qt::ShiftModifier, Qt::LeftButton);
+    mouse(QEvent::MouseMove, panEnd, Qt::ShiftModifier, Qt::LeftButton);
+    mouse(QEvent::MouseButtonRelease, panEnd, Qt::ShiftModifier, Qt::NoButton);
+    const auto panned = window.persistenceSnapshot().cropRect;
+    require(crop && panned && panned->size() == crop->size() && panned->x() > crop->x(),
+            "Shift dragging from selectable text pans the cropped image");
 }
 
 void compactedPinExportsOnceAndRefreshesRecognition(int opacity = 0) {
@@ -26942,6 +26953,40 @@ void pinnedCloudUploadHiddenToolbar() {
     require(!copied.isNull() && exportedClipboardImage() == copied &&
                 QDir(saved.path()).entryList(QDir::Files).size() == 1,
             "background upload does not publish a link or trigger post-upload tasks");
+
+    const snow_shot::storage::PinToScreenSettings pinSettings;
+    const auto restoreClose = qScopeGuard([&, old = pinSettings.confirmBeforeClosingWindow()] {
+        pinSettings.setConfirmBeforeClosingWindow(old);
+    });
+    require(pinSettings.setConfirmBeforeClosingWindow(false) &&
+                exportSettings.setAutoSaveFilenameFormat(QStringLiteral("copy-close")) &&
+                exportSettings.setExportTasks(ExportTrigger::PinnedCopy,
+                                              ExportTask::AutoSave | ExportTask::Upload),
+            "enable auto-save and upload for copy and close");
+    QPointer<ScreenshotPinnedWindow> closingPin = new ScreenshotPinnedWindow;
+    ScreenshotPinnedWindowTestAccess::prepareReplacement(*closingPin, config);
+    closingPin->setAttribute(Qt::WA_DeleteOnClose);
+    closingPin->show();
+    ScreenshotPinnedWindowTestAccess::copyCurrentAndClose(*closingPin);
+    translation_tests::waitUntil([&] { return closingPin.isNull() && server.count == 4; },
+                                 "committed copy uploads after its source pin closes");
+    QFile autoSaved(saved.filePath(QStringLiteral("copy-close.png")));
+    translation_tests::waitUntil([&] { return autoSaved.exists(); },
+                                 "copy and close finishes its auto-save");
+    require(autoSaved.open(QIODevice::ReadOnly) && autoSaved.readAll() == server.body,
+            "copy and close saves and uploads the same image");
+    auto* upload = qApp->findChild<ScreenshotCloudUploadJob*>();
+    require(upload, "the upload survives deletion of its source");
+    bool uploaded = false;
+    QObject::connect(upload, &ScreenshotCloudUploadJob::finished, &server,
+                     [&](const ScreenshotCloudUploadResult& result) {
+                         uploaded = result.status == ScreenshotCloudUploadResult::Status::Succeeded;
+                     });
+    for (auto* socket : server.server.findChildren<QTcpSocket*>()) {
+        socket->write("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        socket->disconnectFromHost();
+    }
+    translation_tests::waitUntil([&] { return uploaded; }, "the follow-up upload completes");
 }
 
 void pinnedToolbarAnchorsToContentOffscreen() {

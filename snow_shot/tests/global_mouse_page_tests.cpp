@@ -27,6 +27,7 @@
 #include <QEvent>
 #include <QEnterEvent>
 #include <QHash>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLayout>
 #include <QListView>
@@ -405,18 +406,28 @@ void mouseOperationsPreventConflicts() {
     adqt::widgets::AdModal* modal = nullptr;
     adqt::widgets::AdSelect* choice = nullptr;
     adqt::widgets::AdSelect* mods = nullptr;
-    const auto openEditor = [&] {
-        button->click();
+    const auto openEditor = [&](bool keyboard = false) {
+        if (keyboard) {
+            require(row->focusPolicy() & Qt::TabFocus, "mouse rows participate in Tab navigation");
+            row->setFocus(Qt::TabFocusReason);
+            require(row->hasFocus(), "the mouse operation row accepts keyboard focus");
+            QKeyEvent press(QEvent::KeyPress, Qt::Key_Space, Qt::NoModifier);
+            QKeyEvent release(QEvent::KeyRelease, Qt::Key_Space, Qt::NoModifier);
+            QApplication::sendEvent(QApplication::focusWidget(), &press);
+            QApplication::sendEvent(QApplication::focusWidget(), &release);
+        } else {
+            button->click();
+        }
         flushEvents();
         modal = namedObject<adqt::widgets::AdModal>(*row, QStringLiteral("mouseOperationDialog"));
-        require(modal, "the configuration button opens the mouse operation dialog");
+        require(modal, "activating the mouse operation opens its configuration dialog");
         choice = modal->contentWidget()->findChild<adqt::widgets::AdSelect*>(
             QStringLiteral("mouseOperationChoice"));
         mods = modal->contentWidget()->findChild<adqt::widgets::AdSelect*>(
             QStringLiteral("mouseOperationModifiers"));
         require(choice && mods, "mouse operation configuration has both fields");
     };
-    openEditor();
+    openEditor(true);
     require(mods->accessibleName() == QStringLiteral("Keyboard modifiers") &&
                 choice->accessibleName() == QStringLiteral("Mouse operation"),
             "mouse operation selectors describe the modifiers and operation");

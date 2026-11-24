@@ -23,6 +23,7 @@ MouseOperationRow::MouseOperationRow(mouse::Action action, SettingsRuntimeSessio
                 snow_shot::presentation::styles::buildMainWindowComponentMetricToken(scheme),
                 scheme, parent),
       m_action(action), m_session(session) {
+    setFocusPolicy(Qt::StrongFocus);
     m_button = createConfigurationButton(
         scheme.metricAlias, snow_shot::presentation::icons::custom::outlined::WheelMouse());
     connect(this, &QAbstractButton::clicked, this, &MouseOperationRow::openDialog);

@@ -11,6 +11,7 @@
 #include <QPointF>
 #include <QVector>
 #include <QSet>
+#include <QTimer>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -43,6 +44,8 @@ class PinnedWindowSelectionController final : public QObject {
     void toggleSelection(ScreenshotPinnedWindow* window);
     void deselectWindow(ScreenshotPinnedWindow* window);
     void clearSelection();
+    void deferSelectionClear(ScreenshotPinnedWindow* window);
+    void resolvePendingSelectionClick(ScreenshotPinnedWindow* window, bool doubleClick);
     void selectAll(const QList<QPointer<ScreenshotPinnedWindow>>& targets);
     void stitchWindows(const QList<QPointer<ScreenshotPinnedWindow>>& targets);
     void destroyWindows(ScreenshotPinnedWindow* owner,
@@ -88,6 +91,8 @@ class PinnedWindowSelectionController final : public QObject {
     QSet<QString> m_destroyConfirmationIds;
     DestroyRecords m_destroyRecords;
     quint64 m_selectionRevision = 0;
+    QTimer m_selectionClearTimer;
+    QPointer<ScreenshotPinnedWindow> m_pendingClickWindow;
     struct GeometryState;
     std::shared_ptr<GeometryState> m_geometryState;
 };

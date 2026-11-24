@@ -6389,10 +6389,10 @@ void ScreenshotPinnedWindow::copyEditToolbarContent(bool closeAfter) {
         publishCopyMime(std::move(mimeData), publicationId);
 }
 
-void ScreenshotPinnedWindow::closeAfterPublication(ScreenshotClipboardService::PublicationId id,
-                                                   const ScreenshotClipboardCommitResult& result) {
-    if (m_closeAfterPublication != id || !result.succeeded() || result.superseded)
-        return;
+bool ScreenshotPinnedWindow::scheduleCloseAfterPublication(
+    ScreenshotClipboardService::PublicationId id) {
+    if (m_closeAfterPublication != id)
+        return false;
     m_closeAfterPublication = 0;
     const auto generation = m_presentationGeneration;
     QTimer::singleShot(0, this, [this, id, generation] {
@@ -6400,6 +6400,7 @@ void ScreenshotPinnedWindow::closeAfterPublication(ScreenshotClipboardService::P
             ScreenshotClipboardService::publicationCurrent(id))
             requestUserClose();
     });
+    return true;
 }
 
 void ScreenshotPinnedWindow::publishCopyMime(std::unique_ptr<QMimeData> mime,
@@ -6422,7 +6423,7 @@ void ScreenshotPinnedWindow::publishCopyMime(std::unique_ptr<QMimeData> mime,
             m_quickTextAnnotationSelectionSuperseded = true;
             destroyQuickTextAnnotationToolbar();
         }
-        closeAfterPublication(id, result);
+        scheduleCloseAfterPublication(id);
     };
     auto handle = m_clipboard->publish(this, std::move(mime), id, published);
     // A synchronous clipboard listener may close the window or start a newer copy.
@@ -6909,8 +6910,11 @@ void ScreenshotPinnedWindow::copyRenderedImage(
             return;
         finish();
         if (result.succeeded() && !result.superseded) {
-            closeAfterPublication(publicationId, result);
-            runTasks(output, artifact, std::move(file));
+            // The committed copy owns its follow-ups even after the requested close.
+            if (scheduleCloseAfterPublication(publicationId))
+                output.run(qApp, artifact, std::move(file));
+            else
+                runTasks(output, artifact, std::move(file));
         } else if (!result.succeeded() &&
                    result.failure != ScreenshotClipboardCommitFailure::Cancelled)
             copyError(result.errorString());
@@ -10395,7 +10399,7 @@ bool ScreenshotPinnedWindow::moveCursorOnePixel(const QPoint& direction) {
     return true;
 }
 
-bool ScreenshotPinnedWindow::startWindowMove() {
+bool ScreenshotPinnedWindow::startWindowMove(std::optional<QPoint> nativePress) {
     if (m_lockedMode) {
         showLockedReadout();
         return false;
@@ -10413,8 +10417,22 @@ bool ScreenshotPinnedWindow::startWindowMove() {
         m_recognitionContent->clearTextSelection();
     }
     const auto nativeCursor = physicalCursorPosition();
-    if (!nativeCursor || !m_nativeGeometryController->beginMove(*nativeCursor))
+    if (!nativeCursor ||
+        !m_nativeGeometryController->beginMove(nativePress.value_or(*nativeCursor)))
         return false;
+    // USER32 anchors its move at the current pointer. Apply the first drag delta inside
+    // the same geometry transaction before the system takes over.
+    const bool moved = nativePress && *nativePress != *nativeCursor;
+    if (moved) {
+        const QRect target = m_nativeGeometryController->updateMove({}, *nativeCursor);
+        // Crossing displays in the first move can synchronously adopt a new DPI target.
+        if (!applyAndVerifyNativeGeometry(target) &&
+            observedNativeGeometry() != m_nativeGeometryController->targetGeometry()) {
+            static_cast<void>(restoreCommittedNativeGeometry());
+            return false;
+        }
+        exitHideToTop();
+    }
     // The system move loop owns the drag. It tracks the pointer itself and,
     // on a cross-monitor transition, switches the window's DPI at the same
     // moment and with the same pointer-relative anchoring as every other
@@ -10439,7 +10457,10 @@ bool ScreenshotPinnedWindow::startWindowMove() {
         return true;
     }
     finishWindowMove();
-    m_nativeGeometryController->cancelPendingInteraction();
+    if (moved)
+        static_cast<void>(restoreCommittedNativeGeometry());
+    else
+        m_nativeGeometryController->cancelPendingInteraction();
     if (pauseHideEntry && hideToTopActive()) {
         m_hideToTop->animation().resume();
     }

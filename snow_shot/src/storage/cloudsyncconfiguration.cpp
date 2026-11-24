@@ -75,11 +75,8 @@ bool layoutIds(const QString& key, const QJsonValue& raw, QSet<QString>& ids) {
 }
 
 bool platformSupportsCloudKey(const QString& key) {
-    if (key == u"screenshot/double_click_action" ||
-        key == u"screenshot/middle_mouse_button_action" ||
-        key == u"pin_to_screen/double_click_action" ||
-        key == u"pin_to_screen/middle_mouse_button_action")
-        return false; // Read directly when promoting a legacy cloud snapshot.
+    if (legacyMouseCloudKey(key))
+        return false;
 
 #ifndef Q_OS_WIN
     if (key == QStringLiteral("system/annotation_mode_when_opening_for_editing") ||
@@ -130,6 +127,13 @@ const QStringList& cloudSettingKeys() {
         return result;
     }();
     return keys;
+}
+
+bool legacyMouseCloudKey(const QString& key) {
+    return key == u"screenshot/double_click_action" ||
+           key == u"screenshot/middle_mouse_button_action" ||
+           key == u"pin_to_screen/double_click_action" ||
+           key == u"pin_to_screen/middle_mouse_button_action";
 }
 
 bool cloudSettingSupported(const QString& key) {

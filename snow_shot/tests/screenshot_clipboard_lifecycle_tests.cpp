@@ -382,6 +382,30 @@ void completionCanCancelOtherCommitsAndStartANewBatch() {
 }
 
 #ifndef Q_OS_WIN
+void replacementDuringImagePublicationSupersedesCopy() {
+    auto* clipboard = QApplication::clipboard();
+    const auto id = ScreenshotClipboardService::reservePublication(clipboard);
+    QEventLoop loop;
+    const QString replacement = QStringLiteral("newer copy");
+    QObject::connect(
+        clipboard, &QClipboard::dataChanged, &loop, [=] { clipboard->setText(replacement); },
+        Qt::SingleShotConnection);
+    QImage image(4, 4, QImage::Format_ARGB32);
+    image.fill(Qt::red);
+    bool superseded = false;
+    const auto handle = ScreenshotClipboardService::commit(
+        clipboard, &loop, ScreenshotClipboardService::prepareImage(image), id, [&](auto result) {
+            superseded = result.superseded;
+            loop.quit();
+        });
+    QTimer::singleShot(2000, &loop, &QEventLoop::quit);
+    loop.exec();
+    require(handle.isFinished() && superseded &&
+                !ScreenshotClipboardService::publicationCurrent(id) &&
+                clipboard->text() == replacement,
+            "a clipboard listener's replacement supersedes copy-and-close before completion");
+}
+
 void clipboardReadersOwnDecodedImages() {
     QImage source(32, 24, QImage::Format_ARGB32);
     source.fill(QColor(30, 60, 90, 128));
@@ -497,6 +521,7 @@ int main(int argc, char** argv) {
     scopeDestructionCancelsWithoutAffectingOtherScopes();
     completionCanCancelOtherCommitsAndStartANewBatch();
 #ifndef Q_OS_WIN
+    replacementDuringImagePublicationSupersedesCopy();
     clipboardReadersOwnDecodedImages();
     scopeDestructionDuringPublicationSuppressesCompletion();
     receiverDestructionDuringPublicationKeepsActiveInputsAlive(false);

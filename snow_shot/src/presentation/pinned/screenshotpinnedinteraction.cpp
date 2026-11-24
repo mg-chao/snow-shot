@@ -34,6 +34,11 @@
 namespace platform = snow_shot::presentation;
 namespace resize_geometry = screenshot_pinned_resize_geometry;
 namespace {
+bool isGestureEscape(const QKeyEvent& event) {
+    const auto key = snow_shot::shortcuts::commandKey(event);
+    return key == Qt::Key_Escape || (key == Qt::Key_unknown && event.key() == Qt::Key_Escape);
+}
+
 Qt::CursorShape resizeCursor(int handle) {
     using H = resize_geometry::DragHandle;
     switch (H(handle)) {
@@ -548,7 +553,8 @@ void ScreenshotPinnedWindow::executeMouseClick(snow_shot::mouse::Action action,
         requestUserClose();
         break;
     case Destroy:
-        confirmDestroy();
+        if (liveCommandAllowed(QStringLiteral("destroy_window")))
+            confirmDestroy();
         break;
     case Menu:
         showContextMenu(global);
@@ -618,7 +624,7 @@ bool ScreenshotPinnedWindow::startMouseDrag(const MouseStroke& stroke, bool rele
         // Keep the native cross-display move and DPI anchoring on Windows.
         if (spontaneous && !released && !m_platform->usesControlledInteraction() &&
             !stroke.resizeHandle && stroke.press.reportedButton == Qt::LeftButton &&
-            startWindowMove())
+            startWindowMove(stroke.physicalOrigin))
             return true;
         if (!beginControlledInteraction(stroke.press.origin, stroke.resizeHandle))
             return false;
@@ -694,7 +700,7 @@ bool ScreenshotPinnedWindow::handleMouseOperation(QObject* watched, QEvent* even
         }
     }
     if (m_controlledEscapeRelease && type == QEvent::KeyRelease &&
-        snow_shot::shortcuts::commandKey(*static_cast<QKeyEvent*>(event)) == Qt::Key_Escape) {
+        isGestureEscape(*static_cast<QKeyEvent*>(event))) {
         m_controlledEscapeRelease = false;
         event->accept();
         return true;
@@ -720,7 +726,7 @@ bool ScreenshotPinnedWindow::handleMouseOperation(QObject* watched, QEvent* even
             return false;
         }
         if ((type == QEvent::KeyPress || type == QEvent::ShortcutOverride) &&
-            snow_shot::shortcuts::commandKey(*static_cast<QKeyEvent*>(event)) == Qt::Key_Escape) {
+            isGestureEscape(*static_cast<QKeyEvent*>(event))) {
             if (type == QEvent::KeyPress) {
                 m_controlledEscapeRelease = true;
                 cancelMouseOperation();
@@ -740,6 +746,10 @@ bool ScreenshotPinnedWindow::handleMouseOperation(QObject* watched, QEvent* even
     if (!surface && !m_mouseStroke)
         return false;
     clickSequence.observe(*mouse, topHandle ? *widget : *this);
+    if (m_selectionController &&
+        (type == QEvent::MouseButtonPress || type == QEvent::MouseButtonDblClick))
+        m_selectionController->resolvePendingSelectionClick(
+            this, !topHandle && clickSequence.kind() == Kind::DoubleClick);
     const QPointF local =
         topHandle ? QPointF(rect().center()) : mapFromGlobal(mouse->globalPosition());
     if (m_mouseStroke && (type == QEvent::MouseMove || type == QEvent::MouseButtonRelease))
@@ -782,8 +792,15 @@ bool ScreenshotPinnedWindow::continueMouseOperation(QMouseEvent& event, const QP
             else if (stroke.press.button == Qt::LeftButton && stroke.press.keys == Qt::NoModifier) {
                 if (m_recognitionContent && (m_ocrMode || m_hiddenTextSelection))
                     m_recognitionContent->clearTextSelection();
-                if (stroke.clearSelection && m_selectionController)
-                    m_selectionController->clearSelection();
+                if (stroke.clearSelection && m_selectionController) {
+                    const auto action =
+                        match(Category::Pinned, {Kind::DoubleClick, Qt::LeftButton});
+                    if (action == Action::CopyText || action == Action::Menu ||
+                        action == Action::MultiSelect)
+                        m_selectionController->deferSelectionClear(this);
+                    else
+                        m_selectionController->clearSelection();
+                }
             }
         }
         event.accept();
@@ -859,28 +876,6 @@ bool ScreenshotPinnedWindow::beginMouseOperation(QObject* receiver, QMouseEvent&
     const bool geometry = force || stroke.press.drag == Action::Move;
     if (geometry && !topHandle && (interactiveResizingEnabled() || m_lockedMode))
         stroke.resizeHandle = resizeHandleAt(local);
-    if (!topHandle && !stroke.resizeHandle) {
-        if (!toolFallback && m_canvas && m_canvas->interactionEnabled() && !m_ocrMode &&
-            m_editController && m_editController->editMode())
-            return false;
-        if (!force && m_recognitionContent && m_recognitionContent->boxSelectionEnabled() &&
-            event.type() == QEvent::MouseButtonPress && stroke.press.button == Qt::LeftButton &&
-            stroke.press.keys == Qt::NoModifier)
-            return false;
-        if (!force && (m_ocrMode || m_hiddenTextSelection) &&
-            (stroke.press.button == Qt::LeftButton || stroke.press.button == Qt::MiddleButton) &&
-            !windowDragEligibleAt(local.toPoint(), Qt::NoModifier)) {
-            // Leave word selection and the unmodified background shortcut for dismissing OCR
-            // intact. Other configured clicks can own the release over selectable content.
-            if (!stroke.press.click || (stroke.press.keys == Qt::NoModifier &&
-                                        (stroke.press.button == Qt::LeftButton ||
-                                         stroke.press.click == Action::Recognition)))
-                return false;
-            stroke.press.drag.reset();
-            if (event.button() == Qt::LeftButton)
-                stroke.recognitionPressTimestamp = event.timestamp();
-        }
-    }
     if (topHandle ||
         (geometry && !stroke.resizeHandle &&
          !windowMoveEligibleForPointer(local.toPoint(), semanticKeys)) ||
@@ -889,6 +884,27 @@ bool ScreenshotPinnedWindow::beginMouseOperation(QObject* receiver, QMouseEvent&
         (stroke.press.drag == Action::Crop && !cropSelectionAllowed()) ||
         (stroke.press.drag == Action::PanCrop && (!m_cropRect || !cropSelectionAllowed())))
         stroke.press.drag.reset();
+    if (!topHandle && !stroke.resizeHandle) {
+        if (!toolFallback && m_canvas && m_canvas->interactionEnabled() && !m_ocrMode &&
+            m_editController && m_editController->editMode())
+            return false;
+        if (!force && m_recognitionContent && m_recognitionContent->boxSelectionEnabled() &&
+            event.type() == QEvent::MouseButtonPress && stroke.press.button == Qt::LeftButton &&
+            stroke.press.keys == Qt::NoModifier)
+            return false;
+        if (!stroke.press.drag && (m_ocrMode || m_hiddenTextSelection) &&
+            (stroke.press.button == Qt::LeftButton || stroke.press.button == Qt::MiddleButton) &&
+            !windowDragEligibleAt(local.toPoint(), Qt::NoModifier)) {
+            // Leave word selection and the unmodified background shortcut for dismissing OCR
+            // intact. Other configured clicks can own the release over selectable content.
+            if (!stroke.press.click || (stroke.press.keys == Qt::NoModifier &&
+                                        (stroke.press.button == Qt::LeftButton ||
+                                         stroke.press.click == Action::Recognition)))
+                return false;
+            if (event.button() == Qt::LeftButton)
+                stroke.recognitionPressTimestamp = event.timestamp();
+        }
+    }
     if (stroke.press.drag == Action::PanCrop)
         stroke.panOrigin = m_cropRect;
     stroke.clearSelection = !topHandle && stroke.press.button == Qt::LeftButton &&

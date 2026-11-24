@@ -25,6 +25,34 @@ void wheel(QWidget& surface, QPoint angleDelta, Qt::KeyboardModifiers keys,
     QApplication::sendEvent(&surface, &event);
 }
 
+void nativeMoveKeepsPressAnchor() {
+    ScreenshotPinnedWindow window;
+    auto* platform = Access::installObservedPlatform(window);
+    ScreenshotPinnedWindow::Config config;
+    config.nativeGeometry = QRect(-350, 40, 160, 100);
+    config.initialWindowSize = config.nativeGeometry.size();
+    config.canvasSourceRect = QRectF(QPointF(), QSizeF(config.initialWindowSize));
+    QImage image(config.initialWindowSize, QImage::Format_ARGB32);
+    image.fill(Qt::white);
+    config.imageSource = ScreenshotImageSource::fromImage(image, config.canvasSourceRect);
+    Access::restoreOffscreen(window, config);
+    const QRect original = platform->observed;
+    const QPoint press = original.center();
+    const QPoint delta(QApplication::startDragDistance() + 25, -9);
+    Access::setPhysicalCursor(window, {true, [=] { return std::optional(press + delta); }, {}});
+    require(!Access::startNativeMove(window, press) &&
+                platform->systemMoveStart == original.translated(delta) &&
+                platform->observed == original,
+            "a rejected system move restores the press-time geometry for the drag fallback");
+    platform->acceptSystemMove = true;
+    require(Access::startNativeMove(window, press) &&
+                platform->systemMoveStart == original.translated(delta),
+            "the system takes over with the grabbed pixel still under the cursor");
+    require(Access::finishNativeInteraction(window) &&
+                Access::authority(window) == original.translated(delta),
+            "releasing without another move keeps the initial displacement");
+}
+
 void doubleClickModifiers() {
     auto& store = snow_shot::storage::ApplicationStorage::instance().configuration();
     const auto menu = definition(Action::Menu).key();
@@ -90,6 +118,36 @@ void textAndHandleBindings() {
     click(empty, Qt::RightButton, Qt::ShiftModifier);
     require(QApplication::clipboard()->text() == QStringLiteral("Third"),
             "unavailable text preserves clipboard contents");
+    const auto copyText = definition(Action::CopyText).key();
+    const auto menu = definition(Action::Menu).key();
+    const auto thumbnail = definition(Action::Thumbnail).key();
+    const auto original = store.snapshot();
+    const auto leftDouble = encode({Kind::DoubleClick, Qt::LeftButton});
+    const auto doubleClickA = [&] {
+        const QPointF global = a.mapToGlobal(a.rect().center());
+        click(a, Qt::LeftButton);
+        pointer(a, QEvent::MouseButtonDblClick, global, Qt::LeftButton, Qt::LeftButton, {});
+        pointer(a, QEvent::MouseButtonRelease, global, Qt::LeftButton, {}, {});
+    };
+    require(store.setValues({{thumbnail, QJsonObject{}}, {copyText, leftDouble}}),
+            "bind Copy text to an unmodified left double-click");
+    doubleClickA();
+    require(QApplication::clipboard()->text() == QStringLiteral("Second\nFirst") &&
+                fixture.selection.selectedCount() == 2,
+            "both releases of a double-click preserve the selected copy targets");
+    require(store.setValues({{copyText, original.value(copyText)}, {menu, leftDouble}}),
+            "bind Menu to an unmodified left double-click");
+    doubleClickA();
+    auto* groupMenu = a.findChild<adqt::widgets::AdContextMenu*>(
+        QStringLiteral("screenshotPinnedMultiSelectionMenu"));
+    require(groupMenu && groupMenu->isPopupVisible(),
+            "a double-click opens the multi-selection menu");
+    groupMenu->hide();
+    click(a, Qt::LeftButton);
+    translation_tests::waitUntil([&] { return fixture.selection.selectedCount() == 0; },
+                                 "a lone left click still clears the selection");
+    require(store.setValues({{menu, original.value(menu)}, {thumbnail, original.value(thumbnail)}}),
+            "restore the single-click menu and thumbnail bindings");
     click(empty, Qt::RightButton);
     require(!Access::contextMenu(empty)->isPopupVisible(), "the old menu binding is released");
     click(empty, Qt::ForwardButton);
@@ -210,7 +268,7 @@ void wheelCancelsCropGestures() {
     require(canvas, "pin canvas exists for crop gesture testing");
     const QPointF origin = canvas->mapToGlobal(canvas->rect().center());
     const QPointF end = origin + QPointF(QApplication::startDragDistance() + 15, 25);
-    const int initialScale = Access::scale(window);
+    const double initialScale = Access::scale(window);
     pointer(*canvas, QEvent::MouseButtonPress, origin, Qt::RightButton, Qt::RightButton, {});
     pointer(*canvas, QEvent::MouseMove, end, Qt::NoButton, Qt::RightButton, {});
     require(Access::cropSelecting(window), "right drag starts a crop");
@@ -231,7 +289,7 @@ void wheelCancelsCropGestures() {
 
     require(Access::crop(window, {55, 40, 110, 90}), "set an interior crop before panning");
     const auto crop = window.persistenceSnapshot().cropRect;
-    const int croppedScale = Access::scale(window);
+    const double croppedScale = Access::scale(window);
     const QPointF center = canvas->mapToGlobal(canvas->rect().center());
     const QPointF panned = center + QPointF(QApplication::startDragDistance() + 8, 4);
     pointer(*canvas, QEvent::MouseButtonPress, center, Qt::LeftButton, Qt::LeftButton,
@@ -396,6 +454,7 @@ void run() {
         [&] { return !Access::exportArtifact(first) && !Access::exportArtifact(second); },
         "superseded copy settles");
     require(first.isVisible(), "a superseded copy does not close the source");
+    nativeMoveKeepsPressAnchor();
     failedCopyKeepsSource();
     textAndHandleBindings();
     doubleClickModifiers();

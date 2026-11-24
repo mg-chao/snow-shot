@@ -8,6 +8,7 @@
 namespace snow_shot::storage {
 
 [[nodiscard]] const QStringList& cloudSettingKeys();
+[[nodiscard]] bool legacyMouseCloudKey(const QString& key);
 [[nodiscard]] bool cloudSettingSupported(const QString& key);
 [[nodiscard]] bool cloudSettingPlatformSpecific(const QString& key);
 [[nodiscard]] bool cloudSettingLayout(const QString& key);

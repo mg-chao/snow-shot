@@ -286,8 +286,10 @@ bool PinnedWindowWindowsEvents::handle(ScreenshotPinnedWindow& window, const QBy
             nativeMessage->message == WM_CAPTURECHANGED && nativeMessage->lParam == 0 &&
             !automaticButtonRelease && !window.m_auxiliaryWindowInteractionActive &&
             window.m_nativeGeometryController != nullptr &&
-            window.m_nativeGeometryController->phase() ==
-                ScreenshotPinnedNativeGeometryController::Phase::MovePending;
+            (window.m_nativeGeometryController->phase() ==
+                 ScreenshotPinnedNativeGeometryController::Phase::MovePending ||
+             window.m_nativeGeometryController->phase() ==
+                 ScreenshotPinnedNativeGeometryController::Phase::Moving);
         const bool moveCancelled = window.m_windowDragActive && !pendingSystemMoveHandoff &&
                                    (nativeMessage->message == WM_CANCELMODE ||
                                     (nativeMessage->message == WM_CAPTURECHANGED &&

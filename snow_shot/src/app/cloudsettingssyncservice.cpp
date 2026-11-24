@@ -139,8 +139,8 @@ EditMap readEdits(const QJsonObject& object) {
     EditMap result;
     for (auto it = object.begin(); it != object.end(); ++it) {
         const auto edit = PendingEdit::read(it.value().toObject());
-        if (storage::cloudSettingSupported(it.key()) && edit.sequence != 0 &&
-            validOperation(edit.operation))
+        if ((storage::cloudSettingSupported(it.key()) || storage::legacyMouseCloudKey(it.key())) &&
+            edit.sequence != 0 && validOperation(edit.operation))
             result.insert(it.key(), edit);
     }
     return result;
@@ -478,7 +478,9 @@ class CloudSettingsSyncService::Impl {
         running = true;
         editsDue = false;
         rounds = 0;
-        readCloud(profile.resume || !profile.sent.isEmpty() ||
+        const bool pendingMouseMigration = std::any_of(
+            profile.pending.keyBegin(), profile.pending.keyEnd(), storage::legacyMouseCloudKey);
+        readCloud(profile.resume || pendingMouseMigration || !profile.sent.isEmpty() ||
                   profile.clientVersion != QCoreApplication::applicationVersion());
     }
 
@@ -946,6 +948,21 @@ class CloudSettingsSyncService::Impl {
             const auto present = [&](const auto& keys, const auto& predicate) {
                 return std::any_of(keys.keyBegin(), keys.keyEnd(), predicate);
             };
+            const QString prefix =
+                category == mouse::Category::Screenshot ? u"screenshot/"_s : u"pin_to_screen/"_s;
+            Values legacy;
+            for (const auto& suffix : {u"double_click_action"_s, u"middle_mouse_button_action"_s}) {
+                const QString key = prefix + suffix;
+                // Reconciliation has already dropped acknowledged or conflicting legacy edits.
+                const auto edit = profile.pending.take(key);
+                const auto operation =
+                    edit.operation.isEmpty() ? cloud.value(key).toObject() : edit.operation;
+                if (!operation.isEmpty()) {
+                    legacy[key] = operation.value(u"op"_s) == u"reset"_s
+                                      ? store.defaultValue(key)
+                                      : operation.value(u"value"_s);
+                }
+            }
             if (present(defaults, [&](const auto& key) { return cloud.contains(key); })) {
                 // The platform already has modern settings. Missing cloud entries use
                 // factory values unless this profile has recorded a modern local value.
@@ -958,18 +975,6 @@ class CloudSettingsSyncService::Impl {
                 }
                 continue;
             }
-            const QString prefix =
-                category == mouse::Category::Screenshot ? u"screenshot/"_s : u"pin_to_screen/"_s;
-            Values legacy;
-            for (const auto& suffix : {u"double_click_action"_s, u"middle_mouse_button_action"_s}) {
-                const QString key = prefix + suffix;
-                if (cloud.contains(key)) {
-                    const auto operation = cloud.value(key).toObject();
-                    legacy[key] = operation.value(u"op"_s) == u"reset"_s
-                                      ? store.defaultValue(key)
-                                      : operation.value(u"value"_s);
-                }
-            }
             const bool customized = present(defaults, [&](const auto& key) {
                 return current.value(key) != defaults.value(key);
             });
@@ -981,7 +986,7 @@ class CloudSettingsSyncService::Impl {
             QList<mouse::Binding> localBindings;
             const auto keepLocal = [&](const QString& key) {
                 return profile.pending.contains(key) || profile.localOnly.contains(key) ||
-                       ((profile.joined || customized) && profile.values.contains(key));
+                       (profile.joined && profile.values.contains(key));
             };
             for (auto it = defaults.cbegin(); it != defaults.cend(); ++it) {
                 if (keepLocal(it.key())) {

@@ -88,20 +88,6 @@ class PngClipboardMimeData final : public QMimeData {
     }
 };
 
-bool publishPngClipboard(QClipboard* clipboard, const QByteArray& png, const QByteArray& placement,
-                         const QByteArray& appearance, const QString& filePath) {
-#ifdef Q_OS_MACOS
-    if (QGuiApplication::platformName() == QStringLiteral("cocoa")) {
-        ensureScreenshotClipboardPlacementMimeSupport();
-        ensureScreenshotClipboardAppearanceMimeSupport();
-        return snow_shot::platform::macos::publishImageClipboard(clipboard, png, placement,
-                                                                 appearance, filePath);
-    }
-#endif
-    clipboard->setMimeData(new PngClipboardMimeData(png, placement, appearance, filePath),
-                           QClipboard::Clipboard);
-    return true;
-}
 #endif
 
 constexpr int kMaximumCommitAttempts = 5;
@@ -111,6 +97,7 @@ struct ClipboardPublishAttempt final {
     ScreenshotClipboardCommitFailure failure = ScreenshotClipboardCommitFailure::None;
     quint32 nativeError = 0;
     bool superseded = false;
+    quint64 revision = 0;
 
     [[nodiscard]] bool succeeded() const {
         return failure == ScreenshotClipboardCommitFailure::None && !superseded;
@@ -146,9 +133,9 @@ struct ClipboardObservation {
     bool changed(Id id) const {
         return id == request && revision() != baseline;
     }
-    void didPublish(Id id) {
+    void didPublish(Id id, quint64 publishedRevision) {
         if (id == request)
-            baseline = revision();
+            baseline = publishedRevision;
     }
 };
 
@@ -156,6 +143,44 @@ ClipboardObservation& clipboardObservation() {
     static ClipboardObservation observation;
     return observation;
 }
+
+// Qt can synchronously notify listeners that replace the object during setMimeData.
+ClipboardPublishAttempt publishQtMimeData(QPointer<QClipboard> clipboard, QMimeData* mime,
+                                          ScreenshotClipboardCommitFailure rejected) {
+    const auto before = clipboardObservation().revision();
+    QPointer<QMimeData> submitted(mime);
+    clipboard->setMimeData(mime, QClipboard::Clipboard);
+    if (!clipboard)
+        return {ScreenshotClipboardCommitFailure::ClipboardUnavailable};
+    const auto revision = clipboardObservation().revision();
+    if (submitted && clipboard->mimeData(QClipboard::Clipboard) == submitted)
+        return {ScreenshotClipboardCommitFailure::None, 0, false, revision};
+    if (revision != before)
+        return {ScreenshotClipboardCommitFailure::None, 0, true};
+    return {rejected};
+}
+
+#ifndef Q_OS_WIN
+ClipboardPublishAttempt publishPngClipboard(QClipboard* clipboard, const QByteArray& png,
+                                            const QByteArray& placement,
+                                            const QByteArray& appearance, const QString& filePath) {
+#ifdef Q_OS_MACOS
+    if (QGuiApplication::platformName() == QStringLiteral("cocoa")) {
+        ensureScreenshotClipboardPlacementMimeSupport();
+        ensureScreenshotClipboardAppearanceMimeSupport();
+        const auto revision = snow_shot::platform::macos::publishImageClipboard(
+            clipboard, png, placement, appearance, filePath);
+        if (!revision)
+            return {ScreenshotClipboardCommitFailure::PublishFailed};
+        return {ScreenshotClipboardCommitFailure::None, 0,
+                screenshotClipboardRevision() != *revision, *revision};
+    }
+#endif
+    return publishQtMimeData(clipboard,
+                             new PngClipboardMimeData(png, placement, appearance, filePath),
+                             ScreenshotClipboardCommitFailure::PublishFailed);
+}
+#endif
 
 class ClipboardCommitOperation final : public QObject {
   public:
@@ -201,12 +226,15 @@ class ClipboardCommitOperation final : public QObject {
         const QPointer<ClipboardCommitOperation> guardedOperation(this);
         Attempt publish = m_attempt;
         const auto id = m_id;
-        const ClipboardPublishAttempt attempt =
+        ClipboardPublishAttempt attempt =
             clipboardObservation().changed(id)
                 ? ClipboardPublishAttempt{ScreenshotClipboardCommitFailure::None, 0, true}
                 : publish();
         if (attempt.succeeded())
-            clipboardObservation().didPublish(id);
+            clipboardObservation().didPublish(id, attempt.revision);
+        if (ScreenshotClipboardService::publicationSuperseded(id) ||
+            (attempt.succeeded() && clipboardObservation().changed(id)))
+            attempt.superseded = true;
         publish = {};
         if (guardedOperation.isNull() || m_finished) {
             return;
@@ -533,8 +561,9 @@ ClipboardPublishAttempt publishClipboardFormats(std::span<const NativeClipboardF
     if (!published) {
         return {ScreenshotClipboardCommitFailure::PublishFailed, error};
     }
+    const auto revision = clipboardObservation().revision();
     SNOW_SHOT_CLIPBOARD_PERF_COUNTER("clipboard.success", 1);
-    return {};
+    return {ScreenshotClipboardCommitFailure::None, 0, GetClipboardOwner() != owner, revision};
 }
 
 ClipboardPublishAttempt publishClipboardPayload(void** pngHandle, void** dibHandle,
@@ -1047,13 +1076,11 @@ ScreenshotClipboardService::commit(QClipboard* clipboard, QObject* receiver,
         if (!sharedPayload->isValid()) {
             return ClipboardPublishAttempt{ScreenshotClipboardCommitFailure::InvalidPayload, 0};
         }
-        const bool published = publishPngClipboard(
+        const auto result = publishPngClipboard(
             guardedClipboard, sharedPayload->m_pngBytes, sharedPayload->m_placementBytes,
             sharedPayload->m_appearanceBytes, sharedPayload->m_filePath);
         sharedPayload->reset();
-        return ClipboardPublishAttempt{published ? ScreenshotClipboardCommitFailure::None
-                                                 : ScreenshotClipboardCommitFailure::PublishFailed,
-                                       0};
+        return result;
     };
 #endif
     auto* operation = new ClipboardCommitOperation(receiver, state, std::move(attempt),
@@ -1145,26 +1172,13 @@ ScreenshotClipboardCommitHandle ScreenshotClipboardService::startMimeCommit(
                 attemptMime->setData(placementFormat, placementBytes);
             if (!appearanceBytes.isEmpty())
                 attemptMime->setData(appearanceFormat, appearanceBytes);
-            guardedClipboard->setMimeData(attemptMime, QClipboard::Clipboard);
-            if (publicationSuperseded(publicationId))
-                return ClipboardPublishAttempt{ScreenshotClipboardCommitFailure::None, 0, true};
-            if (!guardedClipboard)
-                return ClipboardPublishAttempt{
-                    ScreenshotClipboardCommitFailure::ClipboardUnavailable};
-            if (!guardedClipboard->ownsClipboard() && guardedClipboard->mimeData() != attemptMime) {
-                return ClipboardPublishAttempt{ScreenshotClipboardCommitFailure::Busy, 0};
-            }
-            return ClipboardPublishAttempt{};
+            return publishQtMimeData(guardedClipboard, attemptMime,
+                                     ScreenshotClipboardCommitFailure::Busy);
         }
         if ((*holder)->formats().isEmpty())
             return ClipboardPublishAttempt{ScreenshotClipboardCommitFailure::InvalidPayload};
-        auto* submitted = holder->release();
-        guardedClipboard->setMimeData(submitted, QClipboard::Clipboard);
-        if (publicationSuperseded(publicationId))
-            return ClipboardPublishAttempt{ScreenshotClipboardCommitFailure::None, 0, true};
-        if (!guardedClipboard || guardedClipboard->mimeData(QClipboard::Clipboard) != submitted)
-            return ClipboardPublishAttempt{ScreenshotClipboardCommitFailure::PublishFailed};
-        return ClipboardPublishAttempt{};
+        return publishQtMimeData(guardedClipboard, holder->release(),
+                                 ScreenshotClipboardCommitFailure::PublishFailed);
     };
     auto* operation = new ClipboardCommitOperation(guardedReceiver, state, std::move(attempt),
                                                    publicationId, std::move(completion));
@@ -1189,7 +1203,8 @@ bool ScreenshotClipboardService::publish(QClipboard* clipboard,
         return false;
     }
     return publishPngClipboard(clipboard, payload.m_pngBytes, payload.m_placementBytes,
-                               payload.m_appearanceBytes, payload.m_filePath);
+                               payload.m_appearanceBytes, payload.m_filePath)
+        .succeeded();
 #endif
 }
 

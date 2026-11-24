@@ -437,12 +437,23 @@ void gesturesAndAlignment() {
     Access::thumbnailForHideTest(window, true);
     require(!Access::cropAllowed(window), "thumbnail mode excludes crop selection");
     Access::thumbnailForHideTest(window, false);
-    require(Access::beginCrop(window, {240, 220}), "begin interrupted crop");
+    auto* canvas = window.findChild<SnowCanvasWidget*>();
+    require(canvas, "the crop gesture has a canvas");
+    const auto startCropDrag = [&] {
+        const QPoint start = canvas->rect().center();
+        canvas_quick_selection_test::mouse(*canvas, QEvent::MouseButtonPress, start,
+                                           Qt::RightButton, Qt::RightButton);
+        canvas_quick_selection_test::mouse(*canvas, QEvent::MouseMove,
+                                           start + QPoint(QApplication::startDragDistance() + 1, 0),
+                                           Qt::NoButton, Qt::RightButton);
+        require(Access::cropSelecting(window), "right dragging starts a crop selection");
+    };
+    startCropDrag();
     QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
     QApplication::sendEvent(&window, &escape);
     require(!Access::cropSelecting(window) && !window.persistenceSnapshot().cropRect,
             "Escape cancels an unfinished selection");
-    require(Access::beginCrop(window, {240, 220}), "begin hidden crop");
+    startCropDrag();
     window.hide();
     require(!Access::cropSelecting(window), "hiding cancels an unfinished selection");
     window.show();
