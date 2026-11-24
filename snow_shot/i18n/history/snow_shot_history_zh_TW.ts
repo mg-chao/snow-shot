@@ -694,6 +694,10 @@
             <translation>將影像檔案拖曳至此處，或選擇「新增影像」</translation>
         </message>
         <message>
+            <source>Drag to move an image. Hold %1 to snap to other images. Drag a handle to resize around the center.</source>
+            <translation>拖曳影像可移動它。按住 %1 可吸附到其他影像。拖曳控制點可圍繞中心縮放。</translation>
+        </message>
+        <message>
             <source>Drop images to stitch</source>
             <translation>放開滑鼠，將影像加入影像拼接</translation>
         </message>
@@ -708,6 +712,10 @@
         <message>
             <source>Flip vertically</source>
             <translation>垂直翻轉</translation>
+        </message>
+        <message>
+            <source>Free</source>
+            <translation>自由</translation>
         </message>
         <message>
             <source>Gray</source>
@@ -788,6 +796,14 @@
         <message>
             <source>Percentage</source>
             <translation>百分比</translation>
+        </message>
+        <message>
+            <source>Percentage of the first image’s original height after rotation</source>
+            <translation>第一張影像旋轉後原始高度的百分比</translation>
+        </message>
+        <message>
+            <source>Percentage of the greatest original image height after rotation</source>
+            <translation>所有影像旋轉後最大原始高度的百分比</translation>
         </message>
         <message>
             <source>Percentage of the grid cell width</source>
@@ -1952,6 +1968,10 @@ Files:
         <message>
             <source>Cancel</source>
             <translation>取消</translation>
+        </message>
+        <message>
+            <source>Cancel crop</source>
+            <translation>取消裁剪</translation>
         </message>
         <message>
             <source>Checkerboard</source>

@@ -412,7 +412,7 @@ class ScreenshotPinnedWindow final : public QWidget {
     [[nodiscard]] QRectF exportVisibleCanvasRect() const;
     [[nodiscard]] QSizeF scaleReferenceSize() const;
     [[nodiscard]] bool cropSelectionAllowed() const;
-    [[nodiscard]] bool cropApplyAllowed() const;
+    [[nodiscard]] bool cropActionsAllowed() const;
     bool beginCropSelection(const QPointF& nativePosition);
     void updateCropSelection(const QPointF& nativePosition);
     void endCropSelection(bool cancel);
@@ -443,8 +443,9 @@ class ScreenshotPinnedWindow final : public QWidget {
     bool startMouseDrag(const MouseStroke& stroke, bool released, bool spontaneous);
     void updateCropPan(const QRectF& original, const QPointF& nativeDelta);
     void executeMouseClick(snow_shot::mouse::Action action, const QPoint& global);
-    bool setCropCanvasRect(const QRectF& rect);
+    bool setCropCanvasRect(std::optional<QRectF> rect);
     void applyCrop();
+    void cancelCrop();
     bool commitPreparedCrop(const QRect& pixels, QImage original, QImage transformed,
                             const QTransform& transform,
                             std::shared_ptr<const ScreenshotAnimationSource> animation,
@@ -858,6 +859,7 @@ class ScreenshotPinnedWindow final : public QWidget {
     QPointer<QAction> m_textTypeAction;
     QPointer<QActionGroup> m_textTypeActions;
     QPointer<QAction> m_applyCropAction;
+    QPointer<QAction> m_cancelCropAction;
     QPointer<QAction> m_drawingAction;
     QPointer<QAction> m_animationToggleAction;
     QPointer<QAction> m_animationSpeedAction;

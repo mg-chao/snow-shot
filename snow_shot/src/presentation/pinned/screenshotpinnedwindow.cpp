@@ -3506,6 +3506,7 @@ void ScreenshotPinnedWindow::resetContextMenuActions() {
     m_textTypeAction = nullptr;
     m_textTypeActions = nullptr;
     m_applyCropAction = nullptr;
+    m_cancelCropAction = nullptr;
     m_drawingAction = nullptr;
     m_animationToggleAction = nullptr;
     m_animationSpeedAction = nullptr;
@@ -3863,6 +3864,12 @@ void ScreenshotPinnedWindow::createContextMenu() {
     m_applyCropAction->setObjectName(QStringLiteral("screenshotPinnedApplyCropAction"));
     m_applyCropAction->setProperty("liveCommand", QStringLiteral("apply_crop"));
     connect(m_applyCropAction, &QAction::triggered, this, &ScreenshotPinnedWindow::applyCrop);
+    m_cancelCropAction =
+        m_contextMenu->addItem(tr("Cancel crop"), custom_outlined_icons::CancelCrop());
+    setActionTranslationSource(m_cancelCropAction, "Cancel crop");
+    m_cancelCropAction->setObjectName(QStringLiteral("screenshotPinnedCancelCropAction"));
+    m_cancelCropAction->setProperty("liveCommand", QStringLiteral("cancel_crop"));
+    connect(m_cancelCropAction, &QAction::triggered, this, &ScreenshotPinnedWindow::cancelCrop);
     processAction->setObjectName(QStringLiteral("screenshotPinnedProcessImageMenu"));
 
     m_contextMenu->addSeparator();
@@ -4105,8 +4112,12 @@ void ScreenshotPinnedWindow::updateShowMainInterfaceAction() {
 void ScreenshotPinnedWindow::refreshContextMenu() {
     if (m_contextMenu == nullptr || m_contextMenu->isRetiring())
         return;
-    if (m_applyCropAction)
-        m_applyCropAction->setEnabled(cropApplyAllowed());
+    for (const auto& action : {m_applyCropAction, m_cancelCropAction}) {
+        if (action) {
+            action->setVisible(m_cropRect.has_value());
+            action->setEnabled(cropActionsAllowed());
+        }
+    }
     if (isLiveWindow()) {
         for (auto* action : m_contextMenu->findChildren<QAction*>()) {
             const QString command = action->property("liveCommand").toString();

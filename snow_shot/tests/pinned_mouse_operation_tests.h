@@ -376,7 +376,11 @@ void run() {
     require(Access::scale(first) == 151, "modified scrolling restores both fine zoom steps");
     wheel(*canvas, {-120, 0}, Qt::NoModifier);
     require(Access::scale(first) == 151, "an ordinary horizontal scroll leaves zoom unchanged");
+    const auto fullViewport = Access::visibleCrop(first);
     require(Access::crop(first, {55, 40, 110, 90}), "create an interior crop");
+    Access::contextMenu(first);
+    auto* cancelCrop = Access::cancelCropAction(first);
+    require(cancelCrop && cancelCrop->isEnabled(), "Cancel crop is available before panning");
     const auto before = first.persistenceSnapshot();
     const auto originalPixels =
         pinned_crop_tests::exportImage(first, Access::viewportExport(first));
@@ -384,6 +388,9 @@ void run() {
     const QPointF origin = canvas->mapToGlobal(canvas->rect().center());
     const QPointF delta(24, 3);
     pointer(*canvas, QEvent::MouseButtonPress, origin, Qt::ForwardButton, Qt::ForwardButton, {});
+    cancelCrop->trigger();
+    require(first.persistenceSnapshot().cropRect == before.cropRect,
+            "a pending pan keeps the crop when the menu action is triggered");
     pointer(*canvas, QEvent::MouseMove, origin + delta, Qt::NoButton, Qt::ForwardButton,
             Qt::AltModifier);
     pointer(*canvas, QEvent::MouseButtonRelease, origin + delta, Qt::ForwardButton, {},
@@ -434,6 +441,10 @@ void run() {
             "crop panning clamps both axes without moving the frame");
     click(*canvas, Qt::ForwardButton);
     require(Access::scale(first) == 100, "release below threshold executes only reset zoom");
+    pinned_crop_tests::cancelThroughMenu(first);
+    require(!first.persistenceSnapshot().cropRect && Access::visibleCrop(first) == fullViewport &&
+                Access::scale(first) == 100,
+            "canceling a panned crop restores the full viewport at the current zoom");
 
     const snow_shot::storage::PinToScreenSettings settings;
     require(settings.setExitAnnotationModeBeforeClosing(true) &&

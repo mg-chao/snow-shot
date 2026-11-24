@@ -334,6 +334,40 @@ void cloudSyncConfiguration() {
                 disable.value(shapeKey).toObject().value(stroke) == localColor,
             "turning off shared color on another device preserves local tool appearance");
 }
+void journalSnapshotsCoalesce() {
+    using namespace snow_shot::storage;
+    QTemporaryDir directory;
+    require(directory.isValid(), "journal checkpoint directory");
+    const auto path = directory.filePath(QStringLiteral("config.json"));
+    const auto font = QStringLiteral("interface/app_font_size");
+    ConfigurationStore store(path, true, true);
+    QJsonObject journal;
+    int snapshots = 0;
+    store.setCloudSyncJournal(
+        [&](auto origin, const auto&, const auto& values) {
+            journal.insert(font, values.value(font));
+            journal.insert(QStringLiteral("reset"), origin == ConfigurationWriteOrigin::Reset);
+            return true;
+        },
+        [&] {
+            ++snapshots;
+            return journal;
+        });
+    for (int size : {18, 20, 22})
+        require(store.setValue(font, size), "edit a preference before the checkpoint");
+    require(snapshots == 0 && store.isDirty(), "edits journal intent without building snapshots");
+    require(store.flushNow().success && snapshots == 1, "one flush materializes one journal");
+    const ConfigurationStore saved(path, true, false);
+    require(saved.value(font).toInt() == 22 && saved.cloudSyncState() == journal,
+            "the latest journal and preference share the checkpoint");
+
+    require(store.setValue(font, 22, ConfigurationWriteOrigin::Reset) && store.isDirty(),
+            "same-value intent can require a journal-only checkpoint");
+    store.setCloudSyncJournal({}, {});
+    require(snapshots == 2 && store.flushNow().success &&
+                ConfigurationStore(path, true, false).cloudSyncState() == journal,
+            "detaching the journal preserves pending intent for shutdown");
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -346,6 +380,7 @@ int main(int argc, char** argv) {
     nativeDefaultsRemainIntact(movies, pictures);
     entryReferencesAndCopiesRemainIndependent();
     cloudSyncConfiguration();
+    journalSnapshotsCoalesce();
     require(metadata() == before, "copy mutation must not change any public schema field");
     return 0;
 }

@@ -1956,8 +1956,9 @@ void localizedLayoutControlsUpdateAndRememberSettings() {
         require(direction && sizing && dimensions && grid && rows && columns,
                 "window exposes its layout controls, custom grid and output size");
         require(!grid->isVisible() && !rows->isVisible() && !columns->isVisible() &&
-                    direction->option(2).value == QStringLiteral("custom") &&
-                    direction->optionLabel(2) ==
+                    direction->option(2).value == QStringLiteral("free") &&
+                    direction->option(3).value == QStringLiteral("custom") &&
+                    direction->optionLabel(3) ==
                         QCoreApplication::translate("ImageStitchingEditorWidget", "Custom"),
                 "Custom has a stable translated option and hides its grid in vertical layout");
         const auto select = [&](adqt::widgets::AdSegmented* control, int index) {
@@ -2006,6 +2007,12 @@ void localizedLayoutControlsUpdateAndRememberSettings() {
         require(reopened.document()->settings() == remembered,
                 "later layout edits must preserve the independent reopened window");
         select(direction, 2);
+        verify(ImageStitchingDirection::Free, ImageStitchingSizing::Uniform, {150, 60});
+        require(ImageStitchingSettingsStore(storage::ApplicationStorage::instance().configuration())
+                        .read()
+                        .direction == ImageStitchingDirection::Free,
+                "Free direction is persisted");
+        select(direction, 3);
         verify(ImageStitchingDirection::Custom, ImageStitchingSizing::Uniform, {240, 60});
         require(grid->isVisible() && rows->isVisible() && columns->isVisible() &&
                     rows->value() == 1 && columns->value() == 2 && rows->minimum() == 1 &&
@@ -2053,7 +2060,7 @@ void localizedLayoutControlsUpdateAndRememberSettings() {
                 "removing images must retain previously expanded grid dimensions");
         select(direction, 0);
         require(!grid->isVisible(), "switching away from Custom must hide its form field");
-        select(direction, 2);
+        select(direction, 3);
         require(rows->value() == 2 && columns->value() == 3 &&
                     window.document()->settings().customGridInitialized,
                 "returning to Custom must retain the initialized grid");
@@ -2380,6 +2387,83 @@ void nativeClipboardLimitsRejectBeforePreparation() {
             "known native clipboard limits fail before expensive preparation and preserve saving");
 }
 #endif
+
+void freeLayoutExportPixels(const QString& directory) {
+    resetSettings();
+    Ports ports;
+    ImageStitchingWindow window(nullptr, ports.services());
+    window.present();
+    auto* document = window.document();
+    auto settings = document->settings();
+    settings.direction = ImageStitchingDirection::Free;
+    settings.background = Qt::transparent;
+    settings.border = 1;
+    document->setSettings(settings);
+    document->append(image({4, 4}, QColor(255, 0, 0, 128)), QStringLiteral("red"));
+    const auto upper =
+        document->append(image({4, 4}, QColor(0, 0, 255, 128)), QStringLiteral("blue"));
+    require(document->setFreePlacement(upper, {{0, -1}, {}}),
+            "position the upper image left of the lower one");
+    QImage expected(8, 7, QImage::Format_RGBA8888);
+    expected.fill(Qt::transparent);
+    for (int y = 0; y < expected.height(); ++y) {
+        for (int x = 0; x < expected.width(); ++x) {
+            const bool red = QRect(3, 2, 4, 4).contains(x, y);
+            const bool blue = QRect(1, 1, 4, 4).contains(x, y);
+            if (blue && red)
+                expected.setPixelColor(x, y, QColor(85, 0, 170, 192));
+            else if (blue)
+                expected.setPixelColor(x, y, QColor(0, 0, 255, 128));
+            else if (red)
+                expected.setPixelColor(x, y, QColor(255, 0, 0, 128));
+        }
+    }
+    const auto verify = [&](const QImage& actual) {
+        require(actual.size() == expected.size(),
+                "export uses the tight Free canvas with its border");
+        for (int y = 0; y < expected.height(); ++y)
+            for (int x = 0; x < expected.width(); ++x)
+                require(actual.pixelColor(x, y) == expected.pixelColor(x, y),
+                        "export has exact layered pixels and no preview adornments");
+    };
+    button(window, "collageImageEditing")->click();
+    require(ports.edits.size() == 1, "editor received a snapshot");
+    ScreenshotExportArtifact edit(ports.edits.takeFirst());
+    bool edited = false;
+    require(edit.requestImage(&window,
+                              [&](ScreenshotExportImageResult result) {
+                                  verify(result.image);
+                                  edited = true;
+                              }),
+            "request editor pixels");
+    waitUntil([&] { return edited; }, "editor snapshot rendered");
+    window.copy();
+    waitUntil([&] { return !ports.copies.isEmpty(); }, "clipboard snapshot prepared");
+    bool copied = false;
+    require(ports.copies.front().artifact->requestClipboard(
+                &window,
+                [&](ScreenshotExportClipboardResult result) {
+                    verify(QImage::fromData(result.payload.pngBytes(), "PNG"));
+                    copied = true;
+                }),
+            "request the encoded clipboard payload");
+    waitUntil([&] { return copied; }, "clipboard PNG prepared");
+    ports.copies.front().complete(false, {});
+    window.save();
+    waitUntil([&] { return !ports.saves.isEmpty(); }, "save snapshot prepared");
+    const auto path = QDir(directory).filePath(QStringLiteral("free-collage.png"));
+    bool saved = false;
+    require(ports.saves.front().artifact->requestSaveToPath(
+                &window, path, ScreenshotImageFileFormat::Png, {},
+                [&](const ScreenshotExportTaskResult& result) {
+                    require(result.succeeded(), "Free PNG was written");
+                    saved = true;
+                }),
+            "request PNG encoding");
+    waitUntil([&] { return saved; }, "PNG save complete");
+    verify(QImage(path));
+    ports.saves.front().complete(true, {});
+}
 
 void completedFileSaveUsesExistingWriter(const QString& directory) {
     resetSettings();
@@ -2848,6 +2932,7 @@ int main(int argc, char* argv[]) {
 #ifdef Q_OS_WIN
     timed("Native clipboard limits", nativeClipboardLimitsRejectBeforePreparation);
 #endif
+    timed("Free layout exports", [&] { freeLayoutExportPixels(directory.path()); });
     timed("Completed file save", [&] { completedFileSaveUsesExistingWriter(directory.path()); });
     timed("Save result lifetime",
           [&] { saveResultDefersImageStitchingCompletion(directory.path()); });

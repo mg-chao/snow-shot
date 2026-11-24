@@ -57,12 +57,14 @@ class ConfigurationStore final : public QObject {
     // On the store thread, deliver earlier worker commits before changing their observer's
     // context. Concurrent writers resume after the transition completes.
     void afterPendingChanges(const std::function<void()>& transition);
-    // Called on the committing thread under the mutation lock, before a flush can capture
-    // the edit. Runtime/UI observers continue to receive valuesCommitted on the store thread.
+    // Record intent under the mutation lock. A true result schedules the journal snapshot
+    // with the preferences. Both callbacks can run on a worker thread.
     using CloudSyncJournal =
-        std::function<void(ConfigurationWriteOrigin, const QMap<QString, QJsonValue>&,
+        std::function<bool(ConfigurationWriteOrigin, const QMap<QString, QJsonValue>&,
                            const QMap<QString, QJsonValue>&)>;
-    void setCloudSyncJournal(CloudSyncJournal journal);
+    void setCloudSyncJournal(CloudSyncJournal journal, std::function<QJsonObject()> snapshot);
+    // Include a status-only change in the next flush without scheduling a disk write.
+    bool deferCloudSyncStatus();
     [[nodiscard]] bool isDirty() const;
     [[nodiscard]] bool isWritable() const;
     [[nodiscard]] QString lastError() const;
@@ -102,6 +104,8 @@ class ConfigurationStore final : public QObject {
     void errorChanged(const QString& error);
 
   private:
+    enum class JournalSnapshot { Current, OnNextFlush, Scheduled };
+    void materializeCloudSyncJournal();
     bool setValuesImpl(const QMap<QString, QJsonValue>& values, ConfigurationWriteOrigin origin,
                        const QJsonObject* cloudSyncState);
     void load();
@@ -117,8 +121,10 @@ class ConfigurationStore final : public QObject {
     bool m_suspended = false;
     bool m_writeAvailable = false;
     mutable QMutex m_mutex;
-    QRecursiveMutex m_mutationMutex;
+    mutable QRecursiveMutex m_mutationMutex;
     CloudSyncJournal m_cloudSyncJournal;
+    std::function<QJsonObject()> m_snapshotCloudSyncJournal;
+    JournalSnapshot m_journalSnapshot = JournalSnapshot::Current;
     QList<std::function<void()>> m_pendingChanges;
     bool m_deliveringChanges = false;
     QMutex m_ioMutex;

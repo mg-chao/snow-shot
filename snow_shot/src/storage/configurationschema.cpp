@@ -828,7 +828,7 @@ constexpr SchemaString kSchemaStrings129[] = {u"png", u"jpeg", u"bmp",  u"webp",
 constexpr SchemaAllowedValues kSchemaAllowed60 = {kSchemaStrings129, std::size(kSchemaStrings129)};
 constexpr SchemaString kSchemaStrings130[] = {u"system", u"snow_shot"};
 constexpr SchemaAllowedValues kSchemaAllowed61 = {kSchemaStrings130, std::size(kSchemaStrings130)};
-constexpr SchemaString kSchemaStrings131[] = {u"vertical", u"horizontal", u"custom"};
+constexpr SchemaString kSchemaStrings131[] = {u"vertical", u"horizontal", u"free", u"custom"};
 constexpr SchemaAllowedValues kSchemaAllowed62 = {kSchemaStrings131, std::size(kSchemaStrings131)};
 constexpr ConfigurationIntegerRange kSchemaRange22{1, std::numeric_limits<int>::max(), 1};
 constexpr SchemaString kSchemaStrings132[] = {u"original", u"uniform"};

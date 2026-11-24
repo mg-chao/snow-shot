@@ -187,8 +187,8 @@ bool ScreenshotPinnedWindow::liveFrameAvailable() const {
 bool ScreenshotPinnedWindow::liveCommandAllowed(const QString& command) const {
     if (!isLiveWindow())
         return true;
-    if (command == u"apply_crop")
-        return cropApplyAllowed();
+    if (command == u"apply_crop" || command == u"cancel_crop")
+        return cropActionsAllowed();
     if (command == u"copy_to_clipboard" || command == u"save_as_file" ||
         command == u"convert_to_image" || command == u"split_image" ||
         command == u"image_editing" || command == u"image_compression")

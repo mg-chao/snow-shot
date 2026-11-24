@@ -59,10 +59,12 @@ bool ScreenshotPinnedWindow::cropSelectionAllowed() const {
            (!isLiveWindow() || liveFrameAvailable());
 }
 
-bool ScreenshotPinnedWindow::cropApplyAllowed() const {
+bool ScreenshotPinnedWindow::cropActionsAllowed() const {
+    const bool panning =
+        m_mouseStroke && m_mouseStroke->press.drag == snow_shot::mouse::Action::PanCrop;
     return m_cropRect && m_presented && m_firstContentFramePublished && !m_lockedMode &&
            !m_closing && !m_cropApplying && !m_geometryAnimating && !m_cropSelectionOrigin &&
-           !m_interactionPlacement && !m_selectionGeometryActive &&
+           !panning && !m_interactionPlacement && !m_selectionGeometryActive &&
            !m_contentReplacementJob.isValid() && !animationTransformPending() &&
            !m_animationTransformSnapshot && (!isLiveWindow() || liveFrameAvailable());
 }
@@ -196,23 +198,26 @@ void ScreenshotPinnedWindow::updateCropPan(const QRectF& original, const QPointF
     }
 }
 
-bool ScreenshotPinnedWindow::setCropCanvasRect(const QRectF& requested) {
-    const QRectF clipped = requested.intersected(m_backgroundCanvasRect);
-    if (!crop_geometry::valid(clipped) || m_originalPixelSize.isEmpty())
+bool ScreenshotPinnedWindow::setCropCanvasRect(std::optional<QRectF> requested) {
+    const QRectF viewport =
+        requested ? requested->intersected(m_backgroundCanvasRect) : m_resultSurfaceCanvasRect;
+    if (!crop_geometry::valid(viewport) || m_originalPixelSize.isEmpty())
         return false;
     const QRectF previous = visibleCanvasRect();
     const QRect native =
         m_thumbnailMode ? snow_shot::presentation::pinnedContentRect(m_preThumbnailNativeGeometry)
                         : authoritativeContentNativeGeometry();
-    const auto mapping = crop_geometry::sourceToCanvas(m_originalPixelSize, m_imageTransform,
-                                                       m_backgroundCanvasRect);
-    const QRectF source = mapping.inverted().mapRect(clipped);
-    const qreal sx = m_scalePercent / 100.0 * scaleReferenceSize().width() / previous.width();
-    const qreal sy = sx;
-    const QRect target(qRound(native.x() + (clipped.x() - previous.x()) * sx),
-                       qRound(native.y() + (clipped.y() - previous.y()) * sy),
-                       std::max(1, qRound(clipped.width() * sx)),
-                       std::max(1, qRound(clipped.height() * sy)));
+    std::optional<QRectF> source;
+    if (requested) {
+        const auto mapping = crop_geometry::sourceToCanvas(m_originalPixelSize, m_imageTransform,
+                                                           m_backgroundCanvasRect);
+        source = mapping.inverted().mapRect(viewport);
+    }
+    const qreal scale = m_scalePercent / 100.0 * scaleReferenceSize().width() / previous.width();
+    const QRect target(qRound(native.x() + (viewport.x() - previous.x()) * scale),
+                       qRound(native.y() + (viewport.y() - previous.y()) * scale),
+                       std::max(1, qRound(viewport.width() * scale)),
+                       std::max(1, qRound(viewport.height() * scale)));
     bool applied = false;
     {
         QScopedValueRollback<std::optional<QRectF>> crop(m_cropRect, source);
@@ -232,12 +237,8 @@ bool ScreenshotPinnedWindow::setCropCanvasRect(const QRectF& requested) {
             preserve.commit();
         }
     }
-    if (!applied) {
-        updateCropPresentation();
-        return false;
-    }
     updateCropPresentation();
-    return true;
+    return applied;
 }
 
 void ScreenshotPinnedWindow::updateCropPresentation() {
@@ -256,8 +257,6 @@ void ScreenshotPinnedWindow::updateCropPresentation() {
     applyRuntimeBorderColor();
     updateCanvasViewport();
     updateControlsGeometry();
-    if (m_applyCropAction)
-        m_applyCropAction->setEnabled(cropApplyAllowed());
     refreshContextMenuIfVisible();
     if (m_editController)
         m_editController->updatePlacement();
@@ -265,12 +264,17 @@ void ScreenshotPinnedWindow::updateCropPresentation() {
         scheduleLivePresentation();
 }
 
+void ScreenshotPinnedWindow::cancelCrop() {
+    if (cropActionsAllowed() && setCropCanvasRect(std::nullopt))
+        schedulePersistence();
+}
+
 void ScreenshotPinnedWindow::applyCrop() {
-    if (!cropApplyAllowed())
+    if (!cropActionsAllowed())
         return;
     if (m_originalImage.isNull()) {
-        requestMaterializedImage([this](bool ready) {
-            if (ready)
+        requestMaterializedImage([this, generation = m_contentReplacementGeneration](bool ready) {
+            if (ready && generation == m_contentReplacementGeneration)
                 applyCrop();
         });
         return;

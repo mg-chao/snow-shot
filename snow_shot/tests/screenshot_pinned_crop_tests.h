@@ -43,6 +43,13 @@ QImage exportImage(ScreenshotPinnedWindow& owner,
     return output.image;
 }
 
+void cancelThroughMenu(ScreenshotPinnedWindow& window) {
+    auto* action = Access::contextMenu(window)->findChild<QAction*>(
+        QStringLiteral("screenshotPinnedCancelCropAction"));
+    require(action && action->isVisible() && action->isEnabled(), "Cancel crop is available");
+    action->trigger();
+}
+
 void geometry() {
     using namespace screenshot_pinned_crop_geometry;
     const QRectF bounds(-100, -200, 100, 80);
@@ -424,6 +431,78 @@ void staticWindow() {
     window.hide();
 }
 
+void cancelCrop() {
+    std::optional<snow_shot::storage::PinnedWindowRecord> saved;
+    auto setup = config();
+    setup.persistenceWriter = [&](const auto& record) { saved = record; };
+    ScreenshotPinnedWindow window;
+    Access::prepareReplacement(window, setup);
+    window.show();
+    require(!Access::applyAnnotationTransaction(
+                 window,
+                 R"({"version":1,"operations":[{"type":"rectangle","bounds":[105,205,12,12]}]})")
+                 .isEmpty(),
+            "add an annotation extending outside the crop");
+    const auto history = Access::drawingHistory(window);
+    const auto original = Access::originalImage(window).cacheKey();
+    const QRectF crop(120, 220, 40, 30);
+    const auto fullViewport = Access::visibleCrop(window);
+    const auto fullExport = exportImage(window, Access::cropSave(window));
+    require(Access::crop(window, crop), "create a temporary crop");
+    LiveAccess::scale(window, 150);
+    require(Access::moveForOriginalPreview(window, QPoint(17, -8)), "move the cropped pin");
+    const auto croppedGeometry = LiveAccess::contentGeometry(window);
+    const auto landmark = Access::cropScreenPoint(window, crop.center());
+    auto* platform = Access::installFailingPlatform(window);
+    platform->failNextGeometry = true;
+    cancelThroughMenu(window);
+    require(Access::visibleCrop(window) == crop &&
+                LiveAccess::contentGeometry(window) == croppedGeometry,
+            "a rejected window expansion retains the crop and its geometry");
+    cancelThroughMenu(window);
+    require(!window.persistenceSnapshot().cropRect && Access::visibleCrop(window) == fullViewport &&
+                LiveAccess::contentGeometry(window).size() == QSize(150, 120) &&
+                Access::scale(window) == 150 &&
+                QLineF(landmark, Access::cropScreenPoint(window, crop.center())).length() < .01,
+            "cancel expands around the moved crop at its current zoom");
+    require(Access::originalImage(window).cacheKey() == original &&
+                Access::drawingHistory(window) == history,
+            "cancel preserves source pixels and annotations");
+    require(!Access::decoration(window)->property("showBorder").toBool() &&
+                Access::decoration(window)->property("showShadow").toBool(),
+            "cancel restores the configured pin decorations");
+    translation_tests::waitUntil(
+        [&] {
+            return saved && !saved->cropRect &&
+                   saved->nativeGeometry == LiveAccess::contentGeometry(window);
+        },
+        "cancel persists the expanded geometry without a crop");
+    ScreenshotPinnedWindow reopened;
+    auto restore = setup;
+    restore.restorePersistentState = true;
+    restore.persistedCropRect = saved->cropRect;
+    restore.persistedScalePercent = saved->scalePercent;
+    restore.nativeGeometry = saved->nativeGeometry;
+    Access::prepareReplacement(reopened, restore);
+    require(Access::visibleCrop(reopened) == fullViewport && Access::scale(reopened) == 150,
+            "reopening a canceled crop restores the full viewport");
+    LiveAccess::scale(window, 200);
+    require(exportImage(window, Access::cropSave(window)) == fullExport,
+            "export after cancel includes the full annotated image");
+
+    const QRect beforeThumbnail = LiveAccess::contentGeometry(window);
+    require(Access::crop(window, crop), "crop before entering thumbnail mode");
+    Access::thumbnailForHideTest(window, true);
+    const QRect thumbnail = LiveAccess::contentGeometry(window);
+    cancelThroughMenu(window);
+    require(LiveAccess::contentGeometry(window) == thumbnail,
+            "cancel keeps the thumbnail in place");
+    Access::thumbnailForHideTest(window, false);
+    require(LiveAccess::contentGeometry(window) == beforeThumbnail,
+            "expanding the thumbnail restores the full image geometry");
+    window.hide();
+}
+
 void gesturesAndAlignment() {
     ScreenshotPinnedWindow window;
     Access::prepareReplacement(window, config());
@@ -642,7 +721,14 @@ void styledAndTransformedApply() {
         LiveAccess::command(window, QStringLiteral("rotate_clockwise"));
         const auto full = window.persistenceSnapshot().contentCanvasRect;
         const QRectF crop(full.x(), full.y(), 30, 40);
+        const auto fullExport = exportImage(window, Access::cropSave(window));
+        const auto fullGeometry = LiveAccess::contentGeometry(window);
         require(Access::crop(window, crop), "crop transformed styled image");
+        cancelThroughMenu(window);
+        require(LiveAccess::contentGeometry(window) == fullGeometry &&
+                    exportImage(window, Access::cropSave(window)) == fullExport,
+                "cancel restores the rotated surface including styled edges");
+        require(Access::crop(window, crop), "reselect transformed crop");
         const auto expected = exportImage(window, Access::cropSave(window));
         const auto editor = pinnedRenderedEditingSource(window);
         require(!editor.resultStyle && editor.image == expected &&
@@ -730,6 +816,11 @@ void liveWindow() {
                    source->presentations.last().sourceViewport == QRectF(.125, .125, .375, .5);
         },
         "native presentation receives normalized crop bounds");
+    cancelThroughMenu(window);
+    translation_tests::waitUntil(
+        [&] { return source->presentations.last().sourceViewport == QRectF(0, 0, 1, 1); },
+        "cancel restores the full live viewport");
+    require(Access::crop(window, QRectF(20, 10, 60, 40)), "reselect live crop");
     source->setState(live_pinned_tests::State::Minimized);
     require(!window.liveFrameAvailable() && !Access::cropAllowed(window),
             "unavailable live content prevents starting a new crop");
@@ -755,6 +846,12 @@ void liveWindow() {
     require(!window.persistenceSnapshot().cropRect &&
                 LiveAccess::original(window).size() == QSize(30, 20) && window.isLiveWindow(),
             "applying live crop restricts the refreshed base without converting the source");
+    require(Access::crop(window, Access::visibleCrop(window).adjusted(4, 4, -4, -4)),
+            "select a second crop inside the applied live crop");
+    cancelThroughMenu(window);
+    translation_tests::waitUntil(
+        [&] { return source->presentations.last().sourceViewport == QRectF(.125, .125, .375, .5); },
+        "cancel restores the previously committed live viewport");
     const auto requests = source->requests;
     source->deferFrames = true;
     LiveAccess::command(window, QStringLiteral("rotate_clockwise"));
@@ -1104,6 +1201,14 @@ void animations() {
         const int frame = Access::playback(window).frameIndex();
         const int speed = Access::playback(window).speedPercent();
         require(Access::crop(window, QRectF(0, 0, 20, 40)), "crop animated frame viewport");
+        cancelThroughMenu(window);
+        require(Access::visibleCrop(window) == setup.canvasSourceRect &&
+                    window.persistenceSnapshot().animationSource == animation &&
+                    Access::playback(window).frameIndex() == frame &&
+                    Access::playback(window).speedPercent() == speed &&
+                    !Access::playback(window).requestedPlaying(),
+                "cancel restores the full animation at the same frame and playback settings");
+        require(Access::crop(window, QRectF(0, 0, 20, 40)), "reselect animated crop");
         Access::applyCrop(window);
         static_cast<void>(renderWidget(*canvas));
         const auto record = window.persistenceSnapshot();
@@ -1221,6 +1326,7 @@ void pinnedCropTests() {
     pinned_crop_tests::cropSelectionProjectsNativeBounds();
     pinned_crop_tests::cropSelectionMatchesCanvas();
     pinned_crop_tests::staticWindow();
+    pinned_crop_tests::cancelCrop();
     pinned_crop_tests::restorationAndTransforms();
     pinned_crop_tests::gesturesAndAlignment();
     pinned_crop_tests::inlineAnnotations();

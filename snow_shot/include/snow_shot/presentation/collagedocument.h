@@ -23,7 +23,9 @@
 
 namespace snow_shot::presentation {
 
-enum class ImageStitchingDirection { Vertical, Horizontal, Custom };
+enum class ImageStitchingDirection { Vertical, Horizontal, Free, Custom };
+[[nodiscard]] QString imageStitchingDirectionKey(ImageStitchingDirection direction);
+[[nodiscard]] ImageStitchingDirection imageStitchingDirectionFromKey(QStringView key);
 enum class ImageStitchingSizing { Original, Uniform };
 enum class ImageStitchingOutputType { StaticImage, PdfDocument };
 enum class ImageStitchingPdfPaperSize { A3, A4, A5, B5, Letter, Legal, Custom, ImageSize };
@@ -119,6 +121,14 @@ struct ImageStitchingStaticPlacement final {
                            const ImageStitchingStaticPlacement&) = default;
 };
 
+struct ImageStitchingFreePlacement final {
+    QPointF centerPixels;
+    // An unset scale follows the sizing mode. A manual scale is output pixels per source pixel.
+    std::optional<qreal> pixelsPerPixel;
+    friend bool operator==(const ImageStitchingFreePlacement&,
+                           const ImageStitchingFreePlacement&) = default;
+};
+
 struct ImageStitchingItem final {
     quint64 id = 0;
     quint64 revision = 0;
@@ -131,6 +141,7 @@ struct ImageStitchingItem final {
     std::shared_ptr<ImageStitchingImageMetadata> metadata;
     ImageStitchingPdfPlacement pdfPlacement{};
     ImageStitchingStaticPlacement staticPlacement{};
+    std::optional<ImageStitchingFreePlacement> freePlacement{};
 };
 
 struct ImageStitchingPdfCell final {
@@ -163,11 +174,12 @@ calculateImageStitchingPdfComposedPage(const QVector<ImageStitchingItem>& items,
 
 struct ImageStitchingLayout final {
     QSize size;
-    // Automatic bounds continue to determine output size and layout independently of placement.
     QVector<QRect> rects;
     QString error;
     QVector<QRect> clipRects;
     QVector<QRect> imageRects;
+    // Add the origin to an output-relative raster rectangle to recover its layout coordinates.
+    QPointF origin{};
 
     [[nodiscard]] bool isValid() const {
         return size.isValid() && !size.isEmpty() && !rects.isEmpty() && error.isEmpty();
@@ -217,6 +229,7 @@ class ImageStitchingDocument final : public QObject {
     bool flip(quint64 id, bool horizontal);
     bool resetTransform(quint64 id);
     bool setPdfPlacement(quint64 id, const ImageStitchingPdfPlacement& placement);
+    bool setFreePlacement(quint64 id, const ImageStitchingFreePlacement& placement);
     bool setStaticPlacement(quint64 id, const ImageStitchingStaticPlacement& placement);
     [[nodiscard]] quint64 selectedId() const;
     void select(quint64 id);

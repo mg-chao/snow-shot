@@ -438,6 +438,9 @@ class ScreenshotPinnedWindowTestAccess {
     static QAction* applyCropAction(const ScreenshotPinnedWindow& window) {
         return window.m_applyCropAction;
     }
+    static QAction* cancelCropAction(const ScreenshotPinnedWindow& window) {
+        return window.m_cancelCropAction;
+    }
     static bool beginCrop(ScreenshotPinnedWindow& window, const QPointF& point) {
         return window.beginCropSelection(point);
     }
