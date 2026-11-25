@@ -1,6 +1,6 @@
 # OCR protocol 8
 
-Runtime 1.5.0 uses a binary stdin/stdout command channel. Diagnostics use stderr.
+Runtime 1.5.1 uses a binary stdin/stdout command channel. Diagnostics use stderr.
 The application and runtime are released together; earlier protocols are incompatible.
 All integers and IEEE-754 floats are little-endian. A string is a `u32` byte
 length followed by UTF-8. Frames have a 20-byte header: `SOCR`, version `u16`,
