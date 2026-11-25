@@ -6653,6 +6653,9 @@ void ScreenshotController::Impl::handleSelectionConfirmed() {
     case PendingSelectionAction::Pin:
         pinSelectionToScreen();
         break;
+    case PendingSelectionAction::PinWindow:
+        pinWindowSelectionToScreen();
+        break;
     case PendingSelectionAction::RecognizeText:
     case PendingSelectionAction::RecognizeTextAndCopy: {
         const QScopedValueRollback<bool> copyGuard(

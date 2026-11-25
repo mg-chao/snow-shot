@@ -3590,6 +3590,11 @@ if(SNOW_SHOT_BUILD_TESTS)
     set_tests_properties(snow-shot-stitch-selected-images-settings-tests PROPERTIES LABELS unit
         ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+    add_test(NAME snow-shot-pin-window-shortcut-settings-tests
+        COMMAND snow-shot-settings-page-loading-tests --pin-window-shortcut-only)
+    set_tests_properties(snow-shot-pin-window-shortcut-settings-tests PROPERTIES LABELS unit TIMEOUT 30
+        ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
     set_tests_properties(snow-shot-settings-page-loading-tests PROPERTIES
         LABELS "unit" TIMEOUT 60
         ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"

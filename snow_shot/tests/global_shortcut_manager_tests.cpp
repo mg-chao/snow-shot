@@ -45,6 +45,7 @@ constexpr std::array ALL_ACTIONS{
     GlobalShortcutAction::ScreenshotCopy,
     GlobalShortcutAction::ScreenshotSave,
     GlobalShortcutAction::ScreenshotQuickSave,
+    GlobalShortcutAction::ScreenshotPinWindowToScreen,
     GlobalShortcutAction::ScreenshotFullScreen,
     GlobalShortcutAction::ScreenshotFocusedWindow,
     GlobalShortcutAction::ScreenRecord,
@@ -324,12 +325,14 @@ void remoteBindingsReconcileAsOneConfiguration() {
 void screenshotQuickActionShortcutsRegisterActivateAndPersist() {
     const std::array actions{GlobalShortcutAction::ScreenshotScrolling,
                              GlobalShortcutAction::ScreenshotSave,
-                             GlobalShortcutAction::ScreenshotQuickSave};
+                             GlobalShortcutAction::ScreenshotQuickSave,
+                             GlobalShortcutAction::ScreenshotPinWindowToScreen};
     const std::array bindings{
         shortcuts::ShortcutBindingList{QStringLiteral("Ctrl+Alt+F9"), QStringLiteral("Shift+F9")},
         shortcuts::ShortcutBindingList{QStringLiteral("Ctrl+Alt+F10"), QStringLiteral("Shift+F10")},
-        shortcuts::ShortcutBindingList{QStringLiteral("Ctrl+Alt+F11"),
-                                       QStringLiteral("Shift+F11")}};
+        shortcuts::ShortcutBindingList{QStringLiteral("Ctrl+Alt+F11"), QStringLiteral("Shift+F11")},
+        shortcuts::ShortcutBindingList{QStringLiteral("Ctrl+Alt+F12"),
+                                       QStringLiteral("Shift+F12")}};
     {
         auto backend = std::make_unique<FakeBackend>();
         auto* input = backend.get();
@@ -362,7 +365,8 @@ void screenshotQuickActionShortcutsRegisterActivateAndPersist() {
     const snow_shot::storage::ShortcutSettings settings;
     require(settings.screenshotScrolling() == bindings[0] &&
                 settings.screenshotSave() == bindings[1] &&
-                settings.screenshotQuickSave() == bindings[2],
+                settings.screenshotQuickSave() == bindings[2] &&
+                settings.screenshotPinWindowToScreen() == bindings[3],
             "screenshot actions persist under distinct settings keys");
     for (std::size_t i = 0; i < actions.size(); ++i) {
         require(restored.state(actions[i]).shortcuts == bindings[i] &&

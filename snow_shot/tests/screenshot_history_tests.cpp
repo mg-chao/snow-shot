@@ -5802,6 +5802,7 @@ constexpr std::pair<GlobalAction, const char*> kGlobalScreenshotTools[] = {
     {GlobalAction::ScreenshotCopy, "copy_to_clipboard"},
     {GlobalAction::ScreenshotSave, "save_as_file"},
     {GlobalAction::ScreenshotQuickSave, "quick_save"},
+    {GlobalAction::ScreenshotPinWindowToScreen, "pin_window_to_screen"},
     {GlobalAction::ScreenRecord, "video_recording"},
     {GlobalAction::ScreenRecordCopy, "video_recording"},
 };

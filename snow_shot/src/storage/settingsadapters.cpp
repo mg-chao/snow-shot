@@ -783,6 +783,16 @@ bool ShortcutSettings::setScreenshotQuickSave(
     return setShortcutValue(QStringLiteral("global_shortcuts/screenshot_quick_save"), bindings);
 }
 
+shortcuts::ShortcutBindingList ShortcutSettings::screenshotPinWindowToScreen() const {
+    return shortcutValue(QStringLiteral("global_shortcuts/screenshot_pin_window_to_screen"));
+}
+
+bool ShortcutSettings::setScreenshotPinWindowToScreen(
+    const shortcuts::ShortcutBindingList& bindings) const {
+    return setShortcutValue(QStringLiteral("global_shortcuts/screenshot_pin_window_to_screen"),
+                            bindings);
+}
+
 shortcuts::ShortcutBindingList ShortcutSettings::screenshotFullScreen() const {
     return shortcutValue(QStringLiteral("global_shortcuts/screenshot_full_screen"));
 }

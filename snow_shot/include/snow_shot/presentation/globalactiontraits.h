@@ -54,11 +54,12 @@ inline constexpr auto globalActionTraitsCatalog = [] {
         GlobalActionTraits{A::ScreenshotScrolling, F::Screenshot, P::ScreenRecording},
         GlobalActionTraits{A::EditSelectedImages, {}, P::None},
         GlobalActionTraits{A::ToggleGlobalMouse, {}, P::None},
-        GlobalActionTraits{A::CompressSelectedImages, {}, P::None}};
+        GlobalActionTraits{A::CompressSelectedImages, {}, P::None},
+        GlobalActionTraits{A::ScreenshotPinWindowToScreen, F::PinToScreen, P::ScreenRecording}};
 }();
 
 static_assert(globalActionTraitsCatalog.size() ==
-              static_cast<std::size_t>(GlobalShortcutAction::CompressSelectedImages) + 1);
+              static_cast<std::size_t>(GlobalShortcutAction::ScreenshotPinWindowToScreen) + 1);
 static_assert([] {
     for (std::size_t index = 0; index < globalActionTraitsCatalog.size(); ++index)
         if (static_cast<std::size_t>(globalActionTraitsCatalog[index].action) != index)

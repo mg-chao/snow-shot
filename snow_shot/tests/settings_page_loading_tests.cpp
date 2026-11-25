@@ -1573,6 +1573,38 @@ class SettingsTestShortcutBackend final : public snow_shot::presentation::Global
     void unregisterShortcut(int) override {}
 };
 
+void pinWindowShortcutSettings(const settings::SettingsRegistry& registry) {
+    using namespace snow_shot::presentation;
+    constexpr auto action = GlobalShortcutAction::ScreenshotPinWindowToScreen;
+    GlobalShortcutManager shortcuts(std::make_unique<SettingsTestShortcutBackend>(), nullptr,
+                                    [] { return false; });
+    settings::BuiltInSettingsBackend backend(shortcuts);
+    settings::SettingsRuntimeSession session(registry, backend);
+    SettingsPageWidget page(registry, QStringLiteral("global-hotkeys"), session);
+    page.resize(880, 760);
+    page.show();
+    page.reveal({QStringLiteral("global-hotkeys"), QStringLiteral("screenshot"),
+                 QStringLiteral("quick.screenshot-pin-window-to-screen")});
+    drainEvents();
+    auto* row = page.findChild<ShortcutKeyRow*>(
+        QStringLiteral("settings-item-quick-screenshot-pin-window-to-screen"));
+    require(row != nullptr, "Global shortcuts must show the Pin window to screen row");
+    auto* button = row->findChild<adqt::widgets::AdButton*>(QStringLiteral("shortcutKeyButton"));
+    require(button && button->text() == QStringLiteral("Not set"),
+            "the window pin shortcut must show Not set with a fresh configuration");
+
+    const snow_shot::shortcuts::ShortcutBindingList bindings{QStringLiteral("Ctrl+Alt+F12")};
+    const snow_shot::storage::ShortcutSettings stored;
+    require(session.applyShortcuts(action, bindings) &&
+                stored.screenshotPinWindowToScreen() == bindings &&
+                button->text() != QStringLiteral("Not set"),
+            "the global window pin shortcut can be assigned, displayed, and persisted");
+    require(session.reset(settings::SettingsSectionReset::ScreenshotShortcuts) &&
+                stored.screenshotPinWindowToScreen().isEmpty() &&
+                button->text() == QStringLiteral("Not set"),
+            "resetting Screenshot shortcuts restores the unset window pin shortcut");
+}
+
 void selectedImagesSettings(const settings::SettingsRegistry& registry) {
     using namespace snow_shot::presentation;
     constexpr auto action = GlobalShortcutAction::StitchSelectedImages;
@@ -2367,6 +2399,11 @@ int main(int argc, char** argv) {
         storage.shutdown();
         return 0;
     }
+    if (application.arguments().contains(QStringLiteral("--pin-window-shortcut-only"))) {
+        pinWindowShortcutSettings(registry);
+        storage.shutdown();
+        return 0;
+    }
     if (application.arguments().contains(QStringLiteral("--tray-selection-only"))) {
         everyTrayOptionRemainsSelected(registry, session);
         storage.shutdown();
@@ -2418,6 +2455,7 @@ int main(int argc, char** argv) {
     unchangedPresentation(registry, session);
     skinControlsCommitAndRetranslate(registry, session);
     selectedImagesSettings(registry);
+    pinWindowShortcutSettings(registry);
     storage.shutdown();
     return 0;
 }

@@ -3931,6 +3931,10 @@
             <translation>Permission status and access</translation>
         </message>
         <message>
+            <source>Pin a live view of the window in the selected area</source>
+            <translation>Pin a live view of the window in the selected area</translation>
+        </message>
+        <message>
             <source>Pin clipboard content to screen</source>
             <translation>Pin clipboard content to screen</translation>
         </message>

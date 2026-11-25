@@ -1879,6 +1879,12 @@ class ApplicationController::Impl {
                     controller->captureForAction(ScreenshotController::CaptureAction::QuickSave));
             }
             break;
+        case presentation::GlobalShortcutAction::ScreenshotPinWindowToScreen:
+            if (ScreenshotController* controller = ensureScreenshotController()) {
+                static_cast<void>(
+                    controller->captureForAction(ScreenshotController::CaptureAction::PinWindow));
+            }
+            break;
         case presentation::GlobalShortcutAction::ScreenshotFullScreen:
             ensureDirectCaptureController().captureCurrentMonitor();
             break;

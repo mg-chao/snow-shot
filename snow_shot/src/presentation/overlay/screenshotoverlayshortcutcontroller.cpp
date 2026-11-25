@@ -39,6 +39,8 @@ QString screenshotShortcutForGlobalAction(snow_shot::presentation::GlobalShortcu
     switch (action) {
     case Action::ScreenshotPinToScreen:
         return QStringLiteral("pin_to_screen");
+    case Action::ScreenshotPinWindowToScreen:
+        return QStringLiteral("pin_window_to_screen");
     case Action::ScreenshotOcr:
         return QStringLiteral("text_recognition");
     case Action::ScreenshotTranslation:

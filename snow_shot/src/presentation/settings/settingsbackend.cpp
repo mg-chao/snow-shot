@@ -2797,6 +2797,7 @@ SettingsResetResult BuiltInSettingsBackend::resetSectionWithResults(SettingsSect
              "global_shortcuts/screenshot_ocr_copy", "global_shortcuts/screenshot_translation",
              "global_shortcuts/screenshot_scrolling", "global_shortcuts/screenshot_copy",
              "global_shortcuts/screenshot_save", "global_shortcuts/screenshot_quick_save",
+             "global_shortcuts/screenshot_pin_window_to_screen",
              "global_shortcuts/screenshot_full_screen",
              "global_shortcuts/screenshot_focused_window", "global_shortcuts/open_capture_history",
              "screenshot/delay_seconds"});

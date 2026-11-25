@@ -203,6 +203,18 @@ SettingsItemDefinition screenshotQuickSaveItem() {
         []() { return custom_outlined_icons::QuickSave(); });
 }
 
+SettingsItemDefinition screenshotPinWindowToScreenItem() {
+    auto item = quickActionItem(
+        QStringLiteral("quick.screenshot-pin-window-to-screen"),
+        QT_TRANSLATE_NOOP("SettingsCatalog", "Pin window to screen"),
+        QT_TRANSLATE_NOOP("SettingsCatalog", "Pin a live view of the window in the selected area"),
+        {}, GlobalShortcutAction::ScreenshotPinWindowToScreen,
+        QStringLiteral("global_shortcuts/screenshot_pin_window_to_screen"),
+        []() { return custom_outlined_icons::PinWindowToScreen(); });
+    std::get<SettingsShortcutActionDefinition>(item.payload).showInTrayMenu = false;
+    return item;
+}
+
 SettingsItemDefinition screenshotFullScreenItem() {
     return quickActionItem(
         QStringLiteral("quick.screenshot-full-screen"),
@@ -3981,6 +3993,7 @@ constexpr CatalogItemFactory catalogPageGlobalHotkeysSectionScreenshotItems[] = 
     {screenshotCopyItem},
     {screenshotSaveItem},
     {screenshotQuickSaveItem},
+    {screenshotPinWindowToScreenItem},
     {screenshotFullScreenItem},
     {screenshotFocusedWindowItem},
     {openCaptureHistoryItem},
@@ -5638,6 +5651,8 @@ QString shortcutConfigurationKey(GlobalShortcutAction action) {
         return QStringLiteral("global_shortcuts/screenshot_save");
     case GlobalShortcutAction::ScreenshotQuickSave:
         return QStringLiteral("global_shortcuts/screenshot_quick_save");
+    case GlobalShortcutAction::ScreenshotPinWindowToScreen:
+        return QStringLiteral("global_shortcuts/screenshot_pin_window_to_screen");
     case GlobalShortcutAction::ScreenshotFullScreen:
         return QStringLiteral("global_shortcuts/screenshot_full_screen");
     case GlobalShortcutAction::ScreenshotFocusedWindow:

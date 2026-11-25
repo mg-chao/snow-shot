@@ -2482,6 +2482,9 @@ void globalShortcutActionsHaveStableContracts() {
         {Action::ScreenshotQuickSave, "screenshot", "quick.screenshot-quick-save",
          "global_shortcuts/screenshot_quick_save",
          settings::SettingsCommandKind::ExecuteQuickAction},
+        {Action::ScreenshotPinWindowToScreen, "screenshot", "quick.screenshot-pin-window-to-screen",
+         "global_shortcuts/screenshot_pin_window_to_screen",
+         settings::SettingsCommandKind::ExecuteQuickAction},
         {Action::ScreenshotFullScreen, "screenshot", "quick.screenshot-full-screen",
          "global_shortcuts/screenshot_full_screen",
          settings::SettingsCommandKind::ExecuteQuickAction},
@@ -2581,7 +2584,7 @@ void globalShortcutActionsHaveStableContracts() {
     }
 
     require(actions.size() == expectations.size() &&
-                expectations.size() == 31 + WINDOW_TOPMOST_ACTION_COUNT,
+                expectations.size() == 32 + WINDOW_TOPMOST_ACTION_COUNT,
             "the global-hotkeys catalog must expose all shortcut actions exactly once");
     const auto* stitch = catalog.itemForShortcut(Action::StitchSelectedImages);
     const auto* stitchSchema = storage::ConfigurationSchema::entry(
@@ -2839,12 +2842,17 @@ void globalShortcutActionsHaveStableContracts() {
             : nullptr;
     const auto* screenshotSection =
         catalog.section(QStringLiteral("global-hotkeys"), QStringLiteral("screenshot"));
-    require(screenshotSection != nullptr && screenshotSection->items.size() >= 10 &&
+    require(screenshotSection != nullptr && screenshotSection->items.size() >= 11 &&
                 screenshotSection->items.at(6).id == QStringLiteral("quick.screenshot-scrolling") &&
                 screenshotSection->items.at(7).id == QStringLiteral("quick.screenshot-copy") &&
                 screenshotSection->items.at(8).id == QStringLiteral("quick.screenshot-save") &&
-                screenshotSection->items.at(9).id == QStringLiteral("quick.screenshot-quick-save"),
-            "Scrolling screenshot must immediately precede Copy to clipboard and save actions");
+                screenshotSection->items.at(9).id ==
+                    QStringLiteral("quick.screenshot-quick-save") &&
+                screenshotSection->items.at(10).id ==
+                    QStringLiteral("quick.screenshot-pin-window-to-screen") &&
+                screenshotSection->items.at(10).title.translated() ==
+                    QStringLiteral("Pin window to screen"),
+            "Pin window to screen must immediately follow Quick save");
     const auto* scrolling = catalog.itemForShortcut(Action::ScreenshotScrolling);
     const auto* scrollingSchema = storage::ConfigurationSchema::entry(scrolling->configurationKey);
     const auto& scrollingShortcut =

@@ -3931,6 +3931,10 @@
             <translation>权限状态与授权</translation>
         </message>
         <message>
+            <source>Pin a live view of the window in the selected area</source>
+            <translation>将选区内窗口的实时画面固定到屏幕</translation>
+        </message>
+        <message>
             <source>Pin clipboard content to screen</source>
             <translation>将剪贴板内容固定到屏幕</translation>
         </message>
