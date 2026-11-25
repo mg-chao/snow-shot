@@ -344,9 +344,17 @@ void PinnedWindowSelectionController::endGeometry(bool cancel) {
     const auto state = m_geometryState;
     if (!state || state->ending)
         return;
+    if (!cancel && state->updateQueued) {
+        updateGeometry(state->queuedPosition);
+        if (m_geometryState != state)
+            return;
+    }
     m_geometryState.reset();
     state->ending = true;
     state->active = false;
+    if (state->grabber && state->owner && state->owner->m_mouseStroke &&
+        state->owner->m_mouseStroke->started)
+        state->owner->m_mouseStroke.reset();
     if (state->grabber && QWidget::mouseGrabber() == state->grabber)
         state->grabber->releaseMouse();
     for (const auto& member : state->members) {
@@ -452,9 +460,7 @@ bool PinnedWindowSelectionController::scaleBy(ScreenshotPinnedWindow* window,
         window->m_scalePercent <= 0)
         return false;
     for (const auto& selected : selectedWindows()) {
-        if (selected && !selected->m_thumbnailMode && selected->m_ocrMode &&
-            (!selected->m_recognitionSession ||
-             !selected->m_recognitionSession->originalImageTranslationActive()))
+        if (selected && !selected->m_thumbnailMode && !selected->canScaleContent())
             return false;
     }
     const double requested = requestedLeaderScale / window->m_scalePercent;

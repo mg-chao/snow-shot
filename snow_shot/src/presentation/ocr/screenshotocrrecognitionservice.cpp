@@ -1298,7 +1298,7 @@ class ScreenshotOcrRecognitionService::Impl final {
                                                                       "Text recognition failed"));
                             return;
                         }
-                        line.quad.push_back({x, y});
+                        line.quad.push_back({static_cast<qreal>(x), static_cast<qreal>(y)});
                     }
                     line.text = std::move(text);
                     line.confidence = static_cast<qreal>(confidence);

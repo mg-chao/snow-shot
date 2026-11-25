@@ -469,7 +469,7 @@ bool ScreenshotPinnedWindow::commitPreparedCrop(
         configureRecognitionSession();
         configureRecognitionTarget();
         if (recognitionVisible)
-            activateRecognitionMode(static_cast<int>(recognitionMode), false);
+            activateRecognitionMode(static_cast<int>(recognitionMode), std::nullopt);
     }
     updateCropPresentation();
     schedulePersistence();

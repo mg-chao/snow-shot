@@ -536,11 +536,7 @@ void ScreenshotPinnedWindow::executeMouseClick(snow_shot::mouse::Action action,
         applyScale(100);
         break;
     case Thumbnail:
-        if (!isLiveWindow()) {
-            if (m_selectionController)
-                m_selectionController->clearSelection();
-            setThumbnailMode(!m_thumbnailMode);
-        }
+        setThumbnailMode(!m_thumbnailMode);
         break;
     case HideAtTop:
         toggleHideToTop();
@@ -560,8 +556,7 @@ void ScreenshotPinnedWindow::executeMouseClick(snow_shot::mouse::Action action,
         showContextMenu(global);
         break;
     case Annotation:
-        if (m_editingEnabled)
-            setEditMode(m_editController == nullptr || !m_editController->editMode());
+        toggleEditMode();
         break;
     case MultiSelect:
         if (m_selectionController)
@@ -768,7 +763,8 @@ bool ScreenshotPinnedWindow::handleMouseOperation(QObject* watched, QEvent* even
         return false;
     }
     if (type == QEvent::MouseButtonRelease || m_mouseStroke || m_clickThroughActive ||
-        m_geometryAnimating || (!topHandle && isControlsPanelPosition(local.toPoint())))
+        (m_geometryAnimating && m_pendingEdit != PendingEdit::Expansion) ||
+        (!topHandle && isControlsPanelPosition(local.toPoint())))
         return false;
     return beginMouseOperation(watched, *mouse, local, toolFallback, topHandle);
 }
@@ -871,6 +867,12 @@ bool ScreenshotPinnedWindow::beginMouseOperation(QObject* receiver, QMouseEvent&
     const auto& clickSequence = topHandle ? m_topHandleClickSequence : m_clickSequence;
     stroke.press = resolvePress(Category::Pinned, event, clickSequence.kind(),
                                 topHandle ? *static_cast<QWidget*>(receiver) : *this);
+    if (m_geometryAnimating) {
+        if (stroke.press.click != Action::Annotation)
+            return false;
+        // Retain the normal press/release threshold, without starting a drag during expansion.
+        stroke.press.drag.reset();
+    }
     const bool force = stroke.press.drag == Action::ForceMove;
     const auto semanticKeys = force ? Qt::AltModifier : Qt::NoModifier;
     const bool geometry = force || stroke.press.drag == Action::Move;
@@ -934,21 +936,23 @@ bool ScreenshotPinnedWindow::handlePinnedGesture(QObject* watched, QEvent* event
         resetPinnedGestures();
         return false;
     }
+    if (event->type() != QEvent::NativeGesture && event->type() != QEvent::Wheel)
+        return false;
     if (watched != this && watched != m_canvas && watched != m_recognitionContent)
         return false;
-    if ((!m_ocrMode && m_editController && m_editController->editMode()) ||
-        (m_ocrMode &&
-         (!m_recognitionSession || !m_recognitionSession->originalImageTranslationActive())))
+    if ((!m_ocrMode && m_editController && m_editController->editMode()) || !canScaleContent())
         return false;
     if (event->type() == QEvent::NativeGesture) {
         auto* gesture = static_cast<QNativeGestureEvent*>(event);
         if (gesture->gestureType() == Qt::BeginNativeGesture) {
             resetPinnedGestures();
             m_pinchActive = true;
+            gesture->accept();
             return true;
         }
         if (gesture->gestureType() == Qt::EndNativeGesture) {
             m_pinchActive = false;
+            gesture->accept();
             return true;
         }
         if (gesture->gestureType() != Qt::ZoomNativeGesture)
@@ -956,13 +960,13 @@ bool ScreenshotPinnedWindow::handlePinnedGesture(QObject* watched, QEvent* event
         const double factor = 1. + gesture->value();
         if (std::isfinite(factor) && factor > 0) {
             const QPointF local = windowPositionForEvent(watched, gesture->position());
-            applyWheelScale(std::clamp(m_scalePercent * factor, 10., 500.),
-                            nativePositionForWindowPosition(local));
+            applyPointerScale(std::clamp(m_scalePercent * factor, 10., 500.),
+                              nativePositionForWindowPosition(local));
         }
+        // Qt propagates an unaccepted native gesture from the canvas to its parent pin.
+        gesture->accept();
         return true;
     }
-    if (event->type() != QEvent::Wheel)
-        return false;
     auto* wheel = static_cast<QWheelEvent*>(event);
     if (wheel->phase() == Qt::ScrollMomentum || m_pinchActive)
         return true;

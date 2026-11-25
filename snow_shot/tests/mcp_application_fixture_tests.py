@@ -639,6 +639,63 @@ def exercise(client, directory):
             "scope": "Isolated app storage and local HTTP provider; no external providers or recording devices"}
 
 
+def mutate_pin(client, identifier, tool, expected_error=None, **kwargs):
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        current = client.tool("snow_shot_pinned_get", {"id": identifier})
+        response = client.request("tools/call", {"name": tool, "arguments": dict(
+            id=identifier, expected_revision=current["revision"], **kwargs)})
+        result = response["structuredContent"]
+        if not response.get("isError", False):
+            assert expected_error is None, (expected_error, response)
+            return result
+        error = result["error"]["code"]
+        if error == expected_error:
+            return result
+        assert error in ("stale_revision", "busy"), response
+        time.sleep(.025)
+    raise AssertionError("pin never reached a stable revision")
+
+
+def exercise_pin_actions(client, directory):
+    source = directory / "pin.png"
+    png(source, 240, 180)
+    created = client.tool("snow_shot_pinned_create", {"source": {"kind": "file", "path": str(source)}})
+    identifier = created["result"]["id"]
+
+    def update(**properties):
+        return mutate_pin(client, identifier, "snow_shot_pinned_update", properties=properties)["result"]
+
+    def edit(action, **payload):
+        return mutate_pin(client, identifier, "snow_shot_pinned_edit", action=action, payload=payload)["result"]
+
+    original = created["result"]["geometry"]
+    assert not edit("editing", enabled=False)["editing"]
+    assert update(thumbnail=True)["thumbnail"]
+    for _ in range(2):
+        reply = edit("editing", enabled=True)
+        assert reply["editing"] and not reply["thumbnail"] and reply["geometry"] == original, reply
+    assert update(click_through=True)["click_through"]
+    reply = edit("tool", tool="arrow")
+    assert reply["editing"] and not reply["click_through"] and reply["active_tool"] == "arrow", reply
+    assert update(thumbnail=True)["thumbnail"]
+    reply = edit("tool", tool="rectangle")
+    assert reply["editing"] and not reply["thumbnail"] and reply["geometry"] == original, reply
+    state = client.tool("snow_shot_pinned_get", {"id": identifier})["result"]
+    assert state["active_tool"] == reply["active_tool"] and state["editing"]
+    assert not edit("editing", enabled=False)["editing"]
+    for key, value in (("scale_percent", 501), ("opacity_percent", 9)):
+        current = client.tool("snow_shot_pinned_get", {"id": identifier})
+        client.request("tools/call", {"name": "snow_shot_pinned_update", "arguments": {
+            "id": identifier, "expected_revision": current["revision"],
+            "properties": {key: value, "thumbnail": True}}}, expected_rpc_error=-32602)
+        assert not client.tool("snow_shot_pinned_get", {"id": identifier})["result"]["thumbnail"]
+    assert update(click_through_opacity_percent=0)["click_through_opacity_percent"] == 0
+    mutate_pin(client, identifier, "snow_shot_pinned_action", action="destroy")
+    return {"domains": ["pinned_editing", "pinned_tools", "pinned_geometry", "quit_acknowledgement"],
+            "scope": "Pinned action replies and subsequent reads through the local MCP bridge"}
+
+
 def exercise_animation(client, directory):
     for kind in ("gif", "webp", "apng"):
         source = directory / f"animation-source.{kind}"
@@ -652,22 +709,8 @@ def exercise_animation(client, directory):
         def state():
             return client.tool("snow_shot_pinned_get", {"id": identifier})
 
-        def mutate(tool, expected_error=None, **kwargs):
-            deadline = time.monotonic() + 10
-            while time.monotonic() < deadline:
-                current = state()
-                response = client.request("tools/call", {"name": tool, "arguments": dict(
-                    id=identifier, expected_revision=current["revision"], **kwargs)})
-                result = response["structuredContent"]
-                if not response.get("isError", False):
-                    assert expected_error is None, (expected_error, response)
-                    return result
-                error = result["error"]["code"]
-                if error == expected_error:
-                    return result
-                assert error in ("stale_revision", "busy"), response
-                time.sleep(.025)
-            raise AssertionError("animated pin never reached a stable revision")
+        def mutate(tool, **kwargs):
+            return mutate_pin(client, identifier, tool, **kwargs)
 
         # Disabling editing verifies that imports retained animation identity,
         # rather than silently pinning only the first decoded frame.
@@ -790,6 +833,7 @@ def main():
                         help="Verify disabling acknowledges before private IPC teardown")
     parser.add_argument("--clipboard-only", action="store_true",
                         help="Exercise only repeated media clipboard publication and cancellation")
+    parser.add_argument("--pin-actions-only", action="store_true")
     parser.add_argument("--animation-only", action="store_true",
                         help="Exercise only animated media imports, transforms, replacement and exports")
     args = parser.parse_args()
@@ -813,7 +857,9 @@ def main():
                                               (directory / "application.log").read_text(encoding="utf-8"))
                 client = Client(args.bridge, descriptor)
                 try:
-                    if args.animation_only:
+                    if args.pin_actions_only:
+                        report = exercise_pin_actions(client, directory)
+                    elif args.animation_only:
                         report = exercise_animation(client, directory)
                     elif args.clipboard_only:
                         report = exercise_clipboard(client, directory)

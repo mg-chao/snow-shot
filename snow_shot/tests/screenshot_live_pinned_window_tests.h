@@ -89,7 +89,7 @@ class ScreenshotLivePinnedWindowTestAccess {
         return window.m_staticAutomaticTextRecognition;
     }
     static void recognize(ScreenshotPinnedWindow& window) {
-        window.activateRecognitionMode(0, false);
+        window.activateRecognitionMode(0, std::nullopt);
     }
     static void copy(ScreenshotPinnedWindow& window) {
         window.copyCurrentViewport();

@@ -79,6 +79,8 @@ limited_integer!(KeyboardSize, 32, 128);
 limited_integer!(WebcamSize, 50, 500);
 limited_integer!(MouseHighlightRadius, 8, 128);
 limited_integer!(Percentage, 0, 100);
+limited_integer!(PinnedOpacityPercent, 10, 100);
+limited_integer!(PinnedScalePercent, 10, 500);
 limited_integer!(ArtifactChunkSize, 1, 262144);
 limited_integer!(ExportQuality, 1, 100);
 integer_choices!(FrameRate, [5, 10, 15, 24, 30, 60, 120, 83]);
@@ -462,7 +464,20 @@ choices!(Flip {
     Horizontal,
     Vertical
 });
-input!(PinnedProperties { geometry: Option<[f64; 4]>, scale_percent: Option<f64>, opacity_percent: Option<Percentage>, click_through: Option<bool>, click_through_opacity_percent: Option<Percentage>, always_on_top: Option<bool>, show_border: Option<bool>, show_shadow: Option<bool>, thumbnail: Option<bool>, hide_to_top: Option<bool>, rotation: Option<Rotation>, flip: Option<Flip> });
+input!(PinnedProperties {
+    geometry: Option<[f64; 4]>,
+    scale_percent: Option<PinnedScalePercent>,
+    opacity_percent: Option<PinnedOpacityPercent>,
+    click_through: Option<bool>,
+    click_through_opacity_percent: Option<Percentage>,
+    always_on_top: Option<bool>,
+    show_border: Option<bool>,
+    show_shadow: Option<bool>,
+    thumbnail: Option<bool>,
+    hide_to_top: Option<bool>,
+    rotation: Option<Rotation>,
+    flip: Option<Flip>
+});
 input!(PinnedUpdate {
     id: String,
     properties: PinnedProperties
@@ -1432,6 +1447,43 @@ mod tests {
             .is_err()
         );
         assert!(schema("snow_shot_pinned_edit",Some(json!({"id":"p","expected_revision":1,"action":"recognize","payload":{"kind":"text"}}))).is_ok());
+    }
+
+    #[test]
+    fn pinned_percentage_ranges_match_the_window() {
+        let published = Value::Object(model::<PinnedProperties>(None).unwrap());
+        for (key, min, max) in [
+            ("scale_percent", 10, 500),
+            ("opacity_percent", 10, 100),
+            ("click_through_opacity_percent", 0, 100),
+        ] {
+            let choices = published["properties"][key]["anyOf"].as_array().unwrap();
+            let reference = choices
+                .iter()
+                .find_map(|choice| choice["$ref"].as_str())
+                .unwrap();
+            assert_eq!(
+                published
+                    .pointer(reference.strip_prefix('#').unwrap())
+                    .unwrap(),
+                &json!({"type":"integer", "minimum":min, "maximum":max}),
+                "published range for {key}"
+            );
+            for (value, valid) in [
+                (json!(min - 1), false),
+                (json!(min), true),
+                (json!(max), true),
+                (json!(max + 1), false),
+                (json!(25.5), false),
+            ] {
+                let input = json!({"id":"pin", "expected_revision":1, "properties":{(key):value}});
+                assert_eq!(
+                    schema("snow_shot_pinned_update", Some(input)).is_ok(),
+                    valid,
+                    "{key} {value}"
+                );
+            }
+        }
     }
 
     #[test]

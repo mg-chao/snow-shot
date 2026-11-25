@@ -1,0 +1,58 @@
+# Pinned window actions
+
+A binding identifies a gesture or key sequence. The receiving widget owns its interaction semantics, including drag thresholds, repeat suppression, modifier matching, wheel accumulation, and the first release of a double-click. The pinned window owns the transition for one pin. The selection controller owns ordered membership and shared geometry transactions. These boundaries also apply when settings rebind the inputs.
+
+## Annotation and thumbnail
+
+| Entry point | Intent and target | Completion |
+| --- | --- | --- |
+| Annotation gesture or drawing shortcut | Toggle the requested annotation state of the receiving pin. A second toggle can cancel a pending enable. | A regular pin opens its palette immediately. A thumbnail opens it after its expanded native geometry commits. |
+| Edit button, initial annotation option, checked Annotation menu item | Enable that pin. The configured initial request waits for its first content frame. An explicit UI request can edit a presented shell. The unchecked item disables editing. | Repeated enables share an expansion. Disabling a fresh pin succeeds without constructing a controller. |
+| Toolbar Confirm | Exit recognition on this pin and end the current edit. | Recognition exits during the click. The palette retires after dispatch returns. A later request or content replacement invalidates the queued exit. |
+| MCP editing or tool | Set the identified pin to the requested state. Selecting a drawing tool requires active annotation. | A successful reply contains the committed state. Thumbnail restoration is immediate. Entry also restores native input from click-through, exits hide at top, and finishes window interaction. An unavailable capability or failed restoration returns an error. |
+| Thumbnail gesture, shortcut or checked menu item | Toggle or set the receiving pin's display mode. Entering exits annotation and recognition. | Interactive geometry animates to its destination. Immediate updates finish the geometry before replying. Reversal retains the expanded rectangle. Native geometry failure rolls back the mode and its rectangle. |
+| Ordinary left release | The unmodified click can clear the ordered selection before the second press. Copy text, Menu and Multi-select can use the selection on a matching double-click, so their clear is deferred. | A thumbnail command makes no selection change of its own. A modified or side-button gesture, shortcut, or menu command retains the selection established by its own input sequence. |
+
+`ScreenshotPinnedWindow` decides whether the presented content and configuration allow annotation. It retains the requested state during first-frame setup, thumbnail expansion, and Confirm. The actual editing flag belongs to `ScreenshotPinnedEditController`, which applies an accepted transition to the canvas and palette. A failed expansion, disable, conflicting mode, interrupted geometry change, hide, retirement, or replacement cancels deferred entry. Background recognition, canvas transactions and tool-style updates have their own availability rules and can run with the palette closed. MCP window edits require a presented pin with a published first frame. Live captures and animated images retain their separate protocol errors.
+
+## Other entry points and scopes
+
+| Action | Availability, target and completion |
+| --- | --- |
+| Move, force-move, border resize, crop and pan | A drag owns the press only after its threshold. Move and resize may become a shared selection transaction. Crop, pan and content replacement belong to one pin. Locked geometry and active tools retain their existing input rules. A canceled shared gesture restores every participant. Entering annotation during a shared drag commits the latest movement for all participants. |
+| Wheel zoom, fine zoom and native pinch | A complete wheel step chooses the next configured level in its direction. Fine zoom uses one percentage point. A native pinch applies its fractional factor once per event. Pointer scaling uses the configured anchor on one pin. When the selection owns geometry it applies one bounded factor around each eligible member's own top-left, with rollback on failure. |
+| Scale preset, increase, decrease and reset zoom | Menu presets, reset gestures and MCP set an absolute percentage on the target. The increase and decrease shortcuts and menu commands add ten points to the rounded current percentage. Single-window scaling uses the same reference size, native geometry verification and scale adoption. General recognition views restrict scaling. Original-image translation allows it. |
+| Opacity, border, shadow, on-top, lock, click-through and hide at top | Menu checks and MCP properties express a desired value. Bound toggle commands use the current value. General opacity changes one pin, including when it is selected. Interactive general opacity uses 10–100%. Click-through opacity uses 0–100%. MCP publishes and validates these integer ranges and the 10–500% scale range. A single update can enable click-through and scale a pin with recognition active. A failed native transition restores the prior presentation before the caller retries. Native input transparency must succeed for a click-through transition. Hide at top owns its reservation, reveal animation and handle. |
+| Rotate, flip, reset transform and animation playback | Image commands and MCP rotation and flip use the same transform operation on one pin. A static image commits after geometry succeeds. Animated pins retain asynchronous frame preparation and paint. Play, step and speed apply to the animation controller. |
+| Recognition, translation, drawing tools and canvas commands | Menu, shortcut and toolbar adapters select the requested recognition or drawing operation. Recognition availability depends on content, provider and edition. An explicit OCR interaction restores window input even when the provider is unavailable. Background MCP recognition can run with the toolbar closed. Undo and redo on the palette use recognition history when applicable. The canvas owns document changes and history for MCP annotation transactions. |
+| Copy, copy-and-close, export, save, upload and print | Gestures, shortcuts, the pin menu, palette controls and MCP export share the underlying pin operations. A pin supplies its viewport or original content according to the command. Toolbar copy observes text selection and recognition. Copy-and-close runs the normal close policy only after successful clipboard publication. File, print and upload jobs keep their existing completion and cancellation ownership. A drag export owns its release. |
+| Copy text, select, stitch, batch save and copy files | A copy-text gesture on a selected pin uses ordered selection. On another pin it uses that pin alone. The selection menu captures members and revision. The Batch actions menu and its four shortcuts resolve displayed pins in display-list order on invocation, including click-through pins and visible top handles. Select all filters those targets for selectability. Stitch preserves result order, and batch export reports per-target outcomes. |
+| Replace, convert, split, edit or compress an image | Paste, file drop, the Load new content menu and MCP replace target one pin. Replacement commits after decoding and verifying geometry, preserves its drawing document and retires obsolete content work. The menu can freeze a live frame into a static pin. Split, image editing and compression hand the source to their existing workflows. |
+| Overlay appearance and transparent layer | The normal menu and bound appearance shortcuts change the receiving pin's decoration. The transparent-layer menu changes the presentation of transparency. Export derives its image from content and the requested export mode. |
+| Cursor keys, drawing shortcuts and resize tool | Focus and active tool determine who handles the key. Cursor movement, window movement, canvas history and drawing tools keep their own bindings. An active editor can select the resize tool from the palette or its shortcut. |
+| Group, align, lock, close and destroy | Selection alignment and group changes use the selection controller and group manager. Selection and displayed-window commands explicitly identify their scope. Close retains each pin's exit-annotation and confirmation policy. Batch destroy freezes record IDs, invalidates a selection confirmation when its revision changes, and retires repository-backed windows after successful batch storage removal. |
+| Show, hide, restore and manage pins | The window-management menu, shake gesture and MCP management actions have distinct target sets. Management commands use the active group, other windows or stored record IDs according to the command. MCP show and destroy address records, including closed pins. Their acknowledgement is separate from the state returned by a synchronous editing request. |
+
+The focused `snow-shot-pinned-action-transition-tests` exercises input delivery, checked actions, palette controls, native failures and replacement on the same window. `snow-shot-mcp-pinned-action-fixture-tests` checks replies and later reads through the local bridge. `snow-shot-pinned-action-performance-benchmark` measures fresh and prewarmed presentation to the first content frame, the first annotation double-click to a visible palette, and hover, wheel and pinch delivery on a single pin and a two-pin selection.
+
+## Validation on macOS ARM64
+
+The 34 focused Debug CTests passed, including mouse operations, action transitions, drawing shortcuts, initial presentation, window pooling, content replacement, thumbnail recreation, lock, click-through, shared geometry, batch actions and the MCP fixtures. The native Cocoa multi-selection geometry test and the registered Release action benchmark also passed.
+
+The table compares the original staged first-use fix with this implementation on an Apple M4 using Qt 6.12.0 and the Release performance preset. Both executables ran the same offscreen benchmark with isolated settings. Five runs per revision were interleaved. Each run measured 30 fresh and 30 prewarmed first frames, 60 first double-clicks and 240 events per pointer scenario after warm-up. Values are the medians of the five per-run percentiles, in microseconds. The first-frame measurement starts at construction for a fresh pin and at presentation for a prewarmed shell.
+
+| Measured entry point | Before p50 | After p50 | Before p95 | After p95 |
+| --- | ---: | ---: | ---: | ---: |
+| Fresh shell to first content frame | 1,045.83 | 1,039.54 | 1,114.29 | 1,101.71 |
+| Prewarmed shell to first content frame | 171.33 | 172.38 | 200.04 | 188.54 |
+| First annotation double-click to visible palette | 15,309.00 | 15,260.40 | 15,564.50 | 15,537.60 |
+| Hover, one pin | 1.21 | 1.21 | 1.38 | 1.33 |
+| Wheel step, one pin | 52.83 | 53.38 | 57.54 | 57.54 |
+| Native pinch, one pin | 101.92 | 51.67 | 112.50 | 56.12 |
+| Hover, two selected pins | 1.67 | 1.67 | 1.83 | 1.83 |
+| Wheel step, two selected pins | 73.04 | 73.29 | 80.29 | 78.08 |
+| Native pinch, two selected pins | 139.75 | 70.42 | 153.75 | 77.58 |
+
+A native zoom update sent to a canvas previously propagated to its parent after the canvas handler applied it. The 3.5% benchmark input grew one pin by 7.12% in the baseline. Accepting the handled event applies the factor once, which also removes the second geometry transaction for a selection. Wheel and hover delivery exercise the same surfaces.
+
+To repeat the measured paths, build `snow-shot-pinned-window-tests` with the macOS ARM64 performance preset and run `ctest --test-dir build/snow-shot-macos-arm64-performance -R '^snow-shot-pinned-action-performance-benchmark$' -V`.

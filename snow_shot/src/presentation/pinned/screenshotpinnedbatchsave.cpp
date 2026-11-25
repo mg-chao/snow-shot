@@ -1,3 +1,4 @@
+#include "snow_shot/presentation/pinnedwindowselectioncontroller.h"
 #include "snow_shot/presentation/screenshotpinnedwindow.h"
 #include "snow_shot/presentation/screenshotexportartifact.h"
 #include "snow_shot/presentation/screenshotclipboardservice.h"
@@ -96,11 +97,10 @@ class ScreenshotPinnedBatchSaveSession final : public QObject {
   public:
     ScreenshotPinnedBatchSaveSession(ScreenshotPinnedWindow* owner,
                                      const QList<QPointer<ScreenshotPinnedWindow>>& targets,
-                                     ScreenshotClipboardService::PublicationId copyPublication = 0,
-                                     bool selected = false)
+                                     ScreenshotClipboardService::PublicationId copyPublication = 0)
         : QObject(owner), m_owner(owner), m_ownerId(owner->persistenceId()),
           m_ownerGeneration(owner->m_presentationGeneration), m_copyFiles(copyPublication != 0),
-          m_selected(selected), m_publicationId(copyPublication) {
+          m_publicationId(copyPublication) {
         activeBatchFileOperation = this;
         for (const auto& window : targets)
             m_targets.append({window, window ? window->persistenceId() : QString(),
@@ -125,7 +125,7 @@ class ScreenshotPinnedBatchSaveSession final : public QObject {
             m_artifact->cancel();
     }
 
-    void chooseDirectory() {
+    void chooseDirectory(snow_shot::presentation::PinnedBatchScope scope) {
         const snow_shot::storage::ScreenshotSettings settings;
         const QString initial = ScreenshotImageFileService::saveDialogDirectory(
             settings.lastManualSaveDirectory(), settings.imageSaveDirectory());
@@ -134,8 +134,9 @@ class ScreenshotPinnedBatchSaveSession final : public QObject {
         m_owner->setProperty("saveDialogOpen", true);
         const QString directory = QFileDialog::getExistingDirectory(
             m_owner,
-            m_selected ? ScreenshotPinnedWindow::tr("Save selected windows")
-                       : ScreenshotPinnedWindow::tr("Save displayed windows"),
+            scope == snow_shot::presentation::PinnedBatchScope::OrderedSelection
+                ? ScreenshotPinnedWindow::tr("Save selected windows")
+                : ScreenshotPinnedWindow::tr("Save displayed windows"),
             initial);
         if (!lifetime)
             return;
@@ -515,7 +516,6 @@ class ScreenshotPinnedBatchSaveSession final : public QObject {
     bool m_cancelled = false;
     bool m_dialogOpen = false;
     bool m_copyFiles;
-    bool m_selected;
     QString m_directory;
     QString m_baseName;
     QString m_lastError;
@@ -535,15 +535,16 @@ bool ScreenshotPinnedWindow::batchSavePending() {
     return !activeBatchFileOperation.isNull();
 }
 
-void ScreenshotPinnedWindow::saveDisplayedPinnedWindows() {
-    savePinnedWindows(displayedPinnedWindows(), false);
+bool ScreenshotPinnedWindow::canStartBatchExport() const {
+    return !m_closing && !m_printPending && !property("saveDialogOpen").toBool() &&
+           !batchSavePending();
 }
 
 void ScreenshotPinnedWindow::savePinnedWindows(
-    const QList<QPointer<ScreenshotPinnedWindow>>& targets, bool selected) {
-    if (!m_closing && !m_printPending && !property("saveDialogOpen").toBool() &&
-        !batchSavePending())
-        (new ScreenshotPinnedBatchSaveSession(this, targets, 0, selected))->chooseDirectory();
+    const QList<QPointer<ScreenshotPinnedWindow>>& targets,
+    snow_shot::presentation::PinnedBatchScope scope) {
+    if (canStartBatchExport())
+        (new ScreenshotPinnedBatchSaveSession(this, targets))->chooseDirectory(scope);
 }
 
 void ScreenshotPinnedWindow::saveDisplayedPinnedWindowsToDirectory(const QString& directory) {
@@ -553,8 +554,7 @@ void ScreenshotPinnedWindow::saveDisplayedPinnedWindowsToDirectory(const QString
 
 void ScreenshotPinnedWindow::copyPinnedWindowFiles(
     const QList<QPointer<ScreenshotPinnedWindow>>& targets) {
-    if (!m_closing && !m_printPending && !property("saveDialogOpen").toBool() &&
-        !batchSavePending()) {
+    if (canStartBatchExport()) {
         const auto publicationId = beginCopyRequest();
         (new ScreenshotPinnedBatchSaveSession(this, targets, publicationId))->startCopy();
     }
