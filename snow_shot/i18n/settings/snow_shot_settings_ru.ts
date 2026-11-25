@@ -3931,6 +3931,10 @@
             <translation>Статус разрешений и доступ</translation>
         </message>
         <message>
+            <source>Pin a live view of the window in the selected area</source>
+            <translation>Закрепить на экране окно из выбранной области в реальном времени</translation>
+        </message>
+        <message>
             <source>Pin clipboard content to screen</source>
             <translation>Закрепить содержимое буфера обмена на экране</translation>
         </message>

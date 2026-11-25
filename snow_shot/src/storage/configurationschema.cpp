@@ -1057,6 +1057,8 @@ constexpr SchemaEntryDescriptor kEntryDescriptors[] = {
      nullptr, nullptr, 2},
     {u"global_shortcuts/screenshot_quick_save", emptyArrayDefault(),
      ConfigurationValueKind::StringList, nullptr, nullptr, 2},
+    {u"global_shortcuts/screenshot_pin_window_to_screen", emptyArrayDefault(),
+     ConfigurationValueKind::StringList, nullptr, nullptr, 2},
     {u"global_shortcuts/screenshot_full_screen", emptyArrayDefault(),
      ConfigurationValueKind::StringList, nullptr, nullptr, 2},
     {u"global_shortcuts/screenshot_focused_window", emptyArrayDefault(),

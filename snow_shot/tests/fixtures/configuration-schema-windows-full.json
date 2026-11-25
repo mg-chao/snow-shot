@@ -1116,6 +1116,16 @@
       "defaultStringIsNull": false,
       "defaultValue": [],
       "integerRange": null,
+      "key": "global_shortcuts/screenshot_pin_window_to_screen",
+      "maximumListItems": 2,
+      "valueKind": "ShortcutList"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
       "key": "global_shortcuts/screenshot_full_screen",
       "maximumListItems": 2,
       "valueKind": "ShortcutList"

@@ -53,6 +53,7 @@ class ScreenshotController : public QObject {
         ConvertMarkdown,
         ConvertHtml,
         RecognizeTextAndCopy,
+        PinWindow,
     };
     Q_ENUM(CaptureAction)
     [[nodiscard]] bool captureForAction(CaptureAction action);
