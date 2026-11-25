@@ -1,6 +1,7 @@
 #include "snow_shot/storage/configurationarchive.h"
 #include "snow_shot/storage/configurationschema.h"
 #include "snow_shot/storage/configurationstore.h"
+#include "snow_shot/storage/exporttasks.h"
 #include "snow_shot/platform/minizippath.h"
 #include "snow_shot/customaimodelconfiguration.h"
 
@@ -261,11 +262,19 @@ void autoSaveAfterExecutionArchivesMigrateAndRoundTrip(const QTemporaryDir& temp
                 store.value(QStringLiteral("export_tasks/pinned_copy")) ==
                     QJsonArray{QStringLiteral("upload_to_cloud")},
             "snapshot replacement preserves the independent pinned rows");
+    const auto scopedKey = storage::exportTaskScopedKey(storage::ExportTrigger::ScreenshotCopy);
+    const QJsonArray selected{QStringLiteral("auto_save.normal"),
+                              QStringLiteral("upload_to_cloud.current_monitor")};
+    require(store.setValues({{key, save}, {scopedKey, selected}}),
+            "select all-types and scoped options together");
     const QString exported = temporary.filePath(QStringLiteral("tasks-round-trip.zip"));
     require(storage::ConfigurationArchive::write(exported, store.snapshot(),
                                                  storage::ConfigurationSchema::currentVersion())
-                    .isEmpty() &&
-                storage::ConfigurationArchive::read(exported).values.value(key) == save,
+                .isEmpty(),
+            "export both task records");
+    const auto roundTrip = storage::ConfigurationArchive::read(exported);
+    require(roundTrip.isValid() && roundTrip.values.value(key) == save &&
+                roundTrip.values.value(scopedKey) == selected,
             "export task selections survive archive round trip");
 }
 

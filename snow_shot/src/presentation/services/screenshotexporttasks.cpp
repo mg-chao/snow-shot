@@ -76,13 +76,14 @@ void saveEncodedExport(QObject* owner, ScreenshotEncodedExport file,
 } // namespace
 
 ScreenshotExportTasks ScreenshotExportTasks::capture(Trigger trigger,
-                                                     snow_shot::storage::ExportTasks excluded) {
+                                                     snow_shot::storage::ExportTasks excluded,
+                                                     snow_shot::storage::ScreenshotType type) {
     ScreenshotExportTasks result;
     result.trigger = trigger;
     const snow_shot::storage::ScreenshotSettings settings;
     const auto allowed = snow_shot::storage::exportTaskRow(trigger).allowed & ~excluded;
     if (allowed)
-        result.selected = settings.exportTasks(trigger) & allowed;
+        result.selected = settings.exportTasks(trigger, type) & allowed;
     if (result.selected.testFlag(Task::Upload)) {
         result.cloud = ScreenshotCloudUploadService::configuration();
         result.selected.setFlag(Task::Upload, result.cloud.has_value());

@@ -736,6 +736,7 @@ set(SNOW_SHOT_STORAGE_SOURCES
     src/storage/cloudsyncconfiguration.cpp
     src/storage/configurationstore.cpp
     src/storage/configurationschema.cpp
+    src/storage/exporttasks.cpp
     src/storage/exportfilename.cpp
     src/storage/timevariables.cpp
     src/storage/screenshotexportvariables.cpp

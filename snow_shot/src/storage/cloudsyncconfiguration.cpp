@@ -36,8 +36,13 @@ const auto kLocalLayoutHidden = QStringLiteral("hidden");
 const QJsonValue kUnavailableCloudValue(QJsonValue::Undefined);
 
 const ExportTaskRow* cloudSettingTaskRow(const QString& key) {
-    const auto row = std::find_if(exportTaskRows.cbegin(), exportTaskRows.cend(),
-                                  [&key](const auto& item) { return item.key == key; });
+    QStringView rowKey(key);
+    if (!rowKey.startsWith(u"export_tasks/"))
+        return nullptr;
+    const auto row =
+        std::find_if(exportTaskRows.cbegin(), exportTaskRows.cend(), [rowKey](const auto& item) {
+            return item.key == rowKey || exportTaskScopedKey(item.trigger) == rowKey;
+        });
     return row == exportTaskRows.cend() ? nullptr : &*row;
 }
 
@@ -87,7 +92,8 @@ bool platformSupportsCloudKey(const QString& key) {
     return key != QStringLiteral("tray/middle_click_action");
 #else
     return key != QStringLiteral("export_tasks/screenshot_airdrop") &&
-           key != QStringLiteral("export_tasks/pinned_airdrop");
+           key != QStringLiteral("export_tasks/pinned_airdrop") &&
+           key != exportTaskScopedKey(ExportTrigger::ScreenshotAirDrop);
 #endif
 }
 
@@ -104,10 +110,9 @@ bool deviceSupportsCloudValue(const QString& key, const QJsonValue& value) {
 QJsonArray projectCloudExportTasks(const ExportTaskRow& row, const QJsonArray& local,
                                    const QJsonArray& preserve) {
     QJsonArray result;
-    for (const auto& option : exportTaskOptions) {
+    for (const auto& option : exportTaskOptions(row.trigger)) {
         const auto value = QJsonValue(option.id.toString());
-        if (row.allowed.testFlag(option.task) &&
-            (option.task == ExportTask::Upload ? preserve.contains(value) : local.contains(value)))
+        if ((option.task == ExportTask::Upload ? preserve : local).contains(value))
             result.append(value);
     }
     return result;
@@ -121,6 +126,11 @@ const QStringList& cloudSettingKeys() {
         result.reserve(static_cast<qsizetype>(std::size(detail::kCloudSettingKeys)));
         for (const auto* key : detail::kCloudSettingKeys)
             result.append(QString::fromLatin1(key));
+        for (const auto& row : exportTaskRows) {
+            auto key = exportTaskScopedKey(row.trigger);
+            if (!key.isEmpty())
+                result.append(std::move(key));
+        }
         for (const auto& a : mouse::definitions())
             if (a.action != mouse::Action::Back)
                 result.append(a.key());

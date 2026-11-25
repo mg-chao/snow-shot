@@ -698,8 +698,10 @@ class CloudSettingsSyncService::Impl {
             const auto previous = oldLocal != it.value() && (!owner.isEmpty() || exportTasks)
                                       ? storage::cloudSettingValue(key, oldLocal)
                                       : value;
-            if (exportTasks && value == previous && oldLocal != it.value() &&
-                origin != ConfigurationWriteOrigin::Reset)
+            // One settings selection saves both export records. Send only the projections
+            // it changed, while still honoring explicit resets.
+            if (exportTasks && value == previous && origin != ConfigurationWriteOrigin::Reset &&
+                (origin == ConfigurationWriteOrigin::Explicit || oldLocal != it.value()))
                 continue;
             if (owner.isEmpty()) {
                 if (signedOut.value(key) != value) {

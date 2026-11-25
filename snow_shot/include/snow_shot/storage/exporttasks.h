@@ -23,16 +23,13 @@ enum class ExportTask { CopyImage = 1, CopyFile = 2, AutoSave = 4, Pin = 8, Uplo
 Q_DECLARE_FLAGS(ExportTasks, ExportTask)
 Q_DECLARE_OPERATORS_FOR_FLAGS(ExportTasks)
 
+enum class ScreenshotType { All, Normal, Scrolling, FocusedWindow, CurrentMonitor };
+
 struct ExportTaskOption {
     ExportTask task;
+    ScreenshotType type;
     QStringView id;
-};
-inline constexpr std::array exportTaskOptions{
-    ExportTaskOption{ExportTask::CopyImage, u"copy_to_clipboard"},
-    ExportTaskOption{ExportTask::CopyFile, u"copy_file"},
-    ExportTaskOption{ExportTask::AutoSave, u"auto_save"},
-    ExportTaskOption{ExportTask::Pin, u"pin_to_screen"},
-    ExportTaskOption{ExportTask::Upload, u"upload_to_cloud"},
+    const char* label;
 };
 
 struct ExportTaskRow {
@@ -69,11 +66,9 @@ inline const ExportTaskRow& exportTaskRow(ExportTrigger trigger) {
     return exportTaskRows.at(static_cast<size_t>(trigger));
 }
 
-inline QStringList exportTaskIds(ExportTasks tasks) {
-    QStringList ids;
-    for (const auto& option : exportTaskOptions)
-        if (tasks.testFlag(option.task))
-            ids.append(option.id.toString());
-    return ids;
-}
+const QList<ExportTaskOption>& exportTaskOptions(ExportTrigger trigger);
+QString exportTaskScopedKey(ExportTrigger trigger);
+QStringList exportTaskScopedOptionIds(ExportTrigger trigger);
+ExportTasks resolveExportTasks(ExportTrigger trigger, ScreenshotType type, const QStringList& ids);
+QStringList exportTaskIds(ExportTasks tasks);
 } // namespace snow_shot::storage

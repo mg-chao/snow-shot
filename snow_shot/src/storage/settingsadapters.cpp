@@ -1208,25 +1208,39 @@ bool ScreenshotSettings::setSelectionResizeMode(const QString& mode) const {
     return cache().setValue(QStringLiteral("screenshot/selection_resize_mode"), mode);
 }
 
-ExportTasks ScreenshotSettings::exportTasks(ExportTrigger trigger) const {
-    const auto& row = exportTaskRow(trigger);
-    const auto values = cache().value(row.key.toString()).toArray();
-    ExportTasks tasks;
-    for (const auto& value : values) {
-        const auto id = value.toString();
-        for (const auto& option : exportTaskOptions) {
-            if (option.id == id) {
-                tasks |= option.task;
-                break;
-            }
-        }
+QStringList ScreenshotSettings::selectedExportTaskIds(ExportTrigger trigger) const {
+    const auto key = exportTaskRow(trigger).key.toString();
+    const auto scopedKey = exportTaskScopedKey(trigger);
+    if (scopedKey.isEmpty())
+        return stringList(cache().value(key));
+
+    const auto values = cache().snapshot();
+    return stringList(values.value(key)) + stringList(values.value(scopedKey));
+}
+
+bool ScreenshotSettings::setSelectedExportTaskIds(ExportTrigger trigger,
+                                                  const QStringList& ids) const {
+    const auto key = exportTaskRow(trigger).key.toString();
+    const auto scopedKey = exportTaskScopedKey(trigger);
+    if (scopedKey.isEmpty())
+        return cache().setValue(key, stringArray(ids));
+
+    const auto scopedOptions = exportTaskScopedOptionIds(trigger);
+    QJsonArray allTypes;
+    QJsonArray scoped;
+    for (const auto& id : ids) {
+        auto& group = scopedOptions.contains(id.trimmed(), Qt::CaseInsensitive) ? scoped : allTypes;
+        group.append(id);
     }
-    return tasks & row.allowed;
+    return cache().setValues({{key, allTypes}, {scopedKey, scoped}});
+}
+
+ExportTasks ScreenshotSettings::exportTasks(ExportTrigger trigger, ScreenshotType type) const {
+    return resolveExportTasks(trigger, type, selectedExportTaskIds(trigger));
 }
 
 bool ScreenshotSettings::setExportTasks(ExportTrigger trigger, ExportTasks tasks) const {
-    const auto& row = exportTaskRow(trigger);
-    return cache().setValue(row.key.toString(), stringArray(exportTaskIds(tasks & row.allowed)));
+    return setSelectedExportTaskIds(trigger, exportTaskIds(tasks & exportTaskRow(trigger).allowed));
 }
 
 bool ScreenshotSettings::copyImageFileToClipboard() const {
