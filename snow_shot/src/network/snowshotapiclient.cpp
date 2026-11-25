@@ -43,6 +43,7 @@
 namespace {
 constexpr int kMaximumSide = 2880;
 constexpr int kWebpQuality = 75;
+constexpr int kCustomVisionPngCompressionLevel = 6;
 constexpr int kRequestTimeoutMs = 35'000;
 constexpr int kTranslationTimeoutMs = 120'000;
 // The built-in service accepts 600 requests/minute per identity. Share its eight
@@ -51,6 +52,7 @@ constexpr int kBuiltInChatStartIntervalMs = 100;
 constexpr int kMaximumBuiltInChatAttempts = 3;
 constexpr qsizetype kMaximumResponseBytes = snow_shot::network::kMaximumJsonResponseBytes;
 constexpr qsizetype kMaximumChatRequestBytes = 2 * 1024 * 1024;
+constexpr qsizetype kMaximumCustomVisionRequestBytes = 10 * 1024 * 1024;
 constexpr int kChatStreamEventsPerBatch = 64;
 constexpr int kChatStreamBatchMilliseconds = 4;
 
@@ -146,20 +148,25 @@ void applyExpertReasoning(QJsonObject& body, int completionLimit) {
 QByteArray imageChatBody(const QString& model, const QImage& image, const QString& prompt,
                          const std::function<QByteArray(const QImage&)>& prepare, bool custom,
                          const QString& provider, bool supportsReasoning) {
-    const QByteArray webp =
-        prepare ? prepare(image)
-                : SnowShotApiClient::encodeWebp(SnowShotApiClient::prepareImage(image));
-    if (webp.isEmpty()) {
+    QByteArray encodedImage;
+    if (prepare) {
+        encodedImage = prepare(image);
+    } else if (custom) {
+        encodedImage = snow_shot::image_codec::encodePng(image, kCustomVisionPngCompressionLevel);
+    } else {
+        encodedImage = SnowShotApiClient::encodeWebp(SnowShotApiClient::prepareImage(image));
+    }
+    if (encodedImage.isEmpty()) {
         return {};
     }
+    const auto prefix = custom ? QStringLiteral("data:image/png;base64,")
+                               : QStringLiteral("data:image/webp;base64,");
+    const QString imageUrl = prefix + QString::fromLatin1(encodedImage.toBase64());
     const QJsonArray content{
         QJsonObject{{QStringLiteral("type"), QStringLiteral("text")},
                     {QStringLiteral("text"), QStringLiteral("Convert this image faithfully.")}},
-        QJsonObject{
-            {QStringLiteral("type"), QStringLiteral("image_url")},
-            {QStringLiteral("image_url"),
-             QJsonObject{{QStringLiteral("url"), QStringLiteral("data:image/webp;base64,") +
-                                                     QString::fromLatin1(webp.toBase64())}}}}};
+        QJsonObject{{QStringLiteral("type"), QStringLiteral("image_url")},
+                    {QStringLiteral("image_url"), QJsonObject{{QStringLiteral("url"), imageUrl}}}}};
     QJsonObject body{{QStringLiteral("model"), model},
                      {QStringLiteral("stream"), true},
                      {QStringLiteral("messages"),
@@ -1873,12 +1880,16 @@ SnowShotApiClient::RequestToken SnowShotApiClient::streamImageRequest(
                 QCoreApplication::instance(),
                 snow_shot::runtime::trackRuntimeWork(
                     [guard, token, body, absoluteDeadline, conversation, correction]() {
-                        if (guard == nullptr || !guard->m_requests.contains(token)) {
+                        if (guard == nullptr) {
                             return;
                         }
-                        if (guard->finishExpiredImageRequest(token))
+                        const auto* request = guard->m_requests.value(token);
+                        if (!request || guard->finishExpiredImageRequest(token))
                             return;
-                        if (body.isEmpty() || body.size() > kMaximumChatRequestBytes) {
+                        const qsizetype maximumBytes = request->custom
+                                                           ? kMaximumCustomVisionRequestBytes
+                                                           : kMaximumChatRequestBytes;
+                        if (body.isEmpty() || body.size() > maximumBytes) {
                             SnowShotTranslationResult result;
                             result.error =
                                 body.isEmpty()

@@ -5,6 +5,7 @@
 #include "snowimageqtcodec.h"
 #include "boundednetworkresponse.h"
 
+#include <QColor>
 #include <QCoreApplication>
 #include <QEventLoop>
 #include <QElapsedTimer>
@@ -30,6 +31,7 @@
 
 #include <memory>
 #include <atomic>
+#include <optional>
 #include <utility>
 
 #include <cstring>
@@ -70,6 +72,17 @@ void require(bool condition, const char* message) {
         std::cerr << message << '\n';
         std::_Exit(1);
     }
+}
+
+QString visionImageUrl(const QJsonObject& body) {
+    const auto messages = body.value(QStringLiteral("messages")).toArray();
+    const auto content = messages.at(1).toObject().value(QStringLiteral("content")).toArray();
+    return content.at(1)
+        .toObject()
+        .value(QStringLiteral("image_url"))
+        .toObject()
+        .value(QStringLiteral("url"))
+        .toString();
 }
 
 QByteArray waitForHttpRequest(QTcpServer& server, const QByteArray& response,
@@ -1329,8 +1342,8 @@ void customModelConcurrency() {
     require(translation != 0, "translation before image accepted");
     respond(6);
     waitUntil([&] { return requests.size() == 8; }, "image starts after translation finishes");
-    require(received[requests[7]].contains("data:image/webp;base64,"),
-            "queued image body is retained");
+    require(received[requests[7]].contains("data:image/png;base64,"),
+            "queued custom image body retains its PNG");
     respond(7);
     waitUntil([&] { return completions == 8; }, "image and translation complete");
 
@@ -1439,8 +1452,8 @@ void customModelsUseIndependentOpenAiConnections() {
         require(!request.contains(model.selectionId().toUtf8()) &&
                     !request.contains("Display Name"),
                 "local identity is not sent to provider");
-        require((variant != 1 && variant != 4) || request.contains("data:image/webp;base64,"),
-                "vision request includes image content");
+        require((variant != 1 && variant != 4) || request.contains("data:image/png;base64,"),
+                "custom vision request includes PNG image content");
         QObject::disconnect(&server, nullptr, nullptr, nullptr);
     }
     // Catalog outages must not hide local configurations.
@@ -1591,8 +1604,12 @@ void customProvidersControlReasoningAcrossWorkflows() {
                                                 {},
                                                 QStringLiteral("provider-model"),
                                                 true};
-    QImage image(16, 16, QImage::Format_RGBA8888);
-    image.fill(Qt::white);
+    QImage image(3200, 32, QImage::Format_RGBA8888);
+    image.fill(QColor(50, 80, 110, 170));
+    image.setPixelColor(0, 0, Qt::blue);
+    image.setDevicePixelRatio(2.0);
+    const QByteArray expectedPng = snow_shot::image_codec::encodePng(image, 6);
+    const auto pngPrefix = QStringLiteral("data:image/png;base64,");
     for (const auto& provider : {QStringLiteral("openai"), QStringLiteral("qwen"),
                                  QStringLiteral("deepseek"), QStringLiteral("doubao")}) {
         for (const bool enabled : {false, true}) {
@@ -1650,9 +1667,17 @@ void customProvidersControlReasoningAcrossWorkflows() {
                                                          : QStringLiteral("disabled")}},
                             "DeepSeek and Doubao send only the explicit thinking type");
                 }
-                if (workflow != 0)
-                    require(QJsonDocument(body).toJson().contains("data:image/webp;base64,"),
-                            "provider-aware image requests retain image content");
+                if (workflow != 0) {
+                    const QString url = visionImageUrl(body);
+                    require(url.startsWith(pngPrefix), "custom vision uses a PNG data URL");
+                    const QByteArray png =
+                        QByteArray::fromBase64(url.mid(pngPrefix.size()).toLatin1());
+                    require(png == expectedPng, "custom vision encodes at PNG compression level 6");
+                    const QImage uploaded =
+                        snow_shot::image_codec::decode(png, snow::image::Format::png, "vision.png");
+                    require(uploaded.size() == image.size(),
+                            "custom vision uploads physical pixels without resizing");
+                }
                 server.delta(index, workflow == 3
                                         ? QStringLiteral("<table><tr><td>cell</td></tr></table>")
                                         : QStringLiteral("x^2"));
@@ -2805,9 +2830,10 @@ void tableVisionCorrectionsReusePreparedConversation() {
             server.streamPath = "/v1/chat/completions";
         }
         std::atomic_int encodes{0};
-        SnowShotApiClientTestAccess::prepare(client, [&](const QImage&) {
+        SnowShotApiClientTestAccess::prepare(client, [&](const QImage& sourceImage) {
             ++encodes;
-            return QByteArray("identical-encoded-image");
+            return custom ? snow_shot::image_codec::encodePng(sourceImage, 6)
+                          : QByteArrayLiteral("identical-encoded-image");
         });
         auto conversation = std::make_shared<SnowShotTableVisionConversation>();
         QImage image(16, 16, QImage::Format_RGBA8888);
@@ -2852,6 +2878,11 @@ void tableVisionCorrectionsReusePreparedConversation() {
                                      "correction request");
         const auto first = server.streams[0].body.value(QStringLiteral("messages")).toArray();
         const auto second = server.streams[1].body.value(QStringLiteral("messages")).toArray();
+        if (custom) {
+            require(visionImageUrl(server.streams[1].body)
+                        .startsWith(QStringLiteral("data:image/png;base64,")),
+                    "custom table correction reuses a PNG data URL");
+        }
         if (expert) {
             for (const auto& stream : server.streams) {
                 require(stream.body.value(QStringLiteral("reasoning_effort")) ==
@@ -2899,6 +2930,95 @@ void tableVisionCorrectionsReusePreparedConversation() {
         require(reasoningProgress == QList<bool>{true, false},
                 "correction reports independent reasoning progress for every provider");
     }
+}
+
+void customVisionBoundsTheSerializedBody() {
+    constexpr qsizetype maximumBytes = 10 * 1024 * 1024;
+    QTcpServer server;
+    require(server.listen(QHostAddress::LocalHost), "custom vision size fixture listens");
+    const snow_shot::CustomAiModelConfiguration model{
+        QStringLiteral("11111111-1111-4111-8111-111111111111"),
+        QStringLiteral("Vision size fixture"),
+        QStringLiteral("http://127.0.0.1:%1/v1").arg(server.serverPort()),
+        {},
+        QStringLiteral("provider-model"),
+        true};
+    SnowShotApiClient client(QString{});
+    client.setCustomModels({model});
+    const auto conversation = std::make_shared<SnowShotTableVisionConversation>();
+
+    QImage noise(1700, 1600, QImage::Format_RGB888);
+    auto* pixels = noise.bits();
+    quint32 random = 0x12345678;
+    for (qsizetype index = 0; index < noise.sizeInBytes(); ++index) {
+        random ^= random << 13;
+        random ^= random >> 17;
+        random ^= random << 5;
+        pixels[index] = static_cast<uchar>(random);
+    }
+    const QByteArray oversizedPng = snow_shot::image_codec::encodePng(noise, 6);
+    require(oversizedPng.size() < maximumBytes && (oversizedPng.size() + 2) / 3 * 4 > maximumBytes,
+            "oversized fixture fits as PNG and exceeds the limit as Base64");
+
+    std::optional<SnowShotTranslationResult> result;
+    const auto delta = [](const QString&) {};
+    const auto completion = [&](SnowShotTranslationResult value) { result = std::move(value); };
+    const auto waitForResult = [&] {
+        translation_tests::waitUntil([&] { return result.has_value(); },
+                                     "custom vision size request completes");
+        return std::exchange(result, std::nullopt).value();
+    };
+    const QByteArray events =
+        "data: {\"choices\":[{\"delta\":{\"content\":\"Unusable response\"}}]}\n\ndata: [DONE]\n\n";
+    const QByteArray response =
+        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: " +
+        QByteArray::number(events.size()) + "\r\nConnection: close\r\n\r\n" + events;
+    const auto receiveBodySize = [&] {
+        const auto request = waitForHttpRequest(server, response);
+        require(waitForResult().succeeded(), "request within the custom vision limit succeeds");
+        return request.size() - request.indexOf("\r\n\r\n") - 4;
+    };
+    const auto checkTooLarge = [&](const QString& error) {
+        const auto failure = waitForResult();
+        translation_tests::flushEvents();
+        require(failure.code == QStringLiteral("payload_too_large") && failure.error == error &&
+                    failure.httpStatus == 0,
+                "oversized custom vision requests return local smaller-area guidance");
+        require(!server.hasPendingConnections() &&
+                    SnowShotApiClientTestAccess::customQueued(client) == 0 &&
+                    SnowShotApiClientTestAccess::requests(client) == 0,
+                "oversized custom vision requests leave no connection or queued work");
+    };
+    require(client.streamTableVision(noise.copy(0, 0, 1600, 1500), model.selectionId(),
+                                     conversation, &client, delta, completion) != 0,
+            "large initial custom table request starts");
+    const qsizetype initialSize = receiveBodySize();
+    require(initialSize > 2 * 1024 * 1024 && initialSize < maximumBytes,
+            "custom vision sends a PNG body beyond the built-in request limit");
+
+    QString failedSource = QStringLiteral("Unusable \"response\"\n\u6d4b\u8bd5");
+    const auto startCorrection = [&] {
+        require(client.correctTableVision(conversation, failedSource, &client, delta, completion) !=
+                    0,
+                "custom table correction starts");
+    };
+    startCorrection();
+    const qsizetype initialCorrectionSize = receiveBodySize();
+    require(initialCorrectionSize > initialSize && initialCorrectionSize < maximumBytes,
+            "correction adds its own turns to the serialized body");
+    // ASCII padding adds one wire byte per character after UTF-8 encoding and JSON escaping.
+    failedSource += QString(maximumBytes - initialCorrectionSize, u'x');
+    startCorrection();
+    require(receiveBodySize() == maximumBytes, "a complete body of exactly 10 MiB is sent");
+
+    failedSource += u'x';
+    startCorrection();
+    checkTooLarge(QStringLiteral("The image is too large to recognize. Select a smaller area"));
+
+    require(
+        client.streamImageConversion({model.selectionId(), noise}, &client, delta, completion) != 0,
+        "large custom image conversion starts preparation");
+    checkTooLarge(QStringLiteral("The image is too large to convert. Select a smaller area"));
 }
 
 void visionPreparationRetainsMemoryActivity() {
@@ -3435,6 +3555,7 @@ int main(int argc, char** argv) {
     }
     if (application.arguments().contains(QStringLiteral("--table-vision-only"))) {
         tableVisionCorrectionsReusePreparedConversation();
+        customVisionBoundsTheSerializedBody();
         visionExtractionPreservesTypedOutputAndImageDetails();
         visionExtractionRejectsIncompleteAndInvalidResponses();
         visionLatexResponsesMustContainCompleteSource();
@@ -3508,6 +3629,7 @@ int main(int argc, char** argv) {
     customModelConcurrency();
     customModelsUseIndependentOpenAiConnections();
     customProvidersControlReasoningAcrossWorkflows();
+    customVisionBoundsTheSerializedBody();
     providerChangesCancelActiveQueuedAndPreparingRequests();
     manualProxyRoutesHttpAndHttpsRequests();
     apiClientUsesModelCatalogAndStreamingChatContracts();
