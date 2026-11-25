@@ -1126,8 +1126,20 @@
             <translation>Отменить скриншот</translation>
         </message>
         <message>
+            <source>Click-through</source>
+            <translation>Пропускать клики</translation>
+        </message>
+        <message>
             <source>Close</source>
             <translation>Закрыть</translation>
+        </message>
+        <message>
+            <source>Close all windows</source>
+            <translation>Закрыть все окна</translation>
+        </message>
+        <message>
+            <source>Close other windows</source>
+            <translation>Закрыть другие окна</translation>
         </message>
         <message>
             <source>Command</source>
@@ -1186,6 +1198,10 @@
             <translation>Скрытие у верхнего края экрана</translation>
         </message>
         <message>
+            <source>Hide other windows</source>
+            <translation>Скрыть другие окна</translation>
+        </message>
+        <message>
             <source>Left-button double-click</source>
             <translation>Двойной щелчок левой кнопкой</translation>
         </message>
@@ -1196,6 +1212,10 @@
         <message>
             <source>Left-button single-click</source>
             <translation>Щелчок левой кнопкой</translation>
+        </message>
+        <message>
+            <source>Lock mode</source>
+            <translation>Режим блокировки</translation>
         </message>
         <message>
             <source>Menu</source>
@@ -1272,6 +1292,10 @@
         <message>
             <source>Shift</source>
             <translation>Shift</translation>
+        </message>
+        <message>
+            <source>Show all windows</source>
+            <translation>Показать все окна</translation>
         </message>
         <message>
             <source>Show text recognition results</source>
@@ -2479,6 +2503,14 @@
             <translation>Содержимое буфера обмена</translation>
         </message>
         <message>
+            <source>Close all windows</source>
+            <translation>Закрыть все окна</translation>
+        </message>
+        <message>
+            <source>Close other windows</source>
+            <translation>Закрыть другие окна</translation>
+        </message>
+        <message>
             <source>Close window</source>
             <translation>Закрыть окно</translation>
         </message>
@@ -3287,6 +3319,10 @@
             <translation>Скрыть или показать все окна текущей группы</translation>
         </message>
         <message>
+            <source>Hide other windows</source>
+            <translation>Скрыть другие окна</translation>
+        </message>
+        <message>
             <source>Hide the toolbar near the left or right screen edge. Hover over the edge control to show it again</source>
             <translation>Скрывать панель у левого или правого края экрана. Наведите указатель на край, чтобы показать её снова.</translation>
         </message>
@@ -3321,6 +3357,10 @@
         <message>
             <source>Image and document files</source>
             <translation>Файлы изображений и документов</translation>
+        </message>
+        <message>
+            <source>Image compression</source>
+            <translation>Сжатие изображения</translation>
         </message>
         <message>
             <source>Image editing</source>
@@ -4917,6 +4957,10 @@
         <message>
             <source>Show a system notification when export finishes. Click it to locate the exported file</source>
             <translation>Показывать системное уведомление по завершении экспорта. Нажмите на него, чтобы открыть папку с экспортированным файлом</translation>
+        </message>
+        <message>
+            <source>Show all windows</source>
+            <translation>Показать все окна</translation>
         </message>
         <message>
             <source>Show border</source>

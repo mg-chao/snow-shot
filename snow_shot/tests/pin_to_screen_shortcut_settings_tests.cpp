@@ -2,6 +2,7 @@
 #include "snow_shot/presentation/settings/settingsbackend.h"
 #include "snow_shot/presentation/settings/settingsruntimesession.h"
 #include "snow_shot/storage/applicationstorage.h"
+#include "snow_shot/storage/configurationschema.h"
 #include "snow_shot/storage/settingsadapters.h"
 
 #include <QApplication>
@@ -22,6 +23,7 @@ void require(bool condition, const char* message) {
 
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
+    namespace mouse = snow_shot::mouse;
     namespace storage = snow_shot::storage;
     namespace settings = snow_shot::presentation::settings;
     QTemporaryDir temporary;
@@ -32,6 +34,25 @@ int main(int argc, char** argv) {
             "initialize pinned shortcut settings storage");
     const storage::PinToScreenShortcutSettings pinned;
     const auto defaults = pinned.allShortcuts();
+    const QStringList menuShortcuts{
+        QStringLiteral("split_image"),        QStringLiteral("image_editing"),
+        QStringLiteral("image_compression"),  QStringLiteral("show_all_windows"),
+        QStringLiteral("hide_other_windows"), QStringLiteral("close_other_windows"),
+        QStringLiteral("close_all_windows")};
+    const std::pair<mouse::Action, mouse::Binding> menuGestures[] = {
+        {mouse::Action::Lock, {mouse::Kind::Click, Qt::BackButton}},
+        {mouse::Action::ClickThrough, {mouse::Kind::DoubleClick, Qt::ForwardButton}},
+        {mouse::Action::ShowAllWindows, {mouse::Kind::Click, Qt::BackButton, Qt::ShiftModifier}},
+        {mouse::Action::HideOtherWindows,
+         {mouse::Kind::Click, Qt::ForwardButton, Qt::ShiftModifier}},
+        {mouse::Action::CloseOtherWindows, {mouse::Kind::Click, Qt::BackButton, Qt::AltModifier}},
+        {mouse::Action::CloseAllWindows, {mouse::Kind::Click, Qt::ForwardButton, Qt::AltModifier}},
+    };
+    const auto menuShortcut = [](qsizetype index) {
+        return snow_shot::shortcuts::ShortcutBindingList{
+            QStringLiteral("Ctrl+Alt+Shift+F%1").arg(index + 1)};
+    };
+
     require(pinned.shortcuts(QStringLiteral("toggle_playback")) ==
                     snow_shot::shortcuts::ShortcutBindingList{QStringLiteral("Space")} &&
                 pinned.shortcuts(QStringLiteral("drawing_mode")) ==
@@ -127,6 +148,68 @@ int main(int argc, char** argv) {
                     storage::DrawingShortcutSettings().allShortcuts() == drawingBefore,
                 "pinned shortcut reset must restore the complete map and preserve other scopes");
         }
+        for (qsizetype i = 0; i < menuShortcuts.size(); ++i) {
+            const auto& id = menuShortcuts[i];
+            const auto* field = settings::builtInSettingsRegistry().field(
+                QStringLiteral("pin-to-screen-shortcut.") + id);
+            require(field &&
+                        field->definition->configurationKey ==
+                            QStringLiteral("pin_to_screen_shortcuts/") + id &&
+                        defaults.contains(id) && defaults[id].isEmpty() &&
+                        session.applyLocalShortcuts(scope, id, menuShortcut(i)),
+                    "every new keyboard row starts unassigned and accepts a shortcut");
+        }
+        const QString editId = QStringLiteral("image_editing");
+        const QString editKey = QStringLiteral("pin_to_screen_shortcuts/image_editing");
+        const auto savedEdit = pinned.shortcuts(editId);
+        const auto pasteKeys = QKeySequence::keyBindings(QKeySequence::Paste);
+        require(!pasteKeys.isEmpty(), "the platform provides a Paste shortcut");
+        for (const auto& sequence : pasteKeys) {
+            if (sequence.count() != 1)
+                continue;
+            const snow_shot::shortcuts::ShortcutBinding paste{
+                sequence.toString(QKeySequence::PortableText)};
+            const auto result = backend.validateLocalShortcut(scope, editId, paste);
+            auto mixed = savedEdit;
+            mixed.append(paste);
+            const auto raw = snow_shot::shortcuts::shortcutBindingsToJson(mixed);
+            require(!result.supported &&
+                        result.failureReason ==
+                            snow_shot::presentation::GlobalShortcutFailureReason::AlreadyInUse &&
+                        !session.applyLocalShortcuts(scope, editId, mixed) &&
+                        !pinned.setShortcuts(editId, mixed) &&
+                        !applicationStorage.configuration().setValue(editKey, raw) &&
+                        pinned.shortcuts(editId) == savedEdit,
+                    "a Paste conflict rejects the entire pinned assignment and preserves its "
+                    "previous keys");
+            const auto migrated =
+                storage::ConfigurationSchema::migrateLegacyValues({{editKey, raw}});
+            require(migrated.value(editKey) ==
+                        snow_shot::shortcuts::shortcutBindingsToJson(savedEdit),
+                    "loading a legacy Paste assignment preserves the other shortcut");
+        }
+        for (const auto& [action, gesture] : menuGestures) {
+            require(backend.mouseBindings().get(action) == mouse::Binding{} &&
+                        backend.applyMouseOperation(action, gesture),
+                    "every new mouse row starts unassigned and accepts a gesture");
+        }
+        require(!session.applyLocalShortcuts(scope, menuShortcuts.last(), menuShortcut(0)) &&
+                    !backend.applyMouseOperation(mouse::Action::CloseAllWindows,
+                                                 menuGestures[0].second),
+                "pinned settings reject conflicting menu bindings");
+        require(session.reset(settings::SettingsSectionReset::PinToScreenShortcuts) &&
+                    session.reset(settings::SettingsSectionReset::PinnedMouse),
+                "both pinned input sections can be reset");
+        for (qsizetype i = 0; i < menuShortcuts.size(); ++i) {
+            require(pinned.shortcuts(menuShortcuts[i]).isEmpty() &&
+                        session.applyLocalShortcuts(scope, menuShortcuts[i], menuShortcut(i)),
+                    "reset removes assigned menu shortcuts");
+        }
+        for (const auto& [action, gesture] : menuGestures)
+            require(backend.mouseBindings().get(action) == mouse::Binding{} &&
+                        backend.applyMouseOperation(action, gesture),
+                    "reset removes assigned menu gestures");
+
         constexpr auto lockedColor = settings::SettingsColorBinding::PinLockedBorderColor;
         constexpr auto borderDefault = settings::SettingsSwitchBinding::PinShowBorderByDefault;
         constexpr auto shadowDefault = settings::SettingsSwitchBinding::PinShowShadowByDefault;
@@ -207,6 +290,12 @@ int main(int argc, char** argv) {
                 storage::PinToScreenSettings().shadowActiveColor() == QColor(70, 80, 90, 100) &&
                 storage::PinToScreenSettings().lockedShadowColor() == QColor(110, 120, 130, 140),
             "custom and disabled pinned shortcuts must survive restart");
+    for (qsizetype i = 0; i < menuShortcuts.size(); ++i)
+        require(pinned.shortcuts(menuShortcuts[i]) == menuShortcut(i),
+                "menu shortcuts survive restart");
+    for (const auto& [action, gesture] : menuGestures)
+        require(applicationStorage.configuration().mouseBindings().get(action) == gesture,
+                "menu gestures survive restart");
     applicationStorage.shutdown();
     return 0;
 }

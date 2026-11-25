@@ -428,6 +428,7 @@ class DrawingShortcutSettings final {
 
 class PinToScreenShortcutSettings final {
   public:
+    [[nodiscard]] static bool isReservedShortcut(const shortcuts::ShortcutBinding& shortcut);
     [[nodiscard]] static bool actionsMayConflict(const QString& first, const QString& second);
     [[nodiscard]] shortcuts::ShortcutBindingList screenshotShortcuts(const QString& actionId) const;
     [[nodiscard]] shortcuts::ShortcutBindingList shortcuts(const QString& actionId) const;

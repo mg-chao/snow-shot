@@ -3043,6 +3043,76 @@
       "allowedStringValues": [],
       "defaultJsonType": 4,
       "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "pin_to_screen_shortcuts/split_image",
+      "maximumListItems": 2,
+      "valueKind": "ShortcutList"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "pin_to_screen_shortcuts/image_editing",
+      "maximumListItems": 2,
+      "valueKind": "ShortcutList"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "pin_to_screen_shortcuts/image_compression",
+      "maximumListItems": 2,
+      "valueKind": "ShortcutList"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "pin_to_screen_shortcuts/show_all_windows",
+      "maximumListItems": 2,
+      "valueKind": "ShortcutList"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "pin_to_screen_shortcuts/hide_other_windows",
+      "maximumListItems": 2,
+      "valueKind": "ShortcutList"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "pin_to_screen_shortcuts/close_other_windows",
+      "maximumListItems": 2,
+      "valueKind": "ShortcutList"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "pin_to_screen_shortcuts/close_all_windows",
+      "maximumListItems": 2,
+      "valueKind": "ShortcutList"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
       "defaultValue": [
         {
           "portable": "Ctrl+Alt+A"
@@ -6036,6 +6106,66 @@
       "defaultValue": {},
       "integerRange": null,
       "key": "pin_to_screen_mouse/annotation_mode",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {},
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/toggle_click_through",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {},
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/toggle_lock",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {},
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/show_all_windows",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {},
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/hide_other_windows",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {},
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/close_other_windows",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {},
+      "integerRange": null,
+      "key": "pin_to_screen_mouse/close_all_windows",
       "maximumListItems": -1,
       "valueKind": "Structured"
     },

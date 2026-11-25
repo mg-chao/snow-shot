@@ -558,6 +558,24 @@ void ScreenshotPinnedWindow::executeMouseClick(snow_shot::mouse::Action action,
     case Annotation:
         toggleEditMode();
         break;
+    case ClickThrough:
+        toggleClickThrough();
+        break;
+    case Lock:
+        setLockedMode(!m_lockedMode);
+        break;
+    case ShowAllWindows:
+        executeMenuCommand(MenuCommand::ShowAllWindows);
+        break;
+    case HideOtherWindows:
+        executeMenuCommand(MenuCommand::HideOtherWindows);
+        break;
+    case CloseOtherWindows:
+        executeMenuCommand(MenuCommand::CloseOtherWindows);
+        break;
+    case CloseAllWindows:
+        executeMenuCommand(MenuCommand::CloseAllWindows);
+        break;
     case MultiSelect:
         if (m_selectionController)
             m_selectionController->toggleSelection(this);

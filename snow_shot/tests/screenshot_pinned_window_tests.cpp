@@ -7021,6 +7021,72 @@ void pinnedBorderUsesCeiledWindowDpiPhysicalPixels(SnowCanvasRuntime&) {
     }
 }
 
+void pinnedImageWorkflowShortcuts(ScreenshotPinnedWindow& window, QWidget& canvas) {
+    const snow_shot::storage::PinToScreenShortcutSettings settings;
+    const auto bind = [&](const QString& id, const QString& key) {
+        require(settings.setShortcuts(id, {key}), "bind the image workflow shortcut");
+    };
+    bind(QStringLiteral("split_image"), QStringLiteral("F6"));
+    bind(QStringLiteral("image_editing"), QStringLiteral("F7"));
+    bind(QStringLiteral("image_compression"), QStringLiteral("F8"));
+
+    int edits = 0;
+    ScreenshotPinnedImageSnapshot split, compressed;
+    QObject observer;
+    QObject::connect(
+        &window, &ScreenshotPinnedWindow::imageEditingRequested, &observer, [&](const QString& id) {
+            require(id == window.persistenceId(), "the editor receives the invoking pin");
+            ++edits;
+        });
+    QObject::connect(&window, &ScreenshotPinnedWindow::splitRequested, &observer,
+                     [&](const ScreenshotPinnedImageSnapshot& value) { split = value; });
+    QObject::connect(&window, &ScreenshotPinnedWindow::imageCompressionRequested, &observer,
+                     [&](const ScreenshotPinnedImageSnapshot& value) { compressed = value; });
+    sendShortcut(canvas, Qt::Key_F6);
+    sendShortcut(canvas, Qt::Key_F7);
+    sendShortcut(canvas, Qt::Key_F7, {}, true);
+    sendShortcut(canvas, Qt::Key_F8);
+    require(edits == 1 && split.source.isValid() && compressed.source.isValid() &&
+                split.outputSize ==
+                    ScreenshotPinnedWindowTestAccess::originalImage(window).size() &&
+                compressed.outputSize == split.outputSize &&
+                window.findChildren<adqt::widgets::AdContextMenu*>().isEmpty(),
+            "image shortcuts use the source and dispatch once without constructing a menu");
+
+    {
+        QDialog dialog(&window);
+        dialog.setWindowModality(Qt::WindowModal);
+        dialog.show();
+        require(QApplication::activeModalWidget() == &dialog, "the pin owns an active modal");
+        sendShortcut(dialog, Qt::Key_F7);
+        require(edits == 1, "the pin's Image editing shortcut stays inactive inside its dialog");
+    }
+    window.activateWindow();
+    canvas.setFocus();
+    materializePinnedMenuTree(window);
+    QEvent languageChange(QEvent::LanguageChange);
+    QCoreApplication::sendEvent(&window, &languageChange);
+    for (const auto& [name, key] :
+         {std::pair{"SplitImage", "F6"}, {"ImageEditing", "F7"}, {"ImageCompression", "F8"}}) {
+        auto* action = window.findChild<QAction*>(
+            QStringLiteral("screenshotPinned%1Action").arg(QString::fromLatin1(name)));
+        require(action && action->text().endsWith(QStringLiteral("\t") + QString::fromLatin1(key)),
+                "image shortcut labels survive menu refresh and retranslation");
+    }
+    bind(QStringLiteral("image_editing"), QStringLiteral("F9"));
+    sendShortcut(canvas, Qt::Key_F7);
+    sendShortcut(canvas, Qt::Key_F9);
+    require(edits == 2, "only the rebound shortcut opens the editor");
+    for (const auto& id : {QStringLiteral("split_image"), QStringLiteral("image_editing"),
+                           QStringLiteral("image_compression")})
+        require(settings.setShortcuts(id, {}), "clear the image shortcut");
+    sendShortcut(canvas, Qt::Key_F9);
+    auto* editing =
+        window.findChild<QAction*>(QStringLiteral("screenshotPinnedImageEditingAction"));
+    require(edits == 2 && !editing->text().contains(QLatin1Char('\t')),
+            "clearing the shortcut removes its label and stops dispatch");
+}
+
 void pinnedImageProcessingShortcuts() {
     using Access = ScreenshotPinnedWindowTestAccess;
     ScreenshotPinnedWindow window;
@@ -7039,7 +7105,7 @@ void pinnedImageProcessingShortcuts() {
     require(Access::opacity(window) == 60 &&
                 window.findChildren<adqt::widgets::AdContextMenu*>().isEmpty(),
             "keyboard commands execute before the first context menu opens");
-    materializePinnedMenuTree(window);
+    pinnedImageWorkflowShortcuts(window, *canvas);
     const auto action = [&](const char* name) {
         auto* result = window.findChild<QAction*>(QString::fromLatin1(name));
         require(result != nullptr, "image command action must exist");
@@ -7184,7 +7250,19 @@ void pinnedImageProcessingShortcuts() {
     require(canvas->canvasTool() == SnowCanvasTool::Shape &&
                 window.persistenceSnapshot().imageTransform == beforeDrawing.imageTransform,
             "active drawing shortcuts must take precedence over image transforms");
+    const QString editId = QStringLiteral("image_editing");
+    int editRequests = 0;
+    QObject observer;
+    QObject::connect(&window, &ScreenshotPinnedWindow::imageEditingRequested, &observer,
+                     [&] { ++editRequests; });
+    require(settings.setShortcuts(editId, {QStringLiteral("P")}), "share P with the Brush tool");
+    sendShortcut(*canvas, Qt::Key_P);
+    require(editRequests == 0 && canvas->canvasTool() == SnowCanvasTool::FreeDraw,
+            "the Brush shortcut wins while annotating");
     Access::editSelectionOffscreen(window, false);
+    sendShortcut(*canvas, Qt::Key_P);
+    require(editRequests == 1, "the same shortcut opens Image editing after annotation ends");
+    require(settings.setShortcuts(editId, {}), "clear the shared Image editing shortcut");
     require(drawingSettings.setShortcuts(QStringLiteral("shape"), originalShapeShortcut),
             "restore the drawing shortcut");
     Access::recognitionOffscreen(window, cachedOcrPinConfig(nullptr));

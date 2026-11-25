@@ -1126,8 +1126,20 @@
             <translation>Cancel screenshot</translation>
         </message>
         <message>
+            <source>Click-through</source>
+            <translation>Click-through</translation>
+        </message>
+        <message>
             <source>Close</source>
             <translation>Close</translation>
+        </message>
+        <message>
+            <source>Close all windows</source>
+            <translation>Close all windows</translation>
+        </message>
+        <message>
+            <source>Close other windows</source>
+            <translation>Close other windows</translation>
         </message>
         <message>
             <source>Command</source>
@@ -1186,6 +1198,10 @@
             <translation>Hide at top</translation>
         </message>
         <message>
+            <source>Hide other windows</source>
+            <translation>Hide other windows</translation>
+        </message>
+        <message>
             <source>Left-button double-click</source>
             <translation>Left-button double-click</translation>
         </message>
@@ -1196,6 +1212,10 @@
         <message>
             <source>Left-button single-click</source>
             <translation>Left-button single-click</translation>
+        </message>
+        <message>
+            <source>Lock mode</source>
+            <translation>Lock mode</translation>
         </message>
         <message>
             <source>Menu</source>
@@ -1272,6 +1292,10 @@
         <message>
             <source>Shift</source>
             <translation>Shift</translation>
+        </message>
+        <message>
+            <source>Show all windows</source>
+            <translation>Show all windows</translation>
         </message>
         <message>
             <source>Show text recognition results</source>
@@ -2479,6 +2503,14 @@
             <translation>Clipboard content</translation>
         </message>
         <message>
+            <source>Close all windows</source>
+            <translation>Close all windows</translation>
+        </message>
+        <message>
+            <source>Close other windows</source>
+            <translation>Close other windows</translation>
+        </message>
+        <message>
             <source>Close window</source>
             <translation>Close window</translation>
         </message>
@@ -3287,6 +3319,10 @@
             <translation>Hide or show all windows in the current group</translation>
         </message>
         <message>
+            <source>Hide other windows</source>
+            <translation>Hide other windows</translation>
+        </message>
+        <message>
             <source>Hide the toolbar near the left or right screen edge. Hover over the edge control to show it again</source>
             <translation>Hide the toolbar near the left or right screen edge. Hover over the edge control to show it again</translation>
         </message>
@@ -3321,6 +3357,10 @@
         <message>
             <source>Image and document files</source>
             <translation>Image and document files</translation>
+        </message>
+        <message>
+            <source>Image compression</source>
+            <translation>Image compression</translation>
         </message>
         <message>
             <source>Image editing</source>
@@ -4917,6 +4957,10 @@
         <message>
             <source>Show a system notification when export finishes. Click it to locate the exported file</source>
             <translation>Show a system notification when export finishes. Click it to locate the exported file</translation>
+        </message>
+        <message>
+            <source>Show all windows</source>
+            <translation>Show all windows</translation>
         </message>
         <message>
             <source>Show border</source>

@@ -1133,6 +1133,10 @@ void ScreenshotPinnedWindow::registerWindowShortcuts() {
     using ShortcutManager = snow_shot::presentation::WindowShortcutManager;
 
     const auto localCommandsAllowed = [this](const ShortcutManager::ActivationContext& context) {
+        // Qt can omit a tool window from its dialog's native transient-parent chain.
+        for (auto* owner = QApplication::activeModalWidget(); owner; owner = owner->parentWidget())
+            if (owner == this)
+                return false;
         if (context.event && context.event->modifiers() == Qt::NoModifier &&
             (context.event->key() == Qt::Key_Space || context.event->key() == Qt::Key_Return ||
              context.event->key() == Qt::Key_Enter)) {
@@ -1411,6 +1415,38 @@ void ScreenshotPinnedWindow::registerWindowShortcuts() {
     m_pinnedShortcutBindings.insert(QStringLiteral("destroy_window"),
                                     m_shortcutManager->addBinding(this, std::move(destroyWindow)));
 
+    const struct {
+        const char* id;
+        MenuCommand command;
+    } menuCommands[] = {
+        {"split_image", MenuCommand::SplitImage},
+        {"image_editing", MenuCommand::ImageEditing},
+        {"image_compression", MenuCommand::ImageCompression},
+        {"show_all_windows", MenuCommand::ShowAllWindows},
+        {"hide_other_windows", MenuCommand::HideOtherWindows},
+        {"close_other_windows", MenuCommand::CloseOtherWindows},
+        {"close_all_windows", MenuCommand::CloseAllWindows},
+    };
+    for (const auto& [id, command] : menuCommands) {
+        const QString actionId = QString::fromLatin1(id);
+        ShortcutManager::Binding binding;
+        binding.id = QStringLiteral("pinned.") + actionId;
+        binding.priority = ShortcutManager::StandardPriority::ContextualFallback;
+        if (command == MenuCommand::CloseOtherWindows || command == MenuCommand::CloseAllWindows)
+            binding.activationTrigger = ShortcutManager::Binding::ActivationTrigger::Release;
+        binding.canActivate = [this, command, localCommandsAllowed](const auto& context) {
+            return localCommandsAllowed(context) &&
+                   (context.event == nullptr || !context.event->isAutoRepeat()) &&
+                   menuCommandAvailable(command);
+        };
+        binding.activate = [this, command](const auto&) {
+            executeMenuCommand(command);
+            return true;
+        };
+        m_pinnedShortcutBindings.insert(actionId,
+                                        m_shortcutManager->addBinding(this, std::move(binding)));
+    }
+
     const char* imageCommands[] = {
         "increase_opacity", "decrease_opacity", "increase_scale",
         "decrease_scale",   "rotate_clockwise", "rotate_counterclockwise",
@@ -1549,6 +1585,13 @@ void ScreenshotPinnedWindow::reloadPinnedWindowShortcuts() {
         {"copy_to_clipboard", "screenshotPinnedCopyAction"},
         {"copy_original_content", "screenshotPinnedCopyOriginalAction"},
         {"save_as_file", "screenshotPinnedSaveAsFileAction"},
+        {"split_image", "screenshotPinnedSplitImageAction"},
+        {"image_editing", "screenshotPinnedImageEditingAction"},
+        {"image_compression", "screenshotPinnedImageCompressionAction"},
+        {"show_all_windows", "screenshotPinnedShowAllWindowsAction"},
+        {"hide_other_windows", "screenshotPinnedHideOtherWindowsAction"},
+        {"close_other_windows", "screenshotPinnedCloseOtherWindowsAction"},
+        {"close_all_windows", "screenshotPinnedCloseAllWindowsAction"},
         {"batch_select_all", "screenshotPinnedBatchSelectAllAction"},
         {"batch_image_stitching", "screenshotPinnedBatchImageStitchingAction"},
         {"batch_copy_files_to_clipboard", "screenshotPinnedBatchCopyFilesToClipboardAction"},
@@ -3305,6 +3348,68 @@ void ScreenshotPinnedWindow::createUi() {
     });
 }
 
+bool ScreenshotPinnedWindow::menuCommandAvailable(MenuCommand command) const {
+    if (m_closing || (isLiveWindow() && !liveFrameAvailable()))
+        return false;
+    switch (command) {
+    case MenuCommand::SplitImage:
+        return m_firstContentFramePublished && (isLiveWindow() || !m_transformedImage.isNull());
+    case MenuCommand::ImageEditing:
+    case MenuCommand::ImageCompression:
+        return m_firstContentFramePublished &&
+               (!m_transformedImage.isNull() || m_imageSource.isValid());
+    case MenuCommand::ShowAllWindows:
+    case MenuCommand::HideOtherWindows:
+    case MenuCommand::CloseOtherWindows:
+    case MenuCommand::CloseAllWindows:
+        return !isLiveWindow();
+    }
+    return false;
+}
+
+void ScreenshotPinnedWindow::executeMenuCommand(MenuCommand command) {
+    if (!menuCommandAvailable(command))
+        return;
+    switch (command) {
+    case MenuCommand::SplitImage:
+        if (isLiveWindow()) {
+            splitLiveImage();
+            return;
+        }
+        [[fallthrough]];
+    case MenuCommand::ImageCompression:
+        requestRenderedImageSnapshot(
+            [receiver = QPointer(this), command](ScreenshotPinnedImageSnapshot snapshot) {
+                if (!receiver || receiver->m_closing)
+                    return;
+                if (command == MenuCommand::SplitImage)
+                    emit receiver->splitRequested(snapshot);
+                else
+                    emit receiver->imageCompressionRequested(snapshot);
+            },
+            ScreenshotPinnedRenderMode::SourceResolution);
+        return;
+    case MenuCommand::ImageEditing:
+        if (isLiveWindow())
+            editLiveImage();
+        else
+            emit imageEditingRequested(m_persistenceId);
+        return;
+    case MenuCommand::ShowAllWindows:
+        showAllPinnedWindows();
+        return;
+    case MenuCommand::HideOtherWindows:
+        hideOtherPinnedWindows();
+        return;
+    case MenuCommand::CloseOtherWindows:
+        closeOtherPinnedWindows();
+        return;
+    case MenuCommand::CloseAllWindows:
+        closeAllPinnedWindows();
+        return;
+    }
+}
+
 bool ScreenshotPinnedWindow::executeImageCommand(const QString& id) {
     if (!liveCommandAllowed(id))
         return false;
@@ -3811,35 +3916,16 @@ void ScreenshotPinnedWindow::createContextMenu() {
                 custom_outlined_icons::ImageSplitting());
             m_splitImageAction->setObjectName(QStringLiteral("screenshotPinnedSplitImageAction"));
             m_splitImageAction->setProperty("liveCommand", QStringLiteral("split_image"));
-            connect(m_splitImageAction, &QAction::triggered, this, [this] {
-                if (isLiveWindow()) {
-                    splitLiveImage();
-                    return;
-                }
-                const QPointer<ScreenshotPinnedWindow> receiver(this);
-                requestRenderedImageSnapshot(
-                    [receiver](ScreenshotPinnedImageSnapshot snapshot) {
-                        if (receiver && !receiver->m_closing)
-                            emit receiver->splitRequested(snapshot);
-                    },
-                    ScreenshotPinnedRenderMode::SourceResolution);
-            });
+            connect(m_splitImageAction, &QAction::triggered, this,
+                    [this] { executeMenuCommand(MenuCommand::SplitImage); });
             m_imageEditingAction =
                 processMenu->addItem(tr("Image editing"), custom_outlined_icons::ImageEditing());
             setActionTranslationSource(m_imageEditingAction, "Image editing");
             m_imageEditingAction->setObjectName(
                 QStringLiteral("screenshotPinnedImageEditingAction"));
             m_imageEditingAction->setProperty("liveCommand", QStringLiteral("image_editing"));
-            connect(m_imageEditingAction, &QAction::triggered, this, [this] {
-                if (isLiveWindow()) {
-                    editLiveImage();
-                    return;
-                }
-                if (m_closing || !m_firstContentFramePublished ||
-                    (m_transformedImage.isNull() && !m_imageSource.isValid()))
-                    return;
-                emit imageEditingRequested(m_persistenceId);
-            });
+            connect(m_imageEditingAction, &QAction::triggered, this,
+                    [this] { executeMenuCommand(MenuCommand::ImageEditing); });
             m_imageCompressionAction = processMenu->addItem(
                 tr("Image compression"), custom_outlined_icons::ImageCompression());
             setActionTranslationSource(m_imageCompressionAction, "Image compression");
@@ -3847,15 +3933,8 @@ void ScreenshotPinnedWindow::createContextMenu() {
                 QStringLiteral("screenshotPinnedImageCompressionAction"));
             m_imageCompressionAction->setProperty("liveCommand",
                                                   QStringLiteral("image_compression"));
-            connect(m_imageCompressionAction, &QAction::triggered, this, [this] {
-                const QPointer<ScreenshotPinnedWindow> receiver(this);
-                requestRenderedImageSnapshot(
-                    [receiver](ScreenshotPinnedImageSnapshot snapshot) {
-                        if (receiver && !receiver->m_closing)
-                            emit receiver->imageCompressionRequested(snapshot);
-                    },
-                    ScreenshotPinnedRenderMode::SourceResolution);
-            });
+            connect(m_imageCompressionAction, &QAction::triggered, this,
+                    [this] { executeMenuCommand(MenuCommand::ImageCompression); });
             refreshContextMenu();
             refreshMenuShortcutDisplays();
         },
@@ -4150,11 +4229,9 @@ void ScreenshotPinnedWindow::refreshContextMenu() {
     }
     if (m_splitImageAction != nullptr) {
         const QString label = QCoreApplication::translate("ImageSplitWindow", "Image splitting");
-        m_splitImageAction->setText(label);
+        setActionDisplayText(m_splitImageAction, label);
         m_splitImageAction->setToolTip(label);
-        m_splitImageAction->setEnabled(
-            liveCommandAllowed(QStringLiteral("split_image")) && m_firstContentFramePublished &&
-            (isLiveWindow() || !m_transformedImage.isNull()) && !m_closing);
+        m_splitImageAction->setEnabled(menuCommandAvailable(MenuCommand::SplitImage));
     }
     if (m_loadContentAction != nullptr) {
         m_loadContentAction->setEnabled(m_firstContentFramePublished && !m_originalImage.isNull() &&
@@ -4162,20 +4239,15 @@ void ScreenshotPinnedWindow::refreshContextMenu() {
     }
     if (m_imageEditingAction != nullptr) {
         const QString label = tr("Image editing");
-        m_imageEditingAction->setText(label);
+        setActionDisplayText(m_imageEditingAction, label);
         m_imageEditingAction->setToolTip(label);
-        m_imageEditingAction->setEnabled(liveCommandAllowed(QStringLiteral("image_editing")) &&
-                                         m_firstContentFramePublished && !m_closing &&
-                                         (!m_transformedImage.isNull() || m_imageSource.isValid()));
+        m_imageEditingAction->setEnabled(menuCommandAvailable(MenuCommand::ImageEditing));
     }
     if (m_imageCompressionAction != nullptr) {
         const QString label = tr("Image compression");
-        m_imageCompressionAction->setText(label);
+        setActionDisplayText(m_imageCompressionAction, label);
         m_imageCompressionAction->setToolTip(label);
-        m_imageCompressionAction->setEnabled(
-            liveCommandAllowed(QStringLiteral("image_compression")) &&
-            m_firstContentFramePublished && !m_closing &&
-            (!m_transformedImage.isNull() || m_imageSource.isValid()));
+        m_imageCompressionAction->setEnabled(menuCommandAvailable(MenuCommand::ImageCompression));
     }
     if (m_groupMenu && m_groupMenu->isPopupVisible() && !m_groupMenu->isRetiring())
         rebuildGroupMenu();

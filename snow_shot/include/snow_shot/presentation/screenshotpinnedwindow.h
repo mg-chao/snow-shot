@@ -492,6 +492,17 @@ class ScreenshotPinnedWindow final : public QWidget {
     void editLiveImage();
     void finishLiveConversion(QImage image);
     void stopLiveSource();
+    enum class MenuCommand {
+        SplitImage,
+        ImageEditing,
+        ImageCompression,
+        ShowAllWindows,
+        HideOtherWindows,
+        CloseOtherWindows,
+        CloseAllWindows
+    };
+    [[nodiscard]] bool menuCommandAvailable(MenuCommand command) const;
+    void executeMenuCommand(MenuCommand command);
     bool executeImageCommand(const QString& id);
     void confirmDestroy();
     void showCloseConfirmation(snow_shot::storage::PinnedWindowCloseIntent intent);

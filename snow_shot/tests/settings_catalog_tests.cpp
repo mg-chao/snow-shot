@@ -392,7 +392,7 @@ void screenshotInteractionCatalog() {
     require(page && page->sections.size() == 2 &&
                 page->sections[0].id == QStringLiteral("screenshots") &&
                 page->sections[1].id == QStringLiteral("pin-to-screen") &&
-                page->sections[0].items.size() == 7 && page->sections[1].items.size() == 22,
+                page->sections[0].items.size() == 7 && page->sections[1].items.size() == 28,
             "mouse operations groups configurable actions in category order");
     for (const auto& section : page->sections) {
         require(section.itemLayout == settings::SettingsSectionItemLayout::TwoColumnGrid,
@@ -1868,7 +1868,7 @@ void builtInCatalogIsCompleteAndValid() {
             std::get<settings::SettingsLocalShortcutDefinition>(
                 drawingShortcuts->items.at(2).payload)
                     .scope == settings::SettingsLocalShortcutScope::Drawing &&
-            pinToScreenShortcuts != nullptr && pinToScreenShortcuts->items.size() == 39 &&
+            pinToScreenShortcuts != nullptr && pinToScreenShortcuts->items.size() == 46 &&
             pinToScreenShortcuts->items.at(35).configurationKey ==
                 QStringLiteral("pin_to_screen_shortcuts/batch_select_all") &&
             pinToScreenShortcuts->items.at(36).configurationKey ==
@@ -4165,7 +4165,7 @@ int main(int argc, char** argv) {
         require(catalog.validationErrors().isEmpty(), "batch shortcuts preserve catalog validity");
         const auto* section = catalog.section(QStringLiteral("shortcuts-mouse"),
                                               QStringLiteral("pin-to-screen-shortcuts"));
-        require(section && section->items.size() == 39,
+        require(section && section->items.size() == 46,
                 "pinned shortcuts expose all four batch commands");
         for (const auto& id :
              {QStringLiteral("batch_select_all"), QStringLiteral("batch_image_stitching"),
