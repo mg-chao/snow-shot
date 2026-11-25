@@ -464,8 +464,6 @@ void ScreenshotPinnedEditController::ensureToolbar() {
 
         connect(toolbar, &ScreenshotToolPalette::canvasColorSamplingRequested, this,
                 &ScreenshotPinnedEditController::beginCanvasColorSampling);
-        connect(toolbar, &ScreenshotToolPalette::confirmRequested, this,
-                [this]() { QTimer::singleShot(0, this, [this]() { setEditMode(false); }); });
     }
 
     connect(m_toolbarWindow, &ScreenshotFloatingToolPaletteWindow::dragFinished, this,
@@ -504,7 +502,7 @@ void ScreenshotPinnedEditController::applyHistory(bool redo) {
     static_cast<void>(redo ? m_canvas.redo() : m_canvas.undo());
 }
 
-void ScreenshotPinnedEditController::setEditMode(bool enabled) {
+void ScreenshotPinnedEditController::applyEditMode(bool enabled) {
     if (m_editMode == enabled) {
         return;
     }
@@ -801,7 +799,6 @@ void ScreenshotPinnedEditController::activateCanvasTool(SnowCanvasTool tool) {
 }
 
 bool ScreenshotPinnedEditController::automationSetTool(SnowCanvasTool tool) {
-    setEditMode(true);
     if (!m_editMode)
         return false;
     activateCanvasTool(tool);

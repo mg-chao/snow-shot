@@ -139,7 +139,7 @@ class Client:
         self.process.stdin.write(json.dumps(message, separators=(",", ":")) + "\n")
         self.process.stdin.flush()
 
-    def request(self, method, params=None, label=None):
+    def request(self, method, params=None, label=None, *, expected_rpc_error=None):
         if method == "tools/call" and params:
             Client.executed_tools.add(params["name"])
         if method == "resources/read" and params:
@@ -155,6 +155,9 @@ class Client:
             if message.get("id") != identifier:
                 self.notifications.append(message)
                 continue
+            if expected_rpc_error is not None:
+                assert message.get("error", {}).get("code") == expected_rpc_error, message
+                return message["error"]
             assert "error" not in message, message
             if label:
                 self.samples.setdefault(label, []).append((time.perf_counter() - started) * 1000)

@@ -46,7 +46,6 @@ class ScreenshotPinnedEditController final : public QObject {
     [[nodiscard]] bool canvasColorSamplingActive() const;
     ScreenshotFloatingToolPaletteWindow* toolbarWindow() const;
     ScreenshotToolPaletteHost* toolbarHost() const;
-    void setEditMode(bool enabled);
     bool automationSetTool(SnowCanvasTool tool);
     void activateResizeWindowTool();
     [[nodiscard]] bool beginTemporaryResizeWindowTool();
@@ -74,6 +73,9 @@ class ScreenshotPinnedEditController final : public QObject {
     void textTranslationRequested();
 
   private:
+    friend class ScreenshotPinnedWindow;
+    friend class ScreenshotPinnedWindowTestAccess;
+    void applyEditMode(bool enabled);
     QStringList m_automationFilterCategories;
     snow_shot::presentation::WheelStepAccumulator m_angleWheelSteps;
     QString m_automationFilterError;

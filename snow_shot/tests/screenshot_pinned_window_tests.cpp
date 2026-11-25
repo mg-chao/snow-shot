@@ -790,7 +790,8 @@ class ScreenshotPinnedWindowTestAccess {
         window.setEffectiveScale(percent, false);
     }
     static void applyFractionalScale(ScreenshotPinnedWindow& window, double percent) {
-        window.applyWheelScale(percent, window.authoritativeContentNativeGeometry().bottomRight());
+        window.applyPointerScale(percent,
+                                 window.authoritativeContentNativeGeometry().bottomRight());
     }
     static int opacity(const ScreenshotPinnedWindow& window) {
         return window.m_opacityPercent;
@@ -878,7 +879,7 @@ class ScreenshotPinnedWindowTestAccess {
         return window.m_editController && window.m_editController->editMode();
     }
     static bool initialAnnotationPending(const ScreenshotPinnedWindow& window) {
-        return window.m_initialAnnotationMode;
+        return window.m_pendingEdit == ScreenshotPinnedWindow::PendingEdit::FirstFrame;
     }
     static void rejectReplacementGeometry(ScreenshotPinnedWindow& window) {
         window.m_nativeGeometryController.reset();
@@ -892,7 +893,7 @@ class ScreenshotPinnedWindowTestAccess {
     static void scaleForHideTest(ScreenshotPinnedWindow& window, bool wheel) {
         window.m_mouseWheelZoomMode = QStringLiteral("bottom_right");
         if (wheel) {
-            window.applyWheelScale(150, QPointF(200, 200));
+            window.applyPointerScale(150, QPointF(200, 200));
         } else {
             window.applyScale(100);
         }
@@ -923,11 +924,12 @@ class ScreenshotPinnedWindowTestAccess {
         window.applyScale(percent);
     }
     static void thumbnailForHideTest(ScreenshotPinnedWindow& window, bool enabled) {
-        window.setThumbnailMode(enabled, false);
+        window.setThumbnailMode(enabled, ScreenshotPinnedWindow::Transition::Immediate);
     }
     static void thumbnailForAnimationTest(ScreenshotPinnedWindow& window, bool enabled,
                                           bool animate) {
-        window.setThumbnailMode(enabled, animate);
+        window.setThumbnailMode(enabled, animate ? ScreenshotPinnedWindow::Transition::Animated
+                                                 : ScreenshotPinnedWindow::Transition::Immediate);
     }
     static bool setClickThrough(ScreenshotPinnedWindow& window, bool enabled) {
         return window.setClickThroughMode(enabled);
@@ -1256,6 +1258,10 @@ class ScreenshotPinnedWindowTestAccess {
     static void refreshRecognitionPresentation(ScreenshotPinnedWindow& window) {
         window.updateOcrPresentation();
     }
+    // Isolated palette tests supply a standalone canvas and controller.
+    static void applyControllerEditMode(ScreenshotPinnedEditController& controller, bool enabled) {
+        controller.applyEditMode(enabled);
+    }
     static void editSelectionOffscreen(ScreenshotPinnedWindow& window, bool enabled) {
         window.setEditMode(enabled);
     }
@@ -1352,26 +1358,10 @@ class ScreenshotPinnedWindowTestAccess {
         return window.m_exportArtifact;
     }
 
-    static void setAnimationSnapshot(ScreenshotPinnedWindow& window, const QRect& target) {
-        window.m_geometryAnimation = new QVariantAnimation(&window);
-        window.m_geometryAnimation->setStartValue(window.currentNativeGeometry());
-        window.m_geometryAnimation->setEndValue(target);
-        window.m_geometryAnimation->start();
-        window.m_geometryAnimation->pause();
-        window.m_geometryAnimating = true;
-    }
-
-    static void finishExpansionOffscreen(ScreenshotPinnedWindow& window) {
-        window.m_thumbnailMode = false;
-        // Geometry is verified by the native recreation test. Suppress the
-        // HWND mutation here so the transition state can be tested offscreen.
-        window.m_nativeGeometryController.reset();
-        window.restoreFromThumbnailImmediately();
-    }
-
     static bool isGeometryAnimating(const ScreenshotPinnedWindow& window) {
         return window.m_geometryAnimating ||
-               window.m_geometryAnimation->state() != QAbstractAnimation::Stopped;
+               (window.m_geometryAnimation &&
+                window.m_geometryAnimation->state() != QAbstractAnimation::Stopped);
     }
 };
 
@@ -3351,7 +3341,7 @@ void pinnedToolbarLayoutReloadsAndResetsIndependently() {
         });
         return result;
     };
-    controller.setEditMode(true);
+    ScreenshotPinnedWindowTestAccess::applyControllerEditMode(controller, true);
     require(positions().isEmpty(), "lazy pinned toolbar must load the saved hidden layout");
     const storage::ScreenshotToolbarLayout custom{
         {{QStringLiteral("upload-to-cloud"), QStringLiteral("copy"), QStringLiteral("save-as-file"),
@@ -3368,8 +3358,8 @@ void pinnedToolbarLayoutReloadsAndResetsIndependently() {
     require(toolbarSettings.setLayout(storage::ScreenshotToolbarLayoutKind::ActionTools, {}),
             "must update screenshot settings independently");
     require(positions() == expectedCustom, "screenshot settings must not change pinned groups");
-    controller.setEditMode(false);
-    controller.setEditMode(true);
+    ScreenshotPinnedWindowTestAccess::applyControllerEditMode(controller, false);
+    ScreenshotPinnedWindowTestAccess::applyControllerEditMode(controller, true);
     require(positions() == expectedCustom,
             "recreated pinned toolbar must reload the persisted layout");
     require(toolbarSettings.setLayout(kind, {}) &&
@@ -3377,7 +3367,7 @@ void pinnedToolbarLayoutReloadsAndResetsIndependently() {
             "pinned toolbar defaults must be restorable");
     require(positions() == buttonPositions(layout::defaultPositions(kind)),
             "restoring defaults must refresh an existing pinned toolbar");
-    controller.setEditMode(false);
+    ScreenshotPinnedWindowTestAccess::applyControllerEditMode(controller, false);
 }
 
 void pinnedOcrCopyShortcut() {
@@ -3540,7 +3530,7 @@ void pinnedEditingRecognitionShortcutsUsePaletteCommands(bool hiddenTools = fals
     manager.addScopeWindow(&canvas);
     ScreenshotPinnedEditController controller(window, canvas, manager);
     canvas.show();
-    controller.setEditMode(true);
+    ScreenshotPinnedWindowTestAccess::applyControllerEditMode(controller, true);
     auto* palette = controller.toolbarWindow()->palette();
     require(palette != nullptr, "pinned editing must expose a palette");
     require(controller.resizeWindowToolActive() &&
@@ -3613,7 +3603,7 @@ void pinnedEditingRecognitionShortcutsUsePaletteCommands(bool hiddenTools = fals
                 "repeating pinned recognition must restore Resize window and block canvas input");
     }
     require(settings.setAllShortcutsAtomic(original), "pinned shortcut restoration failed");
-    controller.setEditMode(false);
+    ScreenshotPinnedWindowTestAccess::applyControllerEditMode(controller, false);
 }
 
 void pinnedEraserToolsPreserveIndependentDefaults() {
@@ -3670,11 +3660,11 @@ void pinnedEraserToolsPreserveIndependentDefaults() {
             require(saved.brushEraser.strokeWidth == 31 && saved.penFilter.strokeWidth == 42 &&
                         palette->creationStyleDefaults().penFilter.strokeWidth == 42,
                     "pinned brush eraser width persists without changing Pen Filter defaults");
-            controller->setEditMode(false);
+            ScreenshotPinnedWindowTestAccess::editSelectionOffscreen(*window, false);
             require(drawingSettings.setRememberLastUsedTool(true) &&
                         toolbarSettings.setLastDrawingTool(QStringLiteral("eraser")),
                     "remember the eraser family for pinned toolbar recreation");
-            controller->setEditMode(true);
+            ScreenshotPinnedWindowTestAccess::editSelectionOffscreen(*window, true);
             palette = controller->toolbarWindow()->palette();
         }
         require(palette->activeTool() == Tool::BrushEraser &&
@@ -3803,7 +3793,7 @@ void pinnedArrowLabelWheelReachesTextEditor() {
     ScreenshotPinnedEditController controller(window, canvas, manager);
     canvas.resize(300, 200);
     canvas.show();
-    controller.setEditMode(true);
+    ScreenshotPinnedWindowTestAccess::applyControllerEditMode(controller, true);
     auto* palette = controller.toolbarWindow()->palette();
     require(palette->activateDrawingShortcut(QStringLiteral("arrow")) &&
                 canvas.interactionEnabled(),
@@ -3854,7 +3844,7 @@ void pinnedEditingRemembersLastFilterToolAcrossSessions() {
     snow_shot::presentation::WindowShortcutManager manager;
     ScreenshotPinnedEditController controller(window, canvas, manager);
     canvas.show();
-    controller.setEditMode(true);
+    ScreenshotPinnedWindowTestAccess::applyControllerEditMode(controller, true);
     {
         ScreenshotToolPalette* palette = controller.toolbarWindow()->palette();
         require(palette != nullptr && palette->activateDrawingShortcut(QStringLiteral("filter")) &&
@@ -3875,13 +3865,13 @@ void pinnedEditingRemembersLastFilterToolAcrossSessions() {
                 "selecting rectangular blur must activate it and persist the remembered mode");
     }
     // Leaving edit mode destroys the toolbar; re-entering rebuilds it from scratch.
-    controller.setEditMode(false);
-    controller.setEditMode(true);
+    ScreenshotPinnedWindowTestAccess::applyControllerEditMode(controller, false);
+    ScreenshotPinnedWindowTestAccess::applyControllerEditMode(controller, true);
     ScreenshotToolPalette* palette = controller.toolbarWindow()->palette();
     require(palette != nullptr && palette->activateDrawingShortcut(QStringLiteral("filter")) &&
                 palette->activeToolForTests() == Tool::RectangleFilter,
             "re-entering pinned edit mode must restore the remembered rectangular blur");
-    controller.setEditMode(false);
+    ScreenshotPinnedWindowTestAccess::applyControllerEditMode(controller, false);
 }
 
 void pinnedEditStartsWithRememberedDrawingTool() {
@@ -3908,17 +3898,17 @@ void pinnedEditStartsWithRememberedDrawingTool() {
     require(drawingSettings.setRememberLastUsedTool(false) &&
                 toolbarSettings.setLastDrawingTool(QStringLiteral("shape")),
             "pinned remembered tool tests must start with the switch disabled");
-    controller.setEditMode(true);
+    ScreenshotPinnedWindowTestAccess::applyControllerEditMode(controller, true);
     require(controller.resizeWindowToolActive() &&
                 controller.toolbarWindow()->palette()->activeToolForTests() == Tool::Move &&
                 !canvas.interactionEnabled(),
             "a disabled switch must keep the Resize window tool when entering pinned editing");
-    controller.setEditMode(false);
+    ScreenshotPinnedWindowTestAccess::applyControllerEditMode(controller, false);
 
     // With the preference, entering pinned editing activates the remembered tool.
     require(drawingSettings.setRememberLastUsedTool(true),
             "the remembered tool switch must be writable");
-    controller.setEditMode(true);
+    ScreenshotPinnedWindowTestAccess::applyControllerEditMode(controller, true);
     {
         ScreenshotToolPalette* palette = controller.toolbarWindow()->palette();
         require(palette != nullptr && !controller.resizeWindowToolActive() &&
@@ -3926,13 +3916,13 @@ void pinnedEditStartsWithRememberedDrawingTool() {
                     canvas.canvasTool() == SnowCanvasTool::Shape && canvas.interactionEnabled(),
                 "entering pinned editing must activate the remembered shape tool");
     }
-    controller.setEditMode(false);
+    ScreenshotPinnedWindowTestAccess::applyControllerEditMode(controller, false);
 
     // Highlighter variants resolve through the persisted remembered mode.
     require(toolbarSettings.setLastDrawingTool(QStringLiteral("highlighter")) &&
                 toolbarSettings.setLastHighlightTool(QStringLiteral("rectangle-highlight")),
             "the remembered highlighter variant must be configurable");
-    controller.setEditMode(true);
+    ScreenshotPinnedWindowTestAccess::applyControllerEditMode(controller, true);
     {
         ScreenshotToolPalette* palette = controller.toolbarWindow()->palette();
         require(palette != nullptr && !controller.resizeWindowToolActive() &&
@@ -3940,16 +3930,16 @@ void pinnedEditStartsWithRememberedDrawingTool() {
                     canvas.canvasTool() == SnowCanvasTool::RectangleHighlight,
                 "entering pinned editing must restore the remembered highlighter variant");
     }
-    controller.setEditMode(false);
+    ScreenshotPinnedWindowTestAccess::applyControllerEditMode(controller, false);
 
     // An empty remembered tool falls back to the Resize window tool.
     require(toolbarSettings.setLastDrawingTool(QString()),
             "the remembered drawing tool can be cleared");
-    controller.setEditMode(true);
+    ScreenshotPinnedWindowTestAccess::applyControllerEditMode(controller, true);
     require(controller.resizeWindowToolActive() &&
                 controller.toolbarWindow()->palette()->activeToolForTests() == Tool::Move,
             "an empty remembered tool must fall back to the Resize window tool");
-    controller.setEditMode(false);
+    ScreenshotPinnedWindowTestAccess::applyControllerEditMode(controller, false);
 }
 
 void pinnedEditingPreservesActiveRecognition() {
@@ -12657,14 +12647,17 @@ void pinnedLockOffscreen() {
     assertLocked();
     for (const QPoint point : {QPoint(1, 1), window.rect().center()}) {
         clearReadout();
-        QMouseEvent press(QEvent::MouseButtonPress, QPointF(point),
-                          QPointF(canvas->mapToGlobal(point)), Qt::LeftButton, Qt::LeftButton,
-                          Qt::NoModifier);
+        const QPoint global = canvas->mapToGlobal(point);
+        QMouseEvent press(QEvent::MouseButtonPress, QPointF(point), QPointF(global), Qt::LeftButton,
+                          Qt::LeftButton, Qt::NoModifier);
         QApplication::sendEvent(canvas, &press);
+        const QPoint delta(QApplication::startDragDistance() + 1, 0);
+        QMouseEvent drag(QEvent::MouseMove, QPointF(point + delta), QPointF(global + delta),
+                         Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(canvas, &drag);
         assertLocked();
-        QMouseEvent release(QEvent::MouseButtonRelease, QPointF(point),
-                            QPointF(canvas->mapToGlobal(point)), Qt::LeftButton, Qt::NoButton,
-                            Qt::NoModifier);
+        QMouseEvent release(QEvent::MouseButtonRelease, QPointF(point + delta),
+                            QPointF(global + delta), Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
         QApplication::sendEvent(canvas, &release);
     }
     const QPoint cursor = QCursor::pos();
@@ -15002,6 +14995,8 @@ void restoredThumbnailStateOffscreen(const QString& scenario) {
     config.persistedThumbnailMode = true;
     config.persistedPreThumbnailNativeGeometry = QRect(200, 120, 400, 200);
     ScreenshotPinnedWindow window;
+    if (scenario == QStringLiteral("snapshot"))
+        ScreenshotPinnedWindowTestAccess::installObservedPlatform(window);
     ScreenshotPinnedWindowTestAccess::restoreOffscreen(window, config);
     if (scenario == QStringLiteral("appearance")) {
         materializePinnedMenuTree(window);
@@ -15030,15 +15025,34 @@ void restoredThumbnailStateOffscreen(const QString& scenario) {
                     config.persistedPreThumbnailNativeGeometry,
                 "thumbnail DPI changes must preserve the saved expansion rectangle");
     } else if (scenario == QStringLiteral("snapshot")) {
-        const QRect targetContent(70, 60, 83, 83);
-        const QRect target = snow_shot::presentation::pinnedOuterRect(targetContent);
-        ScreenshotPinnedWindowTestAccess::setAnimationSnapshot(window, target);
+        QString error;
+        require(window.automationUpdate({{QStringLiteral("thumbnail"), false}}, &error),
+                "expand the restored thumbnail before starting the animation");
+        const QRect expanded = window.currentNativeGeometry();
+        materializePinnedMenuTree(window);
+        auto* thumbnail =
+            window.findChild<QAction*>(QStringLiteral("screenshotPinnedThumbnailAction"));
+        require(thumbnail, "the thumbnail command is available");
+        thumbnail->trigger();
+        auto* animation = window.findChild<QVariantAnimation*>(
+            QStringLiteral("screenshotPinnedGeometryAnimation"));
+        require(animation && animation->state() == QAbstractAnimation::Running,
+                "the menu started a thumbnail transition");
+        animation->setCurrentTime(animation->duration() / 2);
+        const QRect destination =
+            snow_shot::presentation::pinnedContentRect(animation->endValue().toRect());
         const auto snapshot = window.persistenceSnapshot();
-        require(snapshot.thumbnailMode && snapshot.nativeGeometry == targetContent,
-                "a persisted mode must be paired with the animation destination, never a frame");
-        ScreenshotPinnedWindowTestAccess::finishExpansionOffscreen(window);
-        require(!ScreenshotPinnedWindowTestAccess::isGeometryAnimating(window),
-                "an immediate command must finish expansion even after the mode flag is cleared");
+        require(snapshot.thumbnailMode && snapshot.nativeGeometry == destination &&
+                    snapshot.nativeGeometry !=
+                        snow_shot::presentation::pinnedContentRect(window.currentNativeGeometry()),
+                "a persisted mode is paired with the animation destination even at the midpoint");
+        thumbnail->trigger();
+        require(
+            !thumbnail->isChecked() &&
+                window.automationUpdate({{QStringLiteral("thumbnail"), false}}, &error) &&
+                !ScreenshotPinnedWindowTestAccess::isGeometryAnimating(window) &&
+                window.currentNativeGeometry() == expanded,
+            "an immediate update finishes the reversed expansion after the mode flag has cleared");
     } else if (scenario == QStringLiteral("copy")) {
         materializePinnedMenuTree(window);
         auto* copy = window.findChild<QAction*>(QStringLiteral("screenshotPinnedCopyAction"));
@@ -15720,11 +15734,11 @@ void pinnedHistoryShortcutsFollowSettings() {
     require(canvas->canvasWatermarkConfig().text == edited.text,
             "disabled undo must not alter canvas history");
     bind(QStringLiteral("undo"), QStringLiteral("Ctrl+Alt+U"));
-    controller->setEditMode(false);
+    ScreenshotPinnedWindowTestAccess::editSelectionOffscreen(*window, false);
     press(*window, Qt::Key_U, modifiers);
     require(canvas->canvasWatermarkConfig().text == edited.text,
             "drawing history shortcuts must be inactive outside drawing mode");
-    controller->setEditMode(true);
+    ScreenshotPinnedWindowTestAccess::editSelectionOffscreen(*window, true);
     press(*canvas, Qt::Key_U, modifiers);
     require(canvas->canvasWatermarkConfig().text == initial.text,
             "history shortcuts must survive leaving and reentering drawing mode");
@@ -15854,13 +15868,16 @@ void pinnedDrawingShortcutsToggleActiveTool(bool hiddenTools = false) {
         require(canvas->canvasTool() == SnowCanvasTool::Shape && !shapeVisible(),
                 "pinned drawing hotkeys survive live hide and restore transitions");
     }
-    require(canvas->setCanvasTool(SnowCanvasTool::Shape), "reset fixture should activate Shape");
-    QMouseEvent down(QEvent::MouseButtonPress, QPointF(30, 30), QPointF(30, 30), Qt::LeftButton,
-                     Qt::LeftButton, Qt::NoModifier);
-    QMouseEvent move(QEvent::MouseMove, QPointF(90, 90), QPointF(90, 90), Qt::NoButton,
-                     Qt::LeftButton, Qt::NoModifier);
-    QMouseEvent up(QEvent::MouseButtonRelease, QPointF(90, 90), QPointF(90, 90), Qt::LeftButton,
-                   Qt::NoButton, Qt::NoModifier);
+    require(canvas->canvasTool() == SnowCanvasTool::Shape && canvas->interactionEnabled(),
+            "the reset fixture draws with the shape tool selected by shortcut");
+    const QPoint start = canvas->rect().center() - QPoint(20, 15);
+    const QPoint end = canvas->rect().center() + QPoint(20, 15);
+    QMouseEvent down(QEvent::MouseButtonPress, QPointF(start), QPointF(canvas->mapToGlobal(start)),
+                     Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QMouseEvent move(QEvent::MouseMove, QPointF(end), QPointF(canvas->mapToGlobal(end)),
+                     Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+    QMouseEvent up(QEvent::MouseButtonRelease, QPointF(end), QPointF(canvas->mapToGlobal(end)),
+                   Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
     QCoreApplication::sendEvent(canvas, &down);
     QCoreApplication::sendEvent(canvas, &move);
     QCoreApplication::sendEvent(canvas, &up);
@@ -15934,7 +15951,7 @@ void pinnedDrawingExitReleasesRendererCaches() {
     renderer.setRenderMode(ScreenshotCanvasRenderer::RenderMode::PinnedResult);
     const auto document = Access::dragDocument(window);
     const auto history = Access::drawingHistory(window);
-    controller->setEditMode(false);
+    ScreenshotPinnedWindowTestAccess::editSelectionOffscreen(window, false);
     require(renderer.selectionOutlineCacheBytes() == 0 && renderer.selectionMaskCacheBytes() == 0 &&
                 renderer.selectionRegionHoverCacheBytes() == 0,
             "drawing exit must synchronously release the installed renderer's derived rasters");
@@ -20921,7 +20938,7 @@ void pinnedDrawingExitCancelsPendingAutoFilterAutomation() {
             "automation detection must be pending before leaving drawing mode");
     owners.track(71, &window);
     require(owners.size() == 1, "pending automation filtering retains cancellation ownership");
-    edit->setEditMode(false);
+    ScreenshotPinnedWindowTestAccess::editSelectionOffscreen(window, false);
     QCoreApplication::processEvents();
     require(owners.size() == 0, "drawing exit releases the ended filtering workflow owner");
     require(
@@ -20947,8 +20964,8 @@ void pinnedDrawingExitCancelsPendingAutoFilterAutomation() {
     edit->cancelAutomationAutoFilter();
     require(detection->detecting(),
             "canceling idle automation must preserve independently started manual detection");
-    edit->setEditMode(true);
-    edit->setEditMode(false);
+    ScreenshotPinnedWindowTestAccess::editSelectionOffscreen(window, true);
+    ScreenshotPinnedWindowTestAccess::editSelectionOffscreen(window, false);
     require(!detection->detecting(), "drawing exit must also cancel manual detection");
 
     gate->release(workers);
@@ -25688,7 +25705,7 @@ void pinnedMultiSelectionDestroyConfirmation() {
             "failed destruction preflight leaves all selected windows and records untouched");
     fixture.rejectDestroy = false;
     QPointer<adqt::widgets::AdModal> previous = openConfirmation(first);
-    fixture.selection.destroyWindows(&other, {&first, &second, &other, &fourth});
+    fixture.selection.destroyDisplayedWindows(&other, {&first, &second, &other, &fourth});
     auto* displayed = other.findChild<adqt::widgets::AdModal*>(confirmationName);
     require((!previous || !previous->isOpen()) && displayed && displayed->isOpen() &&
                 displayed->property("pinnedDisplayedBatch").toBool() &&
@@ -26328,7 +26345,7 @@ void pinnedMarginProtectsContentGestures() {
                 window.currentNativeGeometry() == originalGeometry &&
                 !Access::interactionActive(window),
             "an owned native tablet stroke can cross the margin and release without resizing");
-    editor->setEditMode(false);
+    ScreenshotPinnedWindowTestAccess::editSelectionOffscreen(window, false);
 
     ScreenshotPinnedWindow ocrWindow;
     const auto ocrConfig = cachedOcrPinConfig(nullptr);
@@ -27582,7 +27599,8 @@ void pinnedToolbarPlacementCanRetireItsOwnerOffscreen() {
                              if (closePin) {
                                  window.close();
                              } else {
-                                 controller->setEditMode(false);
+                                 ScreenshotPinnedWindowTestAccess::editSelectionOffscreen(window,
+                                                                                          false);
                              }
                          });
         controller->endNativeWindowInteraction();
@@ -28999,6 +29017,10 @@ void pinnedAnimatedImages(bool transformsOnly = false) {
 #include "pinned_export_snapshot_tests.h"
 #include "pinned_copy_ordering_tests.h"
 #include "pinned_mouse_operation_tests.h"
+#include "pinned_action_transition_tests.h"
+#ifdef SNOW_SHOT_PINNED_ACTION_BENCHMARK
+#include "pinned_action_performance_benchmark.h"
+#endif
 #ifdef SNOW_SHOT_LIVE_WINDOW_BENCHMARK
 #include "screenshot_pinned_crop_performance_benchmark.h"
 #endif
@@ -29023,6 +29045,22 @@ int main(int argc, char* argv[]) {
         // without this, lazily initialized storage lands in the developer's
         // real AppData (see IsolatedPinnedStorage).
         IsolatedPinnedStorage processStorage;
+#ifdef SNOW_SHOT_PINNED_ACTION_BENCHMARK
+        if (app.arguments().contains(QStringLiteral("--pinned-action-performance-only"))) {
+            pinned_action_benchmark::run();
+            return 0;
+        }
+#endif
+        if (app.arguments().contains(QStringLiteral("--action-transitions-only"))) {
+            pinned_action_transition_tests::initialAnnotation();
+            pinned_action_transition_tests::annotationIntents();
+            pinned_action_transition_tests::thumbnailSelection();
+            pinned_action_transition_tests::mouseCancelsPendingAnnotation();
+            pinned_action_transition_tests::editDuringSharedDrag();
+            pinned_action_transition_tests::combinedPresentationUpdates();
+            pinned_action_transition_tests::shortcutsAndScaling();
+            return 0;
+        }
         if (app.arguments().contains(QStringLiteral("--mouse-operations-only"))) {
             pinned_mouse_operation_tests::run();
             return 0;

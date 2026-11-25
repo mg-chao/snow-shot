@@ -2695,6 +2695,9 @@ if(SNOW_SHOT_BUILD_TESTS)
     set_tests_properties(snow-shot-scrolling-interval-settings-tests PROPERTIES
         LABELS "unit" TIMEOUT 60
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+    add_test(NAME snow-shot-pinned-action-transition-tests
+        COMMAND snow-shot-pinned-window-tests --action-transitions-only -platform offscreen)
+    set_tests_properties(snow-shot-pinned-action-transition-tests PROPERTIES LABELS "unit" TIMEOUT 60)
     add_test(NAME snow-shot-pinned-mouse-operations-tests
         COMMAND snow-shot-pinned-window-tests --mouse-operations-only -platform offscreen)
     set_tests_properties(snow-shot-pinned-mouse-operations-tests PROPERTIES LABELS "unit" TIMEOUT 60)
@@ -9967,7 +9970,10 @@ if(SNOW_SHOT_BUILD_TESTS)
         add_test(NAME snow-shot-mcp-application-fixture-tests
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/mcp_application_fixture_tests.py"
                 "$<TARGET_FILE:snow_shot_mcp>" "$<TARGET_FILE:snow_shot>")
-        set_tests_properties(snow-shot-mcp-application-fixture-tests PROPERTIES TIMEOUT 120 LABELS unit
+        add_test(NAME snow-shot-mcp-pinned-action-fixture-tests
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/mcp_application_fixture_tests.py"
+                "$<TARGET_FILE:snow_shot_mcp>" "$<TARGET_FILE:snow_shot>" --pin-actions-only)
+        set_tests_properties(snow-shot-mcp-application-fixture-tests snow-shot-mcp-pinned-action-fixture-tests PROPERTIES TIMEOUT 120 LABELS unit
             ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"
             ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
     endif()
@@ -13885,6 +13891,12 @@ if(SNOW_SHOT_BUILD_BENCHMARKS)
         COMMAND snow-shot-pinned-selection-performance-benchmark)
     set_tests_properties(snow-shot-pinned-selection-performance-benchmark PROPERTIES LABELS "benchmark")
     if(TARGET snow-shot-pinned-window-tests)
+        target_compile_definitions(snow-shot-pinned-window-tests PRIVATE
+            SNOW_SHOT_PINNED_ACTION_BENCHMARK=1)
+        add_test(NAME snow-shot-pinned-action-performance-benchmark
+            COMMAND snow-shot-pinned-window-tests --pinned-action-performance-only -platform offscreen)
+        set_tests_properties(snow-shot-pinned-action-performance-benchmark PROPERTIES
+            LABELS "benchmark" RUN_SERIAL TRUE TIMEOUT 120)
         add_test(NAME snow-shot-pinned-multi-selection-performance-benchmark
             COMMAND snow-shot-pinned-window-tests --multi-selection-performance-only -platform offscreen)
         set_tests_properties(snow-shot-pinned-multi-selection-performance-benchmark PROPERTIES

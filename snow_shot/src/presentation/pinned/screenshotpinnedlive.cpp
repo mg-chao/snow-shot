@@ -607,7 +607,6 @@ void ScreenshotPinnedWindow::finishLiveConversion(QImage image) {
         m_liveStatusView->hide();
     m_canvas->show();
     m_persistenceEnabled = true;
-    m_editingEnabled = m_staticEditingEnabled;
     m_automaticTextRecognition = false;
     m_ocrSupported = screenshotOcrImageWithinPixelLimit(m_originalPixelSize);
     m_firstContentFramePublished = true;
