@@ -356,8 +356,8 @@
             <translation>No output file was selected</translation>
         </message>
         <message>
-            <source>No recognition result is available to save</source>
-            <translation>No recognition result is available to save</translation>
+            <source>No recognition result is available to save.</source>
+            <translation>No recognition result is available to save.</translation>
         </message>
         <message>
             <source>Replace</source>

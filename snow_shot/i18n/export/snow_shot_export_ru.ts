@@ -356,8 +356,8 @@
             <translation>Не выбран выходной файл</translation>
         </message>
         <message>
-            <source>No recognition result is available to save</source>
-            <translation>Нет результата распознавания для сохранения</translation>
+            <source>No recognition result is available to save.</source>
+            <translation>Нет результата распознавания для сохранения.</translation>
         </message>
         <message>
             <source>Replace</source>

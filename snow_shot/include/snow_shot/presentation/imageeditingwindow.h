@@ -9,6 +9,7 @@ namespace adqt::widgets {
 class AdModal;
 }
 class ScreenshotToolPalette;
+class ScreenshotAirDropService;
 class ScreenshotPrintService;
 class ScreenshotRecognitionSessionController;
 namespace snow_shot::presentation {
@@ -21,6 +22,7 @@ struct ImageEditingServices {
     ScreenshotPrintService* printing = nullptr;
     std::function<bool(QImage, std::function<void(bool)>)> pin = {};
     std::function<void(QWidget*, std::function<void(QStringList)>)> chooseFiles = {};
+    ScreenshotAirDropService* airDrop = nullptr;
 };
 class ImageEditingWindow final : public QObject {
     Q_OBJECT

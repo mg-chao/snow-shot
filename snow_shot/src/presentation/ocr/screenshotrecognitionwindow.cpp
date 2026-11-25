@@ -822,8 +822,10 @@ void ScreenshotRecognitionWindow::updateOriginalImagePreview() {
 std::optional<ScreenshotRecognitionImageSnapshot> ScreenshotRecognitionWindow::imageSnapshot(
     QImage image, const QRectF& canvasRect, QImage filteredImage, const QRectF& filteredCanvasRect,
     const ScreenshotResultStyle& style, bool includeHiddenContent) const {
-    if ((!includeHiddenContent && m_showOriginalImage) || m_stack->currentWidget() != m_textLayer ||
-        image.isNull())
+    if ((!includeHiddenContent && (m_showOriginalImage || m_selectionOnly)) ||
+        m_stack->currentWidget() != m_textLayer || image.isNull() || !canvasRect.isValid() ||
+        !std::isfinite(canvasRect.left()) || !std::isfinite(canvasRect.top()) ||
+        !std::isfinite(canvasRect.right()) || !std::isfinite(canvasRect.bottom()))
         return std::nullopt;
     auto snapshot = ocrImageSnapshot();
     snapshot.image = std::move(image);
@@ -2135,7 +2137,10 @@ void ScreenshotRecognitionWindow::registerWindowShortcuts() {
         const auto token = m_attachmentToken;
         const auto callback = m_actions.handleCopy;
         const bool copyHandledByHost =
-            m_recognizedDocument || (m_ocrPresentation && m_actions.copyOcrResult);
+            m_recognizedDocument ||
+            (m_actions.copyOcrResult && (m_ocrPresentation || translationCopyActive()));
+        if (!lifetime || !commandAttachmentMatches(owner, token))
+            return true;
         const bool copied = copyVisibleContentToClipboard();
         if (!lifetime)
             return true;
@@ -2473,6 +2478,8 @@ bool ScreenshotRecognitionWindow::copyVisibleContentToClipboard() {
     if (!lifetime || !lifetime->commandAttachmentMatches(owner, token))
         return false;
     if (translating) {
+        if (const auto copy = m_actions.copyOcrResult)
+            return copy();
         if (!provider)
             return false;
         auto mime = provider();

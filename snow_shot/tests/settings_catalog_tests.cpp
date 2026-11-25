@@ -1133,7 +1133,11 @@ void builtInCatalogIsCompleteAndValid() {
             "dedicated recognition behavior section");
     const auto& recognitionSave = recognition.items.front();
     require(
-        recognitionSave.title.translated() == QStringLiteral("Save recognition result as image") &&
+        recognitionSave.title.translated() ==
+                QStringLiteral("Export recognition result as image") &&
+            recognitionSave.description.translated() ==
+                QStringLiteral("Include recognition results when exporting an image with the text "
+                               "recognition tool active.") &&
             std::get<settings::SettingsSwitchDefinition>(recognitionSave.payload).binding ==
                 settings::SettingsSwitchBinding::SaveRecognitionResultAsImage &&
             storage::ConfigurationSchema::defaultValue(recognitionSave.configurationKey).toBool(),
@@ -1171,8 +1175,8 @@ void builtInCatalogIsCompleteAndValid() {
     require(copyImage &&
                 std::get<settings::SettingsSwitchDefinition>(copyImage->payload).binding ==
                     settings::SettingsSwitchBinding::CopyTranslationResultsAsImage &&
-                !storage::ConfigurationSchema::defaultValue(copyImage->configurationKey).toBool(),
-            "translation image copy has an independent default-off switch");
+                storage::ConfigurationSchema::defaultValue(copyImage->configurationKey).toBool(),
+            "translation image copy has an independent default-on switch");
     const auto& translationItems = catalog
                                        .section(QStringLiteral("text-recognition-translation"),
                                                 QStringLiteral("translation-settings"))
@@ -3297,7 +3301,7 @@ void searchIndexIsGeneratedAndRanked() {
     require(!translation.isEmpty() && translation.constFirst().location.itemId ==
                                           QStringLiteral("translation.original-image"),
             "search should navigate directly to the original image translation toggle");
-    const auto recognition = index.search(QStringLiteral("Save recognition result as image"));
+    const auto recognition = index.search(QStringLiteral("Export recognition result as image"));
     require(!recognition.isEmpty() &&
                 recognition.constFirst().location.itemId ==
                     QStringLiteral("text-recognition.save-recognition-result-as-image"),

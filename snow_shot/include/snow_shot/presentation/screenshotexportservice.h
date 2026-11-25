@@ -24,6 +24,7 @@ struct ScreenshotExportServiceContext {
 class ScreenshotExportService final : public ScreenshotSelectionImageComposerPort {
   public:
     using PinnedSelectionRender = std::function<ScreenshotPinnedSelectionResultHandle()>;
+    using SelectionImageLoader = std::function<bool(QObject*, ImageCallback)>;
 
     explicit ScreenshotExportService(ScreenshotExportServiceContext context);
     ~ScreenshotExportService() override;
@@ -41,6 +42,11 @@ class ScreenshotExportService final : public ScreenshotSelectionImageComposerPor
                                                      qreal scale, QObject* receiver,
                                                      ImageCallback callback,
                                                      ScreenshotLayoutCompaction compaction = {});
+    // Owns the current selection pixels and drawing state. Schedules its render once.
+    [[nodiscard]] SelectionImageLoader freezeSelectionResult(const QRect& selection,
+                                                             const ScreenshotResultStyle& style,
+                                                             ScreenshotLayoutCompaction compaction,
+                                                             qreal scale = 1.0);
     [[nodiscard]] std::optional<ScreenshotPinnedSelectionRequest>
     preparePinnedSelection(const QRect& selection, const ScreenshotResultStyle& style,
                            ScreenshotLayoutCompaction compaction = {}) const override;

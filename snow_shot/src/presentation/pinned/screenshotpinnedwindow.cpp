@@ -1692,6 +1692,8 @@ ScreenshotPinnedWindow::~ScreenshotPinnedWindow() {
     m_platform->stackingActivated = {};
     stopLiveSource();
     m_destroying = true;
+    if (auto cancel = std::exchange(m_cancelNativeImageRequest, {}))
+        cancel();
     m_accessibility.reset();
     destroyQuickTextAnnotationToolbar();
     endWindowShake(true);
@@ -6636,7 +6638,8 @@ std::optional<QByteArray> ScreenshotPinnedWindow::exportDocumentSnapshot() const
 
 ScreenshotExportSource
 ScreenshotPinnedWindow::cachedPinnedExportSource(ScreenshotPinnedViewportExportSource request,
-                                                 ScreenshotPinnedImageSnapshot& snapshot) {
+                                                 ScreenshotPinnedImageSnapshot& snapshot,
+                                                 bool recognitionImage) {
     if (m_cropRect)
         request.visibleCanvasRect = exportVisibleCanvasRect();
     const auto applyPlan = [&](const ScreenshotPinnedViewportRenderPlan& plan) {
@@ -6645,12 +6648,14 @@ ScreenshotPinnedWindow::cachedPinnedExportSource(ScreenshotPinnedViewportExportS
         if (request.clipboardAppearance)
             request.clipboardAppearance->rasterSize = snapshot.outputSize;
     };
-    if (request.recognitionOverlay || !request.presentationImage.isNull()) {
-        m_pinnedRenderCache.reset();
-        auto document = exportDocumentSnapshot();
-        if (!document)
-            return {};
-        request.documentSession = std::move(*document);
+    if (recognitionImage || request.recognitionOverlay || !request.presentationImage.isNull()) {
+        if (!recognitionImage) {
+            m_pinnedRenderCache.reset();
+            auto document = exportDocumentSnapshot();
+            if (!document)
+                return {};
+            request.documentSession = std::move(*document);
+        }
         const auto plan = screenshotPinnedViewportRenderPlan(request);
         if (!plan)
             return {};
@@ -6787,8 +6792,10 @@ ScreenshotPinnedWindow::renderedImageSnapshot(ViewportExportMode mode) {
     if (!lifetime || m_closing || m_presentationGeneration != generation ||
         m_contentReplacementGeneration != replacement)
         return fail();
-    if (mode != ViewportExportMode::RecognitionBackground && m_recognitionSession &&
-        m_recognitionSession->active() && m_recognitionSession->originalImageTranslationActive() &&
+    const bool includeViewportRecognition =
+        mode == ViewportExportMode::Complete || mode == ViewportExportMode::SourceResolution;
+    if (includeViewportRecognition && m_recognitionSession && m_recognitionSession->active() &&
+        m_recognitionSession->originalImageTranslationActive() &&
         !m_recognitionSession->showOriginalImage()) {
         if (!m_recognitionSession->flushTranslationUpdates() || !lifetime || m_closing ||
             m_presentationGeneration != generation || m_contentReplacementGeneration != replacement)
@@ -6817,16 +6824,28 @@ ScreenshotPinnedWindow::renderedImageSnapshot(ViewportExportMode mode) {
         sourceResolution ? m_transformedImage.size()
                          : QSize(std::max(1, qRound(backgroundRect.width() * surfaceScale)),
                                  std::max(1, qRound(backgroundRect.height() * surfaceScale)));
-    const PinnedExportAppearance appearance = pinnedExportAppearance(
-        m_resultStyle, mode == ViewportExportMode::Complete ? m_opacityPercent : 100, surfaceScale);
+    const bool applyOpacity =
+        mode != ViewportExportMode::RecognitionBackground && !sourceResolution;
+    const PinnedExportAppearance appearance =
+        pinnedExportAppearance(m_resultStyle, applyOpacity ? m_opacityPercent : 100, surfaceScale);
+    const auto captureRecognitionImage =
+        [&]() -> std::optional<ScreenshotRecognitionImageSnapshot> {
+        if (mode != ViewportExportMode::ImageOutput || !m_recognitionSession ||
+            !m_screenshotRenderer)
+            return std::nullopt;
+        return m_recognitionSession->imageExportSnapshot(
+            m_transformedImage, backgroundRect, m_screenshotRenderer->ocrFilteredImage(),
+            m_screenshotRenderer->ocrFilteredCanvasRect());
+    };
+    auto recognitionImage = captureRecognitionImage();
     ScreenshotPinnedViewportExportSource request{
         {},
         m_transformedImage,
         backgroundRect,
         contentPixelSize,
         appearance.resultStyle,
-        animatedImage() ? decltype(m_runtime.smartEraseSnapshot()){}
-                        : m_runtime.smartEraseSnapshot(),
+        animatedImage() || recognitionImage ? decltype(m_runtime.smartEraseSnapshot()){}
+                                            : m_runtime.smartEraseSnapshot(),
         appearance.outputOpacity,
     };
     const QRect geometry = m_animationTransformSnapshot
@@ -6887,10 +6906,13 @@ ScreenshotPinnedWindow::renderedImageSnapshot(ViewportExportMode mode) {
         clipboardAppearance.borderAppearance.reset();
     }
     request.clipboardAppearance = std::move(clipboardAppearance);
-    if (mode != ViewportExportMode::RecognitionBackground) {
+    if (recognitionImage) {
+        if (!recognitionImage->lines.isEmpty() || !recognitionImage->filteredImage.isNull())
+            request.recognitionOverlay = std::move(*recognitionImage);
+    } else if (mode != ViewportExportMode::RecognitionBackground) {
         request.textAnnotations = textAnnotationSnapshot();
-        const bool recognitionVisible = m_recognitionSession && m_recognitionContent &&
-                                        m_recognitionSession->active() &&
+        const bool recognitionVisible = includeViewportRecognition && m_recognitionSession &&
+                                        m_recognitionContent && m_recognitionSession->active() &&
                                         !m_recognitionSession->showOriginalImage();
         if (recognitionVisible && !m_hiddenTextSelection) {
             auto overlay = m_recognitionContent->imageSnapshot(
@@ -6964,7 +6986,8 @@ ScreenshotPinnedWindow::renderedImageSnapshot(ViewportExportMode mode) {
     }
     if (m_cropRect)
         request.visibleCanvasRect = exportVisibleCanvasRect();
-    snapshot.source = cachedPinnedExportSource(std::move(request), snapshot);
+    snapshot.source =
+        cachedPinnedExportSource(std::move(request), snapshot, recognitionImage.has_value());
     return snapshot.source.isValid() ? snapshot : fail();
 }
 
@@ -7223,6 +7246,14 @@ void ScreenshotPinnedWindow::copyOriginalImage(
 
 void ScreenshotPinnedWindow::requestRenderedImageSnapshot(
     std::function<void(ScreenshotPinnedImageSnapshot)> ready, ScreenshotPinnedRenderMode mode) {
+    requestViewportSnapshot(mode == ScreenshotPinnedRenderMode::SourceResolution
+                                ? ViewportExportMode::SourceResolution
+                                : ViewportExportMode::Complete,
+                            std::move(ready));
+}
+
+void ScreenshotPinnedWindow::requestViewportSnapshot(
+    ViewportExportMode mode, std::function<void(ScreenshotPinnedImageSnapshot)> ready) {
     if (!ready)
         return;
     struct Pending final {
@@ -7252,15 +7283,17 @@ void ScreenshotPinnedWindow::requestRenderedImageSnapshot(
         fail();
         return;
     }
-    const auto exportMode = mode == ScreenshotPinnedRenderMode::SourceResolution
-                                ? ViewportExportMode::SourceResolution
-                                : ViewportExportMode::Complete;
     // Ready pins, including animations, freeze their published frame immediately.
     if (isLiveWindow() ||
         (!m_imageLoader && !m_originalImage.isNull() && m_firstContentFramePublished)) {
-        finish(renderedImageSnapshot(exportMode));
+        finish(renderedImageSnapshot(isLiveWindow() && mode == ViewportExportMode::ImageOutput
+                                         ? ViewportExportMode::Complete
+                                         : mode));
         return;
     }
+    // A pin that needs materialization has no displayed recognition pixels to freeze.
+    const auto exportMode =
+        mode == ViewportExportMode::ImageOutput ? ViewportExportMode::StandardComposite : mode;
     pending->invalidated =
         connect(this, &ScreenshotPinnedWindow::renderedImageSnapshotInvalidated, qApp, fail);
     pending->destroyed = connect(this, &QObject::destroyed, qApp, fail);
@@ -7306,6 +7339,16 @@ std::shared_ptr<ScreenshotExportArtifact> ScreenshotPinnedWindow::fileSaveArtifa
     return viewportArtifact();
 }
 
+void ScreenshotPinnedWindow::requestImageOutputArtifact(
+    std::function<void(std::shared_ptr<ScreenshotExportArtifact>)> ready) {
+    requestViewportSnapshot(
+        ViewportExportMode::ImageOutput, [ready = std::move(ready)](auto snapshot) {
+            ready(snapshot.source.isValid()
+                      ? std::make_shared<ScreenshotExportArtifact>(std::move(snapshot.source))
+                      : nullptr);
+        });
+}
+
 void ScreenshotPinnedWindow::quickSave() {
     if (isLiveWindow())
         return;
@@ -7320,6 +7363,11 @@ void ScreenshotPinnedWindow::quickSave() {
     if (!snapshotLifetime)
         return;
     if (fileSnapshot) {
+        if (fileSnapshot->isMissingTableResult()) {
+            showPinnedRecognitionMessage(this, ScreenshotRecognitionFileExport::noResultMessage(),
+                                         true);
+            return;
+        }
         const snow_shot::storage::ScreenshotSettings settings;
         const QDateTime timestamp = QDateTime::currentDateTime();
         saveRecognitionSnapshot(*fileSnapshot,
@@ -7333,32 +7381,19 @@ void ScreenshotPinnedWindow::quickSave() {
 #endif
     const auto tasks = tasksFor(ExportTrigger::PinnedSave);
     m_quickSavePending = true;
-    if (m_originalImage.isNull()) {
-        requestMaterializedImage([this, tasks](bool succeeded) {
-            if (succeeded) {
-                quickSavePreparedImage(tasks);
-                return;
-            }
-            m_quickSavePending = false;
-            if (!m_closing) {
-                showPinnedRecognitionMessage(
-                    this, translatePinnedText("The pinned image could not be prepared"), true);
-            }
-        });
-        return;
-    }
-    quickSavePreparedImage(tasks);
+    requestImageOutputArtifact([receiver = QPointer(this), tasks](auto artifact) {
+        if (receiver)
+            receiver->quickSavePreparedImage(std::move(artifact), tasks);
+    });
 }
 
-void ScreenshotPinnedWindow::quickSavePreparedImage(const ScreenshotExportTasks& tasks) {
+void ScreenshotPinnedWindow::quickSavePreparedImage(
+    std::shared_ptr<ScreenshotExportArtifact> artifact, const ScreenshotExportTasks& tasks) {
     if (m_closing || m_printPending || m_recognitionSavePending ||
-        property("saveDialogOpen").toBool() || m_transformedImage.isNull() ||
-        m_backgroundCanvasRect.isEmpty() ||
-        (!animatedImage() && m_canvas && !m_canvas->resetEditingStatePreservingTool())) {
+        property("saveDialogOpen").toBool()) {
         m_quickSavePending = false;
         return;
     }
-    auto artifact = fileSaveArtifact();
     if (!artifact) {
         m_quickSavePending = false;
         showPinnedRecognitionMessage(
@@ -7979,6 +8014,7 @@ void ScreenshotPinnedWindow::printContent() {
                                       {QStringLiteral("operation"), QString::number(replacement)}});
     const QPointer<ScreenshotPinnedWindow> receiver(this);
     const QPointer<ScreenshotPrintService> printer(&service);
+    const QPointer shortcuts(m_shortcutManager.get());
     const auto completed = std::make_shared<bool>(false);
     const auto tasks = tasksFor(ExportTrigger::PinnedPrint);
     const auto original =
@@ -7989,8 +8025,8 @@ void ScreenshotPinnedWindow::printContent() {
     // Printing blocks input without the move/resize lifecycle that hides and re-anchors the
     // toolbar.
     updateOriginalImagePreviewVisibility();
-    const auto finished = [receiver, tasks, original, previousFocus, suspension, generation,
-                           replacement, completed,
+    const auto finished = [receiver, shortcuts, tasks, original, previousFocus, suspension,
+                           generation, replacement, completed,
                            interactionGuard](ScreenshotPrintService::Result result) {
         if (std::exchange(*completed, true))
             return;
@@ -7999,12 +8035,11 @@ void ScreenshotPinnedWindow::printContent() {
                 QStringLiteral("snow_shot.print"), QStringLiteral("print.pinned_failed"),
                 {{QStringLiteral("request_kind"), QStringLiteral("pinned")}}, QtWarningMsg);
         interactionGuard->release();
-        if (!receiver)
+        if (!receiver || !shortcuts || receiver->m_destroying)
             return;
         receiver->m_printPending = false;
         receiver->setProperty("saveDialogOpen", false);
-        receiver->m_nativeExportArtifact.reset();
-        receiver->m_shortcutManager->resumeInput(suspension);
+        shortcuts->resumeInput(suspension);
         receiver->updateOriginalImagePreviewVisibility();
         if (receiver->m_closing || receiver->m_presentationGeneration != generation ||
             receiver->m_contentReplacementGeneration != replacement)
@@ -8034,7 +8069,8 @@ void ScreenshotPinnedWindow::printContent() {
                         finished](ScreenshotExportImageResult result) {
         if (*completed || !receiver)
             return;
-        if (receiver->m_closing || receiver->m_presentationGeneration != generation ||
+        if (receiver->m_destroying || receiver->m_closing ||
+            receiver->m_presentationGeneration != generation ||
             receiver->m_contentReplacementGeneration != replacement) {
             finished({ScreenshotPrintService::Status::Cancelled, {}});
             return;
@@ -8059,65 +8095,50 @@ void ScreenshotPinnedWindow::printContent() {
                                              : result.error});
         }
     };
-    requestVisibleContentSnapshot(ready);
+    requestNativeExportImage(ready);
 }
 
-void ScreenshotPinnedWindow::requestVisibleContentSnapshot(
+void ScreenshotPinnedWindow::requestNativeExportImage(
     std::function<void(ScreenshotExportImageResult)> ready) {
     const QPointer<ScreenshotPinnedWindow> receiver(this);
-    const quint64 generation = m_presentationGeneration;
-    const quint64 replacement = m_contentReplacementGeneration;
-    const auto frozenAnimation = animatedImage() ? viewportArtifact() : nullptr;
-    requestMaterializedImage([receiver, generation, replacement, ready,
-                              frozenAnimation](bool succeeded) {
+    const auto generation = m_presentationGeneration;
+    const auto replacement = m_contentReplacementGeneration;
+    requestImageOutputArtifact([receiver, generation, replacement,
+                                ready = std::move(ready)](auto artifact) {
         if (!receiver)
             return;
-        if (receiver->m_closing || receiver->m_presentationGeneration != generation ||
-            receiver->m_contentReplacementGeneration != replacement) {
-            ready({});
-            return;
-        }
-        const bool recognitionVisible = receiver->m_recognitionContent &&
-                                        receiver->m_recognitionSession &&
-                                        receiver->m_recognitionSession->active() &&
-                                        !receiver->m_recognitionSession->showOriginalImage();
-        const auto textAnnotations = recognitionVisible ? receiver->textAnnotationSnapshot()
-                                                        : ScreenshotTextAnnotationRenderSnapshot{};
-        receiver->m_nativeExportArtifact =
-            succeeded
-                ? (receiver->animatedImage()
-                       ? frozenAnimation
-                       : receiver->viewportArtifact(recognitionVisible
-                                                        ? ViewportExportMode::RecognitionBackground
-                                                        : ViewportExportMode::Complete))
-                : nullptr;
-        const auto snapshotReady = [receiver, generation, replacement, recognitionVisible,
-                                    textAnnotations, ready](ScreenshotExportImageResult result) {
-            if (!receiver)
-                return;
-            if (receiver->m_closing || receiver->m_presentationGeneration != generation ||
-                receiver->m_contentReplacementGeneration != replacement) {
-                ready({});
-                return;
-            }
-            if (result.succeeded() && recognitionVisible) {
-                QImage snapshot = receiver->m_recognitionContent->printViewportSnapshot(
-                    result.image, receiver->visibleCanvasRect(),
-                    receiver->m_screenshotRenderer->ocrFilteredImage(),
-                    receiver->m_screenshotRenderer->ocrFilteredCanvasRect(),
-                    receiver->m_opacityPercent / 100.0, {}, textAnnotations);
-                result.image = std::move(snapshot);
-                if (result.image.isNull())
-                    result.error = QCoreApplication::translate(
-                        "ScreenshotPinnedWindow", "The pinned image could not be prepared");
-            }
-            ready(std::move(result));
-        };
-        if (!receiver->m_nativeExportArtifact ||
-            !receiver->m_nativeExportArtifact->requestImage(receiver, snapshotReady))
-            ready({{},
-                   QCoreApplication::translate("ScreenshotPinnedWindow",
-                                               "The pinned image could not be prepared")});
+        // Freeze the pixels during the command and start native preparation after the input
+        // event. Even a cached raster can become obsolete before the event returns.
+        QMetaObject::invokeMethod(
+            receiver,
+            [receiver, generation, replacement, ready, artifact = std::move(artifact)] {
+                if (!receiver)
+                    return;
+                if (receiver->m_closing || receiver->m_presentationGeneration != generation ||
+                    receiver->m_contentReplacementGeneration != replacement) {
+                    ready({});
+                    return;
+                }
+                const auto rendered = [receiver, ready](ScreenshotExportImageResult result) {
+                    if (!receiver)
+                        return;
+                    [[maybe_unused]] const auto keepAlive =
+                        std::exchange(receiver->m_cancelNativeImageRequest, {});
+                    ready(std::move(result));
+                };
+                if (artifact) {
+                    receiver->m_cancelNativeImageRequest = [artifact, ready] {
+                        artifact->cancel();
+                        ready({});
+                    };
+                    if (artifact->requestImage(receiver, rendered))
+                        return;
+                }
+                rendered({{},
+                          QCoreApplication::translate("ScreenshotPinnedWindow",
+                                                      "The pinned image could not be prepared")});
+            },
+            Qt::QueuedConnection);
     });
 }
 
@@ -8137,6 +8158,7 @@ void ScreenshotPinnedWindow::airDropContent() {
     const quint64 replacement = m_contentReplacementGeneration;
     const QPointer<ScreenshotPinnedWindow> receiver(this);
     const QPointer<Service> sharing(&service);
+    const QPointer shortcuts(m_shortcutManager.get());
     const QPointer<QWidget> previousFocus(QApplication::focusWidget());
     const auto interaction = std::make_shared<ScreenshotPrintInteractionGuard>(
         QList<QWidget*>{this, m_editController ? m_editController->toolbarWindow() : nullptr});
@@ -8147,17 +8169,17 @@ void ScreenshotPinnedWindow::airDropContent() {
                               ? std::make_shared<QImage>()
                               : nullptr;
     updateOriginalImagePreviewVisibility();
-    const auto finished = [receiver, tasks, original, previousFocus, generation, replacement,
-                           suspension, interaction, completed](Service::Result result) {
+    const auto finished = [receiver, shortcuts, tasks, original, previousFocus, generation,
+                           replacement, suspension, interaction,
+                           completed](Service::Result result) {
         if (std::exchange(*completed, true))
             return;
         interaction->release();
-        if (!receiver)
+        if (!receiver || !shortcuts || receiver->m_destroying)
             return;
         receiver->m_airDropPending = false;
-        receiver->m_nativeExportArtifact.reset();
         receiver->setProperty("saveDialogOpen", false);
-        receiver->m_shortcutManager->resumeInput(suspension);
+        shortcuts->resumeInput(suspension);
         receiver->updateOriginalImagePreviewVisibility();
         if (receiver->m_closing || receiver->m_presentationGeneration != generation ||
             receiver->m_contentReplacementGeneration != replacement)
@@ -8186,11 +8208,12 @@ void ScreenshotPinnedWindow::airDropContent() {
                     .arg(result.error),
                 true);
     };
-    requestVisibleContentSnapshot([receiver, original, sharing, generation, replacement, finished,
-                                   completed](ScreenshotExportImageResult result) {
+    requestNativeExportImage([receiver, original, sharing, generation, replacement, finished,
+                              completed](ScreenshotExportImageResult result) {
         if (*completed || !receiver)
             return;
-        if (receiver->m_closing || receiver->m_presentationGeneration != generation ||
+        if (receiver->m_destroying || receiver->m_closing ||
+            receiver->m_presentationGeneration != generation ||
             receiver->m_contentReplacementGeneration != replacement) {
             finished({Service::Status::Cancelled, {}});
             return;
@@ -8235,22 +8258,20 @@ void ScreenshotPinnedWindow::uploadToCloud() {
     const auto replacement = m_contentReplacementGeneration;
     const auto generation = m_presentationGeneration;
     const auto options = ScreenshotCloudUploadService::currentOptions();
-    const auto frozenAnimation = animatedImage() ? fileSaveArtifact() : nullptr;
-    requestMaterializedImage([this, replacement, generation, config = *config, options,
-                              tasks = tasksFor(ExportTrigger::PinnedUpload),
-                              frozenAnimation](bool succeeded) {
-        if (m_closing || m_contentReplacementGeneration != replacement ||
+    requestImageOutputArtifact([this, lifetime = QPointer(this), replacement, generation,
+                                config = *config, options,
+                                tasks = tasksFor(ExportTrigger::PinnedUpload)](auto artifact) {
+        if (!lifetime || m_closing || m_contentReplacementGeneration != replacement ||
             m_presentationGeneration != generation)
             return;
         m_cloudUploadPreparing = false;
-        if (!succeeded ||
-            (!animatedImage() && m_canvas && !m_canvas->resetEditingStatePreservingTool())) {
+        if (!artifact) {
             cancelCloudUpload();
             showPinnedRecognitionMessage(this, tr("The pinned image could not be prepared"), true);
             return;
         }
-        m_cloudUploadJob = ScreenshotCloudUploadService::upload(
-            animatedImage() ? frozenAnimation : fileSaveArtifact(), config, options, this);
+        m_cloudUploadJob =
+            ScreenshotCloudUploadService::upload(std::move(artifact), config, options, this);
         ScreenshotMessageService::loadingFor(this, QStringLiteral("cloud-upload"),
                                              tr("Preparing cloud upload..."));
         connect(m_cloudUploadJob, &ScreenshotCloudUploadJob::progress, this, [this](int percent) {
@@ -8303,11 +8324,8 @@ void ScreenshotPinnedWindow::saveAsFile() {
         return;
     if (fileSnapshot) {
         if (!fileSnapshot->hasContent()) {
-            showPinnedRecognitionMessage(
-                this,
-                QCoreApplication::translate("ScreenshotRecognitionFileExport",
-                                            "No recognition result is available to save"),
-                true);
+            showPinnedRecognitionMessage(this, ScreenshotRecognitionFileExport::noResultMessage(),
+                                         true);
             return;
         }
         const snow_shot::storage::ScreenshotSettings settings;
@@ -8344,26 +8362,21 @@ void ScreenshotPinnedWindow::saveAsFile() {
         return;
     }
 #endif
-    if (m_originalImage.isNull()) {
-        requestMaterializedImage([this](bool succeeded) {
-            if (succeeded && !m_closing) {
-                saveAsFile();
-            } else if (!succeeded) {
-                showPinnedRecognitionMessage(
-                    this, translatePinnedText("The pinned image could not be prepared"), true);
-            }
-        });
-        return;
-    }
-    if ((!isLiveWindow() && m_transformedImage.isNull()) || m_backgroundCanvasRect.isEmpty()) {
-        return;
-    }
+    requestImageOutputArtifact([receiver = QPointer(this)](auto artifact) {
+        if (receiver)
+            receiver->saveImageAsFile(std::move(artifact));
+    });
+}
 
-    if (!animatedImage() && m_canvas && !m_canvas->resetEditingStatePreservingTool())
+void ScreenshotPinnedWindow::saveImageAsFile(std::shared_ptr<ScreenshotExportArtifact> artifact) {
+    if (m_closing || m_printPending || m_recognitionSavePending ||
+        property("saveDialogOpen").toBool())
         return;
-    auto artifact = fileSaveArtifact();
-    if (artifact == nullptr)
+    if (!artifact) {
+        showPinnedRecognitionMessage(
+            this, translatePinnedText("The pinned image could not be prepared"), true);
         return;
+    }
     const snow_shot::storage::ScreenshotSettings outputSettings;
     const auto encoding = snow_shot::presentation::screenshotEncodingOptions(outputSettings);
     auto tasks = tasksFor(ExportTrigger::PinnedSave);

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "imageeditingexportcontroller.h"
+#include "../services/screenshotprintinteractionguard.h"
+#include "snow_shot/presentation/screenshotairdropservice.h"
 #include "snow_shot/presentation/screenshotclouduploadservice.h"
 #include "snow_shot/presentation/screenshotmanualsave.h"
 #include "snow_shot/presentation/screenshotprintservice.h"
@@ -10,15 +12,15 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QMessageBox>
-#include <QSaveFile>
 #include <utility>
 
 namespace snow_shot::presentation {
 namespace {
 using Operation = ImageEditingExportController::Operation;
 struct Request final : QObject {
-    explicit Request(QObject* parent, ImageEditingExportController::Completion done)
-        : QObject(parent), completion(std::move(done)) {}
+    Request(QObject* parent, Operation operation, ImageEditingExportController::Completion done)
+        : QObject(parent), operation(operation), completion(std::move(done)) {}
+    Operation operation;
     ImageEditingExportController::Completion completion;
     ScreenshotExportJobHandle job;
     ScreenshotManualSaveHandle save;
@@ -28,8 +30,11 @@ struct Request final : QObject {
     QPointer<QFileDialog> dialog;
     QPointer<QMessageBox> overwrite;
     QPointer<QWidget> owner;
+    std::unique_ptr<ScreenshotPrintInteractionGuard> interaction;
     bool destinationChosen = false;
 };
+#if SNOW_SHOT_ENABLE_IMAGE_CONVERSION || SNOW_SHOT_ENABLE_LATEX_RECOGNITION ||                     \
+    SNOW_SHOT_ENABLE_QR_RECOGNITION || SNOW_SHOT_ENABLE_TABLE_RECOGNITION
 struct Destination {
     QString directory;
     QString name;
@@ -46,66 +51,103 @@ Destination destination(Operation operation) {
                                                             : settings.manualSaveFilenameFormat(),
                                                       timestamp)};
 }
-ScreenshotExportTaskResult saveText(const QByteArray& bytes, const QString& path,
-                                    const Destination& output, Operation operation,
-                                    const ScreenshotExportCancellation& cancel) {
-    if (cancel.isCancellationRequested())
-        return ScreenshotExportTaskResult::failure(ScreenshotExportFailureStage::Cancelled, {});
-    if (operation == Operation::QuickSave) {
-        if (output.directory.trimmed().isEmpty() || !QDir().mkpath(output.directory))
-            return ScreenshotExportTaskResult::failure(
-                ScreenshotExportFailureStage::File,
-                QCoreApplication::translate("ImageEditingWindow",
-                                            "The save directory is not available"));
-        for (int index = 0; index < 1000000; ++index) {
-            if (cancel.isCancellationRequested())
-                return ScreenshotExportTaskResult::failure(ScreenshotExportFailureStage::Cancelled,
-                                                           {});
-            const QString suffix =
-                (index ? QStringLiteral("_%1").arg(index) : QString{}) + QStringLiteral(".txt");
-            QFile file(QDir(output.directory)
-                           .filePath(storage::composeExportFileName(output.name, suffix)));
-            if (QFileInfo::exists(file.fileName()))
-                continue;
-            if (!file.open(QIODevice::WriteOnly | QIODevice::NewOnly))
-                return ScreenshotExportTaskResult::failure(ScreenshotExportFailureStage::File,
-                                                           file.errorString());
-            if (file.write(bytes) != bytes.size() || !file.flush()) {
-                const auto error = file.errorString();
-                file.remove();
-                return ScreenshotExportTaskResult::failure(ScreenshotExportFailureStage::File,
-                                                           error);
-            }
-            return {};
-        }
-        return ScreenshotExportTaskResult::failure(
-            ScreenshotExportFailureStage::File,
-            QCoreApplication::translate("ImageEditingWindow",
-                                        "No available output filename was found"));
-    }
-    QSaveFile file(path);
-    if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit())
-        return ScreenshotExportTaskResult::failure(ScreenshotExportFailureStage::File,
-                                                   file.errorString());
-    return {};
-}
+#endif
 } // namespace
 
 struct ImageEditingExportController::Impl {
     ImageEditingExportController& q;
-    ScreenshotPrintService* printing;
+    QPointer<ScreenshotPrintService> printing;
+    QPointer<ScreenshotAirDropService> airDrop;
     Pin pin;
     QPointer<Request> active;
+    QPointer<Request> copy;
+
+    QPointer<Request>& activeRequest(Operation operation) {
+        return operation == Operation::Copy ? copy : active;
+    }
+
+    bool current(const QPointer<Request>& request) {
+        return request && activeRequest(request->operation) == request;
+    }
+
+    static void cancelRequest(QPointer<Request>& pending);
+
+    Request* begin(Operation operation, QWidget* owner, Completion completion) {
+        auto* request = new Request(&q, operation, std::move(completion));
+        activeRequest(operation) = request;
+        request->owner = owner;
+        QObject::connect(owner, &QObject::destroyed, request, [this, pending = QPointer(request)] {
+            if (current(pending))
+                cancelRequest(activeRequest(pending->operation));
+        });
+        return request;
+    }
 
     void finish(QPointer<Request> request, bool success, QString error = {}) {
-        if (!request || active != request)
+        if (!current(request))
             return;
-        active = nullptr;
+        activeRequest(request->operation).clear();
+        request->interaction.reset();
         auto completion = std::move(request->completion);
         // Keep artifacts alive through their delivery callbacks.
         request->deleteLater();
         if (completion)
             completion(success, std::move(error));
+    }
+
+    void startFailed(QPointer<Request> request) {
+        finish(request, false,
+               QCoreApplication::translate("snow_shot::presentation::ImageEditingWindow",
+                                           "Export could not be started"));
+    }
+
+    void publishCopy(QPointer<Request> request, std::unique_ptr<QMimeData> mime,
+                     ScreenshotClipboardService::PublicationId publication) {
+        const QPointer<ImageEditingExportController> lifetime(&q);
+        auto handle = ScreenshotClipboardService::publishMimeData(
+            QApplication::clipboard(), request, std::move(mime), publication,
+            [this, request](auto result) {
+                finish(request, result.succeeded() && !result.superseded, result.errorString());
+            });
+        if (!lifetime || !current(request))
+            return;
+        if (handle.isValid())
+            request->clipboard = std::move(handle);
+        else
+            startFailed(request);
+    }
+
+    void copyImage(QPointer<Request> request, ScreenshotExportSource source,
+                   const CopyOptions& options) {
+        request->artifact = std::make_shared<ScreenshotExportArtifact>(std::move(source));
+        const auto artifact = request->artifact;
+        const auto prepared = [this, request, publication = options.publication](auto result) {
+            if (!current(request))
+                return;
+            if (!ScreenshotClipboardService::publicationCurrent(publication)) {
+                finish(request, false);
+                return;
+            }
+            if (!result.succeeded()) {
+                finish(request, false, result.error);
+                return;
+            }
+            request->clipboard = ScreenshotClipboardService::commit(
+                QApplication::clipboard(), request, std::move(result.payload), publication,
+                [this, request](auto committed) {
+                    finish(request, committed.succeeded() && !committed.superseded,
+                           committed.errorString());
+                });
+            if (!request->clipboard.isValid())
+                startFailed(request);
+        };
+        const auto& file = options.file;
+        const bool started = file ? artifact->requestClipboardFile(
+                                        request, file->format, file->filenameFormat, file->encoding,
+                                        prepared, file->pdf, options.requestedAt)
+                                  : artifact->requestClipboard(request, prepared);
+        if (!started)
+            startFailed(request);
     }
     void submit(QPointer<Request> request, ScreenshotExportCoordinator::Work work,
                 Operation operation, QString path) {
@@ -168,59 +210,44 @@ struct ImageEditingExportController::Impl {
         });
         dialog->show();
     }
-    void saveRecognition(QPointer<Request> request, Operation operation, Content content,
-                         QWidget* owner) {
-        const auto output = destination(operation);
-        const bool text = std::holds_alternative<QString>(content);
-        QString extension = QStringLiteral("txt");
-        QString filter = QCoreApplication::translate("snow_shot::presentation::ImageEditingWindow",
-                                                     "Text files (*.txt)");
 #if SNOW_SHOT_ENABLE_IMAGE_CONVERSION || SNOW_SHOT_ENABLE_LATEX_RECOGNITION ||                     \
     SNOW_SHOT_ENABLE_QR_RECOGNITION || SNOW_SHOT_ENABLE_TABLE_RECOGNITION
-        if (!text) {
-            const auto kind = std::get<ScreenshotRecognitionFileSnapshot>(content).kind;
-            extension = ScreenshotRecognitionFileExport::extension(kind);
-            filter = ScreenshotRecognitionFileExport::dialogFilter(kind);
-        }
-#endif
+    void saveRecognition(QPointer<Request> request, Operation operation,
+                         ScreenshotRecognitionFileSnapshot snapshot, QWidget* owner) {
+        const auto output = destination(operation);
+        const auto kind = snapshot.kind;
         const auto write = [this, request, operation, output,
-                            content = std::make_shared<Content>(std::move(content))](QString path) {
+                            snapshot = std::move(snapshot)](QString path) {
             if (!request || active != request)
                 return;
-            if (const auto* value = std::get_if<QString>(content.get())) {
-                submit(
-                    request,
-                    [bytes = value->toUtf8(), path, output, operation](const auto& cancel) {
-                        return saveText(bytes, path, output, operation, cancel);
-                    },
-                    operation, path);
-                return;
-            }
-#if SNOW_SHOT_ENABLE_IMAGE_CONVERSION || SNOW_SHOT_ENABLE_LATEX_RECOGNITION ||                     \
-    SNOW_SHOT_ENABLE_QR_RECOGNITION || SNOW_SHOT_ENABLE_TABLE_RECOGNITION
-            auto snapshot = std::get<ScreenshotRecognitionFileSnapshot>(std::move(*content));
             if (operation == Operation::Save)
                 path = ScreenshotRecognitionFileExport::normalizedPath(path, snapshot.kind);
             const auto paths = ScreenshotRecognitionFileExport::outputPaths(path, snapshot);
-            auto submitSnapshot = [this, request, snapshot = std::move(snapshot), output, path,
-                                   operation]() mutable {
+            auto submitSnapshot = [this, request, snapshot, output, path, operation] {
                 if (!request || active != request)
                     return;
                 submit(
                     request,
-                    [snapshot = std::move(snapshot), output, path, operation](const auto& cancel) {
-                        if (cancel.isCancellationRequested())
+                    [snapshot, output, path, operation](const auto& cancel) {
+                        const auto cancelled = [&cancel] {
+                            return cancel.isCancellationRequested();
+                        };
+                        if (cancelled())
                             return ScreenshotExportTaskResult::failure(
                                 ScreenshotExportFailureStage::Cancelled, {});
                         const auto result =
                             operation == Operation::QuickSave
                                 ? ScreenshotRecognitionFileExport::quickSave(
-                                      snapshot, output.directory, output.name)
-                                : ScreenshotRecognitionFileExport::saveToPath(snapshot, path, true);
+                                      snapshot, output.directory, output.name, cancelled)
+                                : ScreenshotRecognitionFileExport::saveToPath(snapshot, path, true,
+                                                                              cancelled);
                         return result.succeeded()
                                    ? ScreenshotExportTaskResult{}
                                    : ScreenshotExportTaskResult::failure(
-                                         ScreenshotExportFailureStage::File, result.error);
+                                         result.wasCancelled
+                                             ? ScreenshotExportFailureStage::Cancelled
+                                             : ScreenshotExportFailureStage::File,
+                                         result.error);
                     },
                     operation, path);
             };
@@ -228,7 +255,6 @@ struct ImageEditingExportController::Impl {
                 confirmOverwrite(request, paths, std::move(submitSnapshot));
             else
                 submitSnapshot();
-#endif
         };
         if (operation == Operation::QuickSave) {
             write({});
@@ -243,10 +269,11 @@ struct ImageEditingExportController::Impl {
         dialog->setAcceptMode(QFileDialog::AcceptSave);
         dialog->setFileMode(QFileDialog::AnyFile);
         dialog->setWindowModality(Qt::WindowModal);
-        dialog->setNameFilter(filter);
-        dialog->setOption(QFileDialog::DontConfirmOverwrite, !text);
-        dialog->selectFile(
-            QDir(output.directory).filePath(output.name + QLatin1Char('.') + extension));
+        dialog->setNameFilter(ScreenshotRecognitionFileExport::dialogFilter(kind));
+        dialog->setOption(QFileDialog::DontConfirmOverwrite);
+        dialog->selectFile(QDir(output.directory)
+                               .filePath(output.name + QLatin1Char('.') +
+                                         ScreenshotRecognitionFileExport::extension(kind)));
         QObject::connect(dialog, &QDialog::accepted, request, [this, request, dialog, write] {
             if (!request || request->destinationChosen)
                 return;
@@ -273,6 +300,7 @@ struct ImageEditingExportController::Impl {
         });
         dialog->show();
     }
+#endif
     void image(QPointer<Request> request, Operation operation, ScreenshotExportSource source,
                QWidget* owner, QWidget* stackingOwner) {
         request->artifact = std::make_shared<ScreenshotExportArtifact>(std::move(source));
@@ -314,23 +342,7 @@ struct ImageEditingExportController::Impl {
             break;
         }
         case Operation::Copy:
-            if (!artifact->requestClipboard(request, [this, request](auto result) {
-                    if (!request || active != request)
-                        return;
-                    if (!result.succeeded()) {
-                        finish(request, false, result.error);
-                        return;
-                    }
-                    request->clipboard = ScreenshotClipboardService::commit(
-                        QApplication::clipboard(), request, std::move(result.payload),
-                        [this, request](auto committed) {
-                            finish(request, committed.succeeded(), committed.errorString());
-                        });
-                }))
-                finish(request, false,
-                       QCoreApplication::translate("snow_shot::presentation::ImageEditingWindow",
-                                                   "Export could not be started"));
-            break;
+            Q_UNREACHABLE();
         case Operation::Save:
             if (storage::ScreenshotSettings().saveAsFileDialog() == QStringLiteral("snow_shot")) {
                 if (!ScreenshotSaveAsFileDialog::open(
@@ -385,6 +397,36 @@ struct ImageEditingExportController::Impl {
                        QCoreApplication::translate("snow_shot::presentation::ImageEditingWindow",
                                                    "Export could not be started"));
             break;
+        case Operation::AirDrop: {
+            request->interaction = std::make_unique<ScreenshotPrintInteractionGuard>(
+                QList<QWidget*>{owner, stackingOwner});
+            const QString filename = ScreenshotImageFileService::suggestedBaseName(
+                                         storage::ScreenshotSettings().manualSaveFilenameFormat()) +
+                                     QStringLiteral(".png");
+            using Service = ScreenshotAirDropService;
+            if (!artifact->requestImage(request, [this, request, filename](auto result) {
+                    if (!current(request))
+                        return;
+                    if (!result.succeeded()) {
+                        finish(request, false, result.error);
+                        return;
+                    }
+                    auto& service = airDrop ? *airDrop : Service::shared();
+                    if (!service.shareImage(request, request->owner, std::move(result.image),
+                                            filename, [this, request](Service::Result shared) {
+                                                finish(request,
+                                                       shared.status == Service::Status::Shared,
+                                                       shared.error);
+                                            })) {
+                        finish(request, false,
+                               QCoreApplication::translate(
+                                   "ScreenshotAirDropService",
+                                   "The image could not be prepared for AirDrop"));
+                    }
+                }))
+                startFailed(request);
+            break;
+        }
         case Operation::Upload: {
             const auto config = ScreenshotCloudUploadService::configuration();
             if (!config) {
@@ -414,67 +456,74 @@ struct ImageEditingExportController::Impl {
 };
 
 ImageEditingExportController::ImageEditingExportController(ScreenshotPrintService* printing,
-                                                           QObject* parent, Pin pin)
-    : QObject(parent), m_impl(std::make_unique<Impl>(*this, printing, std::move(pin))) {}
+                                                           QObject* parent, Pin pin,
+                                                           ScreenshotAirDropService* airDrop)
+    : QObject(parent), m_impl(std::make_unique<Impl>(*this, printing, airDrop, std::move(pin))) {}
 ImageEditingExportController::~ImageEditingExportController() {
     cancel();
 }
 bool ImageEditingExportController::busy() const {
-    return m_impl->active;
+    return m_impl->active || m_impl->copy;
+}
+bool ImageEditingExportController::canStart(Operation operation) const {
+    return !m_impl->active && (operation == Operation::Copy || !m_impl->copy);
 }
 void ImageEditingExportController::start(Operation operation, Content content, QWidget* owner,
                                          QWidget* stackingOwner, Completion completion) {
-    if (busy() || !owner)
+    if (operation == Operation::Copy || !canStart(operation) || !owner)
         return;
     auto& d = *m_impl;
-    auto* request = new Request(this, std::move(completion));
-    d.active = request;
-    request->owner = owner;
-    QObject::connect(owner, &QObject::destroyed, request,
-                     [this, pending = QPointer<Request>(request)] {
-                         if (pending && m_impl->active == pending)
-                             cancel();
-                     });
-#if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
-    if (auto* copy = std::get_if<ScreenshotDocumentCopyRequest>(&content)) {
-        const QPointer<Request> pending(request);
-        const auto publication = ScreenshotClipboardService::reservePublication();
-        request->job = copy->start(request, [this, pending, publication](auto mime, QString error) {
-            if (!pending || m_impl->active != pending)
-                return;
-            if (!mime) {
-                m_impl->finish(pending, false, std::move(error));
-                return;
-            }
-            pending->clipboard = ScreenshotClipboardService::commitMimeData(
-                QApplication::clipboard(), pending, mime.release(), publication,
-                [this, pending](ScreenshotClipboardCommitResult result) {
-                    m_impl->finish(pending, result.succeeded() && !result.superseded,
-                                   result.errorString());
-                });
-        });
-        if (!request->job.isValid())
-            d.finish(request, false,
-                     QCoreApplication::translate("snow_shot::presentation::ImageEditingWindow",
-                                                 "Export could not be started"));
+    auto* request = d.begin(operation, owner, std::move(completion));
+    if (auto* source = std::get_if<ScreenshotExportSource>(&content)) {
+        d.image(request, operation, std::move(*source), owner, stackingOwner);
         return;
     }
+#if SNOW_SHOT_ENABLE_IMAGE_CONVERSION || SNOW_SHOT_ENABLE_LATEX_RECOGNITION ||                     \
+    SNOW_SHOT_ENABLE_QR_RECOGNITION || SNOW_SHOT_ENABLE_TABLE_RECOGNITION
+    d.saveRecognition(request, operation,
+                      std::get<ScreenshotRecognitionFileSnapshot>(std::move(content)), owner);
+#else
+    d.startFailed(request);
 #endif
-    if (auto* mime = std::get_if<std::unique_ptr<QMimeData>>(&content)) {
-        const QPointer<ImageEditingExportController> lifetime(this);
-        const QPointer<Request> pending(request);
-        static_cast<void>(ScreenshotClipboardService::reservePublication());
-        QApplication::clipboard()->setMimeData(mime->release());
-        if (lifetime)
-            d.finish(pending, true);
-    } else if (auto* source = std::get_if<ScreenshotExportSource>(&content)) {
-        d.image(request, operation, std::move(*source), owner, stackingOwner);
-    } else {
-        d.saveRecognition(request, operation, std::move(content), owner);
+}
+void ImageEditingExportController::startCopy(CopyContent content, CopyOptions options,
+                                             QWidget* owner, Completion completion) {
+    auto& d = *m_impl;
+    if (!owner || d.copy || !ScreenshotClipboardService::publicationCurrent(options.publication))
+        return;
+    const QPointer<Request> request(d.begin(Operation::Copy, owner, std::move(completion)));
+    if (auto* source = std::get_if<ScreenshotExportSource>(&content)) {
+        d.copyImage(request, std::move(*source), options);
+        return;
     }
+    if (auto* mime = std::get_if<std::unique_ptr<QMimeData>>(&content)) {
+        d.publishCopy(request, std::move(*mime), options.publication);
+        return;
+    }
+#if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
+    request->job = std::get<ScreenshotDocumentCopyRequest>(content).start(
+        request, [this, request, publication = options.publication](auto mime, QString error) {
+            if (!m_impl->current(request))
+                return;
+            if (!mime) {
+                m_impl->finish(request, false, std::move(error));
+                return;
+            }
+            m_impl->publishCopy(request, std::move(mime), publication);
+        });
+    if (!request->job.isValid())
+        d.startFailed(request);
+#endif
+}
+void ImageEditingExportController::cancelCopy() {
+    Impl::cancelRequest(m_impl->copy);
 }
 void ImageEditingExportController::cancel() {
-    const auto request = std::exchange(m_impl->active, {});
+    cancelCopy();
+    Impl::cancelRequest(m_impl->active);
+}
+void ImageEditingExportController::Impl::cancelRequest(QPointer<Request>& pending) {
+    const auto request = std::exchange(pending, {});
     if (!request)
         return;
     [[maybe_unused]] const auto completion = std::move(request->completion);

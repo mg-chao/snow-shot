@@ -10,6 +10,7 @@
 #include "snow_shot/presentation/screenshotclipboardservice.h"
 #include "snow_shot/presentation/screenshotqrrecognitionservice.h"
 #include "snow_shot/presentation/screenshotrecognitionresults.h"
+#include "snow_shot/presentation/screenshotrecognitionimage.h"
 #include "snow_shot/presentation/screenshotrecognitionmodel.h"
 #include "snow_shot/presentation/screenshotrecognitionfileexport.h"
 
@@ -208,6 +209,11 @@ class ScreenshotRecognitionSessionController final : public QObject {
     [[nodiscard]] bool originalImageTranslationActive() const;
     // Image-based OCR presentation is visible and eligible for recognition-image export.
     [[nodiscard]] bool originalImageVisible() const;
+    // Freeze the attached on-image view and its currently displayed background for image output.
+    [[nodiscard]] std::optional<ScreenshotRecognitionImageSnapshot>
+    imageExportSnapshot(QImage image, const QRectF& canvasRect, QImage filteredImage,
+                        const QRectF& filteredCanvasRect,
+                        const ScreenshotResultStyle& style = {}) const;
     void setShowOriginalImage(bool show);
     [[nodiscard]] bool showOriginalImage() const {
         return m_showOriginalImage;

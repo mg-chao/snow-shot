@@ -59,6 +59,10 @@ struct ScreenshotRecognitionFileSnapshot {
         }
         return !source.isEmpty();
     }
+
+    [[nodiscard]] bool isMissingTableResult() const {
+        return kind == ScreenshotRecognitionFileKind::Table && !hasContent();
+    }
 };
 
 #if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
@@ -87,6 +91,7 @@ struct ScreenshotRecognitionFileSaveResult {
 
 class ScreenshotRecognitionFileExport final {
   public:
+    [[nodiscard]] static QString noResultMessage();
     [[nodiscard]] static ScreenshotRecognitionFileKind
     kindForPath(ScreenshotRecognitionFileKind kind, const QString& path);
 #if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION

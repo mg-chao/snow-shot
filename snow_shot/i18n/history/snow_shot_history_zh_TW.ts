@@ -169,10 +169,6 @@
             <translation>無法讀取選取的影像檔案，請重試</translation>
         </message>
         <message>
-            <source>No available output filename was found</source>
-            <translation>找不到可用的輸出檔名</translation>
-        </message>
-        <message>
             <source>The editing content could not be prepared for export</source>
             <translation>無法準備要匯出的編輯內容</translation>
         </message>
@@ -191,10 +187,6 @@
         <message>
             <source>The image is too large or there is not enough memory to load it</source>
             <translation>影像過大，或記憶體不足，無法載入</translation>
-        </message>
-        <message>
-            <source>The save directory is not available</source>
-            <translation>儲存目錄無法使用</translation>
         </message>
     </context>
     <context>
@@ -2506,10 +2498,6 @@ Files:
         <message>
             <source>Save as file</source>
             <translation>儲存為檔案</translation>
-        </message>
-        <message>
-            <source>Text files (*.txt)</source>
-            <translation>文字檔案 (*.txt)</translation>
         </message>
         <message>
             <source>The image could not be loaded</source>

@@ -553,8 +553,13 @@ void transformsAndCommittedCrop() {
     }
 }
 
-void nativeExportsPreserveTextAnnotations() {
+void nativeExportsFollowTextAnnotationPolicy() {
     SettingsGuard settings;
+    const snow_shot::storage::TextRecognitionSettings recognitionSettings;
+    const auto previous = recognitionSettings.saveRecognitionResultAsImage();
+    const auto restore = qScopeGuard(
+        [&] { static_cast<void>(recognitionSettings.setSaveRecognitionResultAsImage(previous)); });
+    require(recognitionSettings.setSaveRecognitionResultAsImage(true), "enable recognition output");
     for (const int kind : {0, 2}) {
         for (const int variant : {0, 1, 2}) {
             Fixture fixture(kind, kind == 2 ? 2.0 : 1.0);
@@ -580,14 +585,10 @@ void nativeExportsPreserveTextAnnotations() {
             }
             const int opacity = variant == 1 ? 60 : 100;
             Access::setGeneralOpacity(fixture.window, opacity);
+            const auto standard =
+                pinnedExportSnapshotPixels(Access::imageOutput(fixture.window), fixture.window);
             fixture.session->activate(ScreenshotRecognitionSessionController::Mode::Text);
             QApplication::processEvents();
-            auto* canvas = fixture.window.findChild<SnowCanvasWidget*>();
-            auto* view = fixture.content->findChild<QGraphicsView*>(
-                kind == 0 ? QStringLiteral("snowShotOcrTextLayer")
-                          : QStringLiteral("screenshotClipboardText"));
-            require(view && view->isVisible() && canvas,
-                    "native annotation export uses the visible canvas text page");
             snow_shot::presentation::ImageEditingSource source;
             source.image = Access::displayImage(fixture.window);
             source.canvasRect = fixture.window.persistenceSnapshot().contentCanvasRect;
@@ -609,25 +610,12 @@ void nativeExportsPreserveTextAnnotations() {
                 } else {
                     Access::renderer(fixture.window).clearOcrFilteredImage();
                 }
-                // Build the reference from pristine pixels, then add one vector pass in the
-                // visible viewport's coordinates. Apply opacity only to the final composition.
-                QImage expected = fixture.content->printViewportSnapshot(
-                    source.image, source.canvasRect, filtered, filteredRect);
-                QWidget* viewport = view->viewport();
-                const QPoint offset = viewport->mapFromGlobal(canvas->mapToGlobal(QPoint()));
-                const auto mapping =
-                    canvas->canvasToViewTransform() *
-                    QTransform::fromTranslate(offset.x(), offset.y()) *
-                    QTransform::fromScale(qreal(expected.width()) / viewport->width(),
-                                          qreal(expected.height()) / viewport->height());
-                {
-                    QPainter painter(&expected);
-                    paintScreenshotTextAnnotations(painter, marks, mapping);
-                }
-                expected = ScreenshotResultCompositor::compose(expected, {}, 1.0, opacity / 100.0);
+                const QImage expected =
+                    pinnedExportSnapshotPixels(Access::imageOutput(fixture.window), fixture.window);
+                require(kind == 0 ? expected != standard : expected == standard,
+                        "on-image OCR uses recognition pixels and other views use the composite");
 
-                // A completed Copy Viewport result must not be reused as the recognition
-                // backdrop, or semitransparent marks will be painted twice.
+                // Warming the independent viewport cache must not alter the image output.
                 auto cached = Access::printArtifact(fixture.window);
                 QImage complete;
                 require(cached && cached->requestImage(
@@ -646,8 +634,7 @@ void nativeExportsPreserveTextAnnotations() {
                                              "finish annotated recognition printing");
                 require(!printed.isNull() &&
                             printed == ScreenshotPrintService::opaqueImage(expected),
-                        "Print preserves each text mark once after OCR filtering, transforms, crop "
-                        "and opacity");
+                        "Print matches the saved image with rotation, crop and opacity");
                 ScreenshotAirDropService sharing([&](QWidget*, QString path, auto completion) {
                     shared = QImage(path);
                     completion({ScreenshotAirDropService::Status::Shared, {}});
@@ -656,10 +643,9 @@ void nativeExportsPreserveTextAnnotations() {
                 translation_tests::waitUntil(
                     [&] { return !Access::airDropPending(fixture.window); },
                     "finish annotated recognition sharing");
-                require(
-                    !shared.isNull() && shared.convertToFormat(QImage::Format_ARGB32) ==
-                                            expected.convertToFormat(QImage::Format_ARGB32),
-                    "AirDrop preserves text marks and final alpha in the same viewport as Print");
+                require(!shared.isNull() && shared.convertToFormat(QImage::Format_ARGB32) ==
+                                                expected.convertToFormat(QImage::Format_ARGB32),
+                        "AirDrop matches the saved image and its alpha");
             }
         }
     }
@@ -751,7 +737,7 @@ void run() {
     onePopoverAcrossPinsAndDisplayedTextScope();
     geometryUpdatesPreserveStylesAndDraftEditsClearInk();
     transformsAndCommittedCrop();
-    nativeExportsPreserveTextAnnotations();
+    nativeExportsFollowTextAnnotationPolicy();
     croppedMasksSurviveImageEditingTransfer();
     sourceFingerprintsAreDeferredUntilAnnotation();
 }

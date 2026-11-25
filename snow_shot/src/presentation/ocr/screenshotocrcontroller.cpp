@@ -362,12 +362,11 @@ ScreenshotOcrController::~ScreenshotOcrController() {
 
 std::optional<ScreenshotRecognitionImageSnapshot>
 ScreenshotOcrController::imageSnapshot(const ScreenshotResultStyle& style) const {
-    if (!m_active || !m_session->originalImageVisible() || m_recognitionWindow == nullptr ||
-        m_surfaceKey != currentCacheKey())
+    if (!m_active || m_surfaceKey != currentCacheKey())
         return std::nullopt;
-    return m_recognitionWindow->imageSnapshot(m_surfaceImage,
-                                              QRectF(m_context.selection.pixelSelection()),
-                                              m_filteredImage, m_filteredCanvasRect, style);
+    return m_session->imageExportSnapshot(m_surfaceImage,
+                                          QRectF(m_context.selection.pixelSelection()),
+                                          m_filteredImage, m_filteredCanvasRect, style);
 }
 
 bool ScreenshotOcrController::active() const {

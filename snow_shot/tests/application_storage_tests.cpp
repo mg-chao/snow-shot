@@ -2059,8 +2059,8 @@ void screenshotTranslationSettingsRoundTripSupportedValues() {
             "layout processing should default to Smart Merge for existing configurations");
     require(translation.originalImageTranslationEnabled(),
             "original image translation should default to enabled for existing configurations");
-    require(!translation.copyTranslationResultsAsImage(), "translation image copy defaults off");
-    require(translation.setCopyTranslationResultsAsImage(true), "enable translation image copy");
+    require(translation.copyTranslationResultsAsImage(), "translation image copy defaults on");
+    require(translation.setCopyTranslationResultsAsImage(false), "save disabled image copy");
     require(translation.configuration() ==
                 storage::ScreenshotTranslationConfiguration{
                     QStringLiteral("auto"), {}, QStringLiteral("free-translation")},
@@ -2082,8 +2082,8 @@ void screenshotTranslationSettingsRoundTripSupportedValues() {
     require(!translation.originalImageTranslationEnabled() &&
                 translation.configuration() == selected,
             "an explicitly disabled display toggle must survive restart");
-    require(translation.copyTranslationResultsAsImage(),
-            "translation image copy survives restart independently of display mode");
+    require(!translation.copyTranslationResultsAsImage(),
+            "an explicitly disabled image copy preference survives restart");
     require(conversion.visionModel() == QStringLiteral("vision-model"),
             "vision model survives storage restart independently of translation settings");
 

@@ -3103,6 +3103,10 @@
             <translation>Экспорт журналов</translation>
         </message>
         <message>
+            <source>Export recognition result as image</source>
+            <translation>Экспортировать результат распознавания как изображение</translation>
+        </message>
+        <message>
             <source>Export recording</source>
             <translation>Экспорт записи экрана</translation>
         </message>
@@ -3427,12 +3431,12 @@
             <translation>Импорт настроек</translation>
         </message>
         <message>
-            <source>Include saved annotation styles in the configuration archive</source>
-            <translation>Включить сохранённые стили разметок в архив конфигурации</translation>
+            <source>Include recognition results when exporting an image with the text recognition tool active.</source>
+            <translation>Включать результаты распознавания в экспортируемое изображение, когда активен инструмент распознавания текста.</translation>
         </message>
         <message>
-            <source>Include the displayed text recognition or original-image translation result when saving a screenshot selection</source>
-            <translation>Включать отображаемый результат распознавания текста или перевода исходного изображения при сохранении выделенной области скриншота</translation>
+            <source>Include saved annotation styles in the configuration archive</source>
+            <translation>Включить сохранённые стили разметок в архив конфигурации</translation>
         </message>
         <message>
             <source>Include the pointer and capture controls in screenshots</source>
@@ -4529,10 +4533,6 @@
         <message>
             <source>Save locations, clipboard behavior, history and cleanup</source>
             <translation>Места сохранения, работа с буфером обмена, история и очистка</translation>
-        </message>
-        <message>
-            <source>Save recognition result as image</source>
-            <translation>Сохранять результат распознавания как изображение</translation>
         </message>
         <message>
             <source>Save system audio and microphone audio as separate MP4 tracks for independent editing. Most players play one track at a time</source>
