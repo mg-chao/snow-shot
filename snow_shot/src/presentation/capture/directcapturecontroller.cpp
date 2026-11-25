@@ -19,6 +19,10 @@
 #include "snow_shot/storage/settingsadapters.h"
 #include "snow_shot/presentation/screenshotexporttasks.h"
 
+#ifdef SNOW_SHOT_CONTROLLER_LIFETIME_TESTS
+#include "../../../tests/screenshot_controller_test_access.h"
+#endif
+
 #include <QApplication>
 #include <QDebug>
 #include <QMimeData>
@@ -49,7 +53,7 @@ class DirectCaptureController::Impl {
               [this](const auto& request, auto done) {
                   emit owner.captureActivityChanged(QStringLiteral("direct"), true);
                   const bool queued = submit<DirectCaptureFrame>(
-                      [request]() { return captureDirectTarget(request); },
+                      [this, request]() { return acquireFrame(request); },
                       [this, done = std::move(done)](DirectCaptureFrame frame) {
                           emit owner.captureActivityChanged(QStringLiteral("direct"), false);
                           done(std::move(frame));
@@ -200,6 +204,14 @@ class DirectCaptureController::Impl {
                    : artifact->requestClipboard(&owner, prepared);
     }
 
+    DirectCaptureFrame acquireFrame(const DirectCaptureRequest& request) const {
+#ifdef SNOW_SHOT_CONTROLLER_LIFETIME_TESTS
+        if (acquireFrameForTest)
+            return acquireFrameForTest(request);
+#endif
+        return captureDirectTarget(request);
+    }
+
     void enqueue(DirectCaptureRequest result) {
         const storage::ScreenshotSettings settings;
         if (result.target == DirectCaptureTarget::CurrentMonitor) {
@@ -210,7 +222,8 @@ class DirectCaptureController::Impl {
             settings.shutterSoundTargets().contains(QStringLiteral("direct_capture"));
         result.restoreOriginalScreenColors = settings.restoreOriginalScreenColors();
         result.requestedAt = QDateTime::currentDateTime();
-        auto tasks = ScreenshotExportTasks::capture(storage::ExportTrigger::ScreenshotCopy);
+        auto tasks = ScreenshotExportTasks::capture(storage::ExportTrigger::ScreenshotCopy, {},
+                                                    result.screenshotType());
         result.exportDirectory = tasks.directory;
         result.filenameFormat = tasks.options.filenameFormat;
         if (tasks.selected) {
@@ -264,7 +277,18 @@ class DirectCaptureController::Impl {
     DirectCaptureWorkflow workflow;
     std::shared_ptr<ScreenshotExportArtifact> artifact;
     ScreenshotEncodedExport clipboardFile;
+#ifdef SNOW_SHOT_CONTROLLER_LIFETIME_TESTS
+    std::function<DirectCaptureFrame(const DirectCaptureRequest&)> acquireFrameForTest;
+#endif
 };
+
+#ifdef SNOW_SHOT_CONTROLLER_LIFETIME_TESTS
+void DirectCaptureControllerTestAccess::setFrameAcquirer(
+    DirectCaptureController& controller,
+    std::function<DirectCaptureFrame(const DirectCaptureRequest&)> acquire) {
+    controller.m_impl->acquireFrameForTest = std::move(acquire);
+}
+#endif
 
 DirectCaptureController::DirectCaptureController(QObject* parent)
     : QObject(parent), m_impl(std::make_unique<Impl>(*this)) {}

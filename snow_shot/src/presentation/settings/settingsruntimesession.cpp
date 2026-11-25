@@ -1264,8 +1264,14 @@ bool SettingsRuntimeSession::valuesEqual(const SettingsFieldDescriptor& descript
         std::holds_alternative<SettingsShortcutActionDefinition>(descriptor.definition->payload)) {
         return shortcutListValue(first) == shortcutListValue(second);
     }
-    if (std::holds_alternative<SettingsMultiSelectDefinition>(descriptor.definition->payload)) {
-        return stringListValue(first) == stringListValue(second);
+    if (const auto* multi =
+            std::get_if<SettingsMultiSelectDefinition>(&descriptor.definition->payload)) {
+        const auto firstValues = stringListValue(first);
+        const auto secondValues = stringListValue(second);
+        if (exportTriggerForBinding(multi->binding))
+            return std::is_permutation(firstValues.cbegin(), firstValues.cend(),
+                                       secondValues.cbegin(), secondValues.cend());
+        return firstValues == secondValues;
     }
     if (std::holds_alternative<SettingsCustomDefinition>(descriptor.definition->payload)) {
         const auto& custom = std::get<SettingsCustomDefinition>(descriptor.definition->payload);

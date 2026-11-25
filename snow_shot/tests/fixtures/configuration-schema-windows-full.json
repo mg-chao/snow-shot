@@ -250,10 +250,10 @@
       "allowedStringValues": [],
       "defaultJsonType": 2,
       "defaultStringIsNull": false,
-      "defaultValue": 10,
+      "defaultValue": 11,
       "integerRange": [
-        10,
-        10,
+        11,
+        11,
         1
       ],
       "key": "storage/schema_version",
@@ -5911,6 +5911,29 @@
     },
     {
       "allowedStringValues": [
+        "auto_save.normal",
+        "auto_save.scrolling",
+        "auto_save.focused_window",
+        "auto_save.current_monitor",
+        "pin_to_screen.normal",
+        "pin_to_screen.scrolling",
+        "pin_to_screen.focused_window",
+        "pin_to_screen.current_monitor",
+        "upload_to_cloud.normal",
+        "upload_to_cloud.scrolling",
+        "upload_to_cloud.focused_window",
+        "upload_to_cloud.current_monitor"
+      ],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "export_tasks/screenshot_copy_scoped",
+      "maximumListItems": -1,
+      "valueKind": "StringList"
+    },
+    {
+      "allowedStringValues": [
         "copy_file",
         "pin_to_screen",
         "upload_to_cloud"
@@ -5920,6 +5943,23 @@
       "defaultValue": [],
       "integerRange": null,
       "key": "export_tasks/screenshot_save",
+      "maximumListItems": -1,
+      "valueKind": "StringList"
+    },
+    {
+      "allowedStringValues": [
+        "copy_file.normal",
+        "copy_file.scrolling",
+        "pin_to_screen.normal",
+        "pin_to_screen.scrolling",
+        "upload_to_cloud.normal",
+        "upload_to_cloud.scrolling"
+      ],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "export_tasks/screenshot_save_scoped",
       "maximumListItems": -1,
       "valueKind": "StringList"
     },
@@ -5939,6 +5979,23 @@
     },
     {
       "allowedStringValues": [
+        "copy_to_clipboard.normal",
+        "copy_to_clipboard.scrolling",
+        "auto_save.normal",
+        "auto_save.scrolling",
+        "upload_to_cloud.normal",
+        "upload_to_cloud.scrolling"
+      ],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "export_tasks/screenshot_pin_scoped",
+      "maximumListItems": -1,
+      "valueKind": "StringList"
+    },
+    {
+      "allowedStringValues": [
         "copy_to_clipboard",
         "pin_to_screen",
         "upload_to_cloud"
@@ -5948,6 +6005,23 @@
       "defaultValue": [],
       "integerRange": null,
       "key": "export_tasks/screenshot_print",
+      "maximumListItems": -1,
+      "valueKind": "StringList"
+    },
+    {
+      "allowedStringValues": [
+        "copy_to_clipboard.normal",
+        "copy_to_clipboard.scrolling",
+        "pin_to_screen.normal",
+        "pin_to_screen.scrolling",
+        "upload_to_cloud.normal",
+        "upload_to_cloud.scrolling"
+      ],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "export_tasks/screenshot_print_scoped",
       "maximumListItems": -1,
       "valueKind": "StringList"
     },
@@ -5968,6 +6042,25 @@
     },
     {
       "allowedStringValues": [
+        "copy_to_clipboard.normal",
+        "copy_to_clipboard.scrolling",
+        "auto_save.normal",
+        "auto_save.scrolling",
+        "pin_to_screen.normal",
+        "pin_to_screen.scrolling",
+        "upload_to_cloud.normal",
+        "upload_to_cloud.scrolling"
+      ],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "export_tasks/screenshot_airdrop_scoped",
+      "maximumListItems": -1,
+      "valueKind": "StringList"
+    },
+    {
+      "allowedStringValues": [
         "auto_save",
         "pin_to_screen"
       ],
@@ -5976,6 +6069,21 @@
       "defaultValue": [],
       "integerRange": null,
       "key": "export_tasks/screenshot_upload",
+      "maximumListItems": -1,
+      "valueKind": "StringList"
+    },
+    {
+      "allowedStringValues": [
+        "auto_save.normal",
+        "auto_save.scrolling",
+        "pin_to_screen.normal",
+        "pin_to_screen.scrolling"
+      ],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "export_tasks/screenshot_upload_scoped",
       "maximumListItems": -1,
       "valueKind": "StringList"
     },

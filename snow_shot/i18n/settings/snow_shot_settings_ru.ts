@@ -2003,6 +2003,22 @@
             <translation>Автосохранение</translation>
         </message>
         <message>
+            <source>Auto-save (Current monitor)</source>
+            <translation>Автосохранение (текущий монитор)</translation>
+        </message>
+        <message>
+            <source>Auto-save (Focused window)</source>
+            <translation>Автосохранение (активное окно)</translation>
+        </message>
+        <message>
+            <source>Auto-save (Normal)</source>
+            <translation>Автосохранение (обычный скриншот)</translation>
+        </message>
+        <message>
+            <source>Auto-save (Scrolling screenshot)</source>
+            <translation>Автосохранение (скриншот с прокруткой)</translation>
+        </message>
+        <message>
             <source>Auto-save image filename format</source>
             <translation>Формат имён файлов при автосохранении изображений</translation>
         </message>
@@ -2583,6 +2599,14 @@
             <translation>Копировать файл</translation>
         </message>
         <message>
+            <source>Copy file (Normal)</source>
+            <translation>Копировать файл (обычный скриншот)</translation>
+        </message>
+        <message>
+            <source>Copy file (Scrolling screenshot)</source>
+            <translation>Копировать файл (скриншот с прокруткой)</translation>
+        </message>
+        <message>
             <source>Copy image file to clipboard</source>
             <translation>Копировать файл изображения в буфер обмена</translation>
         </message>
@@ -2625,6 +2649,14 @@
         <message>
             <source>Copy to clipboard</source>
             <translation>Копировать в буфер обмена</translation>
+        </message>
+        <message>
+            <source>Copy to clipboard (Normal)</source>
+            <translation>Копировать в буфер обмена (обычный скриншот)</translation>
+        </message>
+        <message>
+            <source>Copy to clipboard (Scrolling screenshot)</source>
+            <translation>Копировать в буфер обмена (скриншот с прокруткой)</translation>
         </message>
         <message>
             <source>Copy translation results as an image</source>
@@ -3965,6 +3997,22 @@
         <message>
             <source>Pin to screen</source>
             <translation>Закрепить на экране</translation>
+        </message>
+        <message>
+            <source>Pin to screen (Current monitor)</source>
+            <translation>Закрепить на экране (текущий монитор)</translation>
+        </message>
+        <message>
+            <source>Pin to screen (Focused window)</source>
+            <translation>Закрепить на экране (активное окно)</translation>
+        </message>
+        <message>
+            <source>Pin to screen (Normal)</source>
+            <translation>Закрепить на экране (обычный скриншот)</translation>
+        </message>
+        <message>
+            <source>Pin to screen (Scrolling screenshot)</source>
+            <translation>Закрепить на экране (скриншот с прокруткой)</translation>
         </message>
         <message>
             <source>Pin to screen management</source>
@@ -5441,6 +5489,22 @@
         <message>
             <source>Upload to cloud</source>
             <translation>Загрузить в облако</translation>
+        </message>
+        <message>
+            <source>Upload to cloud (Current monitor)</source>
+            <translation>Загрузить в облако (текущий монитор)</translation>
+        </message>
+        <message>
+            <source>Upload to cloud (Focused window)</source>
+            <translation>Загрузить в облако (активное окно)</translation>
+        </message>
+        <message>
+            <source>Upload to cloud (Normal)</source>
+            <translation>Загрузить в облако (обычный скриншот)</translation>
+        </message>
+        <message>
+            <source>Upload to cloud (Scrolling screenshot)</source>
+            <translation>Загрузить в облако (скриншот с прокруткой)</translation>
         </message>
         <message>
             <source>Use GPU acceleration when available. Recognition uses the CPU while acceleration is unavailable</source>

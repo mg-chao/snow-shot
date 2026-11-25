@@ -292,7 +292,10 @@ class ScreenshotSettings final {
     bool setHiDpiImageScaling(const QString& mode) const;
     [[nodiscard]] QString selectionResizeMode() const;
     bool setSelectionResizeMode(const QString& mode) const;
-    [[nodiscard]] ExportTasks exportTasks(ExportTrigger trigger) const;
+    [[nodiscard]] QStringList selectedExportTaskIds(ExportTrigger trigger) const;
+    bool setSelectedExportTaskIds(ExportTrigger trigger, const QStringList& ids) const;
+    [[nodiscard]] ExportTasks exportTasks(ExportTrigger trigger,
+                                          ScreenshotType type = ScreenshotType::All) const;
     bool setExportTasks(ExportTrigger trigger, ExportTasks tasks) const;
     [[nodiscard]] bool copyImageFileToClipboard() const;
     bool setCopyImageFileToClipboard(bool enabled) const;

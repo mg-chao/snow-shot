@@ -166,7 +166,9 @@ void outputsKeepRawPixelsAndProcessEveryRequest() {
     f.workflow.enqueue(second);
     second.captureBackend = 1;
     require(f.requests.size() == 1 && f.requests.front().window == 1234 &&
-                f.requests.front().captureBackend == 3,
+                f.requests.front().captureBackend == 3 &&
+                f.requests.front().screenshotType() ==
+                    snow_shot::storage::ScreenshotType::FocusedWindow,
             "FIFO target snapshot lost");
     f.acquired(frame());
     require(f.output == frame().image, "capture pixels were styled or resampled");
@@ -177,7 +179,9 @@ void outputsKeepRawPixelsAndProcessEveryRequest() {
     f.recorded({});
     QCoreApplication::processEvents();
     require(f.requests.size() == 2 && f.requests.back().monitorName == second.monitorName &&
-                f.requests.back().captureBackend == 2,
+                f.requests.back().captureBackend == 2 &&
+                f.requests.back().screenshotType() ==
+                    snow_shot::storage::ScreenshotType::CurrentMonitor,
             "mixed direct captures were dropped or reordered");
     f.acquired(frame());
     f.copied(true, {});

@@ -8,6 +8,8 @@
 #include <memory>
 
 namespace snow_shot::presentation {
+class DirectCaptureControllerTestAccess;
+
 class DirectCaptureController final : public QObject {
     Q_OBJECT
   public:
@@ -30,6 +32,7 @@ class DirectCaptureController final : public QObject {
     void operationFailed(const QString& message, bool warning);
 
   private:
+    friend class DirectCaptureControllerTestAccess;
     class Impl;
     std::unique_ptr<Impl> m_impl;
 };

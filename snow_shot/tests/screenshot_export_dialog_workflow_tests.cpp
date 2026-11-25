@@ -428,18 +428,34 @@ void persistence(const QTemporaryDir& temp) {
                 field->reset == settings::SettingsSectionReset::ExportTasks,
             "pin follow-ups belong to export tasks");
     settings::SettingsRuntimeSession session(settings::builtInSettingsRegistry(), backend);
-    const QVariantList selected{QStringLiteral("copy_to_clipboard"), QStringLiteral("auto_save")};
+    const QVariantList selected{QStringLiteral("copy_to_clipboard.normal"),
+                                QStringLiteral("auto_save"), QStringLiteral("auto_save.scrolling")};
+    const QVariantList stored{selected[1], selected[0], selected[2]};
     require(session.applyMultiSelectValue(pinCopyBinding, selected) &&
-                backend.multiSelectValue(pinCopyBinding) == selected &&
-                adapter.exportTasks(storage::ExportTrigger::ScreenshotPin) ==
+                backend.multiSelectValue(pinCopyBinding) == stored &&
+                !session.state(field->id).busy &&
+                adapter.exportTasks(storage::ExportTrigger::ScreenshotPin,
+                                    storage::ScreenshotType::Normal) ==
                     (storage::ExportTask::CopyImage | storage::ExportTask::AutoSave) &&
+                adapter.exportTasks(storage::ExportTrigger::ScreenshotPin,
+                                    storage::ScreenshotType::Scrolling) ==
+                    storage::ExportTask::AutoSave &&
                 storage::ApplicationStorage::instance().configuration().flushNow().success,
             "multiple pin tasks round-trip through the session and adapter");
     require(backend.resetSection(settings::SettingsSectionReset::ScreenshotSettings) &&
                 backend.resetSection(settings::SettingsSectionReset::ScreenshotOutput) &&
                 adapter.saveAsFileDialog() == QStringLiteral("system") &&
-                backend.multiSelectValue(pinCopyBinding) == selected,
+                backend.multiSelectValue(pinCopyBinding) == stored,
             "screenshot interaction and image export resets preserve export tasks");
+    const QVariantList scopedOnly{QStringLiteral("auto_save.scrolling")};
+    require(session.applyMultiSelectValue(pinCopyBinding, scopedOnly) &&
+                backend.multiSelectValue(pinCopyBinding) == scopedOnly &&
+                !adapter.exportTasks(storage::ExportTrigger::ScreenshotPin,
+                                     storage::ScreenshotType::Normal) &&
+                adapter.exportTasks(storage::ExportTrigger::ScreenshotPin,
+                                    storage::ScreenshotType::Scrolling) ==
+                    storage::ExportTask::AutoSave,
+            "clearing the all-types selection preserves the scrolling selection");
     require(adapter.setCopyImageFileToClipboard(true) &&
                 backend.resetSection(settings::SettingsSectionReset::ExportTasks) &&
                 backend.multiSelectValue(pinCopyBinding).isEmpty() &&

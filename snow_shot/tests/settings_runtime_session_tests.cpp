@@ -781,7 +781,7 @@ void exportTasksUseMultiSelectRuntimeState() {
         settings::exportTaskBinding(snow_shot::storage::ExportTrigger::ScreenshotCopy);
     require(session.multiSelectValue(binding).isEmpty() &&
                 session.state(fieldId).acceptedValue.toList().isEmpty() &&
-                session.options(fieldId).values.size() == 3,
+                session.options(fieldId).values.size() == 15,
             "automatic image saving must start empty with all execution options available");
 
     for (const auto& option : session.options(fieldId).values) {

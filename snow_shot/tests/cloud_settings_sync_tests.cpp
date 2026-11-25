@@ -5,6 +5,7 @@
 #include "snow_shot/storage/cloudsyncconfiguration.h"
 #include "snow_shot/storage/configurationschema.h"
 #include "snow_shot/storage/configurationstore.h"
+#include "snow_shot/storage/exporttasks.h"
 #include "snow_shot/presentation/translationpagecontroller.h"
 
 #include <QElapsedTimer>
@@ -616,18 +617,45 @@ void competingEdits(const QString& firstPath, const QString& secondPath) {
     require(second.store.value(theme) == QJsonValue(u"light"_s),
             "second device receives final value");
 
-    require(second.store.setValue(tasks, QJsonArray{u"upload_to_cloud"_s}),
-            "device-only upload enabled");
-    require(first.store.setValue(tasks, QJsonArray{u"auto_save"_s}), "eligible export task set");
-    waitUntil([&] { return !service.operation(u"A"_s, tasks).isEmpty(); },
+    const auto scopedTasks =
+        snow_shot::storage::exportTaskScopedKey(snow_shot::storage::ExportTrigger::ScreenshotCopy);
+    const QJsonArray localUploads{u"upload_to_cloud"_s};
+    const QJsonArray localScopedUploads{u"upload_to_cloud.focused_window"_s};
+    require(second.store.setValues({{tasks, localUploads}, {scopedTasks, localScopedUploads}}),
+            "device-only uploads enabled");
+    require(first.store.setValues(
+                {{tasks, QJsonArray{}},
+                 {scopedTasks, QJsonArray{u"auto_save.scrolling"_s, u"upload_to_cloud.normal"_s}}}),
+            "set a synced task and a device-only task on the first device");
+    waitUntil([&] { return !service.operation(u"A"_s, scopedTasks).isEmpty(); },
               "eligible export task uploaded");
-    require(first.store.setValue(tasks, QJsonArray{}, ConfigurationWriteOrigin::Reset),
-            "export trigger reset");
-    waitUntil(
-        [&] { return service.operation(u"A"_s, tasks).value(u"op"_s).toString() == u"reset"; },
-        "reset marker uploaded");
+    require(service.operation(u"A"_s, tasks).isEmpty() &&
+                service.operation(u"A"_s, scopedTasks).value(u"value"_s).toArray() ==
+                    QJsonArray{u"auto_save.scrolling"_s},
+            "only the eligible scoped option reaches the cloud");
     second.check();
-    require(second.store.value(tasks).toArray().contains(u"upload_to_cloud"_s),
+    const QJsonArray remotelyScoped{u"auto_save.scrolling"_s, u"upload_to_cloud.focused_window"_s};
+    require(second.store.value(tasks) == localUploads &&
+                second.store.value(scopedTasks) == remotelyScoped,
+            "sync combines scoped actions with this device's upload settings");
+    service.set(u"A"_s, tasks, QJsonArray{u"pin_to_screen"_s});
+    second.check();
+    require(second.store.value(tasks) == QJsonArray{u"pin_to_screen"_s, u"upload_to_cloud"_s} &&
+                second.store.value(scopedTasks) == remotelyScoped,
+            "a legacy device can replace all-types choices without losing scoped tasks");
+    first.check();
+    require(first.store.setValues({{tasks, QJsonArray{}}, {scopedTasks, QJsonArray{}}},
+                                  ConfigurationWriteOrigin::Reset),
+            "export trigger reset clears both records");
+    waitUntil(
+        [&] {
+            return service.operation(u"A"_s, tasks).value(u"op"_s).toString() == u"reset" &&
+                   service.operation(u"A"_s, scopedTasks).value(u"op"_s).toString() == u"reset";
+        },
+        "both reset markers uploaded");
+    second.check();
+    require(second.store.value(tasks) == localUploads &&
+                second.store.value(scopedTasks) == localScopedUploads,
             "receiving a reset preserves local auto-upload");
 
     require(first.store.setValue(theme, u"dark"_s), "first device edits the shared key");
