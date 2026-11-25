@@ -947,6 +947,33 @@ void statusAndCapabilityGates() {
     auto source = std::make_shared<FakeSource>();
     ScreenshotPinnedWindow window;
     present(window, config(source));
+    const snow_shot::storage::PinToScreenShortcutSettings shortcuts;
+    const QString splitId = QStringLiteral("split_image");
+    const QString editId = QStringLiteral("image_editing");
+    const QString compressId = QStringLiteral("image_compression");
+    const auto clearShortcuts = qScopeGuard([&] {
+        for (const auto& id : {splitId, editId, compressId})
+            shortcuts.setShortcuts(id, {});
+    });
+    require(shortcuts.setShortcuts(splitId, {QStringLiteral("F6")}) &&
+                shortcuts.setShortcuts(editId, {QStringLiteral("F7")}) &&
+                shortcuts.setShortcuts(compressId, {QStringLiteral("F8")}),
+            "assign live image shortcuts");
+    int splits = 0, edits = 0, compressions = 0;
+    QObject observer;
+    QObject::connect(&window, &ScreenshotPinnedWindow::splitRequested, &observer,
+                     [&](const auto&) { ++splits; });
+    QObject::connect(&window, &ScreenshotPinnedWindow::imageEditingSnapshotRequested, &observer,
+                     [&](const auto&) { ++edits; });
+    QObject::connect(&window, &ScreenshotPinnedWindow::imageCompressionRequested, &observer,
+                     [&](const auto&) { ++compressions; });
+    const auto sendImageShortcuts = [&] {
+        for (const auto key : {Qt::Key_F6, Qt::Key_F7, Qt::Key_F8})
+            sendShortcut(window, key);
+    };
+    window.activateWindow();
+    window.setFocus();
+    waitForUi(10);
     const QStringList frameCommands{
         QStringLiteral("copy_to_clipboard"), QStringLiteral("save_as_file"),
         QStringLiteral("convert_to_image"),  QStringLiteral("split_image"),
@@ -991,12 +1018,17 @@ void statusAndCapabilityGates() {
                 "closed sources show the specified message");
         const int requests = source->requests;
         Access::convert(window);
+        sendImageShortcuts();
+        require(!splits && !edits && !compressions, "inactive live frames reject image shortcuts");
         Access::split(window);
         Access::edit(window);
         require(source->requests == requests && window.isLiveWindow(),
                 "disabled image operations cannot execute through direct handlers");
     }
     source->setState(State::Live);
+    sendImageShortcuts();
+    wait([&] { return splits == 1 && edits == 1 && compressions == 1; },
+         "live frame recovery restores all image shortcuts");
     for (const QString& command : frameCommands)
         require(Access::allowed(window, command),
                 "restored source reenables every frame operation");

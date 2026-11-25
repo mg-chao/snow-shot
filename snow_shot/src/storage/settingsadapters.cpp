@@ -192,6 +192,13 @@ const QStringList& pinToScreenShortcutActionIds() {
         QStringLiteral("flip_horizontal"),
         QStringLiteral("flip_vertical"),
         QStringLiteral("reset_transform"),
+        QStringLiteral("split_image"),
+        QStringLiteral("image_editing"),
+        QStringLiteral("image_compression"),
+        QStringLiteral("show_all_windows"),
+        QStringLiteral("hide_other_windows"),
+        QStringLiteral("close_other_windows"),
+        QStringLiteral("close_all_windows"),
         QStringLiteral("batch_select_all"),
         QStringLiteral("batch_image_stitching"),
         QStringLiteral("batch_copy_files_to_clipboard"),
@@ -1715,6 +1722,10 @@ bool localShortcutChangesValid(const QMap<QString, QJsonValue>& current,
                 key == QStringLiteral("screenshot_shortcuts/toggle_guides"),
                 shortcuts::ShortcutPolicy::Application);
             for (const auto& binding : bindings) {
+                if (changes.contains(key) &&
+                    group.prefix == QStringLiteral("pin_to_screen_shortcuts/") &&
+                    PinToScreenShortcutSettings::isReservedShortcut(binding))
+                    return false;
                 if (affected && group.policy == LocalShortcutPolicy::Drawing &&
                     DrawingShortcutSettings::isReservedShortcut(binding) &&
                     !DrawingShortcutSettings::isReservedShortcutAllowed(id, binding)) {
@@ -1900,6 +1911,26 @@ PinToScreenShortcutSettings::screenshotShortcuts(const QString& actionId) const 
             break;
     }
     return bindings;
+}
+
+bool PinToScreenShortcutSettings::isReservedShortcut(const shortcuts::ShortcutBinding& shortcut) {
+    // Storage can also run under QCoreApplication, without a Qt platform theme.
+    const auto paste = qobject_cast<QGuiApplication*>(QCoreApplication::instance())
+                           ? QKeySequence::keyBindings(QKeySequence::Paste)
+                           : QList<QKeySequence>{QKeySequence(Qt::CTRL | Qt::Key_V),
+#ifdef Q_OS_MACOS
+                                                 QKeySequence(Qt::META | Qt::Key_Y),
+#else
+                                                 QKeySequence(Qt::SHIFT | Qt::Key_Insert),
+#endif
+                                                 QKeySequence(Qt::Key_Paste)};
+    return std::ranges::any_of(paste, [&shortcut](const QKeySequence& sequence) {
+        if (sequence.count() != 1)
+            return false;
+        const shortcuts::ShortcutBinding fixed{sequence.toString(QKeySequence::PortableText)};
+        return shortcut == fixed ||
+               shortcuts::bindingsConflict(shortcut, fixed, shortcuts::ShortcutPolicy::Application);
+    });
 }
 
 bool PinToScreenShortcutSettings::actionsMayConflict(const QString& first, const QString& second) {

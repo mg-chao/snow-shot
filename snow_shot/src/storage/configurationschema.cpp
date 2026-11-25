@@ -1427,6 +1427,20 @@ constexpr SchemaEntryDescriptor kEntryDescriptors[] = {
      ConfigurationValueKind::StringList, nullptr, nullptr, 2},
     {u"pin_to_screen_shortcuts/print", stringsDefault(kSchemaStrings73),
      ConfigurationValueKind::StringList, nullptr, nullptr, 2},
+    {u"pin_to_screen_shortcuts/split_image", emptyArrayDefault(),
+     ConfigurationValueKind::StringList, nullptr, nullptr, 2},
+    {u"pin_to_screen_shortcuts/image_editing", emptyArrayDefault(),
+     ConfigurationValueKind::StringList, nullptr, nullptr, 2},
+    {u"pin_to_screen_shortcuts/image_compression", emptyArrayDefault(),
+     ConfigurationValueKind::StringList, nullptr, nullptr, 2},
+    {u"pin_to_screen_shortcuts/show_all_windows", emptyArrayDefault(),
+     ConfigurationValueKind::StringList, nullptr, nullptr, 2},
+    {u"pin_to_screen_shortcuts/hide_other_windows", emptyArrayDefault(),
+     ConfigurationValueKind::StringList, nullptr, nullptr, 2},
+    {u"pin_to_screen_shortcuts/close_other_windows", emptyArrayDefault(),
+     ConfigurationValueKind::StringList, nullptr, nullptr, 2},
+    {u"pin_to_screen_shortcuts/close_all_windows", emptyArrayDefault(),
+     ConfigurationValueKind::StringList, nullptr, nullptr, 2},
     {u"pin_to_screen_shortcuts/batch_select_all", stringsDefault(kSchemaStrings84),
      ConfigurationValueKind::StringList, nullptr, nullptr, 2},
     {u"pin_to_screen_shortcuts/batch_image_stitching", stringsDefault(kSchemaStrings85),
@@ -2036,16 +2050,20 @@ ConfigurationNormalization normalizeLanguage(const QJsonValue& value) {
     return {normalized, true, normalized != value.toString()};
 }
 
-ConfigurationNormalization normalizeShortcuts(const QJsonValue& value, int maximumItems,
-                                              bool allowModifierOnlyShift,
-                                              bool allowModifierOnlyAlt,
-                                              snow_shot::shortcuts::ShortcutPolicy policy) {
+ConfigurationNormalization normalizeShortcuts(const QString& key, const QJsonValue& value,
+                                              int maximumItems) {
     bool changed = false;
     bool valid = false;
-    const auto bindings = snow_shot::shortcuts::shortcutBindingsFromJson(
-        value, allowModifierOnlyShift, maximumItems, &valid, &changed, allowModifierOnlyAlt,
-        policy);
-    return {snow_shot::shortcuts::shortcutBindingsToJson(bindings), valid, changed};
+    const auto policy = key.startsWith(QStringLiteral("global_shortcuts/"))
+                            ? shortcuts::ShortcutPolicy::Native
+                            : shortcuts::ShortcutPolicy::Application;
+    const auto bindings = shortcuts::shortcutBindingsFromJson(
+        value, ConfigurationSchema::allowsModifierOnlyShift(key), maximumItems, &valid, &changed,
+        key == QStringLiteral("screenshot_shortcuts/toggle_guides"), policy);
+    if (key.startsWith(QStringLiteral("pin_to_screen_shortcuts/")) &&
+        std::ranges::any_of(bindings, PinToScreenShortcutSettings::isReservedShortcut))
+        return {};
+    return {shortcuts::shortcutBindingsToJson(bindings), valid, changed};
 }
 
 ConfigurationNormalization normalizeAllowedStringList(const ConfigurationSchemaEntry& schemaEntry,
@@ -3064,12 +3082,7 @@ ConfigurationNormalization ConfigurationSchema::normalize(const QString& key,
     case ConfigurationValueKind::StringList:
         return normalizeAllowedStringList(*schemaEntry, value);
     case ConfigurationValueKind::ShortcutList:
-        return normalizeShortcuts(value, schemaEntry->maximumListItems,
-                                  allowsModifierOnlyShift(key),
-                                  key == QStringLiteral("screenshot_shortcuts/toggle_guides"),
-                                  key.startsWith(QStringLiteral("global_shortcuts/"))
-                                      ? shortcuts::ShortcutPolicy::Native
-                                      : shortcuts::ShortcutPolicy::Application);
+        return normalizeShortcuts(key, value, schemaEntry->maximumListItems);
     case ConfigurationValueKind::Structured:
         return exactType(value, QJsonValue::Object);
     }
@@ -3142,6 +3155,15 @@ void repairOcrCopyShortcut(QMap<QString, QJsonValue>& values) {
 
 QMap<QString, QJsonValue>
 ConfigurationSchema::migrateLegacyValues(QMap<QString, QJsonValue> values) {
+    const QString pinnedPrefix = QStringLiteral("pin_to_screen_shortcuts/");
+    for (auto it = values.lowerBound(pinnedPrefix);
+         it != values.end() && it.key().startsWith(pinnedPrefix); ++it) {
+        if (!contains(it.key()))
+            continue;
+        auto bindings = shortcuts::shortcutBindingsFromJson(it.value(), false);
+        if (bindings.removeIf(PinToScreenShortcutSettings::isReservedShortcut) > 0)
+            it.value() = shortcuts::shortcutBindingsToJson(bindings);
+    }
     repairOcrCopyShortcut(values);
     migratePinnedOcrShortcut(values);
     mouse::migrate(values);

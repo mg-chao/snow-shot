@@ -1126,8 +1126,20 @@
             <translation>取消截圖</translation>
         </message>
         <message>
+            <source>Click-through</source>
+            <translation>滑鼠穿透</translation>
+        </message>
+        <message>
             <source>Close</source>
             <translation>關閉</translation>
+        </message>
+        <message>
+            <source>Close all windows</source>
+            <translation>關閉所有視窗</translation>
+        </message>
+        <message>
+            <source>Close other windows</source>
+            <translation>關閉其他視窗</translation>
         </message>
         <message>
             <source>Command</source>
@@ -1186,6 +1198,10 @@
             <translation>頂部隱藏</translation>
         </message>
         <message>
+            <source>Hide other windows</source>
+            <translation>隱藏其他視窗</translation>
+        </message>
+        <message>
             <source>Left-button double-click</source>
             <translation>左鍵雙擊</translation>
         </message>
@@ -1196,6 +1212,10 @@
         <message>
             <source>Left-button single-click</source>
             <translation>左鍵單擊</translation>
+        </message>
+        <message>
+            <source>Lock mode</source>
+            <translation>鎖定模式</translation>
         </message>
         <message>
             <source>Menu</source>
@@ -1272,6 +1292,10 @@
         <message>
             <source>Shift</source>
             <translation>Shift</translation>
+        </message>
+        <message>
+            <source>Show all windows</source>
+            <translation>顯示所有視窗</translation>
         </message>
         <message>
             <source>Show text recognition results</source>
@@ -2479,6 +2503,14 @@
             <translation>剪貼簿內容</translation>
         </message>
         <message>
+            <source>Close all windows</source>
+            <translation>關閉所有視窗</translation>
+        </message>
+        <message>
+            <source>Close other windows</source>
+            <translation>關閉其他視窗</translation>
+        </message>
+        <message>
             <source>Close window</source>
             <translation>關閉視窗</translation>
         </message>
@@ -3287,6 +3319,10 @@
             <translation>隱藏或顯示目前群組中的所有視窗</translation>
         </message>
         <message>
+            <source>Hide other windows</source>
+            <translation>隱藏其他視窗</translation>
+        </message>
+        <message>
             <source>Hide the toolbar near the left or right screen edge. Hover over the edge control to show it again</source>
             <translation>工具列靠近螢幕左邊緣或右邊緣時自動隱藏。將滑鼠停留在邊緣控制項上可再次顯示工具列</translation>
         </message>
@@ -3321,6 +3357,10 @@
         <message>
             <source>Image and document files</source>
             <translation>影像與文件檔案</translation>
+        </message>
+        <message>
+            <source>Image compression</source>
+            <translation>影像壓縮</translation>
         </message>
         <message>
             <source>Image editing</source>
@@ -4917,6 +4957,10 @@
         <message>
             <source>Show a system notification when export finishes. Click it to locate the exported file</source>
             <translation>匯出完成後顯示系統通知。點擊通知可定位匯出的檔案</translation>
+        </message>
+        <message>
+            <source>Show all windows</source>
+            <translation>顯示所有視窗</translation>
         </message>
         <message>
             <source>Show border</source>

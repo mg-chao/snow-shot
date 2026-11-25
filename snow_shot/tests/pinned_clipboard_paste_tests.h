@@ -46,8 +46,16 @@ void pinnedClipboardPasteTests() {
     };
     QList<QKeyCombination> combinations;
     for (const auto& sequence : QKeySequence::keyBindings(QKeySequence::Paste)) {
-        if (sequence.count() == 1 && !combinations.contains(sequence[0]))
-            combinations.append(sequence[0]);
+        if (sequence.count() != 1 || combinations.contains(sequence[0]))
+            continue;
+#ifdef Q_OS_MACOS
+        // Qt also advertises a dedicated Paste key. PhysicalKeyEvent needs a Mac virtual key.
+        if (sequence[0].key() == Qt::Key_Paste &&
+            !snow_shot::shortcuts::macVirtualKeyForBinding(
+                {sequence.toString(QKeySequence::PortableText)}))
+            continue;
+#endif
+        combinations.append(sequence[0]);
     }
     require(!combinations.isEmpty(), "platform supplies standard Paste bindings");
     const auto combination = combinations.first();
