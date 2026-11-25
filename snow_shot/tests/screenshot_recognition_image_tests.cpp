@@ -279,6 +279,18 @@ void smartMergeExportSamplesTheSourceBeforeTheLiveFillArrives() {
         for (int x = 20; x < 280 && !foundInk; ++x)
             foundInk = exported.pixelColor(x, y) == ink;
     require(foundInk, "the exported translation paints in the source ink color");
+
+    snapshot.displayedBackgroundOnly = true;
+    const auto currentView = renderScreenshotRecognitionImage(snapshot);
+    require(!currentView.isNull() && currentView.pixelColor(85, 18) == ink &&
+                currentView != exported,
+            "an image export keeps the visible pixels before the filter arrives");
+    prepared.displayedBackgroundOnly = true;
+    require(renderScreenshotRecognitionImage(prepared) == exported,
+            "image export includes a filter as soon as it is displayed");
+    snapshot.lines.clear();
+    require(renderScreenshotRecognitionImage(snapshot).cacheKey() == snapshot.image.cacheKey(),
+            "an empty recognition view exports the shared base raster directly");
 }
 
 void overflowingSingleLineTranslationWrapsInExport() {

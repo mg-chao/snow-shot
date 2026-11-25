@@ -157,6 +157,7 @@ ScreenshotToolPalette::Options editorOptions() {
     auto options = screenshotDrawingToolbarOptions();
     options.moveToolPresentation = ScreenshotToolPalette::MoveToolPresentation::Pan;
     options.showCropTools = true;
+    options.showAirDropButton = true;
     options.actions = ScreenshotToolPalette::CopyAction | ScreenshotToolPalette::PinAction;
     options.copyButtonWithNeutralIcon = false;
     options.separatorBeforeConfirm = false;
@@ -231,7 +232,7 @@ struct ImageEditingWindow::Impl {
           shortcuts(&q), autoFilter(new ScreenshotAutoFilterController(
                              [this] { return document.bounds(); },
                              [this](auto done) { done(document.image()); }, &q)),
-          exporter(services.printing, &q, services.pin) {
+          exporter(services.printing, &q, services.pin, services.airDrop) {
         surface->setObjectName(QStringLiteral("imageEditingPreview"));
         surface->installEventFilter(&q);
         canvas->installEventFilter(&q);
@@ -429,6 +430,10 @@ struct ImageEditingWindow::Impl {
                          [this] { exportContent(ExportOperation::Print); });
         QObject::connect(palette, &ScreenshotToolPalette::cloudUploadRequested, &q,
                          [this] { exportContent(ExportOperation::Upload); });
+#ifdef Q_OS_MACOS
+        QObject::connect(palette, &ScreenshotToolPalette::airDropRequested, &q,
+                         [this] { exportContent(ExportOperation::AirDrop); });
+#endif
         WindowShortcutManager::Binding paste;
         paste.id = QStringLiteral("imageEditingPaste");
         for (const auto& sequence : QKeySequence::keyBindings(QKeySequence::Paste)) {
@@ -1365,113 +1370,177 @@ void ImageEditingWindow::Impl::bindRecognition() {
 }
 
 bool ImageEditingWindow::Impl::exportContent(ExportOperation operation) {
-    if (loading || cropBusy || exporter.busy() || closing || document.image().isNull())
+    if (loading || cropBusy || !exporter.canStart(operation) || closing ||
+        document.image().isNull())
         return false;
-    if (!q.preparePendingEdits())
+
+    const QPointer<ImageEditingWindow> lifetime(&q);
+    const bool copying = operation == ExportOperation::Copy;
+    ImageEditingExportController::CopyOptions copyOptions;
+    if (copying) {
+        copyOptions.publication =
+            ScreenshotClipboardService::reservePublication(QApplication::clipboard());
+        copyOptions.requestedAt = QDateTime::currentDateTime();
+        if (storage::ScreenshotSettings().copyImageFileToClipboard())
+            copyOptions.file = ScreenshotCloudUploadService::currentOptions();
+        exporter.cancelCopy();
+        if (!lifetime || closing)
+            return false;
+    }
+    if (!q.preparePendingEdits() ||
+        (copying && !ScreenshotClipboardService::publicationCurrent(copyOptions.publication)))
         return false;
+
     const QPointer<Session> recognition =
         operation != ExportOperation::Pin && session && session->active() ? session : nullptr;
-    QByteArray checkpoint =
-        recognition ? recognitionCheckpoint(recognition) : document.checkpoint();
     const QString contentKey = recognition ? recognition->activeContentKey() : QString{};
     const auto state = document.baseState();
-    const bool recognitionExport = bool(recognition);
-    const auto finish = [this, recognition, contentKey, state, recognitionExport](
-                            const QByteArray& savedCheckpoint, bool success, QString error) {
-        if (closing)
+    const auto finish = [this, lifetime, operation, recognition, contentKey,
+                         state](const QByteArray& checkpoint, bool recognitionContent, bool success,
+                                QString error) {
+        if (!lifetime || closing)
             return;
-        palette->setCloudUploadBusy(false);
-        if (success) {
-            if (recognitionExport) {
+        if (operation == ExportOperation::Upload)
+            palette->setCloudUploadBusy(false);
+        if (success && !checkpoint.isEmpty()) {
+            if (recognitionContent) {
                 const auto entry = sessions.find(state);
-                if (!savedCheckpoint.isEmpty() && recognition && entry != sessions.end() &&
-                    entry->controller == recognition)
-                    entry->saved.insert(contentKey, savedCheckpoint);
-            } else
-                document.markExported(savedCheckpoint);
-            showNotice(Notice::Exported);
-        } else if (!error.isEmpty())
-            message(std::move(error));
-        else if (notice == Notice::Exporting)
-            message({});
-        emit q.exportFinished(success);
+                if (recognition && entry != sessions.end() && entry->controller == recognition)
+                    entry->saved.insert(contentKey, checkpoint);
+            } else {
+                document.markExported(checkpoint);
+            }
+        }
+        if (!lifetime || closing)
+            return;
+        if (!exporter.busy()) {
+            if (success)
+                showNotice(Notice::Exported);
+            else if (!error.isEmpty())
+                message(std::move(error));
+            else if (notice == Notice::Exporting)
+                message({});
+        }
+        if (lifetime && !closing)
+            emit q.exportFinished(success);
     };
-    ImageEditingExportController::Content content;
-    const bool ocrOverlay =
-        recognition && recognition->mode() == Session::Mode::Text && !recognition->editing();
-    if (recognition && recognition->originalImageTranslationActive())
-        checkpoint.clear();
-    if (recognition && operation == ExportOperation::Copy) {
+    const auto completion = [finish](QByteArray checkpoint, bool recognitionContent) {
+        return [finish, checkpoint = std::move(checkpoint), recognitionContent](bool success,
+                                                                                QString error) {
+            finish(checkpoint, recognitionContent, success, std::move(error));
+        };
+    };
+
+    if (copying) {
+        const auto publish = [this, lifetime,
+                              copyOptions](ImageEditingExportController::CopyContent content,
+                                           ImageEditingExportController::Completion done) {
+            if (!lifetime || closing ||
+                !ScreenshotClipboardService::publicationCurrent(copyOptions.publication))
+                return false;
+            if (!exporter.busy())
+                showNotice(Notice::Exporting);
+            if (!lifetime || closing ||
+                !ScreenshotClipboardService::publicationCurrent(copyOptions.publication))
+                return false;
+            exporter.startCopy(std::move(content), copyOptions, surface->window(), std::move(done));
+            return true;
+        };
+        if (!recognition) {
+            QString error;
+            auto source = document.exportSource(&error);
+            if (source.isValid())
+                return publish(std::move(source), completion(document.checkpoint(), false));
+            finish({}, false, false, error);
+            return false;
+        }
+        const auto checkpoint = recognitionCheckpoint(recognition);
 #if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
         if (recognition->mode() == Session::Mode::Document) {
             auto request = recognition->documentCopyRequest();
-            if (!request.document) {
-                finish({}, false,
-                       ImageEditingWindow::tr("No recognition result is available to export"));
-                return false;
-            }
-            content = std::move(request);
-        } else
-#endif
-        {
-            auto mime = recognition->recognitionClipboardMimeData();
-            if (!mime) {
-                finish({}, false,
-                       ImageEditingWindow::tr("No recognition result is available to export"));
-                return false;
-            }
-            if (ocrOverlay && (!mime->hasText() || mime->text() != recognition->textDraft()))
-                checkpoint.clear();
-            content = std::move(mime);
-        }
-    } else if (recognition &&
-               (operation == ExportOperation::Save || operation == ExportOperation::QuickSave)) {
-        if (recognition->mode() == Session::Mode::Text && recognition->hasTextResult()) {
-            content = recognition->textDraft();
-        } else {
-#if SNOW_SHOT_ENABLE_IMAGE_CONVERSION || SNOW_SHOT_ENABLE_LATEX_RECOGNITION ||                     \
-    SNOW_SHOT_ENABLE_QR_RECOGNITION || SNOW_SHOT_ENABLE_TABLE_RECOGNITION
-            if (auto snapshot = recognition->fileExportSnapshot())
-                content = std::move(*snapshot);
-            else
-#endif
-            {
-                finish({}, false,
-                       ImageEditingWindow::tr("No recognition result is available to export"));
-                return false;
-            }
-        }
-    } else if (recognition && recognitionView) {
-        QImage image;
-        if (showsRecognitionImage()) {
-            checkpoint.clear();
-            image = recognition->showOriginalImage()
-                        ? document.image()
-                        : recognitionView->printViewportSnapshot(
-                              document.image(), document.bounds(), canvas->recognitionBackground(),
-                              canvas->recognitionBackgroundRect());
-        } else {
-            image = recognitionView->printViewportSnapshot();
-        }
-        content = ScreenshotExportSource::fromImage(std::move(image));
-    } else {
-        QString error;
-        auto source = document.exportSource(&error);
-        if (!source.isValid()) {
-            finish({}, false, error);
+            if (request.document)
+                return publish(std::move(request), completion(checkpoint, true));
+            finish({}, true, false,
+                   ImageEditingWindow::tr("No recognition result is available to export"));
             return false;
         }
-        content = std::move(source);
+#endif
+        const bool ocrOverlay =
+            recognition->mode() == Session::Mode::Text && !recognition->editing();
+        const auto draft = ocrOverlay ? recognition->textDraft() : QString{};
+        if (recognition->prepareSmartClipboard(
+                nullptr, false,
+                [this, lifetime, recognition, publish, completion, checkpoint, draft](auto mime) {
+                    if (!lifetime || !recognition || recognition != session ||
+                        !recognition->ownsContentAttachment())
+                        return;
+                    const auto saved = mime->text() == draft ? checkpoint : QByteArray{};
+                    publish(std::move(mime), completion(saved, true));
+                }))
+            return true;
+        auto mime = recognition->recognitionClipboardMimeData();
+        if (!lifetime || !recognition || recognition != session)
+            return false;
+        if (!mime) {
+            finish({}, true, false,
+                   ImageEditingWindow::tr("No recognition result is available to export"));
+            return false;
+        }
+        if (mime->hasImage()) {
+            auto image = qvariant_cast<QImage>(mime->imageData());
+            return publish(ScreenshotExportSource::fromImage(std::move(image)),
+                           completion({}, true));
+        }
+        const auto saved =
+            ocrOverlay && (!mime->hasText() || mime->text() != draft) ? QByteArray{} : checkpoint;
+        return publish(std::move(mime), completion(saved, true));
     }
-    const QPointer<ImageEditingWindow> lifetime(&q);
+
+    ImageEditingExportController::Content content;
+    QByteArray checkpoint;
+    bool recognitionContent = false;
+    if (recognition &&
+        (operation == ExportOperation::Save || operation == ExportOperation::QuickSave)) {
+        auto snapshot = recognition->fileExportSnapshot();
+        if (!lifetime || !recognition || recognition != session)
+            return false;
+        if (snapshot) {
+#if SNOW_SHOT_ENABLE_TABLE_RECOGNITION
+            if (snapshot->isMissingTableResult()) {
+                finish({}, true, false, ScreenshotRecognitionFileExport::noResultMessage());
+                return false;
+            }
+#endif
+            checkpoint = recognitionCheckpoint(recognition);
+            content = std::move(*snapshot);
+            recognitionContent = true;
+        }
+    }
+    if (!recognitionContent) {
+        auto snapshot = recognition
+                            ? recognition->imageExportSnapshot(document.image(), document.bounds(),
+                                                               canvas->recognitionBackground(),
+                                                               canvas->recognitionBackgroundRect())
+                            : std::nullopt;
+        if (snapshot) {
+            content = ScreenshotExportSource::fromRecognitionImage(std::move(*snapshot));
+        } else {
+            QString error;
+            auto source = document.exportSource(&error);
+            if (!source.isValid()) {
+                finish({}, false, false, error);
+                return false;
+            }
+            checkpoint = document.checkpoint();
+            content = std::move(source);
+        }
+    }
     showNotice(Notice::Exporting);
     if (!lifetime || closing)
         return false;
     palette->setCloudUploadBusy(operation == ExportOperation::Upload);
     exporter.start(operation, std::move(content), surface->window(), floating,
-                   [finish, checkpoint](bool success, QString error) {
-                       finish(checkpoint, success, std::move(error));
-                   });
+                   completion(std::move(checkpoint), recognitionContent));
     return true;
 }
 

@@ -483,7 +483,15 @@ class ScreenshotPinnedWindow final : public QWidget {
     void installLiveFrame(QImage original);
     [[nodiscard]] std::shared_ptr<ScreenshotExportArtifact>
     liveViewportArtifact(bool applyWindowOpacity = true);
-    enum class ViewportExportMode { Complete, RecognitionBackground, SourceResolution };
+    enum class ViewportExportMode {
+        Complete,
+        RecognitionBackground,
+        SourceResolution,
+        ImageOutput,
+        StandardComposite,
+    };
+    void requestViewportSnapshot(ViewportExportMode mode,
+                                 std::function<void(ScreenshotPinnedImageSnapshot)> ready);
     [[nodiscard]] ScreenshotExportSource liveExportSource(ViewportExportMode mode, QSize& size);
     void requestLiveSnapshot(std::function<void(QImage, QString)> completion,
                              ViewportExportMode mode);
@@ -623,8 +631,11 @@ class ScreenshotPinnedWindow final : public QWidget {
     void cancelContentReplacement();
     void printContent();
     void airDropContent();
-    void requestVisibleContentSnapshot(std::function<void(ScreenshotExportImageResult)> ready);
+    void requestImageOutputArtifact(
+        std::function<void(std::shared_ptr<ScreenshotExportArtifact>)> ready);
+    void requestNativeExportImage(std::function<void(ScreenshotExportImageResult)> ready);
     void saveAsFile();
+    void saveImageAsFile(std::shared_ptr<ScreenshotExportArtifact> artifact);
     void saveDisplayedPinnedWindowsToDirectory(const QString& directory);
     void savePinnedWindows(const QList<QPointer<ScreenshotPinnedWindow>>& targets,
                            snow_shot::presentation::PinnedBatchScope scope);
@@ -648,10 +659,11 @@ class ScreenshotPinnedWindow final : public QWidget {
     viewportArtifact(ViewportExportMode mode = ViewportExportMode::Complete);
     [[nodiscard]] ScreenshotExportSource
     cachedPinnedExportSource(ScreenshotPinnedViewportExportSource request,
-                             ScreenshotPinnedImageSnapshot& snapshot);
+                             ScreenshotPinnedImageSnapshot& snapshot, bool recognitionImage);
     [[nodiscard]] std::optional<QByteArray> exportDocumentSnapshot() const;
     void quickSave();
-    void quickSavePreparedImage(const ScreenshotExportTasks& tasks);
+    void quickSavePreparedImage(std::shared_ptr<ScreenshotExportArtifact> artifact,
+                                const ScreenshotExportTasks& tasks);
     void invalidatePendingCopy();
     void saveRecognitionSnapshot(ScreenshotRecognitionFileSnapshot snapshot, QString path,
                                  QString baseName = {}, bool automatic = false);
@@ -847,7 +859,7 @@ class ScreenshotPinnedWindow final : public QWidget {
     ScreenshotClipboardService::PublicationId m_copyPublicationId = 0;
     struct PinnedRenderCache;
     std::unique_ptr<PinnedRenderCache> m_pinnedRenderCache;
-    std::shared_ptr<ScreenshotExportArtifact> m_nativeExportArtifact;
+    std::function<void()> m_cancelNativeImageRequest;
     QPointer<ScreenshotPrintService> m_printService;
     bool m_printPending = false;
     QPointer<ScreenshotAirDropService> m_airDropService;

@@ -169,10 +169,6 @@
             <translation>Не удалось прочитать выбранные файлы изображений. Повторите попытку</translation>
         </message>
         <message>
-            <source>No available output filename was found</source>
-            <translation>Не найдено свободное имя выходного файла</translation>
-        </message>
-        <message>
             <source>The editing content could not be prepared for export</source>
             <translation>Не удалось подготовить содержимое для экспорта</translation>
         </message>
@@ -191,10 +187,6 @@
         <message>
             <source>The image is too large or there is not enough memory to load it</source>
             <translation>Изображение слишком большое или не хватает памяти для его загрузки</translation>
-        </message>
-        <message>
-            <source>The save directory is not available</source>
-            <translation>Каталог для сохранения недоступен</translation>
         </message>
     </context>
     <context>
@@ -2524,10 +2516,6 @@ Files:
         <message>
             <source>Save as file</source>
             <translation>Сохранить как файл</translation>
-        </message>
-        <message>
-            <source>Text files (*.txt)</source>
-            <translation>Текстовые файлы (*.txt)</translation>
         </message>
         <message>
             <source>The image could not be loaded</source>

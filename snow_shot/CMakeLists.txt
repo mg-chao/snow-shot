@@ -12195,6 +12195,11 @@ if(SNOW_SHOT_BUILD_TESTS)
         COMMAND snow_shot --clipboard-pin-tests --ocr-copy-shortcut-only -platform offscreen)
     add_test(NAME snow-shot-screenshot-controller-clipboard-tests
         COMMAND snow_shot --clipboard-pin-tests -platform offscreen)
+    add_test(NAME snow-shot-recognition-image-outputs-tests
+        COMMAND snow_shot --clipboard-pin-tests --recognition-image-outputs-tests -platform offscreen)
+    set_tests_properties(snow-shot-recognition-image-outputs-tests PROPERTIES
+        LABELS unit SNOW_TEST_CROSS_PLATFORM TRUE TIMEOUT 60 RUN_SERIAL TRUE
+        ENVIRONMENT "${_snow_controller_clipboard_qpa_environment}")
     add_test(NAME snow-shot-screenshot-export-tasks-tests
         COMMAND snow_shot --clipboard-pin-tests --export-tasks -platform offscreen)
     add_test(NAME snow-shot-clipboard-pin-selection-priority-tests

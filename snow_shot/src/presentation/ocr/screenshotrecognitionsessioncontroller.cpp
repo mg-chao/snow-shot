@@ -3386,6 +3386,22 @@ bool ScreenshotRecognitionSessionController::originalImageVisible() const {
     return m_active && m_mode == Mode::Text && !editing() && !m_showOriginalImage;
 }
 
+std::optional<ScreenshotRecognitionImageSnapshot>
+ScreenshotRecognitionSessionController::imageExportSnapshot(
+    QImage image, const QRectF& canvasRect, QImage filteredImage, const QRectF& filteredCanvasRect,
+    const ScreenshotResultStyle& style) const {
+    const auto* view = content();
+    if (!view || !originalImageVisible() ||
+        !snow_shot::storage::TextRecognitionSettings().saveRecognitionResultAsImage())
+        return std::nullopt;
+
+    auto snapshot = view->imageSnapshot(std::move(image), canvasRect, std::move(filteredImage),
+                                        filteredCanvasRect, style);
+    if (snapshot)
+        snapshot->displayedBackgroundOnly = true;
+    return snapshot;
+}
+
 bool ScreenshotRecognitionSessionController::hasTextResult() const {
     const QString key = m_textCacheKey.isEmpty() ? m_target.key : m_textCacheKey;
     return !key.isEmpty() && m_textCache.contains(key);
@@ -3449,6 +3465,8 @@ ScreenshotRecognitionSessionController::fileExportSnapshot() {
     switch (m_mode) {
 #if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
     case Mode::Document: {
+        if (m_documentRequestToken != 0 || m_documentParsing)
+            return std::nullopt;
         ScreenshotRecognitionFileSnapshot snapshot;
         snapshot.kind = ScreenshotRecognitionFileKind::DocumentWord;
         snapshot.document = cachedDocument(m_target.key);

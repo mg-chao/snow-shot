@@ -356,8 +356,8 @@
             <translation>未選取輸出檔案</translation>
         </message>
         <message>
-            <source>No recognition result is available to save</source>
-            <translation>沒有可儲存的辨識結果</translation>
+            <source>No recognition result is available to save.</source>
+            <translation>沒有可儲存的辨識結果。</translation>
         </message>
         <message>
             <source>Replace</source>

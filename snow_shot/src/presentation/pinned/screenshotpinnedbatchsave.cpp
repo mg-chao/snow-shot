@@ -8,7 +8,6 @@
 #include "snow_shot/storage/exportfilename.h"
 #include "snow_shot/storage/clipboardfilecache.h"
 #include "snow_shot/storage/settingsadapters.h"
-#include "snow_draw_engine_qt/snow_canvas_widget.h"
 #include "widgets/message.h"
 #include "../services/screenshotexportfiletransfer_p.h"
 #include <limits>
@@ -309,31 +308,22 @@ class ScreenshotPinnedBatchSaveSession final : public QObject {
             return;
         }
 #endif
-        if (window->m_originalImage.isNull()) {
-            window->requestMaterializedImage([lifetime, target](bool success) {
-                if (!lifetime)
-                    return;
-                if (success && target.valid())
-                    lifetime->prepare(target);
-                else
-                    lifetime->complete(ScreenshotExportTaskResult::failure(
-                        ScreenshotExportFailureStage::Source,
-                        ScreenshotPinnedWindow::tr("The pinned image could not be prepared")));
-            });
-            return;
-        }
-        const bool editingReady = window->animatedImage() || !window->m_canvas ||
-                                  window->m_canvas->resetEditingStatePreservingTool();
-        if (!lifetime)
-            return;
-        if (!editingReady || !target.valid()) {
-            complete(ScreenshotExportTaskResult::failure(
-                ScreenshotExportFailureStage::Source,
-                ScreenshotPinnedWindow::tr("The pinned image could not be prepared")));
-            return;
-        }
-        m_artifact = window->fileSaveArtifact();
-        saveArtifact(target);
+        window->requestImageOutputArtifact([lifetime, target](auto artifact) {
+            if (!lifetime)
+                return;
+            if (!lifetime->ownerValid()) {
+                lifetime->cancel();
+                return;
+            }
+            if (!artifact || !target.valid()) {
+                lifetime->complete(ScreenshotExportTaskResult::failure(
+                    ScreenshotExportFailureStage::Source,
+                    ScreenshotPinnedWindow::tr("The pinned image could not be prepared")));
+                return;
+            }
+            lifetime->m_artifact = std::move(artifact);
+            lifetime->saveArtifact(target);
+        });
     }
 
     void saveArtifact(const Target& target) {

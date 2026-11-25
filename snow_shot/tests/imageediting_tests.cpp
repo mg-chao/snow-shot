@@ -28,6 +28,8 @@
 #include <QFileInfo>
 #include <QFileDialog>
 #include "snow_shot/presentation/screenshotprintservice.h"
+#include "snow_shot/presentation/screenshotairdropservice.h"
+#include "cloud_upload_test_support.h"
 #include <QDir>
 #include <QUuid>
 #include "snow_shot/presentation/screenshotclipboardcontent.h"
@@ -560,8 +562,34 @@ void verifyRecognitionOverlayViewport() {
     require(configuration.setValue(fillKey, QStringLiteral("blur")), "select filtered OCR");
     const snow_shot::storage::TextRecognitionSettings settings;
     const bool highlight = settings.showTextHighlighting();
-    const auto restoreHighlight = qScopeGuard([&] { settings.setShowTextHighlighting(highlight); });
-    require(settings.setShowTextHighlighting(false), "disable OCR highlighting in pixel fixture");
+    const bool recognitionImages = settings.saveRecognitionResultAsImage();
+    const auto restoreRecognition = qScopeGuard([&] {
+        settings.setShowTextHighlighting(highlight);
+        settings.setSaveRecognitionResultAsImage(recognitionImages);
+    });
+    require(settings.setShowTextHighlighting(false) &&
+                settings.setSaveRecognitionResultAsImage(true),
+            "configure recognition image export for the pixel fixture");
+
+    const snow_shot::storage::ScreenshotSettings output;
+    const snow_shot::storage::CloudUploadConfigurationSettings cloud;
+    const auto previousCloud = cloud.settings();
+    const auto previousDirectory = output.imageSaveDirectory();
+    const auto previousFormat = output.imageFormat();
+    const auto previousName = output.autoSaveFilenameFormat();
+    const auto restoreOutput = qScopeGuard([&] {
+        output.setImageSaveDirectory(previousDirectory);
+        output.setImageFormat(previousFormat);
+        output.setAutoSaveFilenameFormat(previousName);
+        cloud.setSettings(previousCloud);
+    });
+    QTemporaryDir directory;
+    cloud_upload_tests::S3Server server;
+    const auto profile = cloud_upload_tests::configuration(server.url());
+    require(directory.isValid() && output.setImageSaveDirectory(directory.path()) &&
+                output.setImageFormat(QStringLiteral("png")) &&
+                cloud.setSettings({{profile}, profile.id}),
+            "configure isolated recognition image destinations");
 
     DeferredOcr provider;
     QImage printed;
@@ -572,6 +600,16 @@ void verifyRecognitionOverlayViewport() {
     ImageEditingServices services;
     services.providers = [&] { return ScreenshotPinnedRecognitionProviders{&provider}; };
     services.printing = &printing;
+#ifdef Q_OS_MACOS
+    QImage shared;
+    QWidget* shareOwner = nullptr;
+    ScreenshotAirDropService sharing([&](QWidget* owner, QString path, auto completion) {
+        shareOwner = owner;
+        shared = QImage(path);
+        completion({ScreenshotAirDropService::Status::Shared, {}});
+    });
+    services.airDrop = &sharing;
+#endif
     ImageEditingWindow window(services);
     ImageEditingSource input;
     input.image = QImage(160, 100, QImage::Format_ARGB32_Premultiplied);
@@ -580,12 +618,38 @@ void verifyRecognitionOverlayViewport() {
     window.present(input);
     require(window.document()->crop(ImageEditingDocument::CropAxis::Rows, 68, 80),
             "overlay fixture crops the recognition target");
+    require(!window.document()
+                 ->runtime()
+                 .applyAnnotationTransaction(QByteArrayLiteral(
+                     R"({"version":1,"operations":[{"type":"rectangle","bounds":[23,40,10,10]}]})"))
+                 .isEmpty(),
+            "overlay fixture keeps a drawing on the standard composite");
+    int completed = 0;
+    QObject::connect(&window, &ImageEditingWindow::exportFinished, &window, [&](bool success) {
+        require(success, "recognition image export succeeds");
+        ++completed;
+    });
+    const auto invoke = [&](auto action) {
+        const int expected = completed + 1;
+        action();
+        awaitCondition([&] { return completed == expected; }, "image output completes once");
+    };
+    const auto save = [&](const QString& name) {
+        require(output.setAutoSaveFilenameFormat(name), "choose a unique test output filename");
+        invoke([&] { window.palette()->quickSaveRequested(); });
+        return QImage(directory.filePath(name + QStringLiteral(".png")));
+    };
     window.palette()->ocrRequested();
     const auto bounds = window.document()->bounds();
     require(provider.pending.size() == 1 && provider.pending[0].request.canvasRect == bounds &&
                 provider.pending[0].request.image == window.document()->image() &&
                 provider.pending[0].request.renderFilteredImage,
             "fresh OCR and its filtered background use the cropped image");
+    const auto pending = save(QStringLiteral("pending"));
+    require(ScreenshotPrintService::opaqueImage(pending) ==
+                    ScreenshotPrintService::opaqueImage(window.document()->image()) &&
+                window.dirty(),
+            "pending OCR exports the base image and leaves annotations unsaved");
     const QRectF lineBounds(bounds.topLeft() + QPointF(18, 10), QSizeF(40, 8));
     auto presentation = std::make_shared<ScreenshotOcrPresentation>();
     presentation->selection = bounds.toAlignedRect();
@@ -648,20 +712,38 @@ void verifyRecognitionOverlayViewport() {
     require(aligned(), "resize keeps the overlay aligned");
     canvas->fit();
     require(aligned(), "Fit keeps the overlay aligned");
-    bool printCompleted = false;
-    QObject::connect(&window, &ImageEditingWindow::exportFinished, &window,
-                     [&](bool success) { printCompleted = success; });
-    window.palette()->printRequested();
-    awaitCondition([&] { return printCompleted && !printed.isNull(); },
-                   "printing receives an immutable OCR viewport");
+    const QImage saved = save(QStringLiteral("recognized"));
+    invoke([&] { window.palette()->printRequested(); });
+    invoke([&] { window.palette()->cloudUploadRequested(); });
+    require(printed.size() == window.document()->image().size() &&
+                printed == ScreenshotPrintService::opaqueImage(saved) &&
+                printed == ScreenshotPrintService::opaqueImage(QImage::fromData(server.body)),
+            "save, print and upload receive the same recognition pixels at document resolution");
+#ifdef Q_OS_MACOS
+    require(window.palette()->findChild<QWidget*>(QStringLiteral("screenshotAirDropButton")),
+            "Image Editing exposes AirDrop on macOS");
+    invoke([&] { window.palette()->airDropRequested(); });
+    require(shareOwner == window.canvas()->window() &&
+                ScreenshotPrintService::opaqueImage(shared) == printed,
+            "editor AirDrop shares the same raster from the editor window");
+#endif
     const auto printedColor = [&](const QPointF& point) {
-        const auto position = canvas->canvasToViewTransform().map(point);
-        return printed.pixelColor(qRound(position.x() * printed.width() / view->width()),
-                                  qRound(position.y() * printed.height() / view->height()));
+        const auto position = point - bounds.topLeft();
+        return printed.pixelColor(qRound(position.x() * printed.width() / bounds.width()),
+                                  qRound(position.y() * printed.height() / bounds.height()));
     };
     require(printedColor(bounds.topLeft() + QPointF(3, 3)) == QColor(Qt::blue) &&
                 printedColor(filteredBounds.topLeft() + QPointF(3, 3)) == QColor(Qt::green),
             "printing composites both the original and filtered pixels beneath OCR");
+    require(settings.setSaveRecognitionResultAsImage(false), "disable recognition image output");
+    const auto standard = save(QStringLiteral("standard"));
+    require(!standard.isNull() && ScreenshotPrintService::opaqueImage(standard) != printed,
+            "disabling recognition output restores the annotated image");
+    require(settings.setSaveRecognitionResultAsImage(true), "restore recognition output");
+    window.palette()->showOriginalImageRequested(true);
+    require(save(QStringLiteral("original")) == standard,
+            "Show Original Image exports the standard composite");
+    window.palette()->showOriginalImageRequested(false);
     const auto transform = canvas->canvasToViewTransform();
     const QPointF selectionStart = transform.map(lineBounds.center());
     const QPointF selectionEnd =
@@ -676,6 +758,8 @@ void verifyRecognitionOverlayViewport() {
     window.palette()->textEditRequested();
     require(window.recognition()->editing() && !view->showsOcrLayer(),
             "Edit opens the OCR text draft");
+    require(save(QStringLiteral("editor")) == standard,
+            "saving with the OCR editor open uses the standard composite");
     window.palette()->textEditRequested();
     require(!window.recognition()->editing() && view->boxSelectionEnabled() && aligned(),
             "Edit toggles back to the aligned OCR layer");

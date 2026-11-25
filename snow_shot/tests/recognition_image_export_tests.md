@@ -2,26 +2,32 @@
 
 ## Behavior contract
 
-The reviewed feature plan applies to screenshot selection and pinned windows. Priorities are
-visual correctness and responsiveness, followed by maintainability and throughput.
+The contract applies to Screenshot, Pinned, and Image Editing. Save as File, Quick Save, Print,
+Upload to Cloud, and AirDrop share the same image source within each window.
 
-- R1: Function settings places Text Recognition immediately after Pin to screen. Its
-  `text_recognition/save_recognition_result_as_image` switch defaults to true, applies to open
-  windows at the next save, and has a reset independent of OCR appearance/model settings.
-- R2: Quick Save and both Save as File dialogs use recognition pixels when the active text
-  recognition session displays the original image. Original-image translation is included;
-  text editors, text-only translation, inactive recognition, and other recognition modes are excluded.
+- R1: The Recognition output section exposes Export recognition result as image. Its
+  `text_recognition/save_recognition_result_as_image` key defaults to true, applies to open
+  windows at the next export, and has a reset independent of OCR appearance and model settings.
+- R2: Image output uses recognition pixels when the switch is on and text recognition or
+  original-image translation is displayed on the image. The standard composite includes drawing
+  annotations and is used for Show Original Image, open text editors, and other recognition modes.
 - R3: Save captures the displayed result before modal event processing or asynchronous work.
   Partial translation is captured immediately. Pending or empty OCR saves the current image.
+  The system Save dialog uses the same snapshot for the image and its capture history.
   Later edits, mode changes, and setting changes do not mutate an already prepared artifact.
-- R4: Output uses native image dimensions, transformed text/background geometry, and existing
-  result effects. It excludes selection/caret/toolbar chrome and annotations hidden by recognition.
+- R4: The image source uses the same pixel dimensions across destinations. Screenshot standard
+  composites use their configured HiDPI scale. Recognition snapshots omit selection, carets, toolbars,
+  and drawing annotations.
+  Follow-up pins use the image at native resolution.
   Clipboard, automatic saves after copying, capture history eligibility, and pin persistence retain
   their existing behavior.
 - R5: Rendering and encoding stay on export workers. Snapshots contain Qt value types with
   copy-on-write ownership and no widget/session references. Preview and encoding share the artifact.
   Cancellation discards partial output; ordinary save errors remain visible without substituting
   the original image for a failed recognition render.
+- R6: Available tables and documents save through their file exporters. Pending documents save as
+  the standard image, and missing tables show the save error. Print, Upload, and AirDrop use the
+  standard image in these modes.
 
 ## Implementation boundaries
 
@@ -35,10 +41,10 @@ rows retain their indentation, gaps, and shorter final row with bounded spacing 
 scaling. Overlapping rows or translations that cannot fit readably use ordinary paragraph layout.
 The canvas keeps selection and grapheme-safe hit testing; export renders without selection.
 
-Screenshot selection captures through its OCR controller. Pinned saving uses the transformed
-recognition window and canvas background. Both use the session's original-image visibility rule.
-The configuration schema supplies the default for existing installations without migrating data.
-Disabling the setting restores the previous image-save path.
+The recognition session checks the shared setting and captures the attached view. Screenshot
+supplies the capture selection, Pinned supplies its transformed base and crop geometry, and Image
+Editing supplies the document base. The storage key stays stable so stored preferences continue to
+apply.
 
 ## Focused verification
 
@@ -49,6 +55,8 @@ Disabling the setting restores the previous image-save path.
 | R2–R4 | offscreen pinned recognition save integration: enabled/disabled, OCR/translation/editor, Quick Save, both dialogs, dialog-time changes, zoom, rotated paragraph source regions |
 | R3–R5 | recognition image tests: native pixels, unchanged source buffers, displayed background crop, effects, mixed Unicode, paragraph/vertical/perspective text, independent worker equality, cancellation and invalid input |
 | R4–R5 | `mergedParagraphUsesSourceRows`: row geometry, Unicode hit testing, selection, zoom, cache invalidation and fallback; `sourceRowsSurviveImageExportOnWorkers`: row occupancy, gaps, shorter final row, worker equality and overlap fallback; existing export artifact, Quick Save, and save-dialog regressions |
+| R2–R6 | Screenshot and Image Editing image output comparisons; pinned Print and AirDrop; document Quick Save during recognition; pinned missing-table and workbook saves |
+| R2–R4 | Batch and individual pinned saves agree with both recognition output settings. System Save freezes image pixels and history while the dialog runs. Follow-up pins from Print, AirDrop, and Upload retain native resolution for selections and scrolling captures. |
 
 The standalone renderer tests and the performance target disable unused default Qt plugins and
 load Windows test fonts explicitly for deterministic offscreen shaping. Test providers use cached

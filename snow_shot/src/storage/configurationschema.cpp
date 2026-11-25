@@ -1004,7 +1004,7 @@ constexpr SchemaEntryDescriptor kEntryDescriptors[] = {
 #if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
     {u"screenshot_translation/original_image_translation", booleanDefault(true),
      ConfigurationValueKind::Boolean},
-    {u"screenshot_translation/copy_translation_results_as_image", booleanDefault(false),
+    {u"screenshot_translation/copy_translation_results_as_image", booleanDefault(true),
      ConfigurationValueKind::Boolean},
 #endif
 #if SNOW_SHOT_ENABLE_TEXT_TRANSLATION

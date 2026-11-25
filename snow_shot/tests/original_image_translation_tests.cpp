@@ -109,7 +109,9 @@ QTimer* translationUpdateTimer(const ScreenshotRecognitionSessionController& con
 
 void configureTranslation(bool overlay = true, const QString& model = QStringLiteral("model-a")) {
     const snow_shot::storage::ScreenshotTranslationSettings settings;
-    require(settings.setOriginalImageTranslationEnabled(overlay), "set translation display mode");
+    require(settings.setOriginalImageTranslationEnabled(overlay) &&
+                settings.setCopyTranslationResultsAsImage(false),
+            "set translation display mode and use text for clipboard assertions");
     require(settings.setConfiguration({QStringLiteral("en"), QStringLiteral("zh-Hans"), model,
                                        QStringLiteral("original")}),
             "set translation languages and model");
@@ -408,8 +410,9 @@ struct SessionProbe {
 
 void translationImageCopyHonorsSelectionAndSnapshots() {
     const snow_shot::storage::ScreenshotTranslationSettings settings;
-    const auto restore =
-        qScopeGuard([&] { static_cast<void>(settings.setCopyTranslationResultsAsImage(false)); });
+    const bool previousCopy = settings.copyTranslationResultsAsImage();
+    const auto restore = qScopeGuard(
+        [&] { static_cast<void>(settings.setCopyTranslationResultsAsImage(previousCopy)); });
     for (const bool overlay : {true, false}) {
         configureTranslation(overlay);
         TranslationServer server;
@@ -1938,11 +1941,16 @@ void runPinnedOriginalImageTranslationTests() {
         const auto before = displayed();
         require(before && before->lines[1].text == QStringLiteral("vertical result"),
                 "the displayed pin still contains the previous text");
+        const auto output =
+            controller->imageExportSnapshot(background, config.canvasSourceRect, {}, {});
+        require(output && output->lines[1].text == QStringLiteral("vertical result") &&
+                    displayed()->lines[1].text == QStringLiteral("vertical result"),
+                "image output freezes the visible translation while a later delta is queued");
         const auto artifact = pinned->fileSaveArtifact();
         const auto after = displayed();
         require(artifact && after &&
                     after->lines[1].text == QStringLiteral("vertical result queued for save"),
-                "pinned image save flushes the received text before capturing the overlay");
+                "the legacy viewport source publishes the queued translation");
     }
     server.finish(0);
     server.finish(1);

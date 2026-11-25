@@ -21,6 +21,7 @@
 #include <QScopedValueRollback>
 #include <QFutureWatcher>
 #include <QtConcurrentRun>
+#include <utility>
 #include "snow_shot/runtime/runtimeactivitytracker.h"
 #include "widgets/message.h"
 
@@ -250,8 +251,8 @@ void ScreenshotPinnedWindow::updateCropPresentation() {
         m_quickSaveArtifact.reset();
         m_quickSavePending = false;
     }
-    if (m_nativeExportArtifact)
-        m_nativeExportArtifact->cancel();
+    if (auto cancel = std::exchange(m_cancelNativeImageRequest, {}))
+        cancel();
     m_fileSaveJob.cancel();
     m_fileSaveJob = {};
     applyRuntimeBorderColor();

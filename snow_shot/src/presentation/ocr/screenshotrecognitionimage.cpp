@@ -77,6 +77,14 @@ QImage renderScreenshotRecognitionImage(const ScreenshotRecognitionImageSnapshot
                            std::max(1, qRound(visible.height() * sy)));
         return image.isNull() ? QImage() : image.copy(pixels);
     }
+    if (snapshot.displayedBackgroundOnly && snapshot.lines.isEmpty() &&
+        (snapshot.filteredImage.isNull() || !snapshot.filteredCanvasRect.isValid()) &&
+        snapshot.textAnnotations.empty()) {
+        const auto style = ScreenshotResultCompositor::normalizedStyle(snapshot.resultStyle);
+        if (!style.region && style.cornerRadius == 0 && style.effectWidth() == 0 &&
+            style.backgroundOpacityPercent == 0 && snapshot.outputOpacity == 1.0)
+            return snapshot.image;
+    }
     QImage image = snowCanvasConvertImage(snapshot.image, QImage::Format_ARGB32_Premultiplied);
     if (!snowCanvasDetachImage(image))
         return {};
@@ -89,9 +97,10 @@ QImage renderScreenshotRecognitionImage(const ScreenshotRecognitionImageSnapshot
         -rect.x() * image.width() / rect.width(), -rect.y() * image.height() / rect.height());
     painter.setClipRect(image.rect());
     std::optional<ScreenshotRecognitionImageSnapshot> prepared;
-    if ((snapshot.filteredImage.isNull() || !snapshot.filteredCanvasRect.isValid()) &&
+    if (!snapshot.displayedBackgroundOnly &&
+        (snapshot.filteredImage.isNull() || !snapshot.filteredCanvasRect.isValid()) &&
         std::ranges::any_of(snapshot.lines, &ScreenshotOcrLine::smartMergeTranslation)) {
-        // An export can capture a streaming delta before the live background has arrived.
+        // Translation image copies can prepare their background before the live filter arrives.
         prepared = snapshot;
         ScreenshotOcrPresentation presentation;
         presentation.lines = snapshot.lines;

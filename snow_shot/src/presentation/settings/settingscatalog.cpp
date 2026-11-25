@@ -2053,10 +2053,10 @@ SettingsItemDefinition pinZoomModeItem() {
 
 SettingsItemDefinition saveRecognitionResultAsImageItem() {
     return switchItem(QStringLiteral("text-recognition.save-recognition-result-as-image"),
-                      QT_TRANSLATE_NOOP("SettingsCatalog", "Save recognition result as image"),
+                      QT_TRANSLATE_NOOP("SettingsCatalog", "Export recognition result as image"),
                       QT_TRANSLATE_NOOP("SettingsCatalog",
-                                        "Include the displayed text recognition or original-image "
-                                        "translation result when saving a screenshot selection"),
+                                        "Include recognition results when exporting an image with "
+                                        "the text recognition tool active."),
                       QStringLiteral("text_recognition/save_recognition_result_as_image"),
                       SettingsSwitchBinding::SaveRecognitionResultAsImage);
 }

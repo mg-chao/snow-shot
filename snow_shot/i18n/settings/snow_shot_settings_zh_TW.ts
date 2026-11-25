@@ -3103,6 +3103,10 @@
             <translation>匯出記錄</translation>
         </message>
         <message>
+            <source>Export recognition result as image</source>
+            <translation>將辨識結果匯出為影像</translation>
+        </message>
+        <message>
             <source>Export recording</source>
             <translation>匯出螢幕錄製</translation>
         </message>
@@ -3427,12 +3431,12 @@
             <translation>匯入設定</translation>
         </message>
         <message>
-            <source>Include saved annotation styles in the configuration archive</source>
-            <translation>在設定封存檔中包含已儲存的標註樣式</translation>
+            <source>Include recognition results when exporting an image with the text recognition tool active.</source>
+            <translation>文字辨識工具啟用時，在匯出的影像中包含辨識結果。</translation>
         </message>
         <message>
-            <source>Include the displayed text recognition or original-image translation result when saving a screenshot selection</source>
-            <translation>儲存截圖選取範圍時包含目前顯示的文字辨識或原圖翻譯結果</translation>
+            <source>Include saved annotation styles in the configuration archive</source>
+            <translation>在設定封存檔中包含已儲存的標註樣式</translation>
         </message>
         <message>
             <source>Include the pointer and capture controls in screenshots</source>
@@ -4529,10 +4533,6 @@
         <message>
             <source>Save locations, clipboard behavior, history and cleanup</source>
             <translation>儲存位置、剪貼簿行為、歷史與清理</translation>
-        </message>
-        <message>
-            <source>Save recognition result as image</source>
-            <translation>將辨識結果儲存為影像</translation>
         </message>
         <message>
             <source>Save system audio and microphone audio as separate MP4 tracks for independent editing. Most players play one track at a time</source>

@@ -1268,6 +1268,9 @@ class ScreenshotPinnedWindowTestAccess {
     static std::shared_ptr<ScreenshotExportArtifact> fileSave(ScreenshotPinnedWindow& window) {
         return window.fileSaveArtifact();
     }
+    static std::shared_ptr<ScreenshotExportArtifact> imageOutput(ScreenshotPinnedWindow& window) {
+        return window.viewportArtifact(ScreenshotPinnedWindow::ViewportExportMode::ImageOutput);
+    }
     static void copyCurrentViewport(ScreenshotPinnedWindow& window) {
         window.copyCurrentViewport();
     }
@@ -17340,7 +17343,7 @@ void pinnedRecognitionEffectsScaleOnce() {
             Access::restoreOffscreen(window, config);
             Access::recognitionOffscreen(window, config);
             QImage rendered;
-            auto artifact = Access::fileSave(window);
+            auto artifact = Access::imageOutput(window);
             require(artifact && artifact->requestImage(
                                     &window,
                                     [&](ScreenshotExportImageResult result) {
@@ -17422,14 +17425,8 @@ void pinnedRecognitionSaveSnapshotsAndRoutesOffscreen() {
         require(complete, "recognition artifact completes");
         return result;
     };
-    const QImage recognized = pixels(ScreenshotPinnedWindowTestAccess::fileSave(window));
+    const QImage recognized = pixels(ScreenshotPinnedWindowTestAccess::imageOutput(window));
     require(recognized != config.imageSource.materializedImage, "OCR text appears in saved image");
-    for (const auto& artifact :
-         {ScreenshotPinnedWindowTestAccess::viewportExport(window),
-          std::make_shared<ScreenshotExportArtifact>(window.stitchingSnapshot().source),
-          std::make_shared<ScreenshotExportArtifact>(window.splittingSnapshot().source)})
-        require(pixels(artifact) == recognized,
-                "clipboard, stitching, splitting and saving share active recognition pixels");
     const auto clipboardPng = [&](std::shared_ptr<ScreenshotExportArtifact> artifact) {
         QByteArray png;
         bool complete = false;
@@ -17449,7 +17446,7 @@ void pinnedRecognitionSaveSnapshotsAndRoutesOffscreen() {
         return png;
     };
     const QByteArray recognizedClipboard =
-        clipboardPng(ScreenshotPinnedWindowTestAccess::fileSave(window));
+        clipboardPng(ScreenshotPinnedWindowTestAccess::imageOutput(window));
     const QImage recognizedClipboardImage = QImage::fromData(recognizedClipboard, "PNG");
     require(!recognizedClipboardImage.isNull() &&
                 recognizedClipboardImage.size() == recognized.size(),
@@ -17457,43 +17454,39 @@ void pinnedRecognitionSaveSnapshotsAndRoutesOffscreen() {
     // The PNG encoder tags canonical sRGB while the source snapshot can be untagged.
     // Compare each output route with its own baseline, retaining exact pixels and metadata.
     require(settings.setShowTextHighlighting(true) &&
-                pixels(ScreenshotPinnedWindowTestAccess::fileSave(window)) == recognized,
+                pixels(ScreenshotPinnedWindowTestAccess::imageOutput(window)) == recognized,
             "screen-only highlighting preserves exact saved recognition pixels");
     const QByteArray highlightedClipboard =
-        clipboardPng(ScreenshotPinnedWindowTestAccess::fileSave(window));
+        clipboardPng(ScreenshotPinnedWindowTestAccess::imageOutput(window));
     const QImage highlightedClipboardImage = QImage::fromData(highlightedClipboard, "PNG");
     require(!highlightedClipboardImage.isNull() && highlightedClipboard == recognizedClipboard &&
                 highlightedClipboardImage == recognizedClipboardImage,
             "screen-only highlighting preserves exact clipboard PNG bytes and decoded pixels");
     session->setShowOriginalImage(true);
-    require(pixels(ScreenshotPinnedWindowTestAccess::fileSave(window)) ==
+    require(pixels(ScreenshotPinnedWindowTestAccess::imageOutput(window)) ==
                 config.imageSource.materializedImage,
             "show original image excludes OCR from pinned image export");
     session->setShowOriginalImage(false);
-    require(pixels(ScreenshotPinnedWindowTestAccess::fileSave(window)) == recognized,
+    require(pixels(ScreenshotPinnedWindowTestAccess::imageOutput(window)) == recognized,
             "disabling show original image restores pinned OCR export");
     require(settings.setSaveRecognitionResultAsImage(false),
             "disable recognition saving on open pin");
-    require(pixels(ScreenshotPinnedWindowTestAccess::fileSave(window)) == recognized,
-            "pinned image rendering includes active recognition independently of capture settings");
+    const auto standard = config.imageSource.materializedImage;
+    require(pixels(ScreenshotPinnedWindowTestAccess::imageOutput(window)) == standard,
+            "disabling the setting restores the standard pinned image");
+    require(pixels(ScreenshotPinnedWindowTestAccess::viewportExport(window)) != standard,
+            "independent viewport exports still include the visible recognition result");
     require(settings.setSaveRecognitionResultAsImage(true), "reenable recognition saving");
     require(session->activateCachedTextTranslation(), "activate cached original-image translation");
-    auto frozen = ScreenshotPinnedWindowTestAccess::fileSave(window);
+    auto frozen = ScreenshotPinnedWindowTestAccess::imageOutput(window);
     const QImage translated = pixels(frozen);
     require(translated != recognized, "current translation replaces source OCR text");
-    for (const auto& artifact :
-         {ScreenshotPinnedWindowTestAccess::viewportExport(window),
-          std::make_shared<ScreenshotExportArtifact>(window.stitchingSnapshot().source),
-          std::make_shared<ScreenshotExportArtifact>(window.splittingSnapshot().source)})
-        require(pixels(artifact) == translated,
-                "all image workflows share the current translated presentation");
     session->endTextEditing();
     require(pixels(frozen) == translated,
             "later display changes cannot alter prepared save artifact");
     session->beginTextEditing();
-    require(pixels(ScreenshotPinnedWindowTestAccess::fileSave(window)) !=
-                config.imageSource.materializedImage,
-            "active text editor exports its current recognition presentation");
+    require(pixels(ScreenshotPinnedWindowTestAccess::imageOutput(window)) == standard,
+            "an open text editor exports the standard pinned image");
     session->endTextEditing();
     const auto waitFile = [&](const QString& path, const QImage& expected) {
         QElapsedTimer timer;
@@ -17571,13 +17564,38 @@ void pinnedRecognitionSaveSnapshotsAndRoutesOffscreen() {
     accept.stop();
     require(waitFile(directory.filePath(QStringLiteral("native.png")), translated) == translated,
             "native dialog also freezes recognition before modal event processing");
+
+    window.show();
+    const auto previousManualName = output.manualSaveFilenameFormat();
+    const auto restoreManualName =
+        qScopeGuard([&] { output.setManualSaveFilenameFormat(previousManualName); });
+    require(output.setManualSaveFilenameFormat(QStringLiteral("Batch")),
+            "configure batch save filenames");
+    for (const bool includeRecognition : {true, false}) {
+        QTemporaryDir batchDirectory;
+        require(batchDirectory.isValid() &&
+                    settings.setSaveRecognitionResultAsImage(includeRecognition),
+                "prepare the batch directory and recognition preference");
+        ScreenshotPinnedWindowTestAccess::batchSave(window, batchDirectory.path());
+        translation_tests::waitUntil(
+            [] {
+                QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+                return !ScreenshotPinnedWindowTestAccess::batchSaving();
+            },
+            "batch recognition save completes");
+        const auto& expected = includeRecognition ? recognized : standard;
+        require(waitFile(batchDirectory.filePath(QStringLiteral("Batch_1.png")), expected) ==
+                    expected,
+                "batch Save uses the same recognition preference as individual Save");
+    }
+    require(settings.setSaveRecognitionResultAsImage(true), "restore recognition image output");
     ScreenshotPinnedWindowTestAccess::leaveViewportAtPreviousDpi(window, 1.5);
-    require(pixels(ScreenshotPinnedWindowTestAccess::fileSave(window)) == recognized,
+    require(pixels(ScreenshotPinnedWindowTestAccess::imageOutput(window)) == recognized,
             "window zoom and display DPI do not change exported recognition pixels");
     ScreenshotPinnedWindowTestAccess::rotateRecognitionOffscreen(window);
     const auto& displayed = ScreenshotPinnedWindowTestAccess::displayedRecognition(window);
     require(displayed.lines[0].sourceLineQuads[0] == displayed.lines[0].quad &&
-                pixels(ScreenshotPinnedWindowTestAccess::fileSave(window)).size() ==
+                pixels(ScreenshotPinnedWindowTestAccess::imageOutput(window)).size() ==
                     QSize(180, 320),
             "rotation maps paragraph background regions together with text and native dimensions");
 }
@@ -23675,6 +23693,9 @@ void selectionClipboardPublicationLifetime() {
 }
 
 namespace {
+QImage pinnedExportSnapshotPixels(const std::shared_ptr<ScreenshotExportArtifact>& artifact,
+                                  QObject& receiver);
+
 void pinnedPrintingPreservesVisibleToolbar(bool recognition) {
     using Access = ScreenshotPinnedWindowTestAccess;
     using Service = ScreenshotPrintService;
@@ -24056,6 +24077,7 @@ void pinnedAirDropRecognitionSnapshot() {
             scroll = editor->verticalScrollBar()->value();
         }
 #endif
+        const auto composite = pinnedExportSnapshotPixels(Access::imageOutput(window), window);
         QImage expected, received;
         ScreenshotPrintService printer([&](QWidget*, QImage image, auto completion) {
             expected = std::move(image);
@@ -24071,9 +24093,9 @@ void pinnedAirDropRecognitionSnapshot() {
         Access::airDrop(window, &sharing);
         translation_tests::waitUntil([&] { return !Access::airDropPending(window); },
                                      "recognized content sharing finishes");
-        require(!received.isNull() && ScreenshotPrintService::opaqueImage(received) == expected,
-                "AirDrop uses the same visible recognition viewport as Print, without white "
-                "flattening");
+        require(!received.isNull() && expected == ScreenshotPrintService::opaqueImage(composite) &&
+                    ScreenshotPrintService::opaqueImage(received) == expected,
+                "AirDrop and Print use the same image as Save as File in recognition mode");
         require(window.isVisible() && (!editor || editor->verticalScrollBar()->value() == scroll),
                 "sharing recognized content preserves pin visibility and table scroll");
     }

@@ -25,6 +25,7 @@ struct ScreenshotRecognitionImageSnapshot final {
     QList<CanvasExportSource> backgroundSources;
     std::optional<QRectF> visibleCanvasRect = std::nullopt;
     ScreenshotTextAnnotationRenderSnapshot textAnnotations;
+    bool displayedBackgroundOnly = false;
 };
 
 // Paints filtered pixels, recognized text and persistent marks, in that order, over an

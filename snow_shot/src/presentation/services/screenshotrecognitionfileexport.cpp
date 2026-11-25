@@ -542,9 +542,7 @@ bool ScreenshotRecognitionFileExport::confirmOverwrite(QWidget* owner, const QSt
 ScreenshotRecognitionFileSaveResult ScreenshotRecognitionFileExport::openTemporaryTable(
     const ScreenshotRecognitionFileSnapshot& snapshot, std::function<bool(const QUrl&)> openUrl) {
     if (snapshot.kind != ScreenshotRecognitionFileKind::Table || !snapshot.hasContent())
-        return {{},
-                message(QT_TRANSLATE_NOOP("ScreenshotRecognitionFileExport",
-                                          "No recognition result is available to save"))};
+        return {{}, noResultMessage()};
     QTemporaryDir directory(
         QDir(QDir::tempPath()).filePath(QStringLiteral("SnowShot-table-XXXXXX")));
     if (!directory.isValid())
@@ -565,6 +563,11 @@ ScreenshotRecognitionFileSaveResult ScreenshotRecognitionFileExport::openTempora
     return result;
 }
 #endif
+
+QString ScreenshotRecognitionFileExport::noResultMessage() {
+    return QCoreApplication::translate("ScreenshotRecognitionFileExport",
+                                       "No recognition result is available to save.");
+}
 
 ScreenshotRecognitionFileKind
 ScreenshotRecognitionFileExport::kindForPath(ScreenshotRecognitionFileKind kind,
@@ -707,9 +710,7 @@ ScreenshotRecognitionFileExport::saveToPath(const ScreenshotRecognitionFileSnaps
     if (cancelled && cancelled())
         return {{}, {}, true};
     if (!snapshot.hasContent())
-        return {{},
-                message(QT_TRANSLATE_NOOP("ScreenshotRecognitionFileExport",
-                                          "No recognition result is available to save"))};
+        return {{}, noResultMessage()};
     const QString primary = normalizedPath(path, snapshot.kind);
     if (primary.isEmpty())
         return {{},
@@ -849,9 +850,7 @@ ScreenshotRecognitionFileExport::quickSave(const ScreenshotRecognitionFileSnapsh
     if (cancelled && cancelled())
         return {{}, {}, true};
     if (!snapshot.hasContent())
-        return {{},
-                message(QT_TRANSLATE_NOOP("ScreenshotRecognitionFileExport",
-                                          "No recognition result is available to save"))};
+        return {{}, noResultMessage()};
     if (directory.trimmed().isEmpty())
         return {{},
                 message(QT_TRANSLATE_NOOP("ScreenshotRecognitionFileExport",
