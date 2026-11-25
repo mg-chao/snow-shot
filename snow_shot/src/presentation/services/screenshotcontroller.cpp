@@ -5608,7 +5608,10 @@ ScreenshotExportTasks ScreenshotController::Impl::tasksFor(ExportTrigger trigger
                                                            bool userInitiated) {
     const auto excluded = userInitiated ? snow_shot::storage::ExportTasks{}
                                         : snow_shot::storage::exportTaskRow(trigger).allowed;
-    auto tasks = ScreenshotExportTasks::capture(trigger, excluded);
+    using snow_shot::storage::ScreenshotType;
+    const bool scrolling = m_scrollingCaptureController && m_scrollingCaptureController->active();
+    auto tasks = ScreenshotExportTasks::capture(
+        trigger, excluded, scrolling ? ScreenshotType::Scrolling : ScreenshotType::Normal);
     if (!tasks.selected && !tasks.clipboardFile)
         return tasks;
     tasks.exportContext = captureExportContext(
@@ -5621,7 +5624,7 @@ ScreenshotExportTasks ScreenshotController::Impl::tasksFor(ExportTrigger trigger
     };
     if (!tasks.selected.testFlag(ExportTask::Pin))
         return tasks;
-    if (m_scrollingCaptureController && m_scrollingCaptureController->active()) {
+    if (scrolling) {
         const auto* display = m_geometry.displayForCanvasPoint(
             m_displaySession,
             ScreenshotHalfOpenRect::fromRect(m_scrollingCaptureController->canvasSelection())
@@ -7326,6 +7329,11 @@ void ScreenshotControllerTestAccess::prepareScrollingSnapshot(
     auto* overlay = presentSelection(controller);
     prepareScrollingSnapshot(*controller.m_impl->m_scrollingCaptureController, std::move(snapshot),
                              controller.m_impl->m_selection.pixelSelection(), overlay);
+}
+
+ScreenshotHistoryService&
+ScreenshotControllerTestAccess::history(ScreenshotController& controller) {
+    return *controller.m_impl->m_historyService;
 }
 
 ScreenshotToolbarCommandSink&

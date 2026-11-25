@@ -5,6 +5,7 @@
 #include "snow_shot/presentation/screenshotimagefileservice.h"
 #include "snow_shot/presentation/screenshothidpiimagescaling.h"
 #include "snow_shot/storage/screenshotexportvariables.h"
+#include "snow_shot/storage/exporttasks.h"
 #include "snow_shot/storage/capturehistorymode.h"
 #include <QDateTime>
 #include <QImage>
@@ -55,6 +56,12 @@ struct DirectCaptureRequest {
     std::function<bool(QSize)> admitRaster;
     QString hiDpiImageScaling = QStringLiteral("disabled");
     storage::ScreenshotExportContext exportContext;
+
+    [[nodiscard]] storage::ScreenshotType screenshotType() const {
+        return target == DirectCaptureTarget::FocusedWindow
+                   ? storage::ScreenshotType::FocusedWindow
+                   : storage::ScreenshotType::CurrentMonitor;
+    }
 };
 
 struct DirectCaptureFrame {

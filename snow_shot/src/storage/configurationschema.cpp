@@ -469,7 +469,7 @@ constexpr SchemaString kFloatingToolbarDropBehaviors[] = {u"pin_to_screen", u"im
                                                           u"image_splitting", u"image_editing"};
 constexpr SchemaAllowedValues kFloatingToolbarDropBehaviorValues = {
     kFloatingToolbarDropBehaviors, std::size(kFloatingToolbarDropBehaviors)};
-constexpr int kConfigurationSchemaVersion = 10;
+constexpr int kConfigurationSchemaVersion = 11;
 constexpr ConfigurationIntegerRange kSchemaRange1{kConfigurationSchemaVersion,
                                                   kConfigurationSchemaVersion, 1};
 constexpr SchemaString kSchemaStrings4[] = {u"system", u"light", u"dark"};
@@ -1901,9 +1901,14 @@ QVector<ConfigurationSchemaEntry> buildEntries() {
     result.reserve(static_cast<qsizetype>(std::size(kEntryDescriptors) + exportTaskRows.size()));
     for (const SchemaEntryDescriptor& descriptor : kEntryDescriptors)
         result.push_back(materializeEntry(descriptor));
-    for (const auto& row : exportTaskRows)
+    for (const auto& row : exportTaskRows) {
         result.push_back({row.key.toString(), QJsonArray{}, ConfigurationValueKind::StringList,
                           std::nullopt, exportTaskIds(row.allowed)});
+        const auto scopedKey = exportTaskScopedKey(row.trigger);
+        if (!scopedKey.isEmpty())
+            result.push_back({scopedKey, QJsonArray{}, ConfigurationValueKind::StringList,
+                              std::nullopt, exportTaskScopedOptionIds(row.trigger)});
+    }
     for (const auto& action : mouse::definitions()) {
         if (action.action != mouse::Action::Back)
             result.push_back(
@@ -3219,6 +3224,15 @@ ConfigurationSchema::migrateLegacyValues(QMap<QString, QJsonValue> values) {
         if (pinCopy.toBool())
             pin |= ExportTask::CopyImage;
         migrate(ExportTrigger::ScreenshotPin, pin);
+    }
+    for (const auto& row : exportTaskRows) {
+        const auto key = row.key.toString();
+        const auto scopedKey = exportTaskScopedKey(row.trigger);
+        if (scopedKey.isEmpty() || !values.contains(key) || values.contains(scopedKey))
+            continue;
+        const auto scoped = normalize(scopedKey, values.value(key)).value;
+        if (!scoped.toArray().isEmpty())
+            values.insert(scopedKey, scoped);
     }
     return values;
 }

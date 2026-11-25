@@ -2003,6 +2003,22 @@
             <translation>Auto-save</translation>
         </message>
         <message>
+            <source>Auto-save (Current monitor)</source>
+            <translation>Auto-save (Current monitor)</translation>
+        </message>
+        <message>
+            <source>Auto-save (Focused window)</source>
+            <translation>Auto-save (Focused window)</translation>
+        </message>
+        <message>
+            <source>Auto-save (Normal)</source>
+            <translation>Auto-save (Normal)</translation>
+        </message>
+        <message>
+            <source>Auto-save (Scrolling screenshot)</source>
+            <translation>Auto-save (Scrolling screenshot)</translation>
+        </message>
+        <message>
             <source>Auto-save image filename format</source>
             <translation>Auto-save image filename format</translation>
         </message>
@@ -2583,6 +2599,14 @@
             <translation>Copy file</translation>
         </message>
         <message>
+            <source>Copy file (Normal)</source>
+            <translation>Copy file (Normal)</translation>
+        </message>
+        <message>
+            <source>Copy file (Scrolling screenshot)</source>
+            <translation>Copy file (Scrolling screenshot)</translation>
+        </message>
+        <message>
             <source>Copy image file to clipboard</source>
             <translation>Copy image file to clipboard</translation>
         </message>
@@ -2625,6 +2649,14 @@
         <message>
             <source>Copy to clipboard</source>
             <translation>Copy to clipboard</translation>
+        </message>
+        <message>
+            <source>Copy to clipboard (Normal)</source>
+            <translation>Copy to clipboard (Normal)</translation>
+        </message>
+        <message>
+            <source>Copy to clipboard (Scrolling screenshot)</source>
+            <translation>Copy to clipboard (Scrolling screenshot)</translation>
         </message>
         <message>
             <source>Copy translation results as an image</source>
@@ -3965,6 +3997,22 @@
         <message>
             <source>Pin to screen</source>
             <translation>Pin to screen</translation>
+        </message>
+        <message>
+            <source>Pin to screen (Current monitor)</source>
+            <translation>Pin to screen (Current monitor)</translation>
+        </message>
+        <message>
+            <source>Pin to screen (Focused window)</source>
+            <translation>Pin to screen (Focused window)</translation>
+        </message>
+        <message>
+            <source>Pin to screen (Normal)</source>
+            <translation>Pin to screen (Normal)</translation>
+        </message>
+        <message>
+            <source>Pin to screen (Scrolling screenshot)</source>
+            <translation>Pin to screen (Scrolling screenshot)</translation>
         </message>
         <message>
             <source>Pin to screen management</source>
@@ -5441,6 +5489,22 @@
         <message>
             <source>Upload to cloud</source>
             <translation>Upload to cloud</translation>
+        </message>
+        <message>
+            <source>Upload to cloud (Current monitor)</source>
+            <translation>Upload to cloud (Current monitor)</translation>
+        </message>
+        <message>
+            <source>Upload to cloud (Focused window)</source>
+            <translation>Upload to cloud (Focused window)</translation>
+        </message>
+        <message>
+            <source>Upload to cloud (Normal)</source>
+            <translation>Upload to cloud (Normal)</translation>
+        </message>
+        <message>
+            <source>Upload to cloud (Scrolling screenshot)</source>
+            <translation>Upload to cloud (Scrolling screenshot)</translation>
         </message>
         <message>
             <source>Use GPU acceleration when available. Recognition uses the CPU while acceleration is unavailable</source>

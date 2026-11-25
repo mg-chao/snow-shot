@@ -1432,9 +1432,27 @@ void builtInCatalogIsCompleteAndValid() {
         QStringList ids;
         for (const auto& option : multi.options)
             ids << option.value.toString();
+        QStringList expectedIds;
+        for (const auto& option : storage::exportTaskOptions(row.trigger))
+            expectedIds.append(option.id.toString());
+        if (row.trigger == storage::ExportTrigger::ScreenshotCopy) {
+            const QStringList types{
+                QStringLiteral("Normal"), QStringLiteral("Scrolling screenshot"),
+                QStringLiteral("Focused window"), QStringLiteral("Current monitor")};
+            QStringList labels;
+            for (const auto& option : multi.options)
+                labels.append(option.label.translated());
+            QStringList expected;
+            for (const auto& action : {QStringLiteral("Auto-save"), QStringLiteral("Pin to screen"),
+                                       QStringLiteral("Upload to cloud")}) {
+                expected.append(action);
+                for (const auto& type : types)
+                    expected.append(QStringLiteral("%1 (%2)").arg(action, type));
+            }
+            require(labels == expected, "copy task labels identify all four types in action order");
+        }
         require(item.configurationKey == row.key &&
-                    multi.binding == settings::exportTaskBinding(row.trigger) &&
-                    ids == storage::exportTaskIds(row.allowed),
+                    multi.binding == settings::exportTaskBinding(row.trigger) && ids == expectedIds,
                 "each action exposes its own ordered task selection");
     }
     require(visibleRows == taskSection.items.size() &&

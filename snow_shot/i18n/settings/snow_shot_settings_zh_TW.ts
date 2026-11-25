@@ -2003,6 +2003,22 @@
             <translation>自動儲存</translation>
         </message>
         <message>
+            <source>Auto-save (Current monitor)</source>
+            <translation>自動儲存（目前顯示器）</translation>
+        </message>
+        <message>
+            <source>Auto-save (Focused window)</source>
+            <translation>自動儲存（焦點視窗）</translation>
+        </message>
+        <message>
+            <source>Auto-save (Normal)</source>
+            <translation>自動儲存（一般截圖）</translation>
+        </message>
+        <message>
+            <source>Auto-save (Scrolling screenshot)</source>
+            <translation>自動儲存（捲動截圖）</translation>
+        </message>
+        <message>
             <source>Auto-save image filename format</source>
             <translation>自動儲存影像檔名格式</translation>
         </message>
@@ -2583,6 +2599,14 @@
             <translation>複製檔案</translation>
         </message>
         <message>
+            <source>Copy file (Normal)</source>
+            <translation>複製檔案（一般截圖）</translation>
+        </message>
+        <message>
+            <source>Copy file (Scrolling screenshot)</source>
+            <translation>複製檔案（捲動截圖）</translation>
+        </message>
+        <message>
             <source>Copy image file to clipboard</source>
             <translation>將影像檔案複製到剪貼簿</translation>
         </message>
@@ -2625,6 +2649,14 @@
         <message>
             <source>Copy to clipboard</source>
             <translation>複製到剪貼簿</translation>
+        </message>
+        <message>
+            <source>Copy to clipboard (Normal)</source>
+            <translation>複製到剪貼簿（一般截圖）</translation>
+        </message>
+        <message>
+            <source>Copy to clipboard (Scrolling screenshot)</source>
+            <translation>複製到剪貼簿（捲動截圖）</translation>
         </message>
         <message>
             <source>Copy translation results as an image</source>
@@ -3965,6 +3997,22 @@
         <message>
             <source>Pin to screen</source>
             <translation>固定到螢幕</translation>
+        </message>
+        <message>
+            <source>Pin to screen (Current monitor)</source>
+            <translation>固定到螢幕（目前顯示器）</translation>
+        </message>
+        <message>
+            <source>Pin to screen (Focused window)</source>
+            <translation>固定到螢幕（焦點視窗）</translation>
+        </message>
+        <message>
+            <source>Pin to screen (Normal)</source>
+            <translation>固定到螢幕（一般截圖）</translation>
+        </message>
+        <message>
+            <source>Pin to screen (Scrolling screenshot)</source>
+            <translation>固定到螢幕（捲動截圖）</translation>
         </message>
         <message>
             <source>Pin to screen management</source>
@@ -5441,6 +5489,22 @@
         <message>
             <source>Upload to cloud</source>
             <translation>上傳至雲端</translation>
+        </message>
+        <message>
+            <source>Upload to cloud (Current monitor)</source>
+            <translation>上傳至雲端（目前顯示器）</translation>
+        </message>
+        <message>
+            <source>Upload to cloud (Focused window)</source>
+            <translation>上傳至雲端（焦點視窗）</translation>
+        </message>
+        <message>
+            <source>Upload to cloud (Normal)</source>
+            <translation>上傳至雲端（一般截圖）</translation>
+        </message>
+        <message>
+            <source>Upload to cloud (Scrolling screenshot)</source>
+            <translation>上傳至雲端（捲動截圖）</translation>
         </message>
         <message>
             <source>Use GPU acceleration when available. Recognition uses the CPU while acceleration is unavailable</source>

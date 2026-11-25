@@ -2,6 +2,7 @@
 #include "snow_shot/storage/configurationschema.h"
 #include "snow_shot/storage/configurationstore.h"
 #include "snow_shot/storage/settingsadapters.h"
+#include "snow_shot/storage/exporttasks.h"
 #include "snow_shot/app/edition.h"
 #include "snow_shot/shortcuts/shortcutbinding.h"
 
@@ -221,12 +222,13 @@ void cloudSyncConfiguration() {
     using namespace snow_shot::storage;
     const auto& keys = cloudSettingKeys();
     const QSet<QString> unique(keys.cbegin(), keys.cend());
-    require(keys.size() == 320 && unique.size() == keys.size() &&
+    require(keys.size() == 326 && unique.size() == keys.size() &&
                 std::count_if(keys.cbegin(), keys.cend(), cloudSettingPlatformSpecific) == 175,
-            "cloud allowlist requires all 320 unique schema keys and 175 platform records");
+            "cloud allowlist requires all 326 unique schema keys and 175 platform records");
     const QString themeKey = QStringLiteral("interface/theme_mode");
     const QString fontKey = QStringLiteral("interface/app_font_size");
     const QString tasksKey = QStringLiteral("export_tasks/screenshot_copy");
+    const auto scopedTasksKey = exportTaskScopedKey(ExportTrigger::ScreenshotCopy);
     const auto autoUpload = QJsonArray{QStringLiteral("upload_to_cloud")};
     const auto eligibleTask = QJsonArray{QStringLiteral("auto_save")};
     const QString layoutKey = QStringLiteral("tray/menu_options");
@@ -239,6 +241,16 @@ void cloudSyncConfiguration() {
     if constexpr (snow_shot::app::edition::isMini) {
         require(!cloudSettingSupported(themeKey), "Mini has no settings sync");
     } else {
+        const QJsonArray scopedUpload{QStringLiteral("upload_to_cloud.focused_window")};
+        const QJsonArray scopedSave{QStringLiteral("auto_save.scrolling")};
+        require(cloudSettingSupported(scopedTasksKey) &&
+                    cloudSettingValue(tasksKey, scopedSave) == QJsonArray{} &&
+                    cloudSettingValue(scopedTasksKey, eligibleTask) == QJsonArray{} &&
+                    cloudSettingValue(scopedTasksKey, scopedSave) == scopedSave &&
+                    cloudSettingValue(scopedTasksKey, scopedUpload) == QJsonArray{} &&
+                    cloudSettingLocalValue(scopedTasksKey, QJsonArray{}, scopedUpload) ==
+                        scopedUpload,
+                "scoped settings sync independently and keep automatic upload local");
         require(cloudSettingSupported(themeKey) &&
                     cloudSettingValue(tasksKey, autoUpload) == QJsonArray{} &&
                     cloudSettingLocalValue(tasksKey, QJsonArray{}, autoUpload) == autoUpload &&

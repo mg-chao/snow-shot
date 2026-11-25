@@ -1748,8 +1748,7 @@ QVariantList BuiltInSettingsBackend::multiSelectValue(SettingsMultiSelectBinding
             values.push_back(value);
         }
     } else if (const auto trigger = exportTriggerForBinding(binding)) {
-        for (const auto& value :
-             storage::exportTaskIds(storage::ScreenshotSettings().exportTasks(*trigger)))
+        for (const auto& value : storage::ScreenshotSettings().selectedExportTaskIds(*trigger))
             values.push_back(value);
     } else if (binding == SettingsMultiSelectBinding::ScreenshotShutterSoundNotification) {
         return QVariant(storage::ScreenshotSettings().shutterSoundTargets()).toList();
@@ -1778,8 +1777,7 @@ bool BuiltInSettingsBackend::applyMultiSelectValue(SettingsMultiSelectBinding bi
         return storage::TraySettings().setMenuOptions(tools);
     }
     if (const auto trigger = exportTriggerForBinding(binding))
-        return storage::ApplicationStorage::instance().configuration().setValue(
-            storage::exportTaskRow(*trigger).key.toString(), QJsonArray::fromStringList(tools));
+        return storage::ScreenshotSettings().setSelectedExportTaskIds(*trigger, tools);
     if (binding == SettingsMultiSelectBinding::ScreenshotShutterSoundNotification) {
         return storage::ScreenshotSettings().setShutterSoundTargets(tools);
     }
@@ -2737,7 +2735,15 @@ SettingsResetResult BuiltInSettingsBackend::resetSectionWithResults(SettingsSect
         return applyContextMenuSettings(
             storage::ApplicationStorage::instance().configuration().value(kContextMenuModeKey),
             storage::ConfigurationSchema::defaultValue(kContextMenuShortcutKey));
-    case SettingsSectionReset::ExportTasks:
+    case SettingsSectionReset::ExportTasks: {
+        auto defaults = sectionDefaults(reset);
+        for (const auto& row : storage::exportTaskRows) {
+            const auto scopedKey = storage::exportTaskScopedKey(row.trigger);
+            if (!scopedKey.isEmpty() && defaults.contains(row.key.toString()))
+                defaults.insert(scopedKey, resetConfiguration.defaultValue(scopedKey));
+        }
+        return resetValues(defaults);
+    }
     case SettingsSectionReset::ScreenshotOutput:
     case SettingsSectionReset::Translation:
     case SettingsSectionReset::Tray:

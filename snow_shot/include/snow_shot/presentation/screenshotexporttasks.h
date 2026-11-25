@@ -11,8 +11,9 @@ struct ScreenshotExportTasks {
     using Trigger = snow_shot::storage::ExportTrigger;
     using Task = snow_shot::storage::ExportTask;
 
-    static ScreenshotExportTasks capture(Trigger trigger,
-                                         snow_shot::storage::ExportTasks excluded = {});
+    static ScreenshotExportTasks
+    capture(Trigger trigger, snow_shot::storage::ExportTasks excluded = {},
+            snow_shot::storage::ScreenshotType type = snow_shot::storage::ScreenshotType::All);
     void deferClipboardPublication();
     void run(QObject* owner, Artifact image, ScreenshotEncodedExport file = {},
              QImage submittedPrint = {}) const;

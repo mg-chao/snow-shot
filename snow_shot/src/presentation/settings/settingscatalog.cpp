@@ -1587,7 +1587,6 @@ SettingsItemDefinition screenshotSaveAsFileDialogItem() {
 }
 
 QVector<SettingsItemDefinition> exportTaskItems() {
-    using storage::ExportTask;
     using storage::ExportTrigger;
     const auto item = [](ExportTrigger trigger, TranslatableText title,
                          TranslatableText description) {
@@ -1595,29 +1594,8 @@ QVector<SettingsItemDefinition> exportTaskItems() {
         SettingsMultiSelectDefinition payload;
         payload.binding = exportTaskBinding(trigger);
         payload.placeholder = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Select tasks"));
-        for (const auto& option : storage::exportTaskOptions) {
-            if (!row.allowed.testFlag(option.task))
-                continue;
-            TranslatableText label;
-            switch (option.task) {
-            case ExportTask::CopyImage:
-                label = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Copy to clipboard"));
-                break;
-            case ExportTask::CopyFile:
-                label = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Copy file"));
-                break;
-            case ExportTask::AutoSave:
-                label = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Auto-save"));
-                break;
-            case ExportTask::Pin:
-                label = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Pin to screen"));
-                break;
-            case ExportTask::Upload:
-                label = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Upload to cloud"));
-                break;
-            }
-            payload.options.push_back({option.id.toString(), label});
-        }
+        for (const auto& option : storage::exportTaskOptions(trigger))
+            payload.options.push_back({option.id.toString(), settingsText(option.label)});
         const QString key = row.key.toString();
         return SettingsItemDefinition{
             QString(key).replace(u'/', u'.'), title, description, {}, key, std::move(payload)};
@@ -6733,6 +6711,7 @@ QStringList SettingsCatalog::validationErrors() const {
                 }
                 if (const auto* multi =
                         std::get_if<SettingsMultiSelectDefinition>(&itemDefinition.payload)) {
+                    QString scopedKey;
                     QString expectedKey;
                     switch (multi->binding) {
                     case SettingsMultiSelectBinding::DrawingAutomaticSelectionExcludedTools:
@@ -6745,8 +6724,10 @@ QStringList SettingsCatalog::validationErrors() const {
                         expectedKey = QStringLiteral("tray/menu_options");
                         break;
                     default:
-                        if (const auto trigger = exportTriggerForBinding(multi->binding))
+                        if (const auto trigger = exportTriggerForBinding(multi->binding)) {
                             expectedKey = storage::exportTaskRow(*trigger).key.toString();
+                            scopedKey = storage::exportTaskScopedKey(*trigger);
+                        }
                         break;
                     case SettingsMultiSelectBinding::ScreenshotShutterSoundNotification:
                         expectedKey = QStringLiteral("screenshot/shutter_sound_notification");
@@ -6768,6 +6749,10 @@ QStringList SettingsCatalog::validationErrors() const {
                     if (schemaEntry != nullptr) {
                         allowed = QSet<QString>(schemaEntry->allowedStringValues.cbegin(),
                                                 schemaEntry->allowedStringValues.cend());
+                    }
+                    if (const auto* scopedEntry = storage::ConfigurationSchema::entry(scopedKey)) {
+                        for (const auto& id : scopedEntry->allowedStringValues)
+                            allowed.insert(id);
                     }
                     if (itemDefinition.configurationKey != expectedKey || schemaEntry == nullptr ||
                         schemaEntry->valueKind != storage::ConfigurationValueKind::StringList ||

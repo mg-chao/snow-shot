@@ -3,6 +3,7 @@
 
 #include "snow_shot/presentation/screenshotcontroller.h"
 #include <QImage>
+#include <functional>
 #ifdef Q_OS_MACOS
 #include "snow_shot/platform/macos/screenshotsessionfocus.h"
 #endif
@@ -16,7 +17,21 @@ class SnowCanvasRuntime;
 class ScreenshotToolbarCommandSink;
 class ScreenshotScrollingCaptureController;
 class ScreenshotScrollingSnapshot;
+class ScreenshotHistoryService;
 struct ScreenshotSelectionParams;
+
+namespace snow_shot::presentation {
+class DirectCaptureController;
+struct DirectCaptureFrame;
+struct DirectCaptureRequest;
+
+class DirectCaptureControllerTestAccess {
+  public:
+    static void
+    setFrameAcquirer(DirectCaptureController& controller,
+                     std::function<DirectCaptureFrame(const DirectCaptureRequest&)> acquire);
+};
+} // namespace snow_shot::presentation
 
 // Implemented only in test builds, where the controller's private implementation is complete.
 class ScreenshotControllerTestAccess {
@@ -41,6 +56,7 @@ class ScreenshotControllerTestAccess {
     static void prepareScrollingSnapshot(ScreenshotScrollingCaptureController& controller,
                                          ScreenshotScrollingSnapshot snapshot, QRect selection,
                                          ScreenshotOverlayWindow* overlay);
+    static ScreenshotHistoryService& history(ScreenshotController& controller);
     static ScreenshotToolbarCommandSink& commands(ScreenshotController& controller);
 #ifdef Q_OS_MACOS
     static void
