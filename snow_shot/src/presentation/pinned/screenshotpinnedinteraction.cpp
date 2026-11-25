@@ -560,8 +560,8 @@ void ScreenshotPinnedWindow::executeMouseClick(snow_shot::mouse::Action action,
         showContextMenu(global);
         break;
     case Annotation:
-        if (!isLiveWindow() && m_editController)
-            setEditMode(!m_editController->editMode());
+        if (m_editingEnabled)
+            setEditMode(m_editController == nullptr || !m_editController->editMode());
         break;
     case MultiSelect:
         if (m_selectionController)

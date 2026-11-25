@@ -17,6 +17,13 @@ void click(QWidget& surface, Qt::MouseButton button, Qt::KeyboardModifiers keys 
     pointer(surface, QEvent::MouseButtonRelease, global, button, {}, keys);
 }
 
+void doubleClick(QWidget& surface, Qt::MouseButton button) {
+    const QPointF global = surface.mapToGlobal(surface.rect().center());
+    click(surface, button);
+    pointer(surface, QEvent::MouseButtonDblClick, global, button, button, {});
+    pointer(surface, QEvent::MouseButtonRelease, global, button, {}, {});
+}
+
 void wheel(QWidget& surface, QPoint angleDelta, Qt::KeyboardModifiers keys,
            Qt::MouseButtons held = {}) {
     const QPointF local = surface.rect().center();
@@ -51,6 +58,38 @@ void nativeMoveKeepsPressAnchor() {
     require(Access::finishNativeInteraction(window) &&
                 Access::authority(window) == original.translated(delta),
             "releasing without another move keeps the initial displacement");
+}
+
+void annotationOnFreshPin() {
+    auto& store = snow_shot::storage::ApplicationStorage::instance().configuration();
+    const auto annotation = definition(Action::Annotation).key();
+    const auto thumbnail = definition(Action::Thumbnail).key();
+    const auto restore = qScopeGuard([&, original = store.snapshot()] {
+        store.setValues(
+            {{annotation, original.value(annotation)}, {thumbnail, original.value(thumbnail)}});
+    });
+    require(store.setValues({{thumbnail, QJsonObject{}},
+                             {annotation, encode({Kind::DoubleClick, Qt::LeftButton})}}),
+            "bind annotation mode to left-button double-click");
+
+    PinnedSelectionFixture fixture;
+    for (const bool editingEnabled : {true, false}) {
+        auto& pin = fixture.add({60, 80}, {240, 180}, [editingEnabled](auto& config) {
+            config.enableEditing = editingEnabled;
+        });
+        auto* canvas = pin.findChild<SnowCanvasWidget*>();
+        require(canvas && !pin.findChild<ScreenshotPinnedEditController*>(),
+                "a fresh pin starts with a canvas and a deferred annotation controller");
+        doubleClick(*canvas, Qt::LeftButton);
+        auto* edit = pin.findChild<ScreenshotPinnedEditController*>();
+        if (editingEnabled) {
+            require(edit && edit->editMode(), "the first double-click enters annotation mode");
+            doubleClick(*canvas, Qt::LeftButton);
+            require(!edit->editMode(), "the next double-click exits annotation mode");
+        } else {
+            require(!edit, "a pin with editing disabled ignores the annotation gesture");
+        }
+    }
 }
 
 void doubleClickModifiers() {
@@ -123,21 +162,15 @@ void textAndHandleBindings() {
     const auto thumbnail = definition(Action::Thumbnail).key();
     const auto original = store.snapshot();
     const auto leftDouble = encode({Kind::DoubleClick, Qt::LeftButton});
-    const auto doubleClickA = [&] {
-        const QPointF global = a.mapToGlobal(a.rect().center());
-        click(a, Qt::LeftButton);
-        pointer(a, QEvent::MouseButtonDblClick, global, Qt::LeftButton, Qt::LeftButton, {});
-        pointer(a, QEvent::MouseButtonRelease, global, Qt::LeftButton, {}, {});
-    };
     require(store.setValues({{thumbnail, QJsonObject{}}, {copyText, leftDouble}}),
             "bind Copy text to an unmodified left double-click");
-    doubleClickA();
+    doubleClick(a, Qt::LeftButton);
     require(QApplication::clipboard()->text() == QStringLiteral("Second\nFirst") &&
                 fixture.selection.selectedCount() == 2,
             "both releases of a double-click preserve the selected copy targets");
     require(store.setValues({{copyText, original.value(copyText)}, {menu, leftDouble}}),
             "bind Menu to an unmodified left double-click");
-    doubleClickA();
+    doubleClick(a, Qt::LeftButton);
     auto* groupMenu = a.findChild<adqt::widgets::AdContextMenu*>(
         QStringLiteral("screenshotPinnedMultiSelectionMenu"));
     require(groupMenu && groupMenu->isPopupVisible(),
@@ -303,6 +336,7 @@ void wheelCancelsCropGestures() {
 }
 
 void run() {
+    annotationOnFreshPin();
     wheelCancelsCropGestures();
     auto& config = snow_shot::storage::ApplicationStorage::instance().configuration();
     require(config.setValues(
