@@ -2105,6 +2105,7 @@ set(PROJECT_CXX_SOURCES
     src/presentation/ocr/screenshottableeditor.cpp
     src/presentation/ocr/screenshotocrtexttransform.cpp
     src/presentation/ocr/screenshotocrrecognitionservice.cpp
+    src/presentation/ocr/screenshotocrlinegeometry.cpp
     src/presentation/ocr/screenshotocrassets.cpp
     src/presentation/ocr/screenshotqrcontroller.cpp
     include/snow_shot/presentation/screenshotqrcontroller.h
@@ -9677,6 +9678,7 @@ if(SNOW_SHOT_BUILD_TESTS)
 
     add_executable(snow-shot-ocr-layout-tests
         tests/screenshot_ocr_layout_tests.cpp
+        src/presentation/ocr/screenshotocrlinegeometry.cpp
         src/presentation/ocr/screenshotocrlayout.cpp
     )
     target_include_directories(snow-shot-ocr-layout-tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")

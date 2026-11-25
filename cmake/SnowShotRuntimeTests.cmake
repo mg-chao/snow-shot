@@ -38,6 +38,7 @@ function(snow_shot_add_ocr_runtime_tests)
         include/snow_shot/presentation/screenshotocrassets.h
         src/presentation/ocr/screenshotocrpresentation.cpp
         src/presentation/ocr/screenshotocrrecognitionservice.cpp
+        src/presentation/ocr/screenshotocrlinegeometry.cpp
         src/presentation/ocr/screenshotocrassets.cpp
         src/presentation/ocr/screenshotocrvisuals.cpp
     )

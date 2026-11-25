@@ -2,6 +2,7 @@
 #include "snow_shot/platform/applicationqos.h"
 #include "snow_shot/runtime/runtimeactivitytracker.h"
 #include "snow_shot/presentation/screenshotocrrecognitionservice.h"
+#include "screenshotocrlinegeometry.h"
 #include "screenshotocrtransport.h"
 
 #include "snow_shot/presentation/screenshotocrpresentation.h"
@@ -35,34 +36,6 @@
 
 namespace {
 using namespace snow_shot::ocr::protocol;
-
-QPolygonF quadFromValues(const float* points, const QRectF& canvasRect, const QSize& imageSize) {
-    const qreal scaleX = imageSize.width() > 0 ? canvasRect.width() / imageSize.width() : 1.0;
-    const qreal scaleY = imageSize.height() > 0 ? canvasRect.height() / imageSize.height() : 1.0;
-    QPolygonF polygon;
-    polygon.reserve(4);
-    for (int index = 0; index < 4; ++index) {
-        polygon.push_back(
-            QPointF(canvasRect.left() + static_cast<qreal>(points[index * 2]) * scaleX,
-                    canvasRect.top() + static_cast<qreal>(points[index * 2 + 1]) * scaleY));
-    }
-    return polygon;
-}
-
-qreal edgeLength(const QPointF& first, const QPointF& second) {
-    return std::hypot(second.x() - first.x(), second.y() - first.y());
-}
-
-ScreenshotOcrTextDirection textDirectionForQuad(const QPolygonF& quad) {
-    if (quad.size() != 4)
-        return ScreenshotOcrTextDirection::Horizontal;
-    const qreal width =
-        std::max(edgeLength(quad.at(0), quad.at(1)), edgeLength(quad.at(3), quad.at(2)));
-    const qreal height =
-        std::max(edgeLength(quad.at(0), quad.at(3)), edgeLength(quad.at(1), quad.at(2)));
-    return height >= width * 1.5 ? ScreenshotOcrTextDirection::Vertical
-                                 : ScreenshotOcrTextDirection::Horizontal;
-}
 
 QImage renderFilteredImage(QImage source, const QRectF& canvasRect,
                            const std::shared_ptr<ScreenshotOcrPresentation>& presentation,
@@ -1308,26 +1281,27 @@ class ScreenshotOcrRecognitionService::Impl final {
                 for (quint32 index = 0; index < lineCount; ++index) {
                     QString text;
                     float confidence = 0.0F;
-                    float points[8]{};
                     if (!takeString(payload, offset, &text) ||
                         !takeF32(payload, offset, &confidence)) {
                         failJobLocked(job, QCoreApplication::translate("ScreenshotOcrController",
                                                                        "Text recognition failed"));
                         return;
                     }
-                    for (float& point : points)
-                        if (!takeF32(payload, offset, &point)) {
+                    ScreenshotOcrLine line;
+                    line.quad.reserve(4);
+                    for (int corner = 0; corner < 4; ++corner) {
+                        float x = 0, y = 0;
+                        if (!takeF32(payload, offset, &x) || !takeF32(payload, offset, &y) ||
+                            !std::isfinite(x) || !std::isfinite(y)) {
                             failJobLocked(job,
                                           QCoreApplication::translate("ScreenshotOcrController",
                                                                       "Text recognition failed"));
                             return;
                         }
-                    ScreenshotOcrLine line;
+                        line.quad.push_back({x, y});
+                    }
                     line.text = std::move(text);
                     line.confidence = static_cast<qreal>(confidence);
-                    line.quad =
-                        quadFromValues(points, job->request.canvasRect, job->request.image.size());
-                    line.direction = textDirectionForQuad(line.quad);
                     result.presentation->lines.push_back(std::move(line));
                 }
             } else {
@@ -1370,6 +1344,8 @@ class ScreenshotOcrRecognitionService::Impl final {
                         beforeRender();
                     SnowCanvasRegionFilterScratch scratch;
                     if (alive->load(std::memory_order_acquire) && !job->cancelled.load()) {
+                        snow_shot::ocr::prepareDetectedLineGeometry(result.presentation->lines,
+                                                                    source.size(), canvasRect);
                         result.presentation->prepareForRendering();
                         prepareScreenshotOcrTextColors(*result.presentation, source, canvasRect,
                                                        &job->cancelled);

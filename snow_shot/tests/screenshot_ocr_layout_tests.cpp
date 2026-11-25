@@ -1,7 +1,10 @@
 #include "snow_shot/presentation/screenshotocrlayout.h"
+#include "../src/presentation/ocr/screenshotocrlinegeometry.h"
 
 #include <QCoreApplication>
 #include <QStringList>
+#include <QLineF>
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <limits>
@@ -30,9 +33,191 @@ void expect(const QVector<ScreenshotOcrLine>& input, const QStringList& expected
         std::exit(EXIT_FAILURE);
     }
 }
+
+void smallLabelGeometry() {
+    using snow_shot::ocr::prepareDetectedLineGeometry;
+    // Source-pixel quads returned for seven desktop labels, including one wrapped filename.
+    const QSize size(1278, 636);
+    const QRectF pixels(QPointF(), QSizeF{size});
+    const QVector<ScreenshotOcrLine> raw{
+        {QStringLiteral("layout-imag"), 0.9, {{81, 174}, {196, 176}, {196, 203}, {81, 201}}},
+        box(QStringLiteral("es"), 128, 206, 23, 17),
+        box(QStringLiteral("secret.txt"), 320, 326, 85, 21),
+        box(QStringLiteral("deepseek..."), 535, 324, 98, 23),
+        {QStringLiteral("glm.txt"), 0.9, {{886, 324}, {957, 322}, {958, 349}, {887, 351}}},
+        box(QStringLiteral("test-ocr-i..."), 90, 471, 96, 23),
+        {QStringLiteral("gpt.txt"), 0.9, {{1000, 473}, {1066, 468}, {1068, 493}, {1002, 498}}}};
+    auto lines = raw;
+    prepareDetectedLineGeometry(lines, size, pixels);
+    for (qsizetype i = 0; i < raw.size(); ++i) {
+        const auto& q = lines[i].quad;
+        const auto& original = raw[i].quad;
+        require(q[0].y() == q[1].y() && q[2].y() == q[3].y() && q[0].x() == q[3].x() &&
+                    q[1].x() == q[2].x(),
+                "desktop labels should be horizontal");
+        require(
+            q.boundingRect().center() == original.boundingRect().center() &&
+                qFuzzyCompare(q.boundingRect().width(),
+                              QLineF(original[0], original[1]).length()) &&
+                qFuzzyCompare(q.boundingRect().height(), QLineF(original[0], original[3]).length()),
+            "leveling should preserve the center and detector side lengths");
+        require(lines[i].text == raw[i].text && lines[i].confidence == raw[i].confidence,
+                "correcting geometry should preserve recognition and line indices");
+    }
+    const auto merged =
+        snow_shot::presentation::mergeOcrParagraphs(lines, {{0, 1}, {2}, {3}, {4}, {5}, {6}});
+    require(merged && merged->size() == 6 &&
+                merged->front().sourceLineQuads ==
+                    QVector<QPolygonF>{lines[0].quad, lines[1].quad} &&
+                merged->front().quad[0].y() == merged->front().quad[1].y(),
+            "paragraph construction should use the same leveled rows as the overlay");
+
+    auto scaled = raw;
+    const QRectF canvas(-300, 45, size.width() / 2.0, size.height() / 3.0);
+    prepareDetectedLineGeometry(scaled, size, canvas);
+    for (qsizetype i = 0; i < lines.size(); ++i)
+        for (int j = 0; j < 4; ++j) {
+            const auto p = lines[i].quad[j];
+            const auto expected = canvas.topLeft() + QPointF(p.x() / 2, p.y() / 3);
+            require(QLineF(scaled[i].quad[j], expected).length() < 1e-8,
+                    "source pixel decisions must precede anisotropic canvas mapping");
+        }
+}
+
+void genuineTiltsAndIsolatedRows() {
+    const QSize size(1000, 800);
+    const QRectF pixels(QPointF(), QSizeF{size});
+    const auto tilt = [](qreal x, qreal y, qreal width, qreal height, qreal degrees) {
+        auto line = box(QStringLiteral("row"), 0, 0, width, height);
+        QTransform t;
+        t.translate(x, y);
+        t.rotate(degrees);
+        line.quad = t.map(line.quad);
+        return line;
+    };
+    QVector<ScreenshotOcrLine> lines{tilt(40, 40, 80, 24, 3), tilt(42, 68, 90, 24, 3),
+                                     tilt(42, 98, 46, 20, 2), tilt(700, 450, 80, 24, -3)};
+    for (int i = 0; i < 6; ++i)
+        lines.push_back(tilt(700, 482 + i * 25, 80, 24, 0));
+    const auto raw = lines;
+    snow_shot::ocr::prepareDetectedLineGeometry(lines, size, pixels);
+    for (int i = 0; i < 3; ++i)
+        require(lines[i].quad == raw[i].quad,
+                "a locally tilted paragraph must survive a flat page");
+    require(lines[3].quad[0].y() == lines[3].quad[1].y(),
+            "a flat neighbor should support correcting a noisy label in the same region");
+    auto reversed = raw;
+    std::reverse(reversed.begin(), reversed.end());
+    snow_shot::ocr::prepareDetectedLineGeometry(reversed, size, pixels);
+    for (qsizetype i = 0; i < lines.size(); ++i)
+        require(lines[i].quad == reversed[lines.size() - 1 - i].quad,
+                "input order must not bias the votes");
+
+    for (const auto& line :
+         {tilt(200, 200, 55, 20, 4), tilt(200, 200, 600, 24, 2), tilt(200, 200, 26, 12, 6),
+          tilt(200, 200, 14, 46, 4), tilt(200, 200, 19, 19, 2), tilt(0, 0, 50, 20, 2)}) {
+        QVector<ScreenshotOcrLine> single{line};
+        snow_shot::ocr::prepareDetectedLineGeometry(single, size, pixels);
+        require(single.front().quad == line.quad, "isolated uncertain, long, steep, vertical, "
+                                                  "square and clipped boxes must keep their shape");
+    }
+    QVector<ScreenshotOcrLine> isolated{tilt(200, 200, 46, 18, 2)};
+    snow_shot::ocr::prepareDetectedLineGeometry(isolated, size, pixels);
+    require(isolated.front().quad[0].y() == isolated.front().quad[1].y(),
+            "an isolated sub-two-pixel tilt should be leveled");
+
+    const auto suffix = tilt(100, 98, 24, 18, -4);
+    QVector<ScreenshotOcrLine> narrow{suffix};
+    snow_shot::ocr::prepareDetectedLineGeometry(narrow, size, pixels);
+    require(narrow.front().quad == suffix.quad, "a narrow fragment alone has uncertain direction");
+    narrow.push_back(tilt(88, 70, 54, 18, 0));
+    snow_shot::ocr::prepareDetectedLineGeometry(narrow, size, pixels);
+    require(narrow.front().quad[0].y() == narrow.front().quad[1].y(),
+            "a wrapped fragment can use a longer horizontal neighbor");
+
+    // Flat neighbors cannot override the displacement limit or rectify perspective.
+    for (const auto& protectedLine :
+         {tilt(180, 200, 600, 22, 2), tilt(180, 200, 250, 90, 2),
+          ScreenshotOcrLine{QStringLiteral("perspective"),
+                            0.9,
+                            {{300, 200}, {370, 204}, {366, 223}, {300, 221}}}}) {
+        const auto center = protectedLine.quad.boundingRect().center();
+        QVector<ScreenshotOcrLine> mixed{protectedLine,
+                                         tilt(center.x(), center.y() + 20, 70, 20, 0)};
+        snow_shot::ocr::prepareDetectedLineGeometry(mixed, size, pixels);
+        require(mixed.front().quad == protectedLine.quad,
+                "flat support must preserve large displacement and perspective");
+    }
+}
+
+void verticalLineGeometry() {
+    const QSize size(900, 800);
+    const QRectF pixels(QPointF(), QSizeF{size});
+    const ScreenshotOcrLine rightTop{
+        QStringLiteral("right top"), 0.9, {{180, 60}, {205, 58}, {210, 124}, {185, 126}}};
+    const auto leftTop = box(QStringLiteral("left top"), 140, 60, 20, 66);
+    QVector<ScreenshotOcrLine> columns{box(QStringLiteral("left bottom"), 140, 132, 20, 66),
+                                       rightTop, leftTop,
+                                       box(QStringLiteral("right bottom"), 185, 132, 20, 66)};
+    snow_shot::ocr::prepareDetectedLineGeometry(columns, size, pixels);
+    const auto& aligned = columns[1].quad;
+    require(aligned[0].x() == aligned[3].x() && aligned[1].x() == aligned[2].x() &&
+                aligned.boundingRect().center() == rightTop.quad.boundingRect().center() &&
+                qFuzzyCompare(aligned.boundingRect().width(),
+                              QLineF(rightTop.quad[0], rightTop.quad[1]).length()) &&
+                qFuzzyCompare(aligned.boundingRect().height(),
+                              QLineF(rightTop.quad[0], rightTop.quad[3]).length()) &&
+                columns[1].direction == ScreenshotOcrTextDirection::Vertical,
+            "leveling a vertical column keeps its center, thickness, length and direction");
+    const auto paragraph = snow_shot::presentation::mergeOcrParagraphs(columns, {{0, 1, 2, 3}});
+    require(paragraph && paragraph->size() == 1 &&
+                paragraph->front().sourceLineIndices == QVector<int>{1, 3, 2, 0} &&
+                paragraph->front().sourceLineQuads.front() == aligned,
+            "corrected vertical columns read downwards from right to left");
+
+    const ScreenshotOcrLine minor{
+        QStringLiteral("short"), 0.9, {{180, 60}, {198, 61}, {196, 108}, {178, 107}}};
+    QVector<ScreenshotOcrLine> alone{minor};
+    snow_shot::ocr::prepareDetectedLineGeometry(alone, size, pixels);
+    require(alone.front().quad[0].x() == alone.front().quad[3].x(),
+            "an isolated two-pixel drift can be corrected on either side of vertical");
+
+    // Broad horizontal support cannot straighten a column. Three distant, upright columns can.
+    QVector<ScreenshotOcrLine> mixed{rightTop};
+    for (int i = 0; i < 5; ++i)
+        mixed.push_back(box(QStringLiteral("horizontal"), 160, 15 + 22 * i, 95, 18));
+    auto horizontalNeighbors = mixed;
+    snow_shot::ocr::prepareDetectedLineGeometry(horizontalNeighbors, size, pixels);
+    require(horizontalNeighbors.front().quad == rightTop.quad,
+            "horizontal rows cannot vote for a vertical column");
+    for (int i = 0; i < 3; ++i)
+        mixed.push_back(box(QStringLiteral("upright"), 550 + 55 * i, 400, 20, 100));
+    auto tiltedBlock = mixed;
+    auto neighbor = rightTop;
+    neighbor.quad.translate(-30, 0);
+    tiltedBlock.push_back(neighbor);
+    snow_shot::ocr::prepareDetectedLineGeometry(tiltedBlock, size, pixels);
+    require(tiltedBlock.front().quad == rightTop.quad && tiltedBlock.back().quad == neighbor.quad,
+            "a genuinely tilted vertical block takes precedence over page and horizontal evidence");
+    snow_shot::ocr::prepareDetectedLineGeometry(mixed, size, pixels);
+    require(mixed.front().quad == aligned,
+            "sparse upright columns can corroborate vertical jitter");
+
+    QVector<ScreenshotOcrLine> crossed{
+        {QStringLiteral("noisy row"), 0.9, {{65, 102}, {131, 97}, {133, 122}, {67, 127}}},
+        box(QStringLiteral("straight row"), 65, 135, 70, 20),
+        {QStringLiteral("long column"), 0.9, {{100, 20}, {113, 240}, {101, 241}, {88, 21}}}};
+    const auto longColumn = crossed.back().quad;
+    snow_shot::ocr::prepareDetectedLineGeometry(crossed, size, pixels);
+    require(crossed[0].quad[0].y() == crossed[0].quad[1].y() && crossed.back().quad == longColumn,
+            "a column whose corners interleave in x cannot vote as a horizontal row");
+}
 } // namespace
 int main(int argc, char** argv) {
     QCoreApplication application(argc, argv);
+    smallLabelGeometry();
+    genuineTiltsAndIsolatedRows();
+    verticalLineGeometry();
     using snow_shot::presentation::mergeOcrLayout;
     {
         using snow_shot::presentation::mergeOcrParagraphs;
