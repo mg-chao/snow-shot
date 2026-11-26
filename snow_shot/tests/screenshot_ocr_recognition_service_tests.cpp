@@ -372,8 +372,8 @@ void diskBackedEngineCompletesThroughTheQtWorker(bool managedRuntime = false) {
                        : options.processPath;
 #else
         managedRuntime ? QDir(QCoreApplication::applicationDirPath())
-                             .filePath(QStringLiteral("assets/ocr/runtimes/1.5.2/windows-x64/"
-                                                      "snow-ocr-process-1.5.2-windows-x64.exe"))
+                             .filePath(QStringLiteral("assets/ocr/runtimes/1.5.3/windows-x64/"
+                                                      "snow-ocr-process-1.5.3-windows-x64.exe"))
                        : options.processPath;
 #endif
     if (managedRuntime) {
@@ -1226,7 +1226,7 @@ void actualOcrCrashAfterInference() {
     const auto bytes = dump.readAll();
     dump.close();
     require(bytes.contains(diagnostics.status().sessionId.toUtf8()) &&
-                bytes.contains("ocr.operation_started") && bytes.contains("1.5.2"),
+                bytes.contains("ocr.operation_started") && bytes.contains("1.5.3"),
             "actual OCR dump retains parent session, operation and runtime version");
     require(diagnostics.flush(), "actual OCR final diagnostics flush");
     diagnostics.shutdown();
@@ -1401,7 +1401,7 @@ void downloadedRuntimeRecognizesText(const QString& archive) {
     QObject::connect(&assets, &ScreenshotOcrAssets::ready, &assets,
                      [&](const ScreenshotOcrResolvedAssets& resolved) {
                          ready = resolved.valid() && !resolved.offline &&
-                                 resolved.runtimeVersion == QStringLiteral("1.5.2");
+                                 resolved.runtimeVersion == QStringLiteral("1.5.3");
                      });
     QObject::connect(&assets, &ScreenshotOcrAssets::failed, &assets,
                      [&](const QString& error) { failure = error; });
