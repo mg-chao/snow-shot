@@ -9664,6 +9664,12 @@ if(SNOW_SHOT_BUILD_TESTS)
         LABELS "unit" TIMEOUT 30 SNOW_TEST_CROSS_PLATFORM TRUE
         ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+    add_test(NAME snow-shot-recognition-toolbar-overlap-tests
+        COMMAND snow-shot-recognition-window-tests --toolbar-overlap-only -platform offscreen)
+    set_tests_properties(snow-shot-recognition-toolbar-overlap-tests PROPERTIES
+        LABELS "unit" TIMEOUT 30
+        ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
     add_test(
         NAME snow-shot-recognition-window-tests
         COMMAND snow-shot-recognition-window-tests -platform offscreen
@@ -9674,7 +9680,10 @@ if(SNOW_SHOT_BUILD_TESTS)
     if(WIN32)
         add_test(NAME snow-shot-recognition-native-surface-tests
             COMMAND snow-shot-recognition-window-tests --native-surface-only -platform windows)
-        set_tests_properties(snow-shot-recognition-native-surface-tests PROPERTIES
+        add_test(NAME snow-shot-recognition-native-toolbar-overlap-tests
+            COMMAND snow-shot-recognition-window-tests --toolbar-overlap-only -platform windows)
+        set_tests_properties(snow-shot-recognition-native-surface-tests
+            snow-shot-recognition-native-toolbar-overlap-tests PROPERTIES
             LABELS "interactive;windows" RUN_SERIAL TRUE TIMEOUT 60
             ENVIRONMENT
                 "QT_QPA_PLATFORM=windows;QT_QPA_PLATFORM_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::QWindowsIntegrationPlugin>"

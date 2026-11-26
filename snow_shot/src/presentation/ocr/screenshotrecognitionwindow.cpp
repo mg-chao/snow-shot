@@ -569,6 +569,10 @@ bool ScreenshotRecognitionWindow::present(const Config& config) {
     m_originalImagePreviewTransientOwner = config.transientOwner;
     m_formattedTextDevicePixelRatio = config.formattedTextDevicePixelRatio;
     m_presentationMode = config.presentationMode;
+#ifdef Q_OS_WIN
+    m_screenshotToolbar =
+        m_presentationMode == PresentationMode::TopLevelWindow ? config.screenshotToolbar : nullptr;
+#endif
     if (m_presentationMode == PresentationMode::TopLevelWindow) {
 #ifdef Q_OS_MACOS
         // Recognition is selection content: keep it below the toolbar and popovers,
@@ -2888,6 +2892,16 @@ bool ScreenshotRecognitionWindow::forwardFormattedTextPointerEvent(QObject* watc
 }
 
 bool ScreenshotRecognitionWindow::eventFilter(QObject* watched, QEvent* event) {
+#ifdef Q_OS_WIN
+    if (watched == this && event && m_screenshotToolbar &&
+        (event->type() == QEvent::WindowActivate || event->type() == QEvent::ZOrderChange)) {
+        // Reorder after Qt and Windows finish activating or raising the OCR window.
+        QTimer::singleShot(0, this, [this] {
+            if (isVisible() && m_screenshotToolbar && m_screenshotToolbar->isVisible())
+                m_screenshotToolbar->raise();
+        });
+    }
+#endif
     if (m_presentationMode == PresentationMode::EmbeddedChild && m_embeddedPointerEventHandler &&
         m_embeddedPointerEventHandler(watched, event))
         return true;

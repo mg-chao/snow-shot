@@ -129,6 +129,7 @@ class ScreenshotRecognitionWindow final : public QWidget {
         PresentationMode presentationMode = PresentationMode::TopLevelWindow;
         qreal formattedTextDevicePixelRatio = 1.0;
         bool takeFocus = true;
+        QWidget* screenshotToolbar = nullptr;
     };
 
     explicit ScreenshotRecognitionWindow(
@@ -314,6 +315,9 @@ class ScreenshotRecognitionWindow final : public QWidget {
     QPointer<ScreenshotOriginalImagePreviewWindow> m_originalImagePreview;
     QPointer<QWidget> m_originalImagePreviewHost;
     QPointer<QWidget> m_originalImagePreviewTransientOwner;
+#ifdef Q_OS_WIN
+    QPointer<QWidget> m_screenshotToolbar;
+#endif
     QPointer<QWindow> m_originalImagePreviewHostHandle;
     QVector<QMetaObject::Connection> m_originalImagePreviewConnections;
     std::function<std::optional<ScreenshotOriginalImagePreviewState>()>
