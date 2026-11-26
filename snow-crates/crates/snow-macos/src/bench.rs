@@ -299,7 +299,7 @@ fn sample_fetch(
 ) -> Result<FetchSample, crate::MacError> {
     for _ in 0..warmup {
         fetch_shareable_content(
-            Duration::from_secs(5),
+            crate::deadline::Deadline::new(Duration::from_secs(5))?,
             token,
             excluding_desktop,
             on_screen_only,
@@ -310,7 +310,7 @@ fn sample_fetch(
     for _ in 0..count {
         let start = Instant::now();
         last = Some(fetch_shareable_content(
-            Duration::from_secs(5),
+            crate::deadline::Deadline::new(Duration::from_secs(5))?,
             token,
             excluding_desktop,
             on_screen_only,

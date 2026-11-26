@@ -544,6 +544,10 @@ snow_capture_desktop_session_capture_with_layout(SnowCaptureDesktopSession* sess
 
 SnowCaptureDesktopSession*
 snow_capture_desktop_session_create(const SnowCaptureDesktopSessionConfig* config) {
+#if defined(Q_OS_MACOS) || defined(Q_OS_WIN)
+    require(config->pixel_format == SNOW_CAPTURE_PIXEL_FORMAT_BGRA8,
+            "desktop capture should request the native byte order");
+#endif
     if (failCreation) {
         return nullptr;
     }

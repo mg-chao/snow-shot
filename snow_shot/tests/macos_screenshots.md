@@ -6,6 +6,41 @@ controls are hidden without changing their stored values. Screenshot selections
 can be pinned through the shared export pipeline; screen recording remains
 unavailable on macOS.
 
+## Capture startup benchmark
+
+Build the application and the `snow-shot-capture-startup-performance-benchmark` target with
+`build-snow-shot-macos-arm64-performance`. Deploy the `SnowShot` install component before running
+the benchmark. The benchmark host needs Screen Recording and permission to post keyboard events.
+Use one active display and keep the desktop input idle while it runs.
+
+```sh
+cmake --build --preset build-snow-shot-macos-arm64-performance \
+  --target snow_shot snow-shot-capture-startup-performance-benchmark
+cmake --install build/snow-shot-macos-arm64-performance --component SnowShot \
+  --prefix "$PWD/build/snow-shot-macos-arm64-performance/run"
+build/snow-shot-macos-arm64-performance/snow_shot/snow-shot-capture-startup-performance-benchmark \
+  --app "$PWD/build/snow-shot-macos-arm64-performance/run/snow_shot.app/Contents/MacOS/snow_shot" \
+  --launches 24 --captures 4 > build/macos-capture-startup.jsonl
+```
+
+The benchmark uses an isolated settings profile and a dedicated global shortcut. It timestamps
+the shortcut before posting the event and reads the WindowServer display timestamp of the first
+frame with the overlay. Pixel probes check the newly captured desktop and the selection both
+inside and outside its expected bounds. The fixture then changes color behind the overlay to
+confirm that the visible image stays frozen until Escape closes it. A wrong or partial frame
+fails the run. Use `--mode window` or `--mode disabled` to verify the other smart selection
+settings and `--compare-app` to alternate two builds in ABBA order.
+
+For multi-display first-frame acceptance, use two active extended displays and add
+`--multi-display`, with `--captures` set to at least 2. The fixture gives each display a
+distinct desktop and alternates the cursor between them, so each display acts as the
+preferred overlay and as the deferred overlay. Both displays must show the correct first
+frame, stay frozen and close on Escape. The JSON rows include each display's result.
+
+The JSON Lines output records the first capture of each new process separately from repeat
+captures. Memory rows report that process's resident bytes after startup and after the overlay
+closes and settles. `--idle-ms` controls the latter interval.
+
 ## Workflows and sizing
 
 Ordinary, delayed, fixed-region and smart selections share the editor, annotations,

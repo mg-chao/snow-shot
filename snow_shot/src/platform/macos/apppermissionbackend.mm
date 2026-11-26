@@ -7,31 +7,43 @@
 
 namespace snow_shot::presentation {
 namespace {
+AppPermissionStatus microphoneStatus() {
+    using S = AppPermissionStatus;
+    if (![NSBundle.mainBundle objectForInfoDictionaryKey:@"NSMicrophoneUsageDescription"])
+        return S::Error;
+    switch ([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio]) {
+    case AVAuthorizationStatusNotDetermined:
+        return S::NotDetermined;
+    case AVAuthorizationStatusRestricted:
+        return S::Restricted;
+    case AVAuthorizationStatusDenied:
+        return S::Denied;
+    case AVAuthorizationStatusAuthorized:
+        return S::Granted;
+    }
+    return S::Error;
+}
+
 class MacAppPermissionBackend final : public AppPermissionBackend {
   public:
     AppPermissionSnapshot query() override {
+        using P = AppPermission;
+        return {{queryPermission(P::ScreenRecording), queryPermission(P::Accessibility),
+                 queryPermission(P::InputMonitoring), queryPermission(P::Microphone)}};
+    }
+    AppPermissionStatus queryPermission(AppPermission permission) override {
         using S = AppPermissionStatus;
-        AppPermissionSnapshot result;
-        result.statuses = {CGPreflightScreenCaptureAccess() ? S::Granted : S::Missing,
-                           AXIsProcessTrusted() ? S::Granted : S::Missing,
-                           CGPreflightListenEventAccess() ? S::Granted : S::Missing, S::Error};
-        switch ([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio]) {
-        case AVAuthorizationStatusNotDetermined:
-            result.statuses[3] = S::NotDetermined;
-            break;
-        case AVAuthorizationStatusRestricted:
-            result.statuses[3] = S::Restricted;
-            break;
-        case AVAuthorizationStatusDenied:
-            result.statuses[3] = S::Denied;
-            break;
-        case AVAuthorizationStatusAuthorized:
-            result.statuses[3] = S::Granted;
-            break;
+        switch (permission) {
+        case AppPermission::ScreenRecording:
+            return CGPreflightScreenCaptureAccess() ? S::Granted : S::Missing;
+        case AppPermission::Accessibility:
+            return AXIsProcessTrusted() ? S::Granted : S::Missing;
+        case AppPermission::InputMonitoring:
+            return CGPreflightListenEventAccess() ? S::Granted : S::Missing;
+        case AppPermission::Microphone:
+            return microphoneStatus();
         }
-        if (![NSBundle.mainBundle objectForInfoDictionaryKey:@"NSMicrophoneUsageDescription"])
-            result.statuses[3] = S::Error;
-        return result;
+        return S::Error;
     }
     void request(AppPermission permission, std::function<void()> completion) override {
         switch (permission) {

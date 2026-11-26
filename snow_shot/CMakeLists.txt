@@ -11502,6 +11502,22 @@ if(WIN32 AND SNOW_SHOT_BUILD_BENCHMARKS)
     )
 endif()
 
+if(APPLE AND SNOW_APPS_BUILD_BENCHMARKS)
+    add_executable(snow-shot-capture-startup-performance-benchmark
+        tests/screenshot_capture_startup_performance_benchmark_macos.mm
+    )
+    target_compile_options(snow-shot-capture-startup-performance-benchmark PRIVATE -fobjc-arc)
+    target_link_libraries(snow-shot-capture-startup-performance-benchmark PRIVATE
+        Qt6::Core
+        "-framework AppKit"
+        "-framework ApplicationServices"
+        "-framework Carbon"
+        "-framework CoreMedia"
+        "-framework CoreVideo"
+        "-framework ScreenCaptureKit"
+    )
+endif()
+
 snow_shot_add_translations(snow_shot)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/SnowShotUpdateUiTests.cmake")
 

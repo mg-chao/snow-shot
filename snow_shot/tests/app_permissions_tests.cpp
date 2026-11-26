@@ -48,6 +48,7 @@ class FakePermissions final : public AppPermissionBackend {
     }
     AppPermissionSnapshot value;
     int queries = 0;
+    int screenRecordingQueries = 0;
     int requests = 0;
     int opens = 0;
     bool canOpen = true;
@@ -58,6 +59,11 @@ class FakePermissions final : public AppPermissionBackend {
     AppPermissionSnapshot query() override {
         ++queries;
         return value;
+    }
+    AppPermissionStatus queryPermission(AppPermission permission) override {
+        require(permission == P::ScreenRecording, "only screen recording uses scoped admission");
+        ++screenRecordingQueries;
+        return value.status(permission);
     }
     void request(P permission, std::function<void()> done) override {
         ++requests;
@@ -251,6 +257,35 @@ void freshAdmissionAndRequests() {
     require(native->requests == 1 && service.snapshot().granted(P::Microphone),
             "external grant prevents a redundant permission prompt");
 }
+void selectiveAdmissionAndFullRefresh() {
+    auto fake = std::make_unique<FakePermissions>();
+    auto* native = fake.get();
+    AppPermissionService service(std::move(fake));
+    int changes = 0;
+    int fullRefreshes = 0;
+    QObject::connect(&service, &AppPermissionService::changed, [&] { ++changes; });
+    QObject::connect(&service, &AppPermissionService::refreshed, [&] { ++fullRefreshes; });
+    require(service.allow({P::ScreenRecording}) && native->queries == 1 &&
+                native->screenRecordingQueries == 0 && changes == 1 && fullRefreshes == 1,
+            "first admission must initialize all permission states");
+
+    native->value.statuses[1] = S::Denied;
+    require(service.allow({P::ScreenRecording}) && native->queries == 1 &&
+                native->screenRecordingQueries == 1 && service.snapshot().granted(P::Accessibility),
+            "screenshot admission may query only its own permission");
+    native->value.statuses[0] = S::Missing;
+    require(!service.allow({P::ScreenRecording}) && native->screenRecordingQueries == 2 &&
+                changes == 2 && fullRefreshes == 1,
+            "selective admission must still detect revoked screen access immediately");
+
+    service.refresh();
+    require(!service.allow({P::ScreenRecording}) && native->queries == 2 && changes == 3 &&
+                fullRefreshes == 2 && service.snapshot().status(P::Accessibility) == S::Denied,
+            "admission must honor a pending full permission refresh");
+    flush();
+    require(native->queries == 2 && fullRefreshes == 2,
+            "admission consumes the queued full refresh");
+}
 void freshSettingsActions() {
     auto fake = std::make_unique<FakePermissions>();
     auto* native = fake.get();
@@ -336,8 +371,9 @@ void routingPolicy() {
                           }))
             static_cast<void>(actionGate.dispatch([&] { ++dispatched; }));
     }
-    require(blocked == 100 && dispatched == 0 && native->queries == 101,
-            "each action checks current permissions before feature dispatch");
+    require(blocked == 100 && dispatched == 0 && native->queries == 1 &&
+                native->screenRecordingQueries == 100,
+            "each screenshot checks current screen recording permission before feature dispatch");
     native->value.statuses[0] = S::Granted;
     service.refresh();
     flush();
@@ -372,8 +408,8 @@ void pageAndAlerts() {
         AppPermissionService service(std::move(fake));
         service.refresh();
         flush();
-        GlobalShortcutManager shortcuts;
-        settings::BuiltInSettingsBackend backend(shortcuts, nullptr, nullptr, &service);
+        GlobalShortcutManager shortcutManager;
+        settings::BuiltInSettingsBackend backend(shortcutManager, nullptr, nullptr, &service);
         const auto& registry = settings::builtInSettingsRegistry();
         require(registry.catalog().validationErrors().isEmpty(),
                 "permission catalog must validate");
@@ -485,7 +521,7 @@ void pageAndAlerts() {
             native->value.statuses[0] = S::Checking;
             service.refresh();
             flush();
-            require(screen->text() == u"Checkingâ€¦" &&
+            require(screen->text() == u"Checking…" &&
                         screen->accentRole() == adqt::widgets::AdButton::AccentRole::Neutral,
                     "checking permissions use a neutral status button");
             screen->click();
@@ -638,6 +674,7 @@ int main(int argc, char** argv) {
     permissionDiagnostics();
     snapshotsAndLifecycle();
     freshAdmissionAndRequests();
+    selectiveAdmissionAndFullRefresh();
     routingPolicy();
     pageAndAlerts();
     std::cout << "App permission tests passed\n";
