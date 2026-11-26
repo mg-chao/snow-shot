@@ -1,6 +1,8 @@
 #include "snow_shot/runtime/memoryoptimizationcontroller.h"
 #include <QCoreApplication>
 #include <QEvent>
+#include <QPromise>
+#include <QThreadPool>
 #include <algorithm>
 
 namespace snow_shot::runtime {
@@ -13,12 +15,18 @@ MemoryOptimizationController::MemoryOptimizationController(RuntimeActivityTracke
     m_timer.setInterval(5000);
     m_timer.setTimerType(Qt::VeryCoarseTimer);
     connect(&m_timer, &QTimer::timeout, this, &MemoryOptimizationController::evaluate);
+    connect(&m_trimWatcher, &QFutureWatcherBase::finished, this,
+            &MemoryOptimizationController::finishTrim);
     if (auto* application = QCoreApplication::instance()) {
         application->installEventFilter(this);
         connect(application, &QCoreApplication::aboutToQuit, this,
                 &MemoryOptimizationController::stop);
     }
     synchronizePolicy();
+}
+
+MemoryOptimizationController::~MemoryOptimizationController() {
+    stop();
 }
 
 void MemoryOptimizationController::synchronizePolicy() {
@@ -38,9 +46,13 @@ void MemoryOptimizationController::synchronizePolicy() {
 }
 
 void MemoryOptimizationController::stop() {
+    if (m_stopped)
+        return;
     m_stopped = true;
     m_enabled = false;
     m_timer.stop();
+    if (m_pendingIdlePeriod)
+        m_activity.markActivity();
 }
 
 void MemoryOptimizationController::evaluate() {
@@ -57,7 +69,8 @@ void MemoryOptimizationController::evaluate() {
         m_activity.markActivity();
     }
     const auto now = m_options.clock();
-    if (now - m_started < 60s || (m_lastAttempt && now - *m_lastAttempt < 5min))
+    if (m_pendingIdlePeriod || now - m_started < 60s ||
+        (m_lastAttempt && now - *m_lastAttempt < 5min))
         return;
     const auto snapshot = m_activity.snapshot();
     if (snapshot.activeCount != 0 || m_attemptedIdlePeriod == snapshot.idlePeriod)
@@ -70,29 +83,53 @@ void MemoryOptimizationController::evaluate() {
     constexpr std::uint64_t mib = 1024 * 1024;
     if (!before || before->memoryBytes < (pressure ? 12 : 18) * mib)
         return;
-    // Sampling can race worker admission. Recheck UI/policy before the tracker
-    // checks its generation under the admission lock. Inspection callbacks can stop
-    // this controller synchronously even while the desired setting remains enabled.
+    // Sampling can race worker admission. Recheck UI/policy before preparing the worker.
     if (!m_options.enabled || !m_options.enabled() || !m_options.safe || !m_options.safe() ||
         m_stopped || !m_enabled || !m_options.trim)
         return;
-    MemoryTrimReport report;
-    report.lowMemory = pressure;
-    report.before = *before;
-    auto attemptedAt = now;
-    const auto admitted = m_activity.tryRunWhenIdle(snapshot.generation, [&] {
-        const auto started = m_options.clock();
-        attemptedAt = started;
-        report.result = m_options.trim();
-        report.duration = m_options.clock() - started;
-    });
-    if (!admitted)
+    if (m_activity.snapshot().generation != snapshot.generation)
         return;
-    m_lastAttempt = attemptedAt;
-    m_attemptedIdlePeriod = snapshot.idlePeriod;
-    report.after = m_options.sample ? m_options.sample() : std::nullopt;
+
+    m_pendingIdlePeriod = snapshot.idlePeriod;
+    if (m_options.prepare && m_preparedIdlePeriod != snapshot.idlePeriod) {
+        m_preparedIdlePeriod = snapshot.idlePeriod;
+        m_options.prepare();
+    }
+
+    QPromise<std::optional<TrimAttempt>> promise;
+    auto future = promise.future();
+    auto reclaim = [activity = m_activity, generation = snapshot.generation,
+                    clock = m_options.clock, trim = m_options.trim, sample = m_options.sample,
+                    pressure, before = *before, promise = std::move(promise)]() mutable {
+        promise.start();
+        std::optional<TrimAttempt> attempt;
+        // Every activity transition advances the generation of the original idle snapshot.
+        // New work can start immediately after this check, including while trim() runs.
+        if (activity.snapshot().generation == generation) {
+            const auto started = clock();
+            const auto result = trim();
+            const auto duration = clock() - started;
+            attempt = TrimAttempt{started, {pressure, before, sample(), result, duration}};
+        }
+        promise.addResult(std::move(attempt));
+        promise.finish();
+    };
+    if (QThreadPool::globalInstance()->tryStart(std::move(reclaim))) {
+        m_trimWatcher.setFuture(future);
+    } else {
+        m_pendingIdlePeriod.reset();
+    }
+}
+
+void MemoryOptimizationController::finishTrim() {
+    const auto idlePeriod = std::exchange(m_pendingIdlePeriod, {});
+    const auto attempt = m_trimWatcher.result();
+    if (!attempt || m_stopped)
+        return;
+    m_lastAttempt = attempt->startedAt;
+    m_attemptedIdlePeriod = idlePeriod;
     if (m_options.report)
-        m_options.report(report);
+        m_options.report(attempt->report);
 }
 
 bool MemoryOptimizationController::eventFilter(QObject* watched, QEvent* event) {
@@ -111,6 +148,7 @@ bool MemoryOptimizationController::eventFilter(QObject* watched, QEvent* event) 
         case QEvent::TouchBegin:
         case QEvent::TouchUpdate:
         case QEvent::TouchEnd:
+        case QEvent::ApplicationStateChange:
         case QEvent::WindowActivate:
         case QEvent::ContextMenu:
         case QEvent::DragEnter:

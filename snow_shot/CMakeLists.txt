@@ -4442,7 +4442,8 @@ if(SNOW_SHOT_BUILD_TESTS)
         tests/direct_capture_native_tests.cpp
         src/presentation/services/screenshotimagefileservice.cpp
         src/presentation/services/screenshotpdfexport.cpp
-        src/presentation/capture/directcapturenative.cpp)
+        src/presentation/capture/directcapturenative.cpp
+        src/presentation/capture/screenshotcapturepolicy.cpp)
     snow_shot_alias_test_rust_ffi(snow-shot-direct-capture-native-tests
         snow_capture_target_screenshot
         snow_capture_desktop_session_capture
@@ -4471,7 +4472,8 @@ if(SNOW_SHOT_BUILD_TESTS)
         # Explicit opt-in: captures a visible fixture and its actual monitor.
         add_executable(snow-shot-direct-capture-native-smoke
             tests/direct_capture_native_smoke.cpp
-            src/presentation/capture/directcapturenative.cpp)
+            src/presentation/capture/directcapturenative.cpp
+            src/presentation/capture/screenshotcapturepolicy.cpp)
         target_compile_definitions(snow-shot-direct-capture-native-smoke PRIVATE NOMINMAX)
         target_include_directories(snow-shot-direct-capture-native-smoke PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/include"
@@ -4506,6 +4508,7 @@ if(SNOW_SHOT_BUILD_TESTS)
         snow_capture_desktop_session_destroy
         snow_capture_desktop_session_layout_snapshot
         snow_capture_desktop_session_prepare
+        snow_capture_desktop_session_recover
         snow_capture_desktop_session_refresh_layout
         snow_capture_desktop_session_reset_to_prepared
         snow_capture_desktop_session_state
@@ -4528,6 +4531,15 @@ if(SNOW_SHOT_BUILD_TESTS)
     add_test(NAME snow-shot-capture-worker-tests COMMAND snow-shot-capture-worker-tests)
 
     if(WIN32)
+        add_executable(snow-shot-display-recovery-tests
+            tests/display_recovery_tests.cpp src/platform/windows/displayrecoverywindow.cpp)
+        target_include_directories(snow-shot-display-recovery-tests PRIVATE src/platform/windows)
+        target_link_libraries(snow-shot-display-recovery-tests PRIVATE Qt6::Core user32
+            wtsapi32 comctl32 uuid)
+        add_test(NAME snow-shot-display-recovery-tests COMMAND snow-shot-display-recovery-tests)
+        set_tests_properties(snow-shot-display-recovery-tests PROPERTIES LABELS "unit;windows"
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
         add_executable(snow-shot-capture-policy-tests
             tests/screenshot_capture_policy_tests.cpp
             src/presentation/capture/screenshotcapturepolicy.cpp)
@@ -11560,8 +11572,10 @@ if(MSVC AND SNOW_SHOT_RELEASE_STATIC)
 endif()
 
 if(WIN32)
+    target_sources(snow_shot PRIVATE src/platform/windows/displayrecoverywindow.cpp)
     target_link_libraries(snow_shot PRIVATE
         Qt6::GuiPrivate
+        wtsapi32
         dwmapi
         advapi32
         bcrypt
@@ -12648,6 +12662,7 @@ if(APPLE AND SNOW_SHOT_BUILD_TESTS)
     add_executable(snow-shot-macos-screenshot-native-smoke
         tests/macos_screenshot_native_smoke.mm
         src/presentation/capture/directcapturenative.cpp
+        src/presentation/capture/screenshotcapturepolicy.cpp
         src/presentation/core/screenshotgeometry.cpp
         src/presentation/services/screenshotsourceimagecomposer.cpp)
     snow_shot_link_macos_window_platform(snow-shot-macos-screenshot-native-smoke)

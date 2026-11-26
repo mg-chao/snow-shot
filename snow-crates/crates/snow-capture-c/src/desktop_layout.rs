@@ -63,7 +63,7 @@ pub extern "C" fn snow_capture_desktop_session_layout_snapshot(
         return ptr::null_mut();
     };
     if (refresh != 0 || session.workers.is_empty())
-        && let Err(error) = rebuild_workers(session)
+        && let Err(error) = rebuild_workers(session, LayoutRefresh::Reconcile)
     {
         set_last_error(error);
         return ptr::null_mut();

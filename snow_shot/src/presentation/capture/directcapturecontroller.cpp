@@ -215,8 +215,8 @@ class DirectCaptureController::Impl {
     void enqueue(DirectCaptureRequest result) {
         const storage::ScreenshotSettings settings;
         if (result.target == DirectCaptureTarget::CurrentMonitor) {
-            result.captureBackend = capture::nativeBackendForNormalScreenshot(
-                capture::screenshotApiModeFromValue(settings.apiMode().toLatin1().constData()));
+            result.apiMode =
+                capture::screenshotApiModeFromValue(settings.apiMode().toLatin1().constData());
         }
         result.shutterSoundNotification =
             settings.shutterSoundTargets().contains(QStringLiteral("direct_capture"));
@@ -357,9 +357,8 @@ bool DirectCaptureController::mcpCapture(
     request.restoreOriginalScreenColors =
         storage::ScreenshotSettings().restoreOriginalScreenColors();
     if (request.target == DirectCaptureTarget::CurrentMonitor) {
-        request.captureBackend =
-            capture::nativeBackendForNormalScreenshot(capture::screenshotApiModeFromValue(
-                storage::ScreenshotSettings().apiMode().toLatin1().constData()));
+        request.apiMode = capture::screenshotApiModeFromValue(
+            storage::ScreenshotSettings().apiMode().toLatin1().constData());
     }
     request.captureCursor = options.value(QStringLiteral("capture_cursor")).toBool(false);
 #if defined(Q_OS_WIN)

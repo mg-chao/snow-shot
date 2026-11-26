@@ -7,7 +7,6 @@ struct ScreenshotCaptureState {
     ScreenshotSessionState sessionState = ScreenshotSessionState::IdleCold;
     quint64 sessionId = 0;
     bool captureInProgress = false;
-    bool layoutDirty = false;
     bool restoreOriginalScreenColors = true;
     bool captureCursor = false;
     bool presentationSuppressed = false;

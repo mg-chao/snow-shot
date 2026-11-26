@@ -11,6 +11,7 @@ enum class ScreenshotApiMode : std::uint8_t { Auto, Dxgi, Wgc, Gdi };
 // Auto uses the cached desktop HDR decision, shared by normal and current-monitor screenshots.
 [[nodiscard]] std::uint8_t nativeBackendForNormalScreenshot(ScreenshotApiMode mode) noexcept;
 [[nodiscard]] ScreenshotApiMode resolveAutoScreenshotApiMode() noexcept;
+void invalidateAutoScreenshotApiMode() noexcept;
 
 } // namespace snow_shot::presentation::capture
 

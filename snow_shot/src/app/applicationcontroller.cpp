@@ -702,11 +702,10 @@ class ApplicationController::Impl {
                        .toString() == QStringLiteral("smart_control");
         };
         memoryOptions.safe = [this] { return memoryTrimmingIsSafe(); };
-        memoryOptions.trim = [nativeTrim = std::move(memoryOptions.trim)] {
+        memoryOptions.prepare = [] {
             ScreenshotExportCache::pinnedPixels().clear();
             ScreenshotExportCache::encodedBytes().clear();
             ScreenshotExportCache::encodedFiles().clear();
-            return nativeTrim();
         };
         memoryOptimization = std::make_unique<runtime::MemoryOptimizationController>(
             runtime::RuntimeActivityTracker::shared(), std::move(memoryOptions), &q);

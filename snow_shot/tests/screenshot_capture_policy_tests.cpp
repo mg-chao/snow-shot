@@ -25,6 +25,34 @@ void require(bool condition, const char* message) {
     }
 }
 
+void recoveryInvalidatesCachedHdrPolicy() {
+    snow_shot::presentation::capture::detail::AutoScreenshotModeCache cache;
+    int queries = 0;
+    std::optional<ScreenshotApiMode> mode = ScreenshotApiMode::Wgc;
+    auto query = [&] {
+        ++queries;
+        return mode;
+    };
+    require(cache.resolve(query) == ScreenshotApiMode::Wgc &&
+                cache.resolve(query) == ScreenshotApiMode::Wgc && queries == 1,
+            "stable HDR desktops must share the cached preference");
+    cache.invalidate();
+    mode.reset();
+    require(cache.resolve(query) == ScreenshotApiMode::Wgc,
+            "an incomplete topology query must retain the last available preference");
+    mode = ScreenshotApiMode::Gdi;
+    require(cache.resolve(query) == ScreenshotApiMode::Gdi && queries == 3,
+            "a later valid SDR query must recover without another notification");
+    cache.invalidate();
+    cache.resolve([&] {
+        cache.invalidate();
+        return query();
+    });
+    mode = ScreenshotApiMode::Wgc;
+    require(cache.resolve(query) == ScreenshotApiMode::Wgc && queries == 5,
+            "an in-flight query must not consume a newer display notification");
+}
+
 LONG WINAPI queryColorInfo(DISPLAYCONFIG_DEVICE_INFO_HEADER* header) {
     require(header->adapterId.LowPart == target.adapterId.LowPart &&
                 header->adapterId.HighPart == target.adapterId.HighPart && header->id == target.id,
@@ -68,7 +96,7 @@ void wideColorWithoutHdrUsesGdi() {
     legacyInfo.advancedColorSupported = 1;
     legacyInfo.advancedColorEnabled = 1;
     legacyInfo.wideColorEnforced = 1;
-    require(autoScreenshotApiMode(displayHdrEnabled(target, queryColorInfo)) ==
+    require(autoScreenshotApiMode(displayHdrEnabled(target, queryColorInfo).value()) ==
                 ScreenshotApiMode::Gdi,
             "WCG with automatic color management must prefer GDI");
     require(modernQueries == 1 && legacyQueries == 0,
@@ -90,7 +118,8 @@ void onlyActiveHdrSelectsWgc() {
             const auto expected = mode == DISPLAYCONFIG_ADVANCED_COLOR_MODE_HDR
                                       ? ScreenshotApiMode::Wgc
                                       : ScreenshotApiMode::Gdi;
-            require(autoScreenshotApiMode(displayHdrEnabled(target, queryColorInfo)) == expected,
+            require(autoScreenshotApiMode(displayHdrEnabled(target, queryColorInfo).value()) ==
+                        expected,
                     "HDR capture must follow the active mode, not capability or user preference");
             require(modernQueries == 1 && legacyQueries == 0,
                     "a successful active color mode query must not use legacy flags");
@@ -112,8 +141,8 @@ void legacyQueriesDistinguishHdrFromWideColor() {
                     const auto expected = supported && enabled && !wideColor
                                               ? ScreenshotApiMode::Wgc
                                               : ScreenshotApiMode::Gdi;
-                    require(autoScreenshotApiMode(displayHdrEnabled(target, queryColorInfo)) ==
-                                expected,
+                    require(autoScreenshotApiMode(
+                                displayHdrEnabled(target, queryColorInfo).value()) == expected,
                             "legacy query must require enabled HDR and exclude WCG");
                     require(modernQueries == 1 && legacyQueries == 1,
                             "unavailable modern query must fall back to the same display target");
@@ -130,9 +159,11 @@ void failedQueriesDoNotReportHdr() {
     modernInfo.activeColorMode = DISPLAYCONFIG_ADVANCED_COLOR_MODE_HDR;
     legacyInfo.advancedColorSupported = 1;
     legacyInfo.advancedColorEnabled = 1;
-    require(autoScreenshotApiMode(displayHdrEnabled(target, queryColorInfo)) ==
-                ScreenshotApiMode::Gdi,
-            "failed HDR queries must prefer GDI");
+    require(!displayHdrEnabled(target, queryColorInfo).has_value(),
+            "a transient target failure must not publish a cached SDR decision");
+    legacyStatus = ERROR_NOT_SUPPORTED;
+    require(displayHdrEnabled(target, queryColorInfo) == false,
+            "a target without color support must allow an SDR decision");
 }
 
 void screenshotSettingsResolveThroughOnePolicy() {
@@ -163,6 +194,7 @@ void screenshotSettingsResolveThroughOnePolicy() {
 } // namespace
 
 int main() {
+    recoveryInvalidatesCachedHdrPolicy();
     wideColorWithoutHdrUsesGdi();
     onlyActiveHdrSelectsWgc();
     legacyQueriesDistinguishHdrFromWideColor();

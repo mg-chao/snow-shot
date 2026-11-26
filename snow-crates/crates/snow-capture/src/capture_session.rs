@@ -886,6 +886,12 @@ impl CaptureSession {
         }
     }
 
+    /// Refresh this session's own display cache before preparing a retained snapshot target.
+    pub fn recover_environment(&mut self) -> CaptureResult<CaptureTargetInfo> {
+        self.backend.refresh_display_configuration()?;
+        self.prewarm_environment()
+    }
+
     /// Prepare resources that are safe to retain between one-shot captures.
     /// No active backend access may remain when this method returns.
     pub fn prewarm_environment(&mut self) -> CaptureResult<CaptureTargetInfo> {
@@ -2112,6 +2118,7 @@ mod tests {
     #[derive(Default)]
     struct LifecycleState {
         active: bool,
+        display_refreshes: usize,
         prewarm_calls: usize,
         capture_calls: usize,
         release_calls: usize,
@@ -2210,6 +2217,11 @@ mod tests {
     }
 
     impl CaptureBackend for LifecycleBackend {
+        fn refresh_display_configuration(&self) -> CaptureResult<()> {
+            self.state.lock().unwrap().display_refreshes += 1;
+            Ok(())
+        }
+
         fn create_target_capturer(
             &self,
             _target: &CaptureTarget,
@@ -3102,6 +3114,21 @@ mod tests {
         assert_eq!(session.active_capture_access_count(), 0);
         state.lock().unwrap().fail_capture = false;
         assert!(session.capture_snapshot(false, Default::default()).is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn recovery_refreshes_the_session_backend_without_acquiring_a_frame() -> CaptureResult<()> {
+        let state = Arc::new(Mutex::new(LifecycleState::default()));
+        let mut session = lifecycle_session(Arc::clone(&state))?;
+        session.prewarm_environment()?;
+        assert_eq!(state.lock().unwrap().display_refreshes, 0);
+        session.recover_environment()?;
+        assert_eq!(session.active_capture_access_count(), 0);
+        let state = state.lock().unwrap();
+        assert_eq!(state.display_refreshes, 1);
+        assert_eq!(state.prewarm_calls, 2);
+        assert_eq!(state.capture_calls, 0);
         Ok(())
     }
 

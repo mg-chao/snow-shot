@@ -2785,6 +2785,8 @@ void scopedDirectCopyTasksFollowTheTarget() {
     DirectCaptureController controller;
     DirectCaptureControllerTestAccess::setFrameAcquirer(
         controller, [](const DirectCaptureRequest& request) {
+            require(!QThread::isMainThread() && request.apiMode == capture::ScreenshotApiMode::Auto,
+                    "the default API preference must reach acquisition unresolved on its worker");
             DirectCaptureFrame frame;
             frame.image = QImage(9, 7, QImage::Format_RGBA8888);
             frame.image.fill(request.target == DirectCaptureTarget::FocusedWindow ? Qt::red

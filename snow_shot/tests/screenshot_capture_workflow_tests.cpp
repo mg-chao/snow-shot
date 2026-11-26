@@ -66,7 +66,9 @@ class CaptureRuntime final : public ScreenshotCaptureRuntimePort {
             [&](qsizetype, const CapturedDisplayModel& d) { layout.displays.push_back(d); });
         eventSink->handleLayoutReady(layout);
     }
-    void deliverResult(const ScreenshotCaptureResult& result) {
+    void deliverResult(ScreenshotCaptureResult result) {
+        if (result.requestId == lastCaptureRequest.requestId)
+            result.layoutRevision = lastCaptureRequest.layoutRevision;
         if (result.purpose == ScreenshotCapturePurpose::Initial && result.succeeded &&
             preparedDisplays && preparedDisplays->startup &&
             preparedDisplays->startup->phase == ScreenshotStartupContext::Phase::Preparing &&
@@ -1284,7 +1286,7 @@ void displayChangesRefreshWithoutCancelingIdleOrActiveCapture() {
                                      idleSelection, idleSmartSelection, idleRuntime);
 
     idleWorkflow.handleDisplayConfigurationChanged();
-    require(idleState.layoutDirty && idleRuntime.refreshLayoutCalls == 1 &&
+    require(idleRuntime.lastRefreshRequestId != 0 && idleRuntime.refreshLayoutCalls == 1 &&
                 idleRuntime.cancelActiveCaptureCalls == 0,
             "idle display changes must schedule a refined refresh without cancellation or release");
 
@@ -1311,8 +1313,70 @@ void displayChangesRefreshWithoutCancelingIdleOrActiveCapture() {
     snapshot.physicalRect = QRect(0, 0, 64, 48);
     snapshot.image = QImage(snapshot.physicalRect.size(), QImage::Format_RGBA8888);
     activeRuntime.deliverResult(successfulResult(activeState.sessionId, snapshot));
-    require(activeRuntime.refreshLayoutCalls == 1 && activeState.layoutDirty,
+    require(activeRuntime.refreshLayoutCalls == 1 && activeRuntime.lastRefreshRequestId != 0,
             "a display change during capture must refresh after capture completion");
+}
+
+void recoveryRefreshesCoalesceAndLeaveActiveCaptureAlone() {
+    ScreenshotCaptureState state;
+    ScreenshotDisplaySession displays;
+    ScreenshotGeometryMapper geometry;
+    ScreenshotInteractionState interaction;
+    ScreenshotSelectionModel selection;
+    ScreenshotIntelligentSelectionModel intelligent;
+    CaptureRuntime runtime;
+    auto workflow =
+        makeWorkflow(state, displays, geometry, interaction, selection, intelligent, runtime);
+
+    workflow.setCaptureSuspended(true);
+    workflow.handleDisplayRecovery();
+    require(runtime.refreshLayoutCalls == 0,
+            "suspended capture must retain recovery intent without starting work");
+    workflow.setCaptureSuspended(false);
+    const auto first = runtime.lastRefreshRequestId;
+    workflow.handleDisplayRecovery();
+    workflow.handleDisplayRecovery();
+    require(runtime.refreshLayoutCalls == 1 && first != 0,
+            "overlapping recovery notifications must share the in-flight refresh");
+    runtime.eventSink->handleLayoutRefreshed(first, false);
+    const auto latest = runtime.lastRefreshRequestId;
+    require(runtime.refreshLayoutCalls == 2 && latest > first,
+            "a failed superseded refresh must still dispatch the latest configuration");
+    workflow.startCapture();
+    require(runtime.lastCaptureRequest.layoutRevision == latest,
+            "an immediate hotkey must let its worker reuse the matching queued refresh");
+    runtime.eventSink->handleLayoutRefreshed(latest, true);
+    workflow.handleDisplayRecovery();
+    require(state.captureInProgress && runtime.cancelActiveCaptureCalls == 0 &&
+                runtime.refreshLayoutCalls == 2,
+            "a wake notification during capture must defer recovery without canceling startup");
+    auto frame = displays.displayAt(0);
+    frame.image = QImage(frame.physicalRect.size(), QImage::Format_RGB32);
+    runtime.deliverResult(successfulResult(state.sessionId, frame));
+    require(runtime.refreshLayoutCalls == 3 && runtime.lastRefreshRequestId > latest,
+            "a recovery received during capture must survive presentation");
+    runtime.eventSink->handleLayoutRefreshed(runtime.lastRefreshRequestId, false);
+    require(runtime.refreshLayoutCalls == 3,
+            "a failed recovery must leave refresh pending without spinning");
+    workflow.startCapture();
+    require(runtime.lastCaptureRequest.layoutRevision == runtime.lastRefreshRequestId,
+            "the next capture must retry a failed background refresh");
+    frame = displays.displayAt(0);
+    frame.image = QImage(frame.physicalRect.size(), QImage::Format_RGB32);
+    runtime.deliverResult(successfulResult(state.sessionId, frame));
+    workflow.handleDisplayRecovery();
+    const auto inFlight = runtime.lastRefreshRequestId;
+    workflow.handleDisplayRecovery();
+    workflow.startCapture();
+    require(runtime.lastCaptureRequest.layoutRevision > inFlight,
+            "a hotkey behind an older refresh must request the newest display revision");
+    runtime.eventSink->handleLayoutRefreshed(inFlight, true);
+    const int refreshes = runtime.refreshLayoutCalls;
+    frame = displays.displayAt(0);
+    frame.image = QImage(frame.physicalRect.size(), QImage::Format_RGB32);
+    runtime.deliverResult(successfulResult(state.sessionId, frame));
+    require(runtime.refreshLayoutCalls == refreshes,
+            "a capture of the newest revision satisfies the superseded background refresh");
 }
 
 void capturedImagePlacementFollowsNormalizedCanvasGeometry() {
@@ -2099,8 +2163,7 @@ void recapturePreservesEditingStateAndRollsBackFailures() {
     QVector<std::uint32_t> excludedWindowIds{101, 202};
     require(workflow.startRecapture(excludedWindowIds) && workflow.recaptureInProgress() &&
                 runtime.lastCaptureRequest.purpose == ScreenshotCapturePurpose::Recapture &&
-                runtime.lastCaptureRequest.captureCursor &&
-                runtime.lastCaptureRequest.refreshLayout,
+                runtime.lastCaptureRequest.captureCursor,
             "recapture must dispatch a distinct request with the current cursor setting");
     excludedWindowIds.clear();
     require(runtime.lastCaptureRequest.excludedWindowIds == QVector<std::uint32_t>{101, 202},
@@ -2151,9 +2214,9 @@ void recapturePreservesEditingStateAndRollsBackFailures() {
     empty.purpose = ScreenshotCapturePurpose::Recapture;
     empty.succeeded = true;
     runtime.deliverResult(empty);
-    require(completions == 3 && !lastSucceeded &&
+    require(completions == 3 && !lastSucceeded && runtime.refreshLayoutCalls == 1 &&
                 displays.displayAt(0).image.pixelColor(0, 0) == QColor(Qt::blue),
-            "empty successful results must be rejected without clearing the old image");
+            "empty successful results must refresh the layout and preserve the old image");
 
     require(workflow.startRecapture(), "recapture must start before stale-result validation");
     const quint64 pendingRequestId = runtime.lastCaptureRequest.requestId;
@@ -2718,6 +2781,7 @@ int main() {
     overlayCaptureDoesNotShowWarmSurfaceAfterCaptureDispatch();
     backingStorePreparationRequiresValidatedVisibleCapture();
     displayChangesRefreshWithoutCancelingIdleOrActiveCapture();
+    recoveryRefreshesCoalesceAndLeaveActiveCaptureAlone();
     capturedImagePlacementFollowsNormalizedCanvasGeometry();
     intelligentSelectionTargetsPreserveElementPathBehavior();
     phasedSelectionPreservesUserIntent();

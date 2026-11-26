@@ -2,6 +2,7 @@
 #include "snow_shot/runtime/memoryoptimizationuisafety.h"
 #include <QApplication>
 #include <QKeyEvent>
+#include <QThreadPool>
 #include <QWidget>
 #include <atomic>
 #include <cstdlib>
@@ -20,6 +21,12 @@ void require(bool condition, const char* message) {
         std::exit(1);
     }
 }
+
+void finishBackgroundTrim() {
+    require(QThreadPool::globalInstance()->waitForDone(5000), "background trimming must finish");
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::FutureCallOut);
+}
+
 struct Fixture {
     RuntimeActivityTracker::TimePoint now{};
     RuntimeActivityTracker activity{[this] { return now; }};
@@ -31,6 +38,7 @@ struct Fixture {
     int calls = 0;
     int reports = 0;
     std::function<void()> beforeSample;
+    std::function<void()> prepare;
     MemoryOptimizationController controller{activity, options()};
     MemoryOptimizationController::Options options() {
         MemoryOptimizationController::Options value;
@@ -39,20 +47,31 @@ struct Fixture {
         value.safe = [this] { return safe; };
         value.lowMemory = [this] { return pressure; };
         value.sample = [this] {
-            if (beforeSample)
+            if (QThread::isMainThread() && beforeSample)
                 beforeSample();
             return memory;
         };
         value.trim = [this] {
+            require(!QThread::isMainThread(), "native trimming belongs on a worker thread");
             ++calls;
             return result;
         };
-        value.report = [this](const MemoryTrimReport&) { ++reports; };
+        value.prepare = [this] {
+            require(QThread::isMainThread(), "cache preparation belongs on the GUI thread");
+            if (prepare)
+                prepare();
+        };
+        value.report = [this](const MemoryTrimReport& report) {
+            require(QThread::isMainThread() && report.after.has_value(),
+                    "the controller reports a complete measurement on the GUI thread");
+            ++reports;
+        };
         return value;
     }
     void tick(std::chrono::seconds elapsed) {
         now = RuntimeActivityTracker::TimePoint{} + elapsed;
         controller.evaluate();
+        finishBackgroundTrim();
     }
 };
 
@@ -225,6 +244,35 @@ void testSafetyAndFailures() {
     {
         Fixture f;
         f.tick(0s);
+        f.prepare = [&f] { f.activity.markActivity(); };
+        f.tick(60s);
+        require(f.calls == 0 && f.reports == 0,
+                "activity after initial admission cancels the background trim");
+        f.prepare = {};
+        f.tick(120s);
+        require(f.calls == 1 && f.reports == 1, "a canceled trim does not consume cooldown");
+    }
+    {
+        Fixture f;
+        f.tick(0s);
+        f.prepare = [&] { f.controller.stop(); };
+        f.tick(60s);
+        require(f.calls == 0 && f.reports == 0, "stop invalidates work before native admission");
+    }
+    {
+        Fixture f;
+        f.tick(0s);
+        f.prepare = [&f] {
+            f.enabled = false;
+            f.controller.synchronizePolicy();
+        };
+        f.tick(60s);
+        require(f.calls == 0 && f.reports == 0 && !f.controller.isScheduling(),
+                "disabling the policy cancels a pending trim");
+    }
+    {
+        Fixture f;
+        f.tick(0s);
         f.beforeSample = [&f] { f.enabled = false; };
         f.tick(60s);
         require(f.calls == 0, "latest policy rechecked before admission");
@@ -267,6 +315,78 @@ void testSafetyAndFailures() {
         f.tick(90s);
         require(f.calls == 1, "input quiet boundary");
     }
+}
+
+void testBusyPoolRetriesOnlyNativeTrim() {
+    Fixture f;
+    f.tick(0s);
+    int preparations = 0;
+    f.prepare = [&] { ++preparations; };
+    auto* pool = QThreadPool::globalInstance();
+    const int previousLimit = pool->maxThreadCount();
+    pool->setMaxThreadCount(1);
+    std::promise<void> release;
+    pool->start([gate = release.get_future()] { gate.wait(); });
+    f.now += 60s;
+    f.controller.evaluate();
+    f.now += 5s;
+    f.controller.evaluate();
+    require(preparations == 1 && f.calls == 0, "a busy pool must not repeat GUI cache eviction");
+    release.set_value();
+    finishBackgroundTrim();
+    require(f.calls == 0, "a saturated pool must not queue an idle trim");
+    pool->setMaxThreadCount(previousLimit);
+    f.tick(70s);
+    require(preparations == 1 && f.calls == 1 && f.reports == 1,
+            "native reclamation retries in the same idle period after pool saturation");
+    f.activity.markActivity();
+    f.tick(370s);
+    require(preparations == 2 && f.calls == 2, "a new idle period can evict new cache entries");
+}
+
+void testActivityDuringBackgroundTrim() {
+    RuntimeActivityTracker::TimePoint now{};
+    RuntimeActivityTracker activity([&] { return now; });
+    std::promise<void> started;
+    auto enteredTrim = started.get_future();
+    std::promise<void> release;
+    auto finish = release.get_future();
+    int preparations = 0;
+    int reports = 0;
+    MemoryOptimizationController::Options options;
+    options.clock = [&] { return now; };
+    options.enabled = [] { return true; };
+    options.safe = [] { return true; };
+    options.sample = [] { return ProcessMemorySample{24 * 1024 * 1024, 0}; };
+    options.prepare = [&] { ++preparations; };
+    options.trim = [&] {
+        started.set_value();
+        require(finish.wait_for(5s) == std::future_status::ready,
+                "the GUI must neither run nor wait for native trimming");
+        return MemoryTrimResult{true, 0};
+    };
+    options.report = [&](const MemoryTrimReport&) { ++reports; };
+    auto controller = std::make_unique<MemoryOptimizationController>(activity, std::move(options));
+    controller->evaluate();
+    now += 60s;
+    controller->evaluate();
+    require(enteredTrim.wait_for(5s) == std::future_status::ready, "native trim must start");
+
+    QWidget input;
+    QKeyEvent key(QEvent::KeyPress, Qt::Key_A, Qt::NoModifier);
+    QApplication::sendEvent(&input, &key);
+    {
+        const auto work = activity.acquire();
+        require(activity.snapshot().activeCount == 1,
+                "new GUI work can acquire admission during native trimming");
+    }
+    now += 360s;
+    controller->evaluate();
+    require(preparations == 1, "a running trim prevents repeat submission");
+    controller.reset();
+    release.set_value();
+    finishBackgroundTrim();
+    require(reports == 0, "destroying the controller detaches running trim completion");
 }
 
 void testAdmissionAndLifetime() {
@@ -445,6 +565,8 @@ int main(int argc, char** argv) {
     QApplication app(argc, argv);
     testScheduling();
     testSafetyAndFailures();
+    testBusyPoolRetriesOnlyNativeTrim();
+    testActivityDuringBackgroundTrim();
     testAdmissionAndLifetime();
     testRetainedWorkLifetime();
     testConcurrentWorkLifetime();
