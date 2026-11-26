@@ -177,6 +177,13 @@ negative origins, portrait layouts and desktop gaps. Check cursor inclusion on
 both displays. Scroll in each direction, pause/resume, and change a display scale
 while scrolling; the session must stop with a recoverable error.
 
+Take an ordinary screenshot to warm the capture session, then leave Snow Shot
+in the background. Compare the first ordinary screenshot after display-only
+sleep and after system sleep with a second capture immediately afterward. Try
+the shortcut as soon as the desktop is usable. Repeat on the built-in display
+and with an external display reconnecting through a dock. Both captures should
+open a usable overlay on the current displays.
+
 Development validation used one Apple Silicon Mac with a 3840 × 2160 capture
 surface. Physical mixed-scale displays, live monitor reconfiguration, Intel
 hardware and Windows runtime tests were unavailable. Rust cross-checks for

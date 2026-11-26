@@ -311,6 +311,27 @@ void displayRecoveryMovesPreparationOffTheHotkey() {
     require(capture(worker, false, false, {}, {}, 13).succeeded && created == oldSessions + 1,
             "failed backend recovery must allow capture to create a usable session");
 }
+#elif defined(Q_OS_MACOS)
+void displayWakeRefreshesLayoutBeforeCapture() {
+    ScreenshotCaptureWorker worker;
+    worker.prepare(1, {});
+    const int initialCaptures = captured;
+    const int initialRefreshes = layoutRefreshes;
+    worker.refreshLayout(1, {});
+    require(layoutRefreshes == initialRefreshes + 1 && captured == initialCaptures,
+            "display wake must refresh the layout without acquiring a frame");
+    require(capture(worker, false, false, {}, {}, 1).succeeded &&
+                layoutRefreshes == initialRefreshes + 1 && captured == initialCaptures + 1,
+            "the first capture must use the refreshed layout and acquire its own frame");
+
+    failLayoutRefresh = true;
+    worker.refreshLayout(2, {});
+    failLayoutRefresh = false;
+    const int refreshesAfterFailure = layoutRefreshes;
+    require(capture(worker, false, false, {}, {}, 2).succeeded &&
+                layoutRefreshes == refreshesAfterFailure + 1,
+            "the first capture must retry a failed wake refresh");
+}
 #endif
 
 void modeChangeAfterCaptureFailurePreservesRetainedFrame() {
@@ -721,6 +742,8 @@ int main(int argc, char** argv) {
     preparationAndLayoutRefreshUseCurrentMode();
 #ifdef Q_OS_WIN
     displayRecoveryMovesPreparationOffTheHotkey();
+#elif defined(Q_OS_MACOS)
+    displayWakeRefreshesLayoutBeforeCapture();
 #endif
     failedReplacementDoesNotCaptureWithOldBackend();
     modeChangeAfterCaptureFailurePreservesRetainedFrame();

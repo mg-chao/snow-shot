@@ -2225,6 +2225,7 @@ set(PROJECT_CXX_SOURCES
 )
 if(APPLE)
     list(APPEND PROJECT_CXX_SOURCES
+        src/platform/macos/displaywakeobserver.mm
         src/platform/macos/screenshotsessionfocus.mm
         src/platform/macos/applicationactivation.mm
         src/platform/macos/systemtraymenu.mm
@@ -4529,6 +4530,15 @@ if(SNOW_SHOT_BUILD_TESTS)
         "${SNOW_SHOT_CAPTURE_CRATES_DIR}/crates/snow-recording-c/include")
     target_link_libraries(snow-shot-capture-worker-tests PRIVATE snow_shot_storage Qt6::Gui)
     add_test(NAME snow-shot-capture-worker-tests COMMAND snow-shot-capture-worker-tests)
+
+    if(APPLE)
+        add_executable(snow-shot-macos-display-wake-tests
+            tests/macos_display_wake_tests.mm src/platform/macos/displaywakeobserver.mm)
+        target_include_directories(snow-shot-macos-display-wake-tests PRIVATE src/platform/macos)
+        target_link_libraries(snow-shot-macos-display-wake-tests PRIVATE Qt6::Core "-framework AppKit")
+        add_test(NAME snow-shot-macos-display-wake-tests COMMAND snow-shot-macos-display-wake-tests)
+        set_tests_properties(snow-shot-macos-display-wake-tests PROPERTIES LABELS "unit;macos")
+    endif()
 
     if(WIN32)
         add_executable(snow-shot-display-recovery-tests
