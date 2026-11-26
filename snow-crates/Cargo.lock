@@ -2266,7 +2266,7 @@ dependencies = [
 
 [[package]]
 name = "snow-ocr-process"
-version = "1.5.2"
+version = "1.5.3"
 dependencies = [
  "memmap2",
  "num_cpus",
