@@ -23,6 +23,7 @@
 #include <QtMath>
 #include <QMouseEvent>
 #include "snow_shot/presentation/screenshotcanvasoperations.h"
+#include "snow_shot/presentation/screenshotcanvastoolstyles.h"
 #include "snow_shot/presentation/screenshotcanvastools.h"
 #include "snow_shot/presentation/screenshotstylebinding.h"
 #include "snow_shot/presentation/screenshotfloatingtoolpalettewindow.h"
@@ -1875,6 +1876,10 @@ void ImageEditingWindow::present(ImageEditingSource source) {
     d.pruneRecognitionSessions(true);
     d.fileReservation.reset();
     d.initialRecognition = source.recognition;
+    // Loading can restore a session with older creation styles or reset a reused editor.
+    const auto defaults = screenshotCanvasToolStyleDefaults();
+    applyScreenshotCanvasToolStyles(*d.canvas, defaults);
+    d.palette->setCreationStyleDefaults(defaults);
     d.syncAvailability();
     d.stack->setCurrentWidget(d.canvas);
     d.canvas->fit();

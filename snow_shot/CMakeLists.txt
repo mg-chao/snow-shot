@@ -5681,7 +5681,7 @@ if(SNOW_SHOT_BUILD_TESTS)
         ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}")
     foreach(_snow_editor_regression IN ITEMS
         close source smart-erase save pin canvas document translation branch history conversion-availability import
-        automatic-selection)
+        automatic-selection style)
         set(_snow_editor_regression_test
             "snow-shot-image-editing-${_snow_editor_regression}-tests")
         add_test(NAME ${_snow_editor_regression_test}

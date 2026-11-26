@@ -5,6 +5,7 @@
 #include "snow_shot/presentation/imageeditingdocument.h"
 #include "snow_shot/presentation/imageeditingwindow.h"
 #include "snow_shot/presentation/imageeditingcanvas.h"
+#include "snow_shot/presentation/screenshotcanvastoolstyles.h"
 #include "snow_shot/presentation/screenshottoolpalette.h"
 #include "snow_shot/presentation/screenshottoolpalettehost.h"
 #include "snow_shot/presentation/screenshotfloatingtoolpalettewindow.h"
@@ -1416,6 +1417,57 @@ void annotationOptionShortcutReachesEditorCanvas() {
     pressTab(popup);
     require(currentShape() == cycledShape, "popup input must not cycle annotation options");
 }
+
+void verifySharedAnnotationStyles() {
+    using namespace snow_shot::presentation;
+    const auto original = screenshotCanvasToolStyleDefaults();
+    const auto restore =
+        qScopeGuard([&] { static_cast<void>(persistScreenshotCanvasToolStyles(original)); });
+
+    ImageEditingWindow editor;
+    auto shape = original.rectangle;
+    shape.strokeWidth = 13.0;
+    require(persistScreenshotCanvasStyleEdit(
+                SnowCanvasShapeEdit{shape, SnowCanvasShapeStylePropertyStrokeWidth}),
+            "save a shape style through the screenshot preference path");
+    const auto openShapeTool = [](ImageEditingWindow& window, double expectedWidth) {
+        require(window.palette()->activateToolShortcut(ScreenshotToolPalette::Tool::Shape) &&
+                    window.canvas()->canvasTool() == SnowCanvasTool::Shape &&
+                    window.canvas()->canvasStyleToolbarState().shapeStyle.strokeWidth ==
+                        expectedWidth &&
+                    window.palette()->creationStyleDefaults().rectangle.strokeWidth ==
+                        expectedWidth,
+                "the editor canvas and palette use the shared creation width");
+    };
+    editor.present(source());
+    openShapeTool(editor, shape.strokeWidth);
+    require(editor.palette()->stepStrokeWidth(1),
+            "commit a creation width from the editor toolbar");
+    const double editedWidth = editor.canvas()->canvasStyleToolbarState().shapeStyle.strokeWidth;
+    require(editedWidth > shape.strokeWidth &&
+                screenshotCanvasToolStyleDefaults().rectangle.strokeWidth == editedWidth,
+            "the screenshot preference reader sees the editor's committed width");
+    require(!editor.document()->dirty(), "changing a creation style leaves the image clean");
+
+    ImageEditingWindow restored;
+    auto drawing = source();
+    SnowCanvasRuntime older{SnowCanvasRuntimeConfig{original}};
+    require(!older
+                 .applyAnnotationTransaction(
+                     R"({"version":1,"operations":[{"type":"rectangle","bounds":[-19,16,2,2]}]})")
+                 .isEmpty(),
+            "create an annotated image with older creation styles");
+    const auto checkpoint = older.documentCheckpoint();
+    for (const bool fullSession : {true, false}) {
+        drawing.canvasSession = fullSession ? older.serializeDocumentSession() : QByteArray{};
+        drawing.canvasHistory = fullSession ? QByteArray{} : older.serializeDocumentHistory();
+        restored.present(drawing);
+        openShapeTool(restored, editedWidth);
+        require(restored.document()->runtime().documentCheckpoint() == checkpoint &&
+                    restored.document()->runtime().canUndo() && !restored.document()->dirty(),
+                "loading shared styles preserves the imported annotations and undo history");
+    }
+}
 } // namespace
 
 void runImageEditingOcrCopyShortcutTests() {
@@ -1598,6 +1650,10 @@ void runImageEditingTests() {
         QStringLiteral(":/recording-test-fonts/SnowRecordingTestSans-Regular.ttf"));
     require(font >= 0, "editor fixtures load the bundled font");
     QApplication::setFont(QFont(QFontDatabase::applicationFontFamilies(font).first(), 12));
+    if (QApplication::arguments().contains(QStringLiteral("--image-editing-style-only"))) {
+        verifySharedAnnotationStyles();
+        return;
+    }
     if (QApplication::arguments().contains(QStringLiteral("--image-editing-import-only"))) {
         runImageEditingImportTests();
         return;
