@@ -40,7 +40,6 @@
 #include "snow_shot/presentation/imagecompressionwindow.h"
 #include "snow_shot/presentation/screenshotexportartifact.h"
 #include "../presentation/pinned/screenshotpinneddragexport.h"
-#include "snow_shot/presentation/screenshotexportcache.h"
 
 #include "snow_shot/presentation/globalshortcutmanager.h"
 #include "snow_shot/presentation/globalcanvascontroller.h"
@@ -715,11 +714,6 @@ class ApplicationController::Impl {
                        .toString() == QStringLiteral("smart_control");
         };
         memoryOptions.safe = [this] { return memoryTrimmingIsSafe(); };
-        memoryOptions.prepare = [] {
-            ScreenshotExportCache::pinnedPixels().clear();
-            ScreenshotExportCache::encodedBytes().clear();
-            ScreenshotExportCache::encodedFiles().clear();
-        };
         memoryOptimization = std::make_unique<runtime::MemoryOptimizationController>(
             runtime::RuntimeActivityTracker::shared(), std::move(memoryOptions), &q);
 #endif

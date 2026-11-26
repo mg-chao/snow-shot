@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <future>
 #include <new>
 #include <thread>
 
@@ -69,6 +70,26 @@ void completionProtectsBarrierUntilNotification() {
     releaseWorker.store(true);
     pool.wait(barrier);
     require(!callerCanAcquire, "completion must hold the barrier mutex through notification");
+}
+
+void idleWorkerExpiresAndRestarts() {
+    using namespace snow_canvas_filter_render;
+    releaseWorker.store(true);
+    FilterWorkerPool pool(std::chrono::milliseconds(10));
+    for (int invocation = 0; invocation < 2; ++invocation) {
+        std::promise<void> stopped;
+        auto exited = stopped.get_future();
+        FilterWorkerPool::Barrier barrier;
+        barrier.remaining = 1;
+        pool.submit({&stopped,
+                     [](void* context, int, int) {
+                         static_cast<std::promise<void>*>(context)->set_value_at_thread_exit();
+                     },
+                     0, 1, &barrier});
+        pool.wait(barrier);
+        require(exited.wait_for(std::chrono::seconds(5)) == std::future_status::ready,
+                "filter worker must exit while the idle pool is still alive");
+    }
 }
 
 void cacheHitsPreserveLruWithoutAllocating() {
@@ -182,9 +203,11 @@ void workerFailurePropagatesAfterRemainingJobsFinish() {
 } // namespace
 
 int main(int argc, char** argv) {
-    require(argc == 2, "expected barrier, cache, caller-failure, or worker-failure test mode");
+    require(argc == 2, "expected a filter safety test mode");
     if (std::strcmp(argv[1], "barrier") == 0) {
         completionProtectsBarrierUntilNotification();
+    } else if (std::strcmp(argv[1], "worker-expiry") == 0) {
+        idleWorkerExpiresAndRestarts();
     } else if (std::strcmp(argv[1], "cache") == 0) {
         cacheHitsPreserveLruWithoutAllocating();
     } else if (std::strcmp(argv[1], "caller-failure") == 0) {

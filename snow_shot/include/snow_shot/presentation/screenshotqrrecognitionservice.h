@@ -37,6 +37,7 @@ class ScreenshotQrRecognitionPort : public QObject {
     recognize(QImage image, QObject* receiver, Completion completion,
               ScreenshotQrRecognitionMode mode = ScreenshotQrRecognitionMode::QrAndBarcode) = 0;
     virtual void cancel(RequestToken token) = 0;
+    virtual void endAutomaticRecognitionSession() {}
 };
 
 #if SNOW_SHOT_ENABLE_QR_RECOGNITION
@@ -45,7 +46,8 @@ class ScreenshotQrRecognitionService final : public ScreenshotQrRecognitionPort 
 
   public:
     // Consecutive requests share one serialized worker and its decoder sessions. The worker
-    // releases its models after a bounded idle grace period; it is created lazily on demand.
+    // releases its models after a bounded idle grace period. A worker used only for automatic
+    // QR-only recognition expires sooner when the capture ends.
     // An empty modelsDirectory resolves to <application dir>/assets/qrcode at runtime; tests
     // inject a custom directory to exercise non-ASCII installation paths.
     explicit ScreenshotQrRecognitionService(QObject* parent = nullptr,
@@ -57,6 +59,7 @@ class ScreenshotQrRecognitionService final : public ScreenshotQrRecognitionPort 
         QImage image, QObject* receiver, Completion completion,
         ScreenshotQrRecognitionMode mode = ScreenshotQrRecognitionMode::QrAndBarcode) override;
     void cancel(RequestToken token) override;
+    void endAutomaticRecognitionSession() override;
 
   private:
     class Impl;

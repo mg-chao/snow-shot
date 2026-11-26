@@ -197,6 +197,39 @@ void cancelledPreparationWaitingForMemoryNeverStartsSharing() {
             "cancelled queued preparation never opens native sharing or completes twice");
 }
 
+void explicitlyCancelledSharePreservesOnlyTheNativeFileLease() {
+    QWidget owner;
+    QObject receiver;
+    QObject unrelated;
+    Service::Completion native;
+    QString path;
+    int nativeCancels = 0;
+    int completions = 0;
+    Service service(
+        [&](QWidget*, QString file, Service::Completion done, Service::CancelNative& cancelNative) {
+            path = std::move(file);
+            native = std::move(done);
+            cancelNative = [&] { ++nativeCancels; };
+        },
+        nullptr);
+    require(service.shareImage(&receiver, &owner, snapshot(), {},
+                               [&](auto result) {
+                                   require(result.status == Service::Status::Cancelled &&
+                                               result.sharedPath.isEmpty(),
+                                           "explicit cancellation delivers no shared file");
+                                   ++completions;
+                               }),
+            "start pending share");
+    wait([&] { return bool(native); });
+    require(!service.cancel(&unrelated) && service.busy(), "cancellation is receiver-scoped");
+    require(service.cancel(&receiver) && !service.busy() && nativeCancels == 1 && completions == 1,
+            "cancel without destroying the QWidget or waiting on the native backend");
+    require(QFileInfo::exists(path), "a native transfer can still read its independent file lease");
+    std::exchange(native, {})({Service::Status::Shared, {}});
+    wait([&] { return !QFileInfo::exists(path); });
+    require(!service.cancel(&receiver) && completions == 1, "ignore a stale native completion");
+}
+
 void screenshotCompletionPolicy() {
     for (const auto status :
          {Service::Status::Shared, Service::Status::Cancelled, Service::Status::Failed,
@@ -230,6 +263,7 @@ int main(int argc, char** argv) {
     destructionKeepsInFlightFileAlive();
     unavailableAndEarlyDestruction();
     cancelledPreparationWaitingForMemoryNeverStartsSharing();
+    explicitlyCancelledSharePreservesOnlyTheNativeFileLease();
     screenshotCompletionPolicy();
     return 0;
 }

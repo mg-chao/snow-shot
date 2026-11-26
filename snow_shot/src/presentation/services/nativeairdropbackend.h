@@ -2,4 +2,4 @@
 #pragma once
 #include "snow_shot/presentation/screenshotairdropservice.h"
 
-[[nodiscard]] ScreenshotAirDropService::Backend screenshotNativeAirDropBackend();
+[[nodiscard]] ScreenshotAirDropService::NativeBackend screenshotNativeAirDropBackend();

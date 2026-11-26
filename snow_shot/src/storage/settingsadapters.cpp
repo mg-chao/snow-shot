@@ -2862,33 +2862,63 @@ bool WatermarkTemplateSettings::setTemplates(const QVector<WatermarkTemplate>& t
     return cache().setValue(QStringLiteral("drawing/watermark_templates"), array);
 }
 
+namespace {
+QJsonObject encodeDrawTemplate(const DrawTemplate& drawTemplate) {
+    return {{QStringLiteral("name"), drawTemplate.name.trimmed()},
+            {QStringLiteral("payload"), QString::fromLatin1(drawTemplate.payload.toBase64())}};
+}
+
+bool setDrawTemplateRecords(const QJsonArray& records) {
+    const QString key = QStringLiteral("drawing/draw_templates");
+    const auto normalized = ConfigurationSchema::normalize(key, records);
+    // Loading salvages valid entries; an explicit edit must retain every requested template.
+    if (!normalized.valid || normalized.value.toArray().size() != records.size()) {
+        return false;
+    }
+    return cache().setValue(key, normalized.value);
+}
+} // namespace
+
+QJsonArray DrawTemplateSettings::encodedTemplates() const {
+    return cache().value(QStringLiteral("drawing/draw_templates")).toArray();
+}
+
+QByteArray DrawTemplateSettings::decodePayload(const QJsonObject& record) {
+    return QByteArray::fromBase64(record.value(QStringLiteral("payload")).toString().toLatin1());
+}
+
 QVector<DrawTemplate> DrawTemplateSettings::templates() const {
     QVector<DrawTemplate> result;
-    const QJsonArray array = cache().value(QStringLiteral("drawing/draw_templates")).toArray();
-    result.reserve(array.size());
-    for (const QJsonValue& item : array) {
-        const QJsonObject object = item.toObject();
-        result.push_back({object.value(QStringLiteral("name")).toString(),
-                          QByteArray::fromBase64(
-                              object.value(QStringLiteral("payload")).toString().toLatin1())});
+    const QJsonArray records = encodedTemplates();
+    result.reserve(records.size());
+    for (const QJsonValue& item : records) {
+        const QJsonObject record = item.toObject();
+        result.push_back({record.value(QStringLiteral("name")).toString(), decodePayload(record)});
     }
     return result;
 }
 
 bool DrawTemplateSettings::setTemplates(const QVector<DrawTemplate>& templates) const {
-    QJsonArray array;
+    QJsonArray records;
     for (const DrawTemplate& drawTemplate : templates) {
-        array.push_back(QJsonObject{
-            {QStringLiteral("name"), drawTemplate.name.trimmed()},
-            {QStringLiteral("payload"), QString::fromLatin1(drawTemplate.payload.toBase64())}});
+        records.push_back(encodeDrawTemplate(drawTemplate));
     }
-    const QString key = QStringLiteral("drawing/draw_templates");
-    const auto normalized = ConfigurationSchema::normalize(key, array);
-    // Loading salvages valid entries; an explicit edit must retain every requested template.
-    if (!normalized.valid || normalized.value.toArray().size() != templates.size()) {
+    return setDrawTemplateRecords(records);
+}
+
+bool DrawTemplateSettings::appendTemplate(const DrawTemplate& drawTemplate) const {
+    QJsonArray records = encodedTemplates();
+    records.push_back(encodeDrawTemplate(drawTemplate));
+    return setDrawTemplateRecords(records);
+}
+
+bool DrawTemplateSettings::removeTemplate(qsizetype index, const QJsonObject& expected) const {
+    QJsonArray records = encodedTemplates();
+    if (index < 0 || index >= records.size() || records.at(index).toObject() != expected) {
         return false;
     }
-    return cache().setValue(key, normalized.value);
+    records.removeAt(index);
+    return setDrawTemplateRecords(records);
 }
 
 int PinToScreenSettings::textMaximumWidth() const {

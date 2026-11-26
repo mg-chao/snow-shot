@@ -8578,6 +8578,7 @@ void ScreenshotToolPalette::clearSecondaryResourceBindings() {
     m_drawTemplateSelect = nullptr;
     m_drawTemplateAddButton = nullptr;
     m_drawTemplateEmptyLabel = nullptr;
+    m_drawTemplateRecords = {};
     m_pendingDrawTemplatePayload.clear();
     m_showOriginalImageButton = nullptr;
     m_showOriginalImageSpacing = nullptr;
@@ -9192,17 +9193,19 @@ void ScreenshotToolPalette::createDrawTemplateSelect() {
     connect(m_drawTemplateSelect, &adqt::widgets::AdSelect::selected, this,
             [this](const QVariant& value, const QString&) {
                 const int index = drawTemplateIndex(value.toString());
-                if (index < 0 || index >= m_drawTemplates.size() ||
+                if (index < 0 || index >= m_drawTemplateRecords.size() ||
                     m_drawTemplateSelect == nullptr) {
                     return;
                 }
-                const QByteArray payload = m_drawTemplates.at(index).payload;
+                const QJsonObject record = m_drawTemplateRecords.at(index).toObject();
                 {
                     const QSignalBlocker blocker(m_drawTemplateSelect);
                     m_drawTemplateSelect->setCurrentValue(QVariant{});
                 }
                 m_drawTemplateSelect->setSearchText({});
                 if (m_insertDrawTemplatePayload) {
+                    const auto payload =
+                        snow_shot::storage::DrawTemplateSettings::decodePayload(record);
                     m_insertDrawTemplatePayload(payload);
                 }
             });
@@ -9213,13 +9216,14 @@ void ScreenshotToolPalette::refreshDrawTemplateOptions() {
     if (m_drawTemplateSelect == nullptr) {
         return;
     }
-    m_drawTemplates = snow_shot::storage::DrawTemplateSettings().templates();
+    m_drawTemplateRecords = snow_shot::storage::DrawTemplateSettings().encodedTemplates();
     QVector<adqt::widgets::AdSelect::Option> options;
-    options.reserve(m_drawTemplates.size());
-    for (int index = 0; index < m_drawTemplates.size(); ++index) {
+    options.reserve(m_drawTemplateRecords.size());
+    for (int index = 0; index < m_drawTemplateRecords.size(); ++index) {
         adqt::widgets::AdSelect::Option option;
         option.value = QStringLiteral("draw-template:") + QString::number(index);
-        option.label = m_drawTemplates.at(index).name;
+        option.label =
+            m_drawTemplateRecords.at(index).toObject().value(QStringLiteral("name")).toString();
         options.push_back(option);
     }
     const QSignalBlocker blocker(m_drawTemplateSelect);
@@ -9233,10 +9237,10 @@ void ScreenshotToolPalette::openCreateDrawTemplateModal() {
         return;
     }
     m_pendingDrawTemplatePayload.clear();
-    m_drawTemplates = snow_shot::storage::DrawTemplateSettings().templates();
+    const auto records = snow_shot::storage::DrawTemplateSettings().encodedTemplates();
     QSet<QString> names;
-    for (const auto& drawTemplate : std::as_const(m_drawTemplates)) {
-        names.insert(drawTemplate.name.toCaseFolded());
+    for (const QJsonValue& record : records) {
+        names.insert(record.toObject().value(QStringLiteral("name")).toString().toCaseFolded());
     }
     int suffix = 1;
     while (names.contains(tr("Template %1").arg(suffix).toCaseFolded())) {
@@ -9318,9 +9322,7 @@ void ScreenshotToolPalette::openCreateDrawTemplateModal() {
                     return;
                 }
                 const snow_shot::storage::DrawTemplateSettings settings;
-                QVector<snow_shot::storage::DrawTemplate> templates = settings.templates();
-                templates.push_back({nameGuard->text().trimmed(), m_pendingDrawTemplatePayload});
-                if (!settings.setTemplates(templates)) {
+                if (!settings.appendTemplate({nameGuard->text(), m_pendingDrawTemplatePayload})) {
                     m_drawTemplateAlertKind = 2;
                     retranslateDrawTemplateUi();
                     return;
@@ -9345,11 +9347,11 @@ void ScreenshotToolPalette::openCreateDrawTemplateModal() {
 
 void ScreenshotToolPalette::openDeleteDrawTemplateModal(int index) {
     if (m_drawTemplateSelect == nullptr || m_deleteDrawTemplateModal != nullptr || index < 0 ||
-        index >= m_drawTemplates.size()) {
+        index >= m_drawTemplateRecords.size()) {
         return;
     }
-    const snow_shot::storage::DrawTemplate target = m_drawTemplates.at(index);
-    m_deleteDrawTemplateName = target.name;
+    const QJsonObject target = m_drawTemplateRecords.at(index).toObject();
+    m_deleteDrawTemplateName = target.value(QStringLiteral("name")).toString();
     auto* modal = snow_shot::presentation::modal_window::createConfirmation(
         m_drawTemplateSelect,
         m_watermarkTemplateModalOwnerWindow != nullptr ? m_watermarkTemplateModalOwnerWindow.data()
@@ -9369,13 +9371,7 @@ void ScreenshotToolPalette::openDeleteDrawTemplateModal(int index) {
                     return;
                 }
                 const snow_shot::storage::DrawTemplateSettings settings;
-                QVector<snow_shot::storage::DrawTemplate> templates = settings.templates();
-                if (index >= templates.size() || templates.at(index) != target) {
-                    modal->setText(tr("Could not delete the annotation template"));
-                    return;
-                }
-                templates.removeAt(index);
-                if (!settings.setTemplates(templates)) {
+                if (!settings.removeTemplate(index, target)) {
                     modal->setText(tr("Could not delete the annotation template"));
                     return;
                 }
@@ -11058,6 +11054,10 @@ ScreenshotToolPalette::StyleReconcileStats
 ScreenshotToolPalette::lastStyleReconcileStatsForTests() const {
     const ScreenshotToolPaletteStyleReconcileStats stats = m_styleControls->lastReconcileStats();
     return {stats.retained, stats.created, stats.destroyed};
+}
+
+qsizetype ScreenshotToolPalette::loadedDrawTemplateCountForTests() const {
+    return m_drawTemplateRecords.size();
 }
 
 adqt::widgets::AdModal* ScreenshotToolPalette::recordingEffectSettingsModalForTests() const {

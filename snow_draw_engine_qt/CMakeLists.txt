@@ -766,6 +766,8 @@ if(SNOW_DRAW_ENGINE_QT_BUILD_TESTS)
         snow_canvas_image snow_pixel_buffer Qt6::Gui)
     add_test(NAME snow-canvas-filter-barrier-safety-tests
         COMMAND snow-canvas-filter-safety-tests barrier)
+    add_test(NAME snow-canvas-filter-worker-expiry-tests
+        COMMAND snow-canvas-filter-safety-tests worker-expiry)
     add_test(NAME snow-canvas-filter-cache-safety-tests
         COMMAND snow-canvas-filter-safety-tests cache)
     add_test(NAME snow-canvas-filter-caller-failure-safety-tests
@@ -773,7 +775,8 @@ if(SNOW_DRAW_ENGINE_QT_BUILD_TESTS)
     add_test(NAME snow-canvas-filter-worker-failure-safety-tests
         COMMAND snow-canvas-filter-safety-tests worker-failure)
     set_tests_properties(
-        snow-canvas-filter-barrier-safety-tests snow-canvas-filter-cache-safety-tests
+        snow-canvas-filter-barrier-safety-tests snow-canvas-filter-worker-expiry-tests
+        snow-canvas-filter-cache-safety-tests
         snow-canvas-filter-caller-failure-safety-tests
         snow-canvas-filter-worker-failure-safety-tests
         PROPERTIES TIMEOUT 30 LABELS unit

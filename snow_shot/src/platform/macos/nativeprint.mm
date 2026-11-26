@@ -57,7 +57,6 @@ using snow_shot::print_detail::printStatusName;
 @interface SnowShotPrintCompletion : NSObject {
   @public
     ScreenshotPrintService::Completion completion;
-    QMetaObject::Connection ownerDestroyed;
 }
 - (void)printOperationDidRun:(NSPrintOperation*)operation
                      success:(BOOL)success
@@ -68,7 +67,6 @@ using snow_shot::print_detail::printStatusName;
 - (void)printOperationDidRun:(NSPrintOperation*)operation
                      success:(BOOL)success
                  contextInfo:(void*)context {
-    QObject::disconnect(ownerDestroyed);
     const bool cancelled = [operation.printInfo.jobDisposition isEqualToString:NSPrintCancelJob];
     const auto status = success     ? ScreenshotPrintService::Status::Submitted
                         : cancelled ? ScreenshotPrintService::Status::Cancelled
@@ -77,19 +75,21 @@ using snow_shot::print_detail::printStatusName;
                   {{QStringLiteral("backend"), QStringLiteral("macos_appkit")},
                    {QStringLiteral("status"), printStatusName(status)}},
                   status == ScreenshotPrintService::Status::Failed ? QtWarningMsg : QtInfoMsg);
-    completion({status, status == ScreenshotPrintService::Status::Failed
-                            ? QCoreApplication::translate("ScreenshotPrintService",
-                                                          "The native print operation failed")
-                            : QString()});
+    if (auto finished = std::move(completion))
+        finished({status, status == ScreenshotPrintService::Status::Failed
+                              ? QCoreApplication::translate("ScreenshotPrintService",
+                                                            "The native print operation failed")
+                              : QString()});
     // Retained across the asynchronous native sheet; release only after its callback.
     (void)CFBridgingRelease(context);
 }
 @end
 
-ScreenshotPrintService::Backend screenshotNativePrintBackend(bool legacy) {
+ScreenshotPrintService::NativeBackend screenshotNativePrintBackend(bool legacy) {
     if (legacy)
         return {};
-    return [](QWidget* owner, QImage image, ScreenshotPrintService::Completion completion) {
+    return [](QWidget* owner, QImage image, ScreenshotPrintService::Completion completion,
+              ScreenshotPrintService::CancelNative& cancel) {
         @autoreleasepool {
             SnowShotPrintCompletion* delegate = nil;
             void* retainedDelegate = nullptr;
@@ -147,18 +147,20 @@ ScreenshotPrintService::Backend screenshotNativePrintBackend(bool legacy) {
                 delegate->completion = std::move(completion);
                 __weak NSPrintOperation* weakOperation = operation;
                 __weak NSWindow* weakWindow = ownerWindow;
-                delegate->ownerDestroyed =
-                    QObject::connect(owner, &QObject::destroyed, qApp, [weakOperation, weakWindow] {
+                __weak SnowShotPrintImageView* weakView = view;
+                cancel = [weakOperation, weakWindow, weakView] {
+                    @autoreleasepool {
                         logPrintEvent(
                             "print.native_cancel_requested",
-                            {{QStringLiteral("backend"), QStringLiteral("macos_appkit")},
-                             {QStringLiteral("reason"), QStringLiteral("owner_destroyed")}});
+                            {{QStringLiteral("backend"), QStringLiteral("macos_appkit")}});
                         NSPrintOperation* active = weakOperation;
                         active.printInfo.jobDisposition = NSPrintCancelJob;
+                        weakView.image = nil;
                         NSWindow* window = weakWindow;
                         if (window.attachedSheet)
                             [window endSheet:window.attachedSheet returnCode:NSModalResponseCancel];
-                    });
+                    }
+                };
                 retainedDelegate = (__bridge_retained void*)delegate;
                 stage = "run_print_operation";
                 logPrintEvent("print.native_ui_requested",
@@ -174,10 +176,9 @@ ScreenshotPrintService::Backend screenshotNativePrintBackend(bool legacy) {
                                {QStringLiteral("stage"), QString::fromLatin1(stage)},
                                {QStringLiteral("code"), QString::fromNSString(exception.name)}},
                               QtWarningMsg);
-                if (delegate) {
-                    QObject::disconnect(delegate->ownerDestroyed);
+                cancel = {};
+                if (delegate)
                     completion = std::move(delegate->completion);
-                }
                 if (retainedDelegate)
                     (void)CFBridgingRelease(retainedDelegate);
                 if (completion)

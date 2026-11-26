@@ -1004,6 +1004,7 @@ typedef struct SnowSpeechBubbleTextLayoutMetrics {
     double minimum_grapheme_width;
     double text_ink_reserve;
 } SnowSpeechBubbleTextLayoutMetrics;
+void snow_clear_speech_bubble_geometry_cache_for_current_thread(void);
 uint32_t snow_runtime_speech_bubble_text_count(SnowRuntime runtime);
 SnowError snow_viewport_get_speech_bubble_text_target(SnowRuntime runtime, SnowViewport viewport,
                                                       uint8_t use_point, double x, double y,

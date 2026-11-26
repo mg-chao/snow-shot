@@ -17,6 +17,7 @@
 #include "snow_shot/presentation/screenshothistoryservice.h"
 #include "snow_shot/presentation/screenshotocrrecognitionservice.h"
 #include "snow_shot/presentation/screenshotocrpresentation.h"
+#include "snow_shot/presentation/screenshotqrcontroller.h"
 #include "snow_shot/presentation/screenshotrecognitionsessioncontroller.h"
 #include "snow_shot/presentation/screenshotrecognitionwindow.h"
 #include "snow_shot/presentation/screenshotexportartifact.h"
@@ -43,6 +44,7 @@
 #include "snow_shot/presentation/screenshotsavepreviewcanvas.h"
 #include "snow_shot/presentation/screenshotscrollingsnapshot.h"
 #include "snow_shot/presentation/screenshotairdropservice.h"
+#include "snow_shot/presentation/screenshotautofiltercontroller.h"
 #include "snow_shot/presentation/screenshotprintservice.h"
 #include "snow_shot/runtime/runtimeactivitytracker.h"
 #include "snow_stitch_images.h"
@@ -81,9 +83,10 @@
 #include <QTimer>
 #include <QUrl>
 #include <QUuid>
-#include <QTextStream>
+#include <QWheelEvent>
 
 #ifdef Q_OS_WIN
+#include <QTextStream>
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -747,6 +750,90 @@ void queuedRecognitionDoesNotOverrideReselection(const QString& directory) {
                 "discarded recognition restoration must not request model work");
     }
 }
+
+#if SNOW_SHOT_ENABLE_QR_RECOGNITION
+void automaticQrWaitsForStableConfirmation() {
+    class Decoder final : public ScreenshotQrRecognitionPort {
+      public:
+        RequestToken recognize(QImage image, QObject*, Completion finished,
+                               ScreenshotQrRecognitionMode mode) override {
+            require(mode == ScreenshotQrRecognitionMode::QrOnly,
+                    "the deferred confirmation requests only QR recognition");
+            inspections.append(image.size());
+            completion = std::move(finished);
+            return static_cast<RequestToken>(inspections.size());
+        }
+        void cancel(RequestToken) override {}
+
+        QList<QSize> inspections;
+        Completion completion;
+    };
+
+    const snow_shot::storage::ScreenshotSettings settings;
+    const bool previous = settings.autoRecognizeQrCode();
+    const auto restore = qScopeGuard([&] { settings.setAutoRecognizeQrCode(previous); });
+    require(settings.setAutoRecognizeQrCode(true), "enable the automatic QR fixture");
+
+    ScreenshotController controller;
+    const auto qrController = [&] { return controller.findChild<ScreenshotQrController*>(); };
+    auto decoder = std::make_unique<Decoder>();
+    auto* const scans = decoder.get();
+    ScreenshotControllerTestAccess::setQrRecognition(controller, std::move(decoder));
+    ScreenshotSelectionParams initial;
+    initial.selection = QRect(10, 10, 60, 45);
+    const auto confirm = [&] {
+        ScreenshotControllerTestAccess::prepareSelection(controller, fixture(), initial);
+        ScreenshotControllerTestAccess::confirmCaptureSelection(
+            controller, ScreenshotController::CaptureAction::None);
+    };
+    confirm();
+    require(!qrController(), "confirmation defers automatic recognition to the event loop");
+    controller.mcpCancelCapture();
+    QCoreApplication::processEvents();
+    require(!qrController(), "cancelling before dispatch avoids starting automatic recognition");
+
+    confirm();
+    auto& input = ScreenshotControllerTestAccess::overlayInput(controller);
+    QString error;
+    const QJsonObject replacement{{QStringLiteral("type"), QStringLiteral("rectangle")},
+                                  {QStringLiteral("bounds"), QJsonArray{20, 20, 25, 20}}};
+    require(controller.mcpSetSelection(replacement, &error),
+            "replace a pending native confirmation through MCP");
+    ScreenshotControllerTestAccess::commands(controller).setMoveTool();
+    QWheelEvent resize(QPointF(25, 25), QPointF(25, 25), {}, QPoint(0, 120), Qt::NoButton,
+                       Qt::NoModifier, Qt::NoScrollPhase, false);
+    require(input.handleWheel(nullptr, resize) &&
+                ScreenshotControllerTestAccess::selection(controller).pixelSelection().size() ==
+                    QSize(27, 22),
+            "wheel input resizes the confirmed selection before the first scan");
+    input.beginRegionOperation(true);
+    require(input.selectionTransactionActive(), "begin a region edit before automatic recognition");
+    QCoreApplication::processEvents();
+    require(!qrController(), "automatic recognition must wait for the active region edit");
+
+    require(input.cancelRegionOperation(), "roll back the region edit without a new confirmation");
+    QCoreApplication::processEvents();
+    auto* const qr = qrController();
+    require(qr && qr->busy(), "automatic recognition starts as soon as the selection is stable");
+    waitUntil([&] { return !scans->inspections.isEmpty(); },
+              "the resized selection must reach the automatic decoder");
+    require(scans->inspections == QList<QSize>{QSize(27, 22)},
+            "automatic QR renders the latest stable geometry once");
+    scans->completion({{QStringLiteral("fixture")},
+                       {},
+                       {{QStringLiteral("fixture"), QPolygonF{QPointF(2, 2), QPointF(12, 2),
+                                                              QPointF(12, 12), QPointF(2, 12)}}}});
+    require(qr->available(), "a detection from the final confirmation reaches the editor");
+
+    require(controller.mcpSetSelection(replacement, &error),
+            "adjust the confirmation after automatic recognition");
+    QCoreApplication::processEvents();
+    require(scans->inspections.size() == 1 && qr->available(),
+            "later confirmations reuse the current automatic result during the same capture");
+    controller.mcpCancelCapture();
+    require(!qr->available(), "ending the capture clears the automatic result");
+}
+#endif
 
 QPointer<ScreenshotRecognitionWindow> visibleRecognitionWindow() {
     for (QWidget* widget : QApplication::topLevelWidgets()) {
@@ -2494,6 +2581,110 @@ void followUpPinsUseNativeImageResolution() {
     }
 }
 
+void captureExportCancelsQueuedAutoFilter() {
+    using Access = ScreenshotControllerTestAccess;
+    QTemporaryDir directory;
+    const snow_shot::storage::ScreenshotSettings settings;
+    const QString oldDirectory = settings.imageSaveDirectory();
+    const QString oldFileName = settings.autoSaveFilenameFormat();
+    const auto oldTasks = settings.exportTasks(ExportTrigger::ScreenshotSave);
+    const auto restore = qScopeGuard([&] {
+        settings.setImageSaveDirectory(oldDirectory);
+        settings.setAutoSaveFilenameFormat(oldFileName);
+        settings.setExportTasks(ExportTrigger::ScreenshotSave, oldTasks);
+    });
+    require(directory.isValid() && settings.setImageSaveDirectory(directory.path()) &&
+                settings.setAutoSaveFilenameFormat(QStringLiteral("auto-filter-cancel")) &&
+                settings.setExportTasks(ExportTrigger::ScreenshotSave, {}),
+            "isolate the Quick Save output");
+
+    QObject receiver;
+    const auto gate = std::make_shared<QSemaphore>();
+    auto unblock = qScopeGuard([&] { gate->release(); });
+    auto& coordinator = ScreenshotExportCoordinator::shared();
+    const auto blocker = coordinator.submit(
+        &receiver, ScreenshotExportCoordinator::Priority::Foreground,
+        [gate](const auto&) {
+            gate->acquire();
+            return ScreenshotExportTaskResult{};
+        },
+        [](auto) {}, std::numeric_limits<qint64>::max());
+    require(blocker.isValid(), "reserve coordinator memory ahead of detection");
+    ScreenshotController controller;
+    ScreenshotSelectionParams selection;
+    selection.selection = QRect(10, 12, 80, 50);
+    Access::prepareSelection(controller, fixture(), selection);
+    require(Access::presentSelection(controller), "show the capture before running Auto Filter");
+    auto& commands = Access::commands(controller);
+    commands.setAutoFilterTool();
+    auto* filter = controller.findChild<ScreenshotAutoFilterController*>();
+    require(filter && filter->detecting(), "Auto Filter is queued while admission is blocked");
+    commands.quickSaveSelection();
+    require(!filter->detecting(), "capture export cancels the pending detector before teardown");
+    gate->release();
+    unblock.dismiss();
+    waitUntil([&] { return !Access::exportActive(controller); }, "Quick Save completes");
+    require(QFileInfo::exists(directory.filePath(QStringLiteral("auto-filter-cancel.png"))),
+            "detector cancellation preserves the frozen output");
+}
+
+void captureCancellationReleasesNativeDialogs() {
+    using Access = ScreenshotControllerTestAccess;
+    ScreenshotPrintService::Completion nativePrint;
+    ScreenshotAirDropService::Completion nativeShare;
+    int nativeCancels = 0;
+    ScreenshotPrintService printing(
+        [&](QWidget*, QImage, auto done, ScreenshotPrintService::CancelNative& cancelNative) {
+            nativePrint = std::move(done);
+            cancelNative = [&] { ++nativeCancels; };
+        },
+        {}, nullptr);
+    ScreenshotAirDropService sharing(
+        [&](QWidget*, QString, auto done, ScreenshotAirDropService::CancelNative& cancelNative) {
+            nativeShare = std::move(done);
+            cancelNative = [&] { ++nativeCancels; };
+        },
+        nullptr);
+    ScreenshotController controller;
+    controller.setPrintService(&printing);
+    controller.setAirDropService(&sharing);
+    ScreenshotSelectionParams selection;
+    selection.selection = QRect(10, 12, 80, 50);
+    auto& commands = Access::commands(controller);
+    for (const bool print : {true, false}) {
+        for (const bool finishSnapshot : {false, true}) {
+            Access::prepareSelection(controller, fixture(), selection);
+            require(Access::presentSelection(controller), "show the capture before native export");
+            if (print)
+                commands.printSelection();
+            else
+                commands.airDropSelection();
+            require(controller.property("saveDialogOpen").toBool(), "native output blocks input");
+            if (finishSnapshot)
+                waitUntil([&] { return nativePrint || nativeShare; }, "native backend starts");
+            const auto expectedCancels = nativeCancels + (finishSnapshot ? 1 : 0);
+            controller.mcpCancelCapture();
+            require(!controller.property("saveDialogOpen").toBool() &&
+                        printing.busy() == (print && finishSnapshot) && !sharing.busy() &&
+                        nativeCancels == expectedCancels,
+                    "capture cancellation releases input while an active print drains");
+            if (nativePrint)
+                std::exchange(nativePrint, {})({ScreenshotPrintService::Status::Submitted, {}});
+            if (nativeShare)
+                std::exchange(nativeShare, {})({ScreenshotAirDropService::Status::Shared, {}});
+            waitUntil(
+                [&] {
+                    const auto activity =
+                        snow_shot::runtime::RuntimeActivityTracker::shared().snapshot();
+                    return !printing.busy() && activity.activeCount == 0;
+                },
+                "retired native output drains its snapshot work");
+            require(!nativePrint && !nativeShare && !controller.property("saveDialogOpen").toBool(),
+                    "retired snapshot and late callbacks do not reopen the native output");
+        }
+    }
+}
+
 void exportTaskClipboardOrder() {
     using Clipboard = ScreenshotClipboardService;
     auto* clipboard = QApplication::clipboard();
@@ -3087,6 +3278,8 @@ int runScreenshotControllerClipboardTests(int argc, char** argv) {
             "clipboard controller settings must be isolated and deterministic");
     static_cast<void>(snow_shot::presentation::styles::ThemeManager::instance());
     if (application.arguments().contains(QStringLiteral("--export-tasks"))) {
+        captureExportCancelsQueuedAutoFilter();
+        captureCancellationReleasesNativeDialogs();
         exportTaskClipboardOrder();
         exportTaskPinsKeepEditableAnnotations();
         exportTaskErrorsSurviveCaptureTeardown();
@@ -3256,6 +3449,9 @@ int runScreenshotControllerClipboardTests(int argc, char** argv) {
         const auto shutdown = qScopeGuard([&] { storage.shutdown(); });
         captureActionsChooseToolBeforeFirstPresentation(directory.path());
         queuedRecognitionDoesNotOverrideReselection(directory.path());
+#if SNOW_SHOT_ENABLE_QR_RECOGNITION
+        automaticQrWaitsForStableConfirmation();
+#endif
         recognitionWindowsFollowSelectionTransitions(directory.path());
         return EXIT_SUCCESS;
     }

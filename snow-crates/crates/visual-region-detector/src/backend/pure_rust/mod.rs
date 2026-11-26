@@ -3,7 +3,7 @@
 use super::{Backend, Component, KernelShape, MorphOp};
 use crate::error::Result;
 use crate::geometry::Rect;
-use crate::grid::{Grid, Image, Mask};
+use crate::grid::{Image, Labels, Mask};
 
 mod canny;
 mod contours;
@@ -35,7 +35,7 @@ impl Backend for PureRustBackend {
         ))
     }
 
-    fn connected_components(input: &Mask) -> Result<(Grid<i32>, Vec<Component>)> {
+    fn connected_components(input: &Mask) -> Result<(Labels, Vec<Component>)> {
         Ok(morph::connected_components(input))
     }
 
@@ -141,7 +141,7 @@ mod tests {
         let (labels, components) = connected_components(&input);
         assert_eq!(components.len(), 2);
         assert_eq!(
-            labels.data,
+            &*labels.data,
             [
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0,
                 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

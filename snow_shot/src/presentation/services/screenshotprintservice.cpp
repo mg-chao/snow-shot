@@ -23,7 +23,21 @@
 using snow_shot::print_detail::logPrintEvent;
 using snow_shot::print_detail::printStatusName;
 
+namespace {
+ScreenshotPrintService::NativeBackend withCancellation(ScreenshotPrintService::Backend backend) {
+    if (!backend)
+        return {};
+    return [backend = std::move(backend)](QWidget* owner, QImage image,
+                                          ScreenshotPrintService::Completion done,
+                                          ScreenshotPrintService::CancelNative&) {
+        backend(owner, std::move(image), std::move(done));
+    };
+}
+} // namespace
+
 struct ScreenshotPrintService::Request {
+    enum class BackendPhase { Pending, Starting, Active, Cancelling };
+
     snow_shot::runtime::RuntimeActivityLease activity =
         snow_shot::runtime::RuntimeActivityTracker::shared().acquire();
     QString operation = QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -33,6 +47,8 @@ struct ScreenshotPrintService::Request {
     QImage image;
     std::shared_ptr<std::atomic_bool> cancelled = std::make_shared<std::atomic_bool>(false);
     Completion completion;
+    CancelNative cancelNative;
+    BackendPhase backendPhase = BackendPhase::Pending;
     bool legacy = false;
     bool completed = false;
     ScreenshotExportJobHandle preparation;
@@ -55,6 +71,11 @@ struct ScreenshotPrintService::Request {
 };
 
 ScreenshotPrintService::ScreenshotPrintService(Backend primary, Backend legacy, QObject* parent)
+    : ScreenshotPrintService(withCancellation(std::move(primary)),
+                             withCancellation(std::move(legacy)), parent) {}
+
+ScreenshotPrintService::ScreenshotPrintService(NativeBackend primary, NativeBackend legacy,
+                                               QObject* parent)
     : QObject(parent), m_primary(std::move(primary)), m_legacy(std::move(legacy)) {}
 
 ScreenshotPrintService& ScreenshotPrintService::shared() {
@@ -68,6 +89,48 @@ ScreenshotPrintService& ScreenshotPrintService::shared() {
 
 bool ScreenshotPrintService::busy() const {
     return m_request != nullptr;
+}
+
+bool ScreenshotPrintService::cancel(QObject* receiver) {
+    Q_ASSERT(QThread::currentThread() == thread());
+    if (!receiver || !m_request || m_request->receiver != receiver || m_request->completed)
+        return false;
+    cancelRequest(m_request, "capture_cancelled");
+    return true;
+}
+
+void ScreenshotPrintService::cancelRequest(const std::shared_ptr<Request>& request,
+                                           const char* reason) {
+    if (m_request != request || request->completed)
+        return;
+    const auto active = request;
+    active->completed = true;
+    const auto activity = std::move(active->activity);
+    auto fields = active->fields();
+    fields.insert(QStringLiteral("status"), printStatusName(Status::Cancelled));
+    fields.insert(QStringLiteral("reason"), QString::fromLatin1(reason));
+    logPrintEvent("print.completed", fields);
+    active->cancelled->store(true, std::memory_order_release);
+    active->preparation.cancel();
+    QObject::disconnect(active->ownerDestroyed);
+    QObject::disconnect(active->receiverDestroyed);
+    active->image = {};
+    cancelBackend(active);
+    if (auto complete = std::move(active->completion); active->receiver && complete)
+        complete({Status::Cancelled, {}});
+}
+
+void ScreenshotPrintService::cancelBackend(const std::shared_ptr<Request>& request) {
+    if (m_request != request)
+        return;
+    if (auto cancel = std::move(request->cancelNative)) {
+        // Native cancellation can be asynchronous. Keep the admission slot until
+        // this backend confirms that its dialog and event hooks have retired.
+        request->backendPhase = Request::BackendPhase::Cancelling;
+        cancel();
+    } else if (request->backendPhase != Request::BackendPhase::Starting) {
+        m_request.reset();
+    }
 }
 
 QImage ScreenshotPrintService::opaqueImage(const QImage& image) {
@@ -143,22 +206,9 @@ bool ScreenshotPrintService::printImage(QObject* receiver, QWidget* owner, QImag
     fields.insert(QStringLiteral("pixel_format"), static_cast<int>(snapshot.format()));
     fields.insert(QStringLiteral("dpr"), snapshot.devicePixelRatio());
     logPrintEvent("print.accepted", fields);
-    const auto abandon = [this, request](const char* reason) {
-        if (m_request != request || request->completed)
-            return;
-        request->completed = true;
-        const auto activity = std::move(request->activity);
-        auto fields = request->fields();
-        fields.insert(QStringLiteral("status"), printStatusName(Status::Cancelled));
-        fields.insert(QStringLiteral("reason"), QString::fromLatin1(reason));
-        logPrintEvent("print.completed", fields);
-        request->cancelled->store(true, std::memory_order_release);
-        request->preparation.cancel();
-        m_request.reset();
-        QObject::disconnect(request->ownerDestroyed);
-        QObject::disconnect(request->receiverDestroyed);
-        if (request->receiver)
-            request->completion({Status::Cancelled, {}});
+    const auto abandon = [this, weak = std::weak_ptr(request)](const char* reason) {
+        if (const auto active = weak.lock())
+            cancelRequest(active, reason);
     };
     request->ownerDestroyed =
         connect(owner, &QObject::destroyed, this, [abandon] { abandon("owner_destroyed"); });
@@ -220,21 +270,26 @@ void ScreenshotPrintService::startBackend(const std::shared_ptr<Request>& reques
     }
     request->legacy = legacy;
     const QPointer<ScreenshotPrintService> guard(this);
-    const auto finished = [guard, request, legacy](Result result) {
+    const auto finished = [guard, weak = std::weak_ptr(request), legacy](Result result) {
         if (!guard)
             return;
         QMetaObject::invokeMethod(
             guard,
-            [guard, request, legacy, result = std::move(result)]() mutable {
-                if (!guard || guard->m_request != request || request->completed ||
-                    request->legacy != legacy)
+            [guard, weak, legacy, result = std::move(result)]() mutable {
+                const auto active = weak.lock();
+                if (!guard || !active || guard->m_request != active || active->legacy != legacy)
                     return;
+                if (active->completed) {
+                    guard->m_request.reset();
+                    return;
+                }
                 if (result.status == Status::Unavailable && !legacy && guard->m_legacy &&
-                    request->receiver && request->owner) {
-                    auto fields = request->fields();
+                    active->receiver && active->owner) {
+                    auto fields = active->fields();
                     fields.insert(QStringLiteral("status"), printStatusName(result.status));
                     logPrintEvent("print.fallback", fields, QtWarningMsg);
-                    guard->startBackend(request, true);
+                    active->cancelNative = {};
+                    guard->startBackend(active, true);
                     return;
                 }
                 if (result.status == Status::Unavailable) {
@@ -243,19 +298,19 @@ void ScreenshotPrintService::startBackend(const std::shared_ptr<Request>& reques
                         result.error = QCoreApplication::translate(
                             "ScreenshotPrintService", "The native print interface is unavailable");
                 }
-                request->completed = true;
-                const auto activity = std::move(request->activity);
-                auto fields = request->fields();
+                active->completed = true;
+                const auto activity = std::move(active->activity);
+                auto fields = active->fields();
                 fields.insert(QStringLiteral("status"), printStatusName(result.status));
                 logPrintEvent("print.completed", fields,
                               result.status == Status::Failed ? QtWarningMsg : QtInfoMsg);
                 guard->m_request.reset();
-                QObject::disconnect(request->ownerDestroyed);
-                QObject::disconnect(request->receiverDestroyed);
+                QObject::disconnect(active->ownerDestroyed);
+                QObject::disconnect(active->receiverDestroyed);
                 if (result.status == Status::Submitted)
-                    result.submittedImage = request->image;
-                if (request->receiver)
-                    request->completion(std::move(result));
+                    result.submittedImage = active->image;
+                if (auto complete = std::move(active->completion); active->receiver && complete)
+                    complete(std::move(result));
             },
             Qt::QueuedConnection);
     };
@@ -266,7 +321,15 @@ void ScreenshotPrintService::startBackend(const std::shared_ptr<Request>& reques
                                               "The image could not be prepared for printing")});
     } else if (backend) {
         logPrintEvent("print.backend_started", request->fields());
-        backend(request->owner, request->image, finished);
+        request->backendPhase = Request::BackendPhase::Starting;
+        backend(request->owner, request->image, finished, request->cancelNative);
+        if (!guard || guard->m_request != request || request->legacy != legacy ||
+            request->backendPhase != Request::BackendPhase::Starting)
+            return;
+        request->backendPhase = Request::BackendPhase::Active;
+        // Startup can pump events before the cancellation hook has been installed.
+        if (request->completed)
+            guard->cancelBackend(request);
     } else {
         logPrintEvent("print.backend_unavailable", request->fields(), QtWarningMsg);
         finished({Status::Unavailable, {}});
