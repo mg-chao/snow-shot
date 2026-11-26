@@ -4,6 +4,8 @@ use buffer::{SLOT_HEADER, SharedImage};
 mod paragraph;
 mod protocol;
 mod session;
+#[cfg(feature = "sizing-validation")]
+mod sizing_validation;
 mod worker;
 use worker::{Work, WorkResult, worker_loop};
 
@@ -267,6 +269,13 @@ fn parse_startup_mode(arguments: &[std::ffi::OsString]) -> io::Result<StartupMod
 
 fn main() -> io::Result<()> {
     let arguments: Vec<_> = std::env::args_os().skip(1).collect();
+    #[cfg(feature = "sizing-validation")]
+    if arguments
+        .first()
+        .is_some_and(|arg| arg == "--compare-sizing")
+    {
+        return sizing_validation::run(&arguments[1..]);
+    }
     let startup_mode = parse_startup_mode(&arguments)?;
     if startup_mode == StartupMode::Version {
         println!(

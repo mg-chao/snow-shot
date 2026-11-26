@@ -1,7 +1,7 @@
 # OCR runtime and V6 models
 
 Snow Shot uses CPU inference and optional GPU acceleration through the `simd-paddle-ocr-rs` Git submodule.
-Runtime **1.5.1** uses protocol **8**. Initialize submodules before building;
+Runtime **1.5.2** uses protocol **8**. Initialize submodules before building;
 the worker alone uses the library's pinned `nightly-2026-09-08` compiler.
 Other Rust packages keep their existing toolchain. The runtime takes verified
 local model paths, borrows child-owned BGR pixels, and returns owned text,
@@ -26,9 +26,12 @@ manifest, file types and sizes, completion markers, and bundled executable
 permissions and architecture. It does not hash the full files again, so same-size
 content changes after installation are not detected by startup validation.
 
-Text detection uses the library's default preprocessing and enlarges the short
-side toward 736 pixels within the library's image limits. Saved scaling
-preferences are ignored. Accuracy First uses the library defaults, including a
+Text detection uses the pixels supplied to the worker. Each axis is padded on
+the right or bottom to a multiple of 32 with the average color of the four
+source corners. If the padded shape exceeds 8192 pixels on its longest edge or
+16,777,216 pixels in area, the detector first resizes proportionally. Both
+processing modes map detection boxes back to source pixels and crop those
+pixels for recognition. Accuracy First uses a
 recognition-width floor of 320. Speed First uses 48. Widths align to 32 pixels.
 Recognition text and confidence can differ from the previous runtime.
 The recognizer uses the model's Softmax probabilities for confidence. Empty
@@ -75,7 +78,7 @@ Windows x64 and ARM64 ZIPs contain exactly the versioned worker executable and
 `runtime-manifest.json`. There are no inference DLLs. The trusted descriptors in
 this directory are generated from the actual built bytes, including archive and
 entry hashes. Preparation creates local artifacts; publication is a release step.
-Keep all earlier published archives unchanged. Publish the exact pinned 1.5.1
+Keep all earlier published archives unchanged. Publish the exact pinned 1.5.2
 archives before distributing this application revision.
 
 ```powershell
@@ -116,10 +119,10 @@ Supply verified models as `<model-root>/<cache-id>/<filename>` for real inferenc
 $env:SNOW_TEST_OCR_TEXT_FIXTURE = (Resolve-Path snow_shot/tests/baselines/ocr-model-versions.png).Path
 $test = 'build/windows-msvc-debug/snow_shot/test-bin/Debug/snow-shot-ocr-recognition-service-tests.exe'
 $modelRoot = (Resolve-Path build/ocr-versioned-models).Path
-$worker = (Resolve-Path artifacts/snow-ocr-runtime-1.5.1/snow-ocr-process-1.5.1-windows-x64.exe).Path
+$worker = (Resolve-Path artifacts/snow-ocr-runtime-1.5.2/snow-ocr-process-1.5.2-windows-x64.exe).Path
 & $test "--model-root=$modelRoot" "--worker=$worker"
 & $test "--model-root=$modelRoot" "--worker=$worker" --resident-models
-& $test "--downloaded-runtime=$((Resolve-Path artifacts/snow-ocr-runtime-1.5.1-windows-x64.zip).Path)"
+& $test "--downloaded-runtime=$((Resolve-Path artifacts/snow-ocr-runtime-1.5.2-windows-x64.zip).Path)"
 ```
 
 The downloaded-runtime check copies the prepared archive and models through the
@@ -130,6 +133,27 @@ cancellation, session replacement,
 and hot start. `--validate-model-set <detector> <recognizer> <dictionary>` checks
 initialization independently. Performance measurements require a performance
 preset; do not use Debug or packaging presets for benchmarks.
+
+## Detector sizing validation
+
+Build the validation worker with the Release performance preset. Use the
+worker path from the configured Cargo target directory. The corpus script uses
+Python with Pillow and the Windows Segoe UI and Microsoft YaHei fonts.
+
+~~~powershell
+cmake --build --preset build-windows-msvc-performance --target snow_ocr_process_build
+python scripts/test-snow-shot-ocr-detection-sizing.py --output build/ocr-sizing `
+  --worker build/windows-msvc-performance/cargo/x86_64-pc-windows-msvc/release/snow-ocr-process.exe `
+  --models artifacts/ocr-models-ppocrv6-small-463ea9f
+~~~
+
+The comparison uses authored screenshot fixtures and reference transcriptions.
+It writes the frozen source images and annotations, per-request timings, peak
+host and GPU memory, per-height quality counts, and missed-line details to the
+output directory. Use the same worker and fixture set for both policies.
+Set the OCR text fixture and run `--downloaded-runtime` once with an empty cache
+and again with `SNOW_TEST_OCR_PREVIOUS_RUNTIME` pointing to an extracted 1.5.1
+worker next to its runtime manifest to exercise the upgrade path.
 
 ## On-demand paragraphs
 
