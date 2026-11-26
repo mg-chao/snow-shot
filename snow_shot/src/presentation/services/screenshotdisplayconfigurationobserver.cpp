@@ -3,6 +3,8 @@
 #include "icon_renderer.h"
 #ifdef Q_OS_WIN
 #include "../../platform/windows/displayrecoverywindow.h"
+#elif defined(Q_OS_MACOS)
+#include "../../platform/macos/displaywakeobserver.h"
 #endif
 
 #include <QGuiApplication>
@@ -25,6 +27,11 @@ void ScreenshotDisplayConfigurationObserver::connectApplicationSignals(
 #ifdef Q_OS_WIN
     m_recoveryWindow = std::make_unique<snow_shot::platform::windows::DisplayRecoveryWindow>(
         [this] { notifyChanged(Change::Recovery); });
+#elif defined(Q_OS_MACOS)
+    if (QGuiApplication::platformName() == u"cocoa") {
+        m_displayWakeObserver = snow_shot::platform::macos::observeDisplayWake(
+            [this] { notifyChanged(Change::Recovery); });
+    }
 #endif
 
     QObject::connect(application, &QGuiApplication::screenAdded, this,

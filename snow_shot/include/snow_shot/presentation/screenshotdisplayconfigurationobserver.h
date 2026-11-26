@@ -45,6 +45,8 @@ class ScreenshotDisplayConfigurationObserver final : public QObject {
     QSet<QScreen*> m_observedScreens;
 #ifdef Q_OS_WIN
     std::unique_ptr<snow_shot::platform::windows::DisplayRecoveryWindow> m_recoveryWindow;
+#elif defined(Q_OS_MACOS)
+    std::unique_ptr<QObject> m_displayWakeObserver;
 #endif
 };
 
