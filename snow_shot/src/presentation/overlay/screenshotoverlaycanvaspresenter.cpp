@@ -1,6 +1,7 @@
 #include "snow_shot/presentation/screenshotcursorimagesource.h"
 #include "snow_shot/presentation/screenshotoverlaycanvaspresenter.h"
 
+#include "snow_shot/platform/screenshotnative.h"
 #include "snow_shot/presentation/screenshotcanvastoolstyles.h"
 #include "snow_shot/presentation/screenshotcanvasrenderer.h"
 #include "snow_draw_engine_qt/snow_canvas_widget.h"
@@ -234,9 +235,18 @@ void showCapturedImageOverlayNow(ScreenshotOverlayWindow& overlay, bool framePac
     if (!showOverlayWindow(overlay, framePaced, generation)) {
         return;
     }
+    const QPointer<ScreenshotOverlayWindow> currentOverlay(&overlay);
     raiseOverlayWindow(overlay);
+#ifdef Q_OS_MACOS
+    // The initial image and selection have been painted. Submit the Cocoa
+    // transaction now so WindowServer can present the overlay this turn.
+    if (!framePaced && currentOverlay && currentOverlay->isPresentationCurrent(generation) &&
+        currentOverlay->isVisible()) {
+        snow_shot::platform::flushScreenshotPresentationTransactions(*currentOverlay);
+    }
+#endif
     // Cursor ownership follows the live pointer, independently of keyboard ownership.
-    commitInitialSelectionCursorOn(&overlay, generation);
+    commitInitialSelectionCursorOn(currentOverlay.data(), generation);
 }
 
 void showCapturedImageOverlayDeferred(ScreenshotOverlayWindow* overlay, bool framePaced,

@@ -1,4 +1,4 @@
-use crate::{MacError, MacResult, permission};
+use crate::{MacError, MacResult, deadline::Deadline, permission};
 use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2_core_foundation::{
@@ -13,7 +13,7 @@ use objc2_screen_capture_kit::*;
 use snow_media::geometry::{DesktopRect, DesktopSpace, PixelSize};
 use std::ptr::NonNull;
 use std::sync::{Arc, Condvar, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[derive(Clone, Debug)]
 pub struct DisplayInfo {
@@ -84,7 +84,7 @@ pub(crate) fn shareable_content_cancelable(
     timeout: Duration,
     cancellation: &crate::CancellationToken,
 ) -> MacResult<Retained<SCShareableContent>> {
-    shareable_content_cancelable_filtered(timeout, cancellation, false)
+    shareable_content_cancelable_filtered(Deadline::new(timeout)?, cancellation, false)
 }
 /// A popup may have a WindowServer ID before ScreenCaptureKit enumerates it.
 /// Retry on a preparation worker; never acknowledge a silently omitted exclusion.
@@ -93,15 +93,9 @@ pub(crate) fn shareable_content_with_required_windows(
     cancellation: &crate::CancellationToken,
     required: &[u32],
 ) -> MacResult<SharedSnapshot> {
-    let deadline = Instant::now()
-        .checked_add(timeout)
-        .ok_or_else(|| MacError::InvalidConfig("deadline overflow".into()))?;
+    let deadline = Deadline::new(timeout)?;
     loop {
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        if remaining.is_zero() {
-            return Err(MacError::Timeout);
-        }
-        let snapshot = shareable_content_cancelable_filtered(remaining, cancellation, false)?;
+        let snapshot = shareable_content_cancelable_filtered(deadline, cancellation, false)?;
         if has_required_windows(&snapshot, required) {
             return Ok(SharedSnapshot::new(snapshot));
         }
@@ -120,13 +114,14 @@ pub(crate) fn has_required_windows(content: &SCShareableContent, required: &[u32
     )
 }
 pub(crate) fn shareable_content_cancelable_filtered(
-    timeout: Duration,
+    deadline: Deadline,
     cancellation: &crate::CancellationToken,
     on_screen_windows_only: bool,
 ) -> MacResult<Retained<SCShareableContent>> {
     if cancellation.is_canceled() {
         return Err(MacError::Canceled);
     }
+    deadline.remaining()?;
     // Parallel monitor workers share one token. One WindowServer snapshot
     // serves every waiter; a different token never joins that request.
     static FLIGHT: Mutex<Option<Arc<ContentFlight>>> = Mutex::new(None);
@@ -139,7 +134,7 @@ pub(crate) fn shareable_content_cancelable_filtered(
             .cloned()
     };
     if let Some(flight) = existing {
-        return wait_for_content(&flight, timeout, cancellation);
+        return wait_for_content(&flight, deadline, cancellation);
     }
     let flight = Arc::new(ContentFlight {
         token,
@@ -155,11 +150,11 @@ pub(crate) fn shareable_content_cancelable_filtered(
         {
             let current = current.clone();
             drop(guard);
-            return wait_for_content(&current, timeout, cancellation);
+            return wait_for_content(&current, deadline, cancellation);
         }
         *guard = Some(flight.clone());
     }
-    let result = fetch_shareable_content(timeout, cancellation, false, on_screen_windows_only);
+    let result = fetch_shareable_content(deadline, cancellation, false, on_screen_windows_only);
     {
         let mut slot = flight
             .slot
@@ -182,12 +177,9 @@ pub(crate) fn shareable_content_cancelable_filtered(
 
 fn wait_for_content(
     flight: &ContentFlight,
-    timeout: Duration,
+    deadline: Deadline,
     cancellation: &crate::CancellationToken,
 ) -> MacResult<Retained<SCShareableContent>> {
-    let deadline = Instant::now()
-        .checked_add(timeout)
-        .ok_or_else(|| MacError::InvalidConfig("deadline overflow".into()))?;
     let mut slot = flight
         .slot
         .lock()
@@ -196,26 +188,20 @@ fn wait_for_content(
         if cancellation.is_canceled() {
             return Err(MacError::Canceled);
         }
+        let remaining = deadline.remaining()?;
         if let Some(result) = slot.as_ref() {
             return result.clone().map(|content| content.0.clone());
         }
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        if remaining.is_zero() {
-            return Err(MacError::Timeout);
-        }
-        let (guard, wait) = flight
+        let (guard, _) = flight
             .done
             .wait_timeout(slot, remaining.min(Duration::from_millis(50)))
             .unwrap_or_else(|error| error.into_inner());
         slot = guard;
-        if wait.timed_out() && deadline <= Instant::now() {
-            return Err(MacError::Timeout);
-        }
     }
 }
 
 pub(crate) fn fetch_shareable_content(
-    timeout: Duration,
+    deadline: Deadline,
     cancellation: &crate::CancellationToken,
     excluding_desktop_windows: bool,
     on_screen_windows_only: bool,
@@ -223,6 +209,7 @@ pub(crate) fn fetch_shareable_content(
     if cancellation.is_canceled() {
         return Err(MacError::Canceled);
     }
+    deadline.remaining()?;
     permission::check_access()?;
     let (tx, rx) = crossbeam_channel::bounded(1);
     let completion = RcBlock::new(
@@ -239,6 +226,7 @@ pub(crate) fn fetch_shareable_content(
             let _ = tx.try_send(result);
         },
     );
+    deadline.remaining()?;
     unsafe {
         SCShareableContent::getShareableContentExcludingDesktopWindows_onScreenWindowsOnly_completionHandler(
             excluding_desktop_windows,
@@ -246,7 +234,9 @@ pub(crate) fn fetch_shareable_content(
             &completion,
         );
     }
-    cancellation.wait_for(&rx, timeout)?.map(|value| value.0)
+    cancellation
+        .wait_for(&rx, deadline.remaining()?)?
+        .map(|value| value.0)
 }
 
 pub fn displays(timeout: Duration) -> MacResult<Vec<DisplayInfo>> {

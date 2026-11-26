@@ -2,11 +2,13 @@
 //! desktop points; native surfaces and per-source timestamps remain explicit.
 use crate::{
     MacError, MacResult,
-    capture::{CaptureConfig, NativeFrame, Target, VideoStream},
+    capture::{CaptureConfig, DisplaySnapshotFilter, NativeFrame, Target, VideoStream},
     compositor::{Compositor, Layer},
     content::{self, DisplayInfo, SharedSnapshot, WindowProbe},
+    deadline::Deadline,
     exclusion_update::{NativeUpdateBarrier, NativeUpdateProgress},
 };
+use objc2::rc::Retained;
 use objc2_screen_capture_kit::SCShareableContent;
 use snow_media::{
     CursorMode, DynamicRange, PixelFormat,
@@ -332,13 +334,15 @@ fn persistent_window_plan(
     Ok(plan)
 }
 impl Plan {
-    fn resolve(config: &DesktopConfig) -> MacResult<Self> {
-        let deadline = crate::deadline::Deadline::new(config.timeout)?;
-        let content = content::shareable_content_cancelable_filtered(
-            deadline.remaining()?,
+    fn content(config: &DesktopConfig) -> MacResult<Retained<SCShareableContent>> {
+        content::shareable_content_cancelable_filtered(
+            Deadline::new(config.timeout)?,
             &config.cancellation,
             !config.persistent_window,
-        )?;
+        )
+    }
+    fn resolve(config: &DesktopConfig) -> MacResult<Self> {
+        let content = Self::content(config)?;
         Self::resolve_with(config, &content)
     }
     fn resolve_with(config: &DesktopConfig, content: &SCShareableContent) -> MacResult<Self> {
@@ -416,6 +420,85 @@ impl Plan {
         }
     }
 }
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct DisplaySnapshotKey {
+    display_id: u32,
+    topology: u64,
+}
+
+struct DisplaySnapshotCache<F = DisplaySnapshotFilter> {
+    entry: Option<(DisplaySnapshotKey, F)>,
+}
+
+impl<F> DisplaySnapshotCache<F> {
+    fn capture<T>(
+        &mut self,
+        key: DisplaySnapshotKey,
+        mut capture: impl FnMut(&F) -> MacResult<T>,
+        prepare: impl FnOnce() -> MacResult<F>,
+    ) -> MacResult<T> {
+        if let Some((cached_key, filter)) = &self.entry
+            && *cached_key == key
+        {
+            match capture(filter) {
+                // The display may be retired before its layout callback arrives.
+                Err(MacError::Inactive | MacError::TargetUnavailable) => {}
+                result => return result,
+            }
+        }
+
+        // A failed replacement must leave the cache empty so the next request
+        // cannot reuse a filter already rejected by ScreenCaptureKit.
+        self.entry = None;
+        let filter = prepare()?;
+        let frame = capture(&filter)?;
+        self.entry = Some((key, filter));
+        Ok(frame)
+    }
+}
+
+fn complete_display_snapshot(config: &DesktopConfig, plan: &Plan) -> Option<u32> {
+    if !matches!(
+        config.target,
+        DesktopTarget::Display(_) | DesktopTarget::PrimaryDisplay
+    ) || !content::snapshot_uses_visible_windows(
+        &config.excluded_windows,
+        &config.excluded_processes,
+    ) {
+        return None;
+    }
+    match plan.sources.as_slice() {
+        [
+            SourcePlan {
+                target: Target::Display(id),
+                source: None,
+                ..
+            },
+        ] => Some(*id),
+        _ => None,
+    }
+}
+
+fn snapshot_content(
+    pending: &mut Option<SharedSnapshot>,
+    config: &DesktopConfig,
+    deadline: Deadline,
+) -> MacResult<SharedSnapshot> {
+    if let Some(content) = pending.take() {
+        return Ok(content);
+    }
+    content::shareable_content_cancelable_filtered(
+        deadline,
+        &config.cancellation,
+        content::snapshot_uses_visible_windows(
+            &config.excluded_windows,
+            &config.excluded_processes,
+        ),
+    )
+    .map(SharedSnapshot::new)
+}
+
 static TOPOLOGY: AtomicU64 = AtomicU64::new(1);
 fn topology() -> MacResult<u64> {
     static REGISTERED: OnceLock<bool> = OnceLock::new();
@@ -453,13 +536,24 @@ pub struct DesktopSession {
     inspected_at: Instant,
     window_probe: Option<WindowProbe>,
     pending_content: Option<SharedSnapshot>,
+    display_snapshot: Option<DisplaySnapshotCache>,
     exclusion_control: Option<ExclusionControl>,
     exclusion_flight: Option<ExclusionFlight>,
     required_excluded_windows: Vec<u32>,
     follow: Option<follow::FollowState>,
 }
 impl DesktopSession {
-    pub fn new(mut config: DesktopConfig) -> MacResult<Self> {
+    pub fn new(config: DesktopConfig) -> MacResult<Self> {
+        Self::new_internal(config, false)
+    }
+
+    /// Prepare an exclusion-free display filter alongside the initial layout.
+    /// The filter does not hold an open stream or retain any captured pixels.
+    pub fn new_for_snapshots(config: DesktopConfig) -> MacResult<Self> {
+        Self::new_internal(config, true)
+    }
+
+    fn new_internal(mut config: DesktopConfig, prepare_snapshot_filter: bool) -> MacResult<Self> {
         if config.cancellation.is_canceled() {
             return Err(MacError::Canceled);
         }
@@ -469,7 +563,25 @@ impl DesktopSession {
         config.excluded_processes.sort_unstable();
         config.excluded_processes.dedup();
         let topology = topology()?;
-        let mut plan = Plan::resolve(&config)?;
+        let layout_content = Plan::content(&config)?;
+        let mut plan = Plan::resolve_with(&config, &layout_content)?;
+        let display_snapshot = if prepare_snapshot_filter {
+            complete_display_snapshot(&config, &plan).map(|display_id| DisplaySnapshotCache {
+                entry: DisplaySnapshotFilter::new(&layout_content, display_id)
+                    .ok()
+                    .map(|filter| {
+                        (
+                            DisplaySnapshotKey {
+                                display_id,
+                                topology,
+                            },
+                            filter,
+                        )
+                    }),
+            })
+        } else {
+            None
+        };
         let mut pending_content = None;
         let follow = if config.follow_mouse {
             let (follow, content) = follow::FollowState::new(&config, &plan)?;
@@ -518,6 +630,7 @@ impl DesktopSession {
             inspected_at: Instant::now(),
             window_probe,
             pending_content,
+            display_snapshot,
             exclusion_control: None,
             exclusion_flight: None,
             required_excluded_windows: Vec::new(),
@@ -726,7 +839,7 @@ impl DesktopSession {
         self.topology = topology()?;
         Ok(())
     }
-    fn refresh(&mut self) -> MacResult<()> {
+    fn refresh(&mut self, deadline: Deadline) -> MacResult<()> {
         if self.follow.is_some() {
             return self.refresh_follow();
         }
@@ -758,10 +871,10 @@ impl DesktopSession {
             self.inspected_at = Instant::now();
             return Ok(());
         }
-        let deadline = crate::deadline::Deadline::new(self.config.timeout)?;
-        let content = content::shareable_content_cancelable(
-            deadline.remaining()?,
+        let content = content::shareable_content_cancelable_filtered(
+            deadline,
             &self.config.cancellation,
+            false,
         )?;
         // A prepared popup can disappear temporarily from discovery. Retain
         // the existing verified streams until replacements can include every ID.
@@ -868,7 +981,7 @@ impl DesktopSession {
     }
     fn next_event_inner(&mut self, timeout: Duration) -> MacResult<DesktopEvent> {
         self.poll_exclusions()?;
-        self.refresh()?;
+        self.refresh(Deadline::new(self.config.timeout)?)?;
         if std::mem::take(&mut self.configuration_pending) {
             return Ok(DesktopEvent::Configuration {
                 transform: self.plan.transform,
@@ -1045,24 +1158,9 @@ impl DesktopSession {
         self.complete(result)
     }
     fn snapshot_inner(&mut self) -> MacResult<DesktopFrame> {
-        let deadline = crate::deadline::Deadline::new(self.config.timeout)?;
-        self.refresh()?;
-        let content = match self.pending_content.take() {
-            Some(content) => content,
-            None => SharedSnapshot::new(content::shareable_content_cancelable_filtered(
-                deadline.remaining()?,
-                &self.config.cancellation,
-                content::snapshot_uses_visible_windows(
-                    &self.config.excluded_windows,
-                    &self.config.excluded_processes,
-                ),
-            )?),
-        };
-        for i in 0..self.plan.sources.len() {
-            let mut options = self.capture_config(i);
-            options.timeout = deadline.remaining()?;
-            self.latest[i] = Some(crate::capture::screenshot_with(&options, &content)?);
-        }
+        let deadline = Deadline::new(self.config.timeout)?;
+        self.refresh(deadline)?;
+        self.capture_snapshot_sources(deadline)?;
         if topology()? != self.topology {
             return Err(MacError::Inactive);
         }
@@ -1072,6 +1170,37 @@ impl DesktopSession {
         }
         deadline.remaining()?;
         Ok(result)
+    }
+    fn capture_snapshot_sources(&mut self, deadline: Deadline) -> MacResult<()> {
+        if let Some(cache) = &mut self.display_snapshot
+            && let Some(display_id) = complete_display_snapshot(&self.config, &self.plan)
+        {
+            let options = self.plan.capture_config(&self.config, 0);
+            let pending = &mut self.pending_content;
+            let config = &self.config;
+            let key = DisplaySnapshotKey {
+                display_id,
+                topology: self.topology,
+            };
+            let frame = cache.capture(
+                key,
+                |filter| filter.capture(&options, deadline),
+                || {
+                    let content = snapshot_content(pending, config, deadline)?;
+                    DisplaySnapshotFilter::new(&content, display_id)
+                },
+            )?;
+            self.latest[0] = Some(frame);
+            return Ok(());
+        }
+        let content = snapshot_content(&mut self.pending_content, &self.config, deadline)?;
+        for i in 0..self.plan.sources.len() {
+            let options = self.capture_config(i);
+            self.latest[i] = Some(crate::capture::screenshot_with(
+                &options, &content, deadline,
+            )?);
+        }
+        Ok(())
     }
     fn compose(&mut self) -> MacResult<DesktopFrame> {
         let size = self.plan.transform.output;
@@ -1379,10 +1508,132 @@ mod tests {
             inspected_at: Instant::now(),
             window_probe: None,
             pending_content: None,
+            display_snapshot: None,
             exclusion_control: None,
             exclusion_flight: None,
             required_excluded_windows: Vec::new(),
             follow: None,
+        }
+    }
+
+    #[test]
+    fn only_whole_display_snapshots_without_exclusions_use_a_cached_filter() {
+        let display = display(1, 0.0, 100.0, 2.0);
+        let mut plan = region_plan(display.bounds, std::slice::from_ref(&display), None).unwrap();
+        let mut config = DesktopConfig::new(DesktopTarget::Display(DisplayId(1)));
+        assert_eq!(complete_display_snapshot(&config, &plan), None);
+
+        plan.sources[0].source = None;
+        assert_eq!(complete_display_snapshot(&config, &plan), Some(1));
+        config.excluded_windows.push(42);
+        assert_eq!(complete_display_snapshot(&config, &plan), None);
+        config.excluded_windows.clear();
+        config.excluded_processes.push(7);
+        assert_eq!(complete_display_snapshot(&config, &plan), None);
+        config.excluded_processes.clear();
+        config.target = DesktopTarget::Region(display.bounds);
+        assert_eq!(complete_display_snapshot(&config, &plan), None);
+        config.target = DesktopTarget::Window(WindowId(42));
+        assert_eq!(complete_display_snapshot(&config, &plan), None);
+    }
+
+    #[test]
+    fn snapshot_filter_is_reused_until_the_display_or_topology_changes() {
+        let initial = DisplaySnapshotKey {
+            display_id: 1,
+            topology: 1,
+        };
+        let mut cache = DisplaySnapshotCache {
+            entry: Some((initial, 10)),
+        };
+        for _ in 0..2 {
+            let frame = cache
+                .capture(
+                    initial,
+                    |filter| Ok(*filter),
+                    || panic!("layout already prepared"),
+                )
+                .unwrap();
+            assert_eq!(frame, 10);
+        }
+
+        let changed_topology = DisplaySnapshotKey {
+            topology: 2,
+            ..initial
+        };
+        let changed_display = DisplaySnapshotKey {
+            display_id: 2,
+            ..changed_topology
+        };
+        for (key, expected) in [(changed_topology, 20), (changed_display, 30)] {
+            let frame = cache
+                .capture(key, |filter| Ok(*filter), || Ok(expected))
+                .unwrap();
+            assert_eq!(frame, expected);
+        }
+    }
+
+    #[test]
+    fn rejected_snapshot_filter_is_discarded_even_when_replacement_fails() {
+        let key = DisplaySnapshotKey {
+            display_id: 1,
+            topology: 1,
+        };
+        for rejection in [MacError::Inactive, MacError::TargetUnavailable] {
+            let mut cache = DisplaySnapshotCache {
+                entry: Some((key, 10)),
+            };
+            let mut submitted = Vec::new();
+            let result: MacResult<()> = cache.capture(
+                key,
+                |filter| {
+                    submitted.push(*filter);
+                    if *filter == 10 {
+                        Err(rejection.clone())
+                    } else {
+                        Err(MacError::Inactive)
+                    }
+                },
+                || Ok(20),
+            );
+            assert!(matches!(result, Err(MacError::Inactive)));
+            assert_eq!(submitted, [10, 20]);
+            assert_eq!(
+                cache.capture(key, |filter| Ok(*filter), || Ok(30)).unwrap(),
+                30
+            );
+            assert_eq!(
+                cache
+                    .capture(
+                        key,
+                        |filter| Ok(*filter),
+                        || panic!("replacement is reusable")
+                    )
+                    .unwrap(),
+                30
+            );
+        }
+    }
+
+    #[test]
+    fn snapshot_filter_does_not_retry_permission_or_cancellation_errors() {
+        let key = DisplaySnapshotKey {
+            display_id: 1,
+            topology: 1,
+        };
+        let mut cache = DisplaySnapshotCache {
+            entry: Some((key, 10)),
+        };
+        for error in [MacError::PermissionDenied, MacError::Canceled] {
+            let result = cache.capture::<()>(
+                key,
+                |_| Err(error.clone()),
+                || panic!("permission and cancellation do not trigger rediscovery"),
+            );
+            assert_eq!(
+                std::mem::discriminant(&result.unwrap_err()),
+                std::mem::discriminant(&error)
+            );
         }
     }
     #[test]

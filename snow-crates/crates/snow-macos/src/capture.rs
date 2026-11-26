@@ -1,4 +1,4 @@
-use crate::{MacError, MacResult, content::desktop_rect};
+use crate::{MacError, MacResult, content::desktop_rect, deadline::Deadline};
 use block2::RcBlock;
 use crossbeam_channel::{Receiver, Sender};
 use dispatch2::{DispatchQueue, DispatchRetained};
@@ -144,9 +144,90 @@ pub(crate) struct Prepared {
     pub(crate) config: Retained<SCStreamConfiguration>,
     color: ColorDescription,
 }
+
+pub(crate) struct DisplaySnapshotFilter(Retained<SCContentFilter>);
+// SAFETY: This wrapper exposes only the exclusion-free filter constructed below.
+// Rust never mutates it or exposes it to a stream update. ScreenCaptureKit accepts
+// the filter for asynchronous screenshot capture, so native work can outlive the
+// caller's reference. Moving the wrapper transfers ownership of an immutable
+// NSObject reference, including its final release, without moving an active stream.
+unsafe impl Send for DisplaySnapshotFilter {}
+
+impl DisplaySnapshotFilter {
+    pub(crate) fn new(content: &SCShareableContent, display_id: u32) -> MacResult<Self> {
+        display_filter(content, display_id, &[], &[]).map(Self)
+    }
+
+    pub(crate) fn capture(
+        &self,
+        options: &CaptureConfig,
+        deadline: Deadline,
+    ) -> MacResult<NativeFrame> {
+        if options.cancellation.is_canceled() {
+            return Err(MacError::Canceled);
+        }
+        deadline.remaining()?;
+        crate::permission::check_access()?;
+        validate_stream_options(options)?;
+        let prepared = prepare_configuration(options, self.0.clone())?;
+        screenshot_prepared(options, prepared, deadline)
+    }
+}
+
 fn excluded_window_is_exception(window_excluded: bool, application_excluded: bool) -> bool {
     window_excluded && !application_excluded
 }
+
+fn display_filter(
+    content: &SCShareableContent,
+    id: u32,
+    excluded_windows: &[u32],
+    excluded_processes: &[i32],
+) -> MacResult<Retained<SCContentFilter>> {
+    unsafe {
+        let display = content
+            .displays()
+            .iter()
+            .find(|display| display.displayID() == id)
+            .ok_or(MacError::TargetUnavailable)?;
+        let applications: Vec<_> = if excluded_processes.is_empty() {
+            Vec::new()
+        } else {
+            content
+                .applications()
+                .iter()
+                .filter(|app| excluded_processes.contains(&app.processID()))
+                .collect()
+        };
+        // Exceptions toggle application membership. Excluding a window of an
+        // already excluded application would otherwise include it.
+        let exceptions: Vec<_> = if excluded_windows.is_empty() {
+            Vec::new()
+        } else {
+            content
+                .windows()
+                .iter()
+                .filter(|window| {
+                    excluded_window_is_exception(
+                        excluded_windows.contains(&window.windowID()),
+                        window
+                            .owningApplication()
+                            .is_some_and(|app| excluded_processes.contains(&app.processID())),
+                    )
+                })
+                .collect()
+        };
+        Ok(
+            SCContentFilter::initWithDisplay_excludingApplications_exceptingWindows(
+                SCContentFilter::alloc(),
+                &display,
+                &NSArray::from_retained_slice(&applications),
+                &NSArray::from_retained_slice(&exceptions),
+            ),
+        )
+    }
+}
+
 pub(crate) fn prepare(options: &CaptureConfig) -> MacResult<Prepared> {
     let content =
         crate::content::shareable_content_cancelable(options.timeout, &options.cancellation)?;
@@ -154,7 +235,7 @@ pub(crate) fn prepare(options: &CaptureConfig) -> MacResult<Prepared> {
 }
 pub(crate) fn prepare_with(
     options: &CaptureConfig,
-    content: &objc2_screen_capture_kit::SCShareableContent,
+    content: &SCShareableContent,
 ) -> MacResult<Prepared> {
     if options.excluded_windows.len() > 4096 || options.excluded_processes.len() > 4096 {
         return Err(MacError::InvalidConfig(
@@ -168,6 +249,27 @@ pub(crate) fn prepare_with(
             "exclusions apply only to display capture".into(),
         ));
     }
+    validate_stream_options(options)?;
+    let filter = match options.target {
+        Target::Display(id) => display_filter(
+            content,
+            id,
+            &options.excluded_windows,
+            &options.excluded_processes,
+        )?,
+        Target::Window(id) => unsafe {
+            let window = content
+                .windows()
+                .iter()
+                .find(|v| v.windowID() == id && (options.persistent_window || v.isOnScreen()))
+                .ok_or(MacError::TargetUnavailable)?;
+            SCContentFilter::initWithDesktopIndependentWindow(SCContentFilter::alloc(), &window)
+        },
+    };
+    prepare_configuration(options, filter)
+}
+
+fn validate_stream_options(options: &CaptureConfig) -> MacResult<()> {
     if options.frames_per_second == 0
         || options.frames_per_second > 240
         || options.timeout.is_zero()
@@ -181,54 +283,14 @@ pub(crate) fn prepare_with(
             "ScreenCaptureKit HDR requires Apple Silicon".into(),
         ));
     }
+    Ok(())
+}
+
+fn prepare_configuration(
+    options: &CaptureConfig,
+    filter: Retained<SCContentFilter>,
+) -> MacResult<Prepared> {
     unsafe {
-        let filter = match options.target {
-            Target::Display(id) => {
-                let display = content
-                    .displays()
-                    .iter()
-                    .find(|v| v.displayID() == id)
-                    .ok_or(MacError::TargetUnavailable)?;
-                let applications: Vec<_> = content
-                    .applications()
-                    .iter()
-                    .filter(|app| options.excluded_processes.contains(&app.processID()))
-                    .collect();
-                // Exceptions toggle application membership. Excluding a window
-                // of an already excluded application would otherwise INCLUDE it.
-                let excluded: Vec<_> = content
-                    .windows()
-                    .iter()
-                    .filter(|window| {
-                        excluded_window_is_exception(
-                            options.excluded_windows.contains(&window.windowID()),
-                            window.owningApplication().is_some_and(|app| {
-                                options.excluded_processes.contains(&app.processID())
-                            }),
-                        )
-                    })
-                    .collect();
-                SCContentFilter::initWithDisplay_excludingApplications_exceptingWindows(
-                    SCContentFilter::alloc(),
-                    &display,
-                    &NSArray::from_retained_slice(&applications),
-                    &NSArray::from_retained_slice(&excluded),
-                )
-            }
-            Target::Window(id) => {
-                if !options.excluded_windows.is_empty() || !options.excluded_processes.is_empty() {
-                    return Err(MacError::InvalidConfig(
-                        "exclusions apply only to display capture".into(),
-                    ));
-                }
-                let window = content
-                    .windows()
-                    .iter()
-                    .find(|v| v.windowID() == id && (options.persistent_window || v.isOnScreen()))
-                    .ok_or(MacError::TargetUnavailable)?;
-                SCContentFilter::initWithDesktopIndependentWindow(SCContentFilter::alloc(), &window)
-            }
-        };
         let scale = f64::from(filter.pointPixelScale());
         let mut bounds = desktop_rect(filter.contentRect());
         if let Some(source) = options.source {
@@ -306,25 +368,32 @@ pub(crate) fn prepare_with(
 }
 
 pub fn screenshot(options: &CaptureConfig) -> MacResult<NativeFrame> {
-    let deadline = crate::deadline::Deadline::new(options.timeout)?;
+    let deadline = Deadline::new(options.timeout)?;
     let content = crate::content::shareable_content_cancelable_filtered(
-        deadline.remaining()?,
+        deadline,
         &options.cancellation,
         crate::content::snapshot_uses_visible_windows(
             &options.excluded_windows,
             &options.excluded_processes,
         ),
     )?;
-    let mut options = options.clone();
-    options.timeout = deadline.remaining()?;
-    screenshot_with(&options, &content)
+    screenshot_with(options, &content, deadline)
 }
 pub(crate) fn screenshot_with(
     options: &CaptureConfig,
-    content: &objc2_screen_capture_kit::SCShareableContent,
+    content: &SCShareableContent,
+    deadline: Deadline,
 ) -> MacResult<NativeFrame> {
-    let deadline = crate::deadline::Deadline::new(options.timeout)?;
+    deadline.remaining()?;
     let prepared = prepare_with(options, content)?;
+    screenshot_prepared(options, prepared, deadline)
+}
+
+fn screenshot_prepared(
+    options: &CaptureConfig,
+    prepared: Prepared,
+    deadline: Deadline,
+) -> MacResult<NativeFrame> {
     let (tx, rx) = crossbeam_channel::bounded(1);
     let color = prepared.color;
     let completion = RcBlock::new(move |sample: *mut CMSampleBuffer, error: *mut NSError| {
@@ -340,6 +409,10 @@ pub(crate) fn screenshot_with(
         };
         let _ = tx.try_send(result);
     });
+    if options.cancellation.is_canceled() {
+        return Err(MacError::Canceled);
+    }
+    deadline.remaining()?;
     unsafe {
         SCScreenshotManager::captureSampleBufferWithFilter_configuration_completionHandler(
             &prepared.filter,
