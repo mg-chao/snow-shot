@@ -94,6 +94,7 @@ class ScreenshotCaptureWorkflow final : private ScreenshotCaptureWorkerEventSink
     void destroyUiSelectorService();
     void shutdownCaptureWorker();
     void handleDisplayConfigurationChanged();
+    void handleDisplayRecovery();
 
   private:
     void clearCapturePresentationReadiness();
@@ -115,7 +116,7 @@ class ScreenshotCaptureWorkflow final : private ScreenshotCaptureWorkerEventSink
     void handleLayoutRefreshed(quint64 requestId, bool ok) override;
     void prewarmOverlayPool();
     void initializeIdleResources(quint64 requestId);
-    void scheduleLayoutRefresh(quint64 refreshId);
+    void scheduleLayoutRefresh();
     void resetCanvasRuntimeState();
     [[nodiscard]] bool capturePresentationPrepared(quint64 sessionId) const;
 
@@ -130,13 +131,13 @@ class ScreenshotCaptureWorkflow final : private ScreenshotCaptureWorkerEventSink
     bool m_captureModelsClean = false;
     bool m_canvasRuntimeClean = false;
     bool m_deferredExportCleanup = false;
-    bool m_layoutRefreshInFlight = false;
-    bool m_refreshAfterCapture = false;
     bool m_recaptureInProgress = false;
     bool m_captureSuspended = false;
     quint64 m_recaptureRequestId = 0;
     quint64 m_nextRecaptureRequestId = 0;
-    quint64 m_layoutChangeSerial = 0;
+    quint64 m_layoutRevision = 0;
+    quint64 m_appliedLayoutRevision = 0;
+    quint64 m_layoutRefreshInFlight = 0;
     StartMode m_startMode = StartMode::Normal;
     ToolbarPreparation m_toolbarPreparation = ToolbarPreparation::Prewarm;
     ToolbarVisibility m_toolbarVisibility = ToolbarVisibility::ShowAfterSelection;

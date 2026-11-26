@@ -49,6 +49,9 @@ namespace {
 int created = 0;
 int destroyed = 0;
 int captured = 0;
+int layoutRefreshes = 0;
+int preparations = 0;
+bool failLayoutRefresh = false;
 int leases = 0;
 bool failCreation = false;
 bool failCapture = false;
@@ -84,10 +87,11 @@ void setMode(const char* mode) {
             "failed to update screenshot API mode");
 }
 
-ScreenshotCaptureResult capture(ScreenshotCaptureWorker& worker, bool restoreColors = false,
-                                bool captureCursor = false,
-                                std::shared_ptr<SnowCaptureCursorSnapshot> cursorSnapshot = {},
-                                const QVector<std::uint32_t>& excludedWindowIds = {}) {
+ScreenshotCaptureResult
+capture(ScreenshotCaptureWorker& worker, bool restoreColors = false, bool captureCursor = false,
+        std::shared_ptr<SnowCaptureCursorSnapshot> cursorSnapshot = {},
+        const QVector<std::uint32_t>& excludedWindowIds = {}, quint64 layoutRevision = 0,
+        ScreenshotCapturePurpose purpose = ScreenshotCapturePurpose::Initial) {
     ScreenshotCaptureCoordinator coordinator;
     ScreenshotCaptureResult result;
     bool received = false;
@@ -111,11 +115,15 @@ ScreenshotCaptureResult capture(ScreenshotCaptureWorker& worker, bool restoreCol
     request.captureCursor = captureCursor;
     request.cursorSnapshot = std::move(cursorSnapshot);
     request.excludedWindowIds = excludedWindowIds;
+    request.layoutRevision = layoutRevision;
+    request.purpose = purpose;
     worker.capture(request, &coordinator, nullptr);
     QCoreApplication::sendPostedEvents(&coordinator);
-    require(received && result.requestId == request.requestId, "capture result was not delivered");
-    require(!result.succeeded || layouts == 1,
-            "successful initial capture must publish exactly one layout");
+    require(received && result.requestId == request.requestId &&
+                result.layoutRevision == layoutRevision,
+            "capture result lost its request or layout revision");
+    require(!result.succeeded || layouts == (purpose == ScreenshotCapturePurpose::Initial ? 1 : 0),
+            "only an initial capture publishes a layout before the frames");
     return result;
 }
 
@@ -259,6 +267,51 @@ void failedReplacementDoesNotCaptureWithOldBackend() {
     require(captured == previousCaptured, "failed replacement captured with the stale backend");
     requireBackend(worker, backendFor("gdi"));
 }
+
+#ifdef Q_OS_WIN
+void displayRecoveryMovesPreparationOffTheHotkey() {
+    setMode("gdi");
+    ScreenshotCaptureWorker worker;
+    const int initialCaptures = captured;
+    const int initialPreparations = preparations;
+    worker.refreshLayout(8, {});
+    require(captured == initialCaptures && preparations == initialPreparations + 1,
+            "idle recovery must prepare the backend without sampling the screen");
+    int before = layoutRefreshes;
+    require(capture(worker, false, false, {}, {}, 8).succeeded && layoutRefreshes == before &&
+                captured == initialCaptures + 1,
+            "the queued hotkey must use the refreshed layout and acquire its own frame");
+    worker.refreshLayout(9, {});
+    before = layoutRefreshes;
+    const int beforeCapturing = preparations;
+    require(capture(worker, false, false, {}, {}, 10).succeeded && layoutRefreshes == before + 1 &&
+                preparations == beforeCapturing + 1,
+            "a newer display change must force another layout snapshot");
+    require(capture(worker, false, false, {}, {}, 10).succeeded && layoutRefreshes == before + 1,
+            "successive captures of an applied revision must reuse the session layout");
+    require(
+        capture(worker, false, false, {}, {}, 10, ScreenshotCapturePurpose::Recapture).succeeded &&
+            (capturedFlags & SNOW_CAPTURE_SCREENSHOT_REQUEST_REFRESH_LAYOUT),
+        "recapture must force native enumeration even for an already applied revision");
+    failLayoutRefresh = true;
+    worker.refreshLayout(11, {});
+    failLayoutRefresh = false;
+    before = layoutRefreshes;
+    require(capture(worker, false, false, {}, {}, 11).succeeded && layoutRefreshes == before + 1,
+            "failed background enumeration must be retried at capture");
+    worker.refreshLayout(12, {});
+    setMode("wgc");
+    before = layoutRefreshes;
+    require(capture(worker, false, false, {}, {}, 12).succeeded && layoutRefreshes == before + 1,
+            "a replacement session must not inherit another session's refresh");
+    failPreparation = true;
+    worker.refreshLayout(13, {});
+    failPreparation = false;
+    const int oldSessions = created;
+    require(capture(worker, false, false, {}, {}, 13).succeeded && created == oldSessions + 1,
+            "failed backend recovery must allow capture to create a usable session");
+}
+#endif
 
 void modeChangeAfterCaptureFailurePreservesRetainedFrame() {
     setMode("dxgi");
@@ -434,8 +487,8 @@ void cursorCompositionFailureStillPublishesCleanImage() {
 extern "C" {
 SnowCaptureDesktopLayout*
 snow_capture_desktop_session_layout_snapshot(SnowCaptureDesktopSession* session, uint8_t refresh) {
-    if (refresh)
-        snow_capture_desktop_session_refresh_layout(session);
+    if (refresh && !snow_capture_desktop_session_refresh_layout(session))
+        return nullptr;
     return new SnowCaptureDesktopLayout;
 }
 void snow_capture_desktop_layout_destroy(SnowCaptureDesktopLayout* layout) {
@@ -491,6 +544,7 @@ void snow_capture_desktop_session_destroy(SnowCaptureDesktopSession* session) {
 }
 
 uint8_t snow_capture_desktop_session_prepare(SnowCaptureDesktopSession* session) {
+    ++preparations;
     preparedBackend = session->config.capture_backend;
     if (failPreparation) {
         lastError = "injected native preparation failure";
@@ -508,8 +562,14 @@ uint8_t snow_capture_desktop_session_state(SnowCaptureDesktopSession* session,
 }
 
 uint8_t snow_capture_desktop_session_refresh_layout(SnowCaptureDesktopSession* session) {
+    ++layoutRefreshes;
     refreshedBackend = session->config.capture_backend;
-    return 1;
+    return !failLayoutRefresh;
+}
+
+uint8_t snow_capture_desktop_session_recover(SnowCaptureDesktopSession* session) {
+    return snow_capture_desktop_session_refresh_layout(session) &&
+           snow_capture_desktop_session_prepare(session);
 }
 
 uint8_t snow_capture_desktop_session_reset_to_prepared(SnowCaptureDesktopSession* session) {
@@ -659,6 +719,9 @@ int main(int argc, char** argv) {
     colorRestorationAppliesAcrossBackendChanges();
     cursorCaptureAppliesAcrossBackendChanges();
     preparationAndLayoutRefreshUseCurrentMode();
+#ifdef Q_OS_WIN
+    displayRecoveryMovesPreparationOffTheHotkey();
+#endif
     failedReplacementDoesNotCaptureWithOldBackend();
     modeChangeAfterCaptureFailurePreservesRetainedFrame();
     failedPreparationRebuildsSessionForCapture();

@@ -28,12 +28,14 @@ class ScreenshotCaptureWorker final : public QObject {
     bool ensureSession(const QVector<std::uint32_t>& excludedWindowIds = {});
     bool sessionPrepared() const;
     bool prepareSessionIfNeeded();
+    bool applyLayoutRevision(quint64 revision);
     static void postPrepared(quint64 requestId,
                              const QPointer<ScreenshotCaptureCoordinator>& coordinator, bool ok);
     static void postCaptureResult(const QPointer<ScreenshotCaptureCoordinator>& coordinator,
                                   ScreenshotCaptureResult result);
 
     SnowCaptureDesktopSession* m_session = nullptr;
+    quint64 m_layoutRevision = 0;
     std::uint8_t m_sessionBackend = 0;
     QVector<std::uint32_t> m_sessionExcludedWindowIds;
 };

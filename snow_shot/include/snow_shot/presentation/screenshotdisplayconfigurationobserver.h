@@ -7,6 +7,13 @@
 #include <Qt>
 
 #include <functional>
+#include <memory>
+
+#ifdef Q_OS_WIN
+namespace snow_shot::platform::windows {
+class DisplayRecoveryWindow;
+}
+#endif
 
 class QGuiApplication;
 class QRect;
@@ -14,10 +21,12 @@ class QScreen;
 
 class ScreenshotDisplayConfigurationObserver final : public QObject {
   public:
-    using ChangeHandler = std::function<void()>;
+    enum class Change { Configuration, Recovery };
+    using ChangeHandler = std::function<void(Change)>;
 
     explicit ScreenshotDisplayConfigurationObserver(ChangeHandler onChanged,
                                                     QObject* parent = nullptr);
+    ~ScreenshotDisplayConfigurationObserver() override;
 
     void connectApplicationSignals(QGuiApplication* application);
     void observeCurrentScreens();
@@ -30,10 +39,13 @@ class ScreenshotDisplayConfigurationObserver final : public QObject {
     void handleObservedScreenChanged();
 
   private:
-    void notifyChanged();
+    void notifyChanged(Change change = Change::Configuration);
 
     ChangeHandler m_onChanged;
     QSet<QScreen*> m_observedScreens;
+#ifdef Q_OS_WIN
+    std::unique_ptr<snow_shot::platform::windows::DisplayRecoveryWindow> m_recoveryWindow;
+#endif
 };
 
 #endif // SNOW_SHOT_PRESENTATION_SCREENSHOTDISPLAYCONFIGURATIONOBSERVER_H

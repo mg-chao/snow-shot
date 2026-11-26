@@ -54,7 +54,7 @@ enum class ScreenshotCapturePurpose {
 
 struct ScreenshotCaptureRequest {
     quint64 requestId = 0;
-    bool refreshLayout = false;
+    quint64 layoutRevision = 0;
     bool restoreOriginalScreenColors = false;
     bool captureCursor = false;
     ScreenshotCapturePurpose purpose = ScreenshotCapturePurpose::Initial;
@@ -100,6 +100,7 @@ struct ScreenshotCaptureLayout {
 
 struct ScreenshotCaptureResult {
     quint64 requestId = 0;
+    quint64 layoutRevision = 0;
     QVector<CapturedDisplayModel> displays;
     QString errorMessage;
     bool succeeded = false;

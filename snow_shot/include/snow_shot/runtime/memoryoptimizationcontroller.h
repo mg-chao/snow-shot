@@ -2,6 +2,7 @@
 #define SNOW_SHOT_RUNTIME_MEMORYOPTIMIZATIONCONTROLLER_H
 
 #include "snow_shot/runtime/runtimeactivitytracker.h"
+#include <QFutureWatcher>
 #include <QObject>
 #include <QTimer>
 #include <optional>
@@ -29,16 +30,22 @@ struct MemoryTrimReport {
 class MemoryOptimizationController final : public QObject {
   public:
     struct Options {
+        // Also used by the worker to timestamp the actual trim attempt.
         RuntimeActivityTracker::Clock clock = [] { return std::chrono::steady_clock::now(); };
         std::function<bool()> enabled;
         std::function<bool()> safe;
         std::function<std::optional<bool>()> lowMemory;
+        // Sampling is serialized across threads. The controller takes the initial sample;
+        // the worker trims and takes the final sample. Worker callbacks must outlive the work.
         std::function<std::optional<ProcessMemorySample>()> sample;
         std::function<MemoryTrimResult()> trim;
+        // GUI-owned cache preparation happens before dispatching the worker.
+        std::function<void()> prepare;
         std::function<void(const MemoryTrimReport&)> report;
     };
     MemoryOptimizationController(RuntimeActivityTracker& activity, Options options,
                                  QObject* parent = nullptr);
+    ~MemoryOptimizationController() override;
     void synchronizePolicy();
     void evaluate();
     void stop();
@@ -47,7 +54,12 @@ class MemoryOptimizationController final : public QObject {
     }
 
   private:
+    struct TrimAttempt {
+        RuntimeActivityTracker::TimePoint startedAt;
+        MemoryTrimReport report;
+    };
     bool eventFilter(QObject* watched, QEvent* event) override;
+    void finishTrim();
     RuntimeActivityTracker& m_activity;
     Options m_options;
     QTimer m_timer;
@@ -55,6 +67,9 @@ class MemoryOptimizationController final : public QObject {
     RuntimeActivityTracker::TimePoint m_policyChanged;
     std::optional<RuntimeActivityTracker::TimePoint> m_lastAttempt;
     std::optional<std::uint64_t> m_attemptedIdlePeriod;
+    std::optional<std::uint64_t> m_preparedIdlePeriod;
+    std::optional<std::uint64_t> m_pendingIdlePeriod;
+    QFutureWatcher<std::optional<TrimAttempt>> m_trimWatcher;
     bool m_enabled = false;
     bool m_blocked = true;
     bool m_stopped = false;

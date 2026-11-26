@@ -712,18 +712,21 @@ The shell wrapper also sets Xcode libclang discovery for Rust bindgen.
 ### Idle memory optimization
 
 Both editions expose **Memory Optimization Policy** under **General > Application
-performance**. **Smart Control** is the default; **Disabled** stops automatic
-reclamation immediately. On macOS, Smart Control calls
+performance**. **Smart Control** is the default. **Disabled** prevents new
+reclamation attempts. On macOS, Smart Control calls
 `malloc_zone_pressure_relief(nullptr, 0)` to return unused allocator pages to the
 system. On Windows, Smart Control uses `HeapOptimizeResources` to reclaim unused
 low-fragmentation heap pages. Both operations are best-effort and may release
 zero bytes.
 
-The controller waits for background idle time, blocks reclamation during active
-work or UI interaction, and limits attempts to one per idle period with a
-five-minute cooldown. Memory pressure notifications shorten the idle wait after
-the initial startup grace. Logs report macOS physical footprint (including
-compressed memory) and allocator-reported released bytes separately.
+The controller waits for background idle time and clears export caches on the UI
+thread once per eligible idle period. If the worker pool is busy, the controller
+tries again on a later check. The worker rechecks activity before it calls the
+allocator. Work and input can resume while an admitted reclamation finishes. The
+controller limits attempts to one per idle period with a five-minute cooldown.
+Memory pressure notifications shorten the idle wait after the initial startup
+grace. Logs report macOS physical footprint (including compressed memory) and
+allocator-reported released bytes separately.
 
 Focused checks:
 

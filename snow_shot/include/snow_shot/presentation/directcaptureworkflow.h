@@ -1,6 +1,7 @@
 #ifndef SNOW_SHOT_PRESENTATION_DIRECTCAPTUREWORKFLOW_H
 #define SNOW_SHOT_PRESENTATION_DIRECTCAPTUREWORKFLOW_H
 
+#include "snow_shot/presentation/capture/screenshotcapturepolicy.h"
 #include "snow_shot/presentation/screenshotpdfexport.h"
 #include "snow_shot/presentation/screenshotimagefileservice.h"
 #include "snow_shot/presentation/screenshothidpiimagescaling.h"
@@ -51,7 +52,7 @@ struct DirectCaptureRequest {
     bool restoreOriginalScreenColors = false;
     bool shutterSoundNotification = true;
     bool captureCursor = false;
-    quint8 captureBackend = 0;
+    capture::ScreenshotApiMode apiMode = capture::ScreenshotApiMode::Auto;
     // Called on native capture threads with the fixed target's geometry before allocation.
     std::function<bool(QSize)> admitRaster;
     QString hiDpiImageScaling = QStringLiteral("disabled");

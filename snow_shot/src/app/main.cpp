@@ -31,7 +31,6 @@
 #include "startupregistrationreport.h"
 #include "updateprobe.h"
 #include "snow_shot/storage/settingsadapters.h"
-#include "snow_shot/presentation/capture/screenshotcapturepolicy.h"
 #include "../presentation/capture/screenshotcaptureperfinstrumentation.h"
 #include "../presentation/capture/screenshotscrollingpipeline.h"
 #include "../presentation/pinned/screenshotpintoperfinstrumentation.h"
@@ -615,7 +614,6 @@ int main(int argc, char* argv[]) {
             {{QStringLiteral("count"), QGuiApplication::screens().size()}});
     });
 #endif
-    static_cast<void>(snow_shot::presentation::capture::resolveAutoScreenshotApiMode());
 #if defined(SNOW_SHOT_PIN_PERF_INSTRUMENTATION)
     snow_shot::presentation::pin_perf::configureTrace(
         qEnvironmentVariable("SNOW_SHOT_PIN_PERF_TRACE"));

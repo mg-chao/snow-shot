@@ -58,9 +58,22 @@ void ScreenshotCaptureWorker::prepare(quint64 requestId,
     postPrepared(requestId, coordinator, ok);
 }
 
+bool ScreenshotCaptureWorker::applyLayoutRevision(quint64 revision) {
+#ifdef Q_OS_WIN
+    const bool ok = snow_capture_desktop_session_recover(m_session) != 0;
+    if (!ok)
+        snow_capture_desktop_session_destroy(std::exchange(m_session, nullptr));
+#else
+    const bool ok = snow_capture_desktop_session_refresh_layout(m_session) != 0;
+#endif
+    if (ok)
+        m_layoutRevision = revision;
+    return ok;
+}
+
 void ScreenshotCaptureWorker::refreshLayout(
     quint64 requestId, const QPointer<ScreenshotCaptureCoordinator>& coordinator) {
-    const bool ok = ensureSession() && snow_capture_desktop_session_refresh_layout(m_session) != 0;
+    const bool ok = ensureSession() && applyLayoutRevision(requestId);
     if (!coordinator.isNull()) {
         QMetaObject::invokeMethod(
             coordinator, snow_shot::runtime::trackRuntimeWork([coordinator, requestId, ok]() {
@@ -78,6 +91,7 @@ void ScreenshotCaptureWorker::capture(const ScreenshotCaptureRequest& request,
     SNOW_SHOT_CAPTURE_PERF_MILESTONE("capture.worker_entry");
     ScreenshotCaptureResult captureResult;
     captureResult.requestId = request.requestId;
+    captureResult.layoutRevision = request.layoutRevision;
     captureResult.purpose = request.purpose;
     if (!ensureSession(request.excludedWindowIds)) {
         captureResult.errorMessage = nativeCaptureError("Failed to create desktop capture session");
@@ -85,13 +99,18 @@ void ScreenshotCaptureWorker::capture(const ScreenshotCaptureRequest& request,
         return;
     }
     SNOW_SHOT_CAPTURE_PERF_MILESTONE("capture.session_ready");
+    const bool revisionChanged = request.layoutRevision != m_layoutRevision;
+    if (revisionChanged && !applyLayoutRevision(request.layoutRevision)) {
+        captureResult.errorMessage = nativeCaptureError("Failed to snapshot desktop layout");
+        postCaptureResult(coordinator, std::move(captureResult));
+        return;
+    }
 
     std::unique_ptr<SnowCaptureDesktopLayout, decltype(&snow_capture_desktop_layout_destroy)>
         layout(nullptr, snow_capture_desktop_layout_destroy);
     if (request.purpose == ScreenshotCapturePurpose::Initial) {
         SNOW_SHOT_CAPTURE_PERF_SCOPE("capture.layout_snapshot");
-        layout.reset(
-            snow_capture_desktop_session_layout_snapshot(m_session, request.refreshLayout ? 1 : 0));
+        layout.reset(snow_capture_desktop_session_layout_snapshot(m_session, 0));
         if (!layout) {
             captureResult.errorMessage = nativeCaptureError("Failed to snapshot desktop layout");
             postCaptureResult(coordinator, std::move(captureResult));
@@ -156,8 +175,8 @@ void ScreenshotCaptureWorker::capture(const ScreenshotCaptureRequest& request,
     SnowCaptureScreenshotRequest nativeRequest{};
     nativeRequest.version = SNOW_CAPTURE_SCREENSHOT_REQUEST_VERSION;
     nativeRequest.struct_size = sizeof(nativeRequest);
-    nativeRequest.flags =
-        request.refreshLayout && !layout ? SNOW_CAPTURE_SCREENSHOT_REQUEST_REFRESH_LAYOUT : 0;
+    if (request.purpose == ScreenshotCapturePurpose::Recapture && !revisionChanged)
+        nativeRequest.flags = SNOW_CAPTURE_SCREENSHOT_REQUEST_REFRESH_LAYOUT;
     if (request.restoreOriginalScreenColors) {
         nativeRequest.flags |= SNOW_CAPTURE_SCREENSHOT_REQUEST_RESTORE_ORIGINAL_COLORS;
     }
@@ -279,6 +298,7 @@ bool ScreenshotCaptureWorker::ensureSession(const QVector<std::uint32_t>& exclud
     }
 
     // Backend policy and exclusions are fixed at creation, including for prewarmed sessions.
+    m_layoutRevision = 0;
     if (m_session != nullptr) {
         snow_capture_desktop_session_destroy(m_session);
         m_session = nullptr;

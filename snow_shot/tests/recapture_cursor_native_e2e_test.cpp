@@ -325,7 +325,6 @@ ScreenshotCaptureResult capture(ScreenshotCaptureCoordinator& coordinator) {
                          });
     ScreenshotCaptureRequest request;
     request.requestId = 1;
-    request.refreshLayout = true;
     request.captureCursor = true;
     request.purpose = ScreenshotCapturePurpose::Recapture;
     coordinator.captureAsync(request);

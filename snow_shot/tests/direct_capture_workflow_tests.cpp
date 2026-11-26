@@ -156,17 +156,17 @@ void outputsKeepRawPixelsAndProcessEveryRequest() {
     first.encoding.quality = 35;
     first.encoding.compressionLevel = ScreenshotCompressionLevel::High;
     first.filenameFormat = QStringLiteral("first");
-    first.captureBackend = 3;
+    first.apiMode = capture::ScreenshotApiMode::Gdi;
     f.workflow.enqueue(first);
     DirectCaptureRequest second;
     require(second.encoding.compressionLevel == ScreenshotCompressionLevel::Medium,
             "direct capture requests must default to medium file compression");
     second.monitorName = QStringLiteral("second-monitor");
-    second.captureBackend = 2;
+    second.apiMode = capture::ScreenshotApiMode::Auto;
     f.workflow.enqueue(second);
-    second.captureBackend = 1;
+    second.apiMode = capture::ScreenshotApiMode::Dxgi;
     require(f.requests.size() == 1 && f.requests.front().window == 1234 &&
-                f.requests.front().captureBackend == 3 &&
+                f.requests.front().apiMode == capture::ScreenshotApiMode::Gdi &&
                 f.requests.front().screenshotType() ==
                     snow_shot::storage::ScreenshotType::FocusedWindow,
             "FIFO target snapshot lost");
@@ -179,7 +179,7 @@ void outputsKeepRawPixelsAndProcessEveryRequest() {
     f.recorded({});
     QCoreApplication::processEvents();
     require(f.requests.size() == 2 && f.requests.back().monitorName == second.monitorName &&
-                f.requests.back().captureBackend == 2 &&
+                f.requests.back().apiMode == capture::ScreenshotApiMode::Auto &&
                 f.requests.back().screenshotType() ==
                     snow_shot::storage::ScreenshotType::CurrentMonitor,
             "mixed direct captures were dropped or reordered");

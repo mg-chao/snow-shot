@@ -26,7 +26,7 @@ DirectCaptureFrame captureDirectTarget(const DirectCaptureRequest& request) {
     SnowCaptureDesktopSessionConfig config{};
     config.capture_retry_count = 1;
     if (!focusedWindow)
-        config.capture_backend = request.captureBackend;
+        config.capture_backend = capture::nativeBackendForNormalScreenshot(request.apiMode);
     config.pixel_format = SNOW_CAPTURE_PIXEL_FORMAT_BGRA8;
     SnowCaptureScreenshotRequest nativeRequest{};
     nativeRequest.version = SNOW_CAPTURE_SCREENSHOT_REQUEST_VERSION;

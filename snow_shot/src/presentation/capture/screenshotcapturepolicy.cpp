@@ -12,12 +12,41 @@
 namespace snow_shot::presentation::capture {
 
 #if defined(Q_OS_WIN) || defined(_WIN32)
+namespace {
+detail::AutoScreenshotModeCache autoModeCache;
+
+std::optional<ScreenshotApiMode> queryAutoScreenshotMode() {
+    UINT pathCount = 0;
+    UINT modeCount = 0;
+    if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &pathCount, &modeCount) !=
+            ERROR_SUCCESS ||
+        pathCount == 0)
+        return std::nullopt;
+    QVector<DISPLAYCONFIG_PATH_INFO> paths(static_cast<qsizetype>(pathCount));
+    QVector<DISPLAYCONFIG_MODE_INFO> modes(static_cast<qsizetype>(modeCount));
+    if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathCount, paths.data(), &modeCount,
+                           modes.data(), nullptr) != ERROR_SUCCESS ||
+        pathCount == 0)
+        return std::nullopt;
+    bool allTargetsKnown = true;
+    for (UINT index = 0; index < pathCount; ++index) {
+        const auto hdr = detail::displayHdrEnabled(paths[index].targetInfo);
+        if (hdr.value_or(false))
+            return detail::autoScreenshotApiMode(true);
+        allTargetsKnown &= hdr.has_value();
+    }
+    if (!allTargetsKnown)
+        return std::nullopt;
+    return detail::autoScreenshotApiMode(false);
+}
+} // namespace
+
 ScreenshotApiMode detail::autoScreenshotApiMode(bool anyActiveHdr) noexcept {
     return anyActiveHdr ? ScreenshotApiMode::Wgc : ScreenshotApiMode::Gdi;
 }
 
-bool detail::displayHdrEnabled(const DISPLAYCONFIG_PATH_TARGET_INFO& target,
-                               DisplayColorInfoQuery query) noexcept {
+std::optional<bool> detail::displayHdrEnabled(const DISPLAYCONFIG_PATH_TARGET_INFO& target,
+                                              DisplayColorInfoQuery query) noexcept {
     DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2 current{};
     current.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO_2;
     current.header.size = sizeof(current);
@@ -34,8 +63,12 @@ bool detail::displayHdrEnabled(const DISPLAYCONFIG_PATH_TARGET_INFO& target,
     info.header.size = sizeof(info);
     info.header.adapterId = target.adapterId;
     info.header.id = target.id;
-    return query(&info.header) == ERROR_SUCCESS && info.advancedColorSupported &&
-           info.advancedColorEnabled && !info.wideColorEnforced;
+    const auto status = query(&info.header);
+    if (status == ERROR_NOT_SUPPORTED)
+        return false;
+    if (status != ERROR_SUCCESS)
+        return std::nullopt;
+    return info.advancedColorSupported && info.advancedColorEnabled && !info.wideColorEnforced;
 }
 #endif
 
@@ -74,33 +107,19 @@ std::uint8_t nativeBackendForNormalScreenshot(ScreenshotApiMode mode) noexcept {
 }
 
 ScreenshotApiMode resolveAutoScreenshotApiMode() noexcept {
-    static const ScreenshotApiMode resolved = [] {
-#if defined(Q_OS_WIN) || defined(_WIN32)
-        UINT pathCount = 0;
-        UINT modeCount = 0;
-        if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &pathCount, &modeCount) ==
-            ERROR_SUCCESS) {
-            QVector<DISPLAYCONFIG_PATH_INFO> paths(static_cast<qsizetype>(pathCount));
-            QVector<DISPLAYCONFIG_MODE_INFO> modes(static_cast<qsizetype>(modeCount));
-            if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathCount, paths.data(), &modeCount,
-                                   modes.data(), nullptr) == ERROR_SUCCESS) {
-                for (UINT index = 0; index < pathCount; ++index) {
-                    if (detail::displayHdrEnabled(paths[index].targetInfo)) {
-                        return detail::autoScreenshotApiMode(true);
-                    }
-                }
-            }
-        }
-#endif
 #ifdef Q_OS_MACOS
-        return ScreenshotApiMode::Auto;
+    return ScreenshotApiMode::Auto;
 #elif defined(Q_OS_WIN) || defined(_WIN32)
-        return detail::autoScreenshotApiMode(false);
+    return autoModeCache.resolve(queryAutoScreenshotMode);
 #else
-        return ScreenshotApiMode::Gdi;
+    return ScreenshotApiMode::Gdi;
 #endif
-    }();
-    return resolved;
+}
+
+void invalidateAutoScreenshotApiMode() noexcept {
+#if defined(Q_OS_WIN) || defined(_WIN32)
+    autoModeCache.invalidate();
+#endif
 }
 
 } // namespace snow_shot::presentation::capture

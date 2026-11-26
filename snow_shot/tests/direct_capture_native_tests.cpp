@@ -244,14 +244,15 @@ int main() {
                             snow_shot::storage::CaptureHistoryMode::Disabled}) {
         for (const auto target :
              {DirectCaptureTarget::CurrentMonitor, DirectCaptureTarget::FocusedWindow}) {
-            for (const auto backend : {SNOW_CAPTURE_BACKEND_AUTO, SNOW_CAPTURE_BACKEND_GDI,
-                                       SNOW_CAPTURE_BACKEND_WGC, SNOW_CAPTURE_BACKEND_DXGI}) {
+            using capture::ScreenshotApiMode;
+            for (const auto apiMode : {ScreenshotApiMode::Auto, ScreenshotApiMode::Gdi,
+                                       ScreenshotApiMode::Wgc, ScreenshotApiMode::Dxgi}) {
                 DirectCaptureRequest request;
                 request.target = target;
                 request.window = 123;
                 request.monitorName = QStringLiteral("device-B");
                 request.historyMode = mode;
-                request.captureBackend = static_cast<quint8>(backend);
+                request.apiMode = apiMode;
                 const auto result = captureDirectTarget(request);
                 require(result.isValid(), "backend preference capture failed");
                 if (mode == snow_shot::storage::CaptureHistoryMode::ResultsOnly)
@@ -259,7 +260,7 @@ int main() {
                                 (target == DirectCaptureTarget::CurrentMonitor ? 1 : 0),
                             "results-only acquisition must request only the native target");
                 require(capturedBackend == (target == DirectCaptureTarget::CurrentMonitor
-                                                ? backend
+                                                ? capture::nativeBackendForNormalScreenshot(apiMode)
                                                 : SNOW_CAPTURE_BACKEND_AUTO),
                         "monitor capture must forward its preference and focused windows must keep "
                         "Auto");

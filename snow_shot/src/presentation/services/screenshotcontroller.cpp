@@ -70,6 +70,7 @@
 #include "snow_shot/presentation/screenshotpinsourcetracker.h"
 #include "snow_shot/presentation/screenshotcolorpickercontroller.h"
 #include "snow_shot/presentation/screenshotdisplayconfigurationobserver.h"
+#include "snow_shot/presentation/capture/screenshotcapturepolicy.h"
 #include "snow_shot/platform/selectedfiles.h"
 #include "snow_shot/presentation/screenshotdefaultstyles.h"
 #include "snow_shot/presentation/canvasdrawingpreferences.h"
@@ -1995,7 +1996,13 @@ void ScreenshotController::Impl::handleCapturePresented() {
 
 void ScreenshotController::Impl::createDisplayConfigurationObserver() {
     m_displayConfigurationObserver = std::make_unique<ScreenshotDisplayConfigurationObserver>(
-        [this]() {
+        [this](ScreenshotDisplayConfigurationObserver::Change change) {
+            snow_shot::presentation::capture::invalidateAutoScreenshotApiMode();
+            if (change == ScreenshotDisplayConfigurationObserver::Change::Recovery) {
+                if (m_captureWorkflow)
+                    m_captureWorkflow->handleDisplayRecovery();
+                return;
+            }
 #if SNOW_SHOT_ENABLE_QR_RECOGNITION
             if (m_qrController)
                 m_qrController->invalidate();

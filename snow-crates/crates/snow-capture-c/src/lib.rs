@@ -468,8 +468,14 @@ struct SnapshotWindowFrame {
     frame: Arc<Frame>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LayoutRefresh {
+    Reconcile,
+    Recover,
+}
+
 enum WorkerCommand {
-    Prepare(mpsc::Sender<Result<(), String>>),
+    Prepare(LayoutRefresh, mpsc::Sender<Result<(), String>>),
     Capture(
         mpsc::Sender<Result<Frame, String>>,
         Option<PendingScreenColorTransform>,
@@ -852,11 +858,13 @@ impl MonitorWorker {
                     // These threads outlive individual screenshots. Drain Cocoa's
                     // temporary objects after each request, including error paths.
                     with_capture_autoreleasepool(|| match command {
-                        WorkerCommand::Prepare(reply) => {
+                        WorkerCommand::Prepare(refresh, reply) => {
                             let started = Instant::now();
                             let result = match session.as_mut() {
-                                Ok(capture_session) => capture_session
-                                    .prewarm_environment()
+                                Ok(capture_session) => match refresh {
+                                    LayoutRefresh::Reconcile => capture_session.prewarm_environment(),
+                                    LayoutRefresh::Recover => capture_session.recover_environment(),
+                                }
                                     .map(|_| ())
                                     .map_err(|error| {
                                         capture_stage_error("monitor preparation", started, error)
@@ -937,10 +945,13 @@ impl MonitorWorker {
         }
     }
 
-    fn request_prepare(&self) -> Result<mpsc::Receiver<Result<(), String>>, String> {
+    fn request_prepare(
+        &self,
+        refresh: LayoutRefresh,
+    ) -> Result<mpsc::Receiver<Result<(), String>>, String> {
         let (tx, rx) = mpsc::channel();
         self.tx
-            .send(WorkerCommand::Prepare(tx))
+            .send(WorkerCommand::Prepare(refresh, tx))
             .map_err(|_| "capture worker is not running".to_owned())?;
         Ok(rx)
     }
@@ -1001,10 +1012,38 @@ fn session_mut<'a>(
     }
 }
 
+// Dispatch to every monitor before waiting, so independent displays prepare concurrently.
+fn prepare_workers(warm: &[MonitorWorker], revalidate: &[MonitorWorker]) -> Result<(), String> {
+    let receivers = warm
+        .iter()
+        .map(|worker| worker.request_prepare(LayoutRefresh::Reconcile))
+        .chain(
+            revalidate
+                .iter()
+                .map(|worker| worker.request_prepare(LayoutRefresh::Recover)),
+        )
+        .collect::<Vec<_>>();
+    let mut result = Ok(());
+    for receiver in receivers {
+        let prepared = receiver.and_then(|reply| {
+            reply
+                .recv()
+                .map_err(|_| "capture worker stopped before prepare completed".to_owned())?
+        });
+        result = result.and(prepared);
+    }
+    result
+}
+
 fn reconcile_workers(
     session: &mut SnowCaptureDesktopSessionImpl,
     entries: Vec<MonitorEntry>,
+    refresh: LayoutRefresh,
 ) -> Result<(), String> {
+    let recover = refresh == LayoutRefresh::Recover;
+    if recover && entries.is_empty() {
+        return Err("no active displays are available".to_owned());
+    }
     let old_workers = std::mem::take(&mut session.workers);
     let was_prepared = session.prepared;
     let mut unmatched = old_workers;
@@ -1037,43 +1076,18 @@ fn reconcile_workers(
         }
     }
 
-    if was_prepared {
-        let receivers = match created
-            .iter()
-            .map(MonitorWorker::request_prepare)
-            .collect::<Result<Vec<_>, _>>()
-        {
-            Ok(receivers) => receivers,
-            Err(error) => {
-                for worker in created.drain(..) {
-                    worker.stop();
-                }
-                retained.extend(unmatched);
-                session.workers = retained;
-                return Err(error);
-            }
-        };
-        for receiver in receivers {
-            match receiver.recv() {
-                Ok(Ok(())) => {}
-                Ok(Err(error)) => {
-                    for worker in created.drain(..) {
-                        worker.stop();
-                    }
-                    retained.extend(unmatched);
-                    session.workers = retained;
-                    return Err(error);
-                }
-                Err(_) => {
-                    for worker in created.drain(..) {
-                        worker.stop();
-                    }
-                    retained.extend(unmatched);
-                    session.workers = retained;
-                    return Err("capture worker stopped before prepare completed".to_owned());
-                }
-            }
+    if (was_prepared || recover)
+        && let Err(error) = prepare_workers(&created, if recover { &retained } else { &[] })
+    {
+        for worker in created {
+            worker.stop();
         }
+        retained.extend(unmatched);
+        session.workers = retained;
+        if recover {
+            session.prepared = false;
+        }
+        return Err(error);
     }
 
     for worker in unmatched {
@@ -1084,11 +1098,14 @@ fn reconcile_workers(
     }
     retained.extend(created);
     session.workers = retained;
-    session.prepared = was_prepared;
+    session.prepared = was_prepared || recover;
     Ok(())
 }
 
-fn rebuild_workers(session: &mut SnowCaptureDesktopSessionImpl) -> Result<(), String> {
+fn rebuild_workers(
+    session: &mut SnowCaptureDesktopSessionImpl,
+    refresh: LayoutRefresh,
+) -> Result<(), String> {
     let started = Instant::now();
     session
         .system
@@ -1097,7 +1114,7 @@ fn rebuild_workers(session: &mut SnowCaptureDesktopSessionImpl) -> Result<(), St
     let started = Instant::now();
     let entries = build_monitor_entries(&session.system)
         .map_err(|error| capture_stage_error("display enumeration", started, error))?;
-    reconcile_workers(session, entries)
+    reconcile_workers(session, entries, refresh)
 }
 
 #[cfg_attr(target_os = "macos", allow(dead_code))]
@@ -1202,7 +1219,9 @@ fn capture_all_frames_with_layout_retry(
             if same_monitor_layout(&entries, &current_entries) {
                 return Err(first_error);
             }
-            if let Err(refresh_error) = reconcile_workers(session, entries) {
+            if let Err(refresh_error) =
+                reconcile_workers(session, entries, LayoutRefresh::Reconcile)
+            {
                 return Err(format!(
                     "{first_error}; layout refresh failed: {refresh_error}"
                 ));
@@ -1564,7 +1583,7 @@ pub extern "C" fn snow_capture_desktop_session_create(
                 workers: Vec::new(),
                 prepared: false,
             };
-            if let Err(error) = rebuild_workers(&mut session) {
+            if let Err(error) = rebuild_workers(&mut session, LayoutRefresh::Reconcile) {
                 set_last_error(error);
             } else {
                 clear_last_error();
@@ -1595,38 +1614,7 @@ pub extern "C" fn snow_capture_desktop_session_prepare(
         return 0;
     };
 
-    let receivers = match session
-        .workers
-        .iter()
-        .map(MonitorWorker::request_prepare)
-        .collect::<Result<Vec<_>, _>>()
-    {
-        Ok(receivers) => receivers,
-        Err(error) => {
-            set_last_error(error);
-            return 0;
-        }
-    };
-
-    let mut first_error = None;
-    for receiver in receivers {
-        match receiver.recv() {
-            Ok(Ok(())) => {}
-            Ok(Err(error)) => {
-                if first_error.is_none() {
-                    first_error = Some(error);
-                }
-            }
-            Err(_) => {
-                if first_error.is_none() {
-                    first_error =
-                        Some("capture worker stopped before prepare completed".to_owned());
-                }
-            }
-        }
-    }
-
-    if let Some(error) = first_error {
+    if let Err(error) = prepare_workers(&session.workers, &[]) {
         set_last_error(error);
         return 0;
     }
@@ -1682,11 +1670,25 @@ pub unsafe extern "C" fn snow_capture_desktop_session_state(
 pub extern "C" fn snow_capture_desktop_session_refresh_layout(
     session: *mut SnowCaptureDesktopSessionImpl,
 ) -> u8 {
+    refresh_desktop_layout(session, LayoutRefresh::Reconcile)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn snow_capture_desktop_session_recover(
+    session: *mut SnowCaptureDesktopSessionImpl,
+) -> u8 {
+    refresh_desktop_layout(session, LayoutRefresh::Recover)
+}
+
+fn refresh_desktop_layout(
+    session: *mut SnowCaptureDesktopSessionImpl,
+    refresh: LayoutRefresh,
+) -> u8 {
     let Some(session) = session_mut(session) else {
         return 0;
     };
 
-    match rebuild_workers(session) {
+    match rebuild_workers(session, refresh) {
         Ok(()) => {
             clear_last_error();
             1
@@ -1792,7 +1794,7 @@ pub unsafe extern "C" fn snow_capture_desktop_session_capture(
     let correction = None;
 
     if session.workers.is_empty() {
-        if let Err(error) = rebuild_workers(session) {
+        if let Err(error) = rebuild_workers(session, LayoutRefresh::Reconcile) {
             set_last_error(error);
             return ptr::null_mut();
         }
@@ -1807,7 +1809,7 @@ pub unsafe extern "C" fn snow_capture_desktop_session_capture(
     }
 
     if request.flags & SCREENSHOT_REQUEST_REFRESH_LAYOUT != 0
-        && let Err(error) = rebuild_workers(session)
+        && let Err(error) = rebuild_workers(session, LayoutRefresh::Reconcile)
     {
         set_last_error(error);
         return ptr::null_mut();
@@ -3106,6 +3108,35 @@ mod tests {
     }
 
     #[test]
+    fn recovery_prepares_new_and_retained_workers_once_each() {
+        fn observed_worker() -> (MonitorWorker, mpsc::Receiver<LayoutRefresh>) {
+            let (tx, rx) = mpsc::channel();
+            let (record, observed) = mpsc::channel();
+            let join = thread::spawn(move || {
+                while let Ok(WorkerCommand::Prepare(refresh, reply)) = rx.recv() {
+                    record.send(refresh).unwrap();
+                    reply.send(Ok(())).unwrap();
+                }
+            });
+            (
+                MonitorWorker {
+                    entry: test_entry(),
+                    tx,
+                    join: Some(join),
+                },
+                observed,
+            )
+        }
+        let (new, warmed) = observed_worker();
+        let (retained, revalidated) = observed_worker();
+        prepare_workers(std::slice::from_ref(&new), std::slice::from_ref(&retained)).unwrap();
+        new.stop();
+        retained.stop();
+        assert!(warmed.into_iter().eq([LayoutRefresh::Reconcile]));
+        assert!(revalidated.into_iter().eq([LayoutRefresh::Recover]));
+    }
+
+    #[test]
     fn desktop_and_stream_exclusions_are_owned_and_validated() {
         let mut windows = [9, 7, 9];
         let processes = [5, 3, 5];
@@ -3523,6 +3554,23 @@ mod tests {
             SNOW_CAPTURE_RESOURCE_BYTES_UNKNOWN
         );
         assert!(!state.backend_kind.is_null());
+    }
+
+    #[test]
+    fn recovery_rejects_an_empty_layout_without_retiring_the_last_monitor() {
+        let (tx, _rx) = mpsc::channel();
+        let mut session = SnowCaptureDesktopSessionImpl {
+            system: CaptureSystem::builder().build().unwrap(),
+            options: CaptureOptions::default(),
+            workers: vec![MonitorWorker {
+                entry: test_entry(),
+                tx,
+                join: None,
+            }],
+            prepared: true,
+        };
+        assert!(reconcile_workers(&mut session, vec![], LayoutRefresh::Recover).is_err());
+        assert_eq!(session.workers.len(), 1);
     }
 
     #[test]

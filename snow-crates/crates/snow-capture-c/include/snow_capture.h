@@ -420,6 +420,9 @@ snow_capture_desktop_session_capture_with_layout(SnowCaptureDesktopSession*,
                                                  const SnowCaptureDesktopLayout*);
 
 uint8_t snow_capture_desktop_session_refresh_layout(SnowCaptureDesktopSession* session);
+/* Refresh layout and prepare each monitor once, revalidating retained snapshot backends.
+ * No frame is acquired. On failure the caller can discard the session and retry on demand. */
+uint8_t snow_capture_desktop_session_recover(SnowCaptureDesktopSession* session);
 uint8_t snow_capture_desktop_session_reset_to_prepared(SnowCaptureDesktopSession* session);
 /* Captures every display and, when focused_window is nonzero, the requested
  * window as one all-or-nothing transaction. The returned result owns its
