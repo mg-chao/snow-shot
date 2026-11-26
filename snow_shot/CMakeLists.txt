@@ -955,6 +955,8 @@ target_link_libraries(snow_shot_main_window_skin PUBLIC Qt6::Widgets
 set(SNOW_SHOT_SETTINGS_SOURCES
     include/snow_shot/presentation/components/accountpagewidget.h
     src/presentation/components/accountpagewidget.cpp
+    include/snow_shot/presentation/websiteurl.h
+    src/presentation/services/websiteurl.cpp
     src/presentation/services/pinnedtextstylecapture.cpp
     include/snow_shot/presentation/selectedtexttranslationcoordinator.h
     src/presentation/services/selectedtexttranslationcoordinator.cpp
@@ -3321,11 +3323,13 @@ if(SNOW_SHOT_BUILD_TESTS)
         SNOW_SHOT_TEST_PROJECT_URL="${SNOW_SHOT_PROJECT_URL}"
         SNOW_SHOT_TEST_QQ_GROUP_4_URL="${SNOW_SHOT_QQ_GROUP_4_URL}"
     )
-    add_dependencies(snow-shot-about-page-tests snow_shot_release_translations)
+    snow_shot_add_translations(snow-shot-about-page-tests)
     snow_shot_import_offscreen_platform(snow-shot-about-page-tests)
     add_test(NAME snow-shot-about-page-tests COMMAND snow-shot-about-page-tests)
+    add_test(NAME snow-shot-about-website-links-tests
+        COMMAND snow-shot-about-page-tests --website-links-only)
     target_link_libraries(snow-shot-about-page-tests PRIVATE snow_shot_updates)
-    set_tests_properties(snow-shot-about-page-tests PROPERTIES
+    set_tests_properties(snow-shot-about-page-tests snow-shot-about-website-links-tests PROPERTIES
         ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
     )
@@ -10177,9 +10181,12 @@ if(SNOW_SHOT_BUILD_TESTS)
         qt_import_plugins(snow-shot-account-tests EXCLUDE Qt6::QJpegPlugin)
     endif()
     add_test(NAME snow-shot-account-tests COMMAND snow-shot-account-tests -platform offscreen)
+    add_test(NAME snow-shot-account-website-links-tests
+        COMMAND snow-shot-account-tests -platform offscreen --website-links-only)
     add_test(NAME snow-shot-account-cancellation-tests
         COMMAND snow-shot-account-tests -platform offscreen --top-up-cancellation-only)
-    set_tests_properties(snow-shot-account-tests snow-shot-account-cancellation-tests
+    set_tests_properties(snow-shot-account-tests snow-shot-account-website-links-tests
+        snow-shot-account-cancellation-tests
         PROPERTIES LABELS "unit"
         ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}")
     set_tests_properties(snow-shot-account-tests PROPERTIES TIMEOUT 90)
