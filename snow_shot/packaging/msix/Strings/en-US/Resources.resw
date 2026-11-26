@@ -3,5 +3,10 @@
   <data name="DisplayName" xml:space="preserve"><value>Snow Shot</value></data>
   <data name="Description" xml:space="preserve"><value>Capture, annotate, and recognize screen content, and pin it to the screen.</value></data>
   <data name="FileTypesDisplayName" xml:space="preserve"><value>Images and text documents</value></data>
-  <data name="EditVerb" xml:space="preserve"><value>Edit with Snow Shot</value></data>
+  <data name="PinAction" xml:space="preserve"><value>Pin to screen</value></data>
+  <data name="AnnotateAction" xml:space="preserve"><value>Pin to screen and annotate</value></data>
+  <data name="StitchAction" xml:space="preserve"><value>Stitch images</value></data>
+  <data name="SplitAction" xml:space="preserve"><value>Split images</value></data>
+  <data name="EditAction" xml:space="preserve"><value>Edit images</value></data>
+  <data name="CompressAction" xml:space="preserve"><value>Compress images</value></data>
 </root>

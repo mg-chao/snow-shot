@@ -35,17 +35,19 @@ foreach(_language en-US zh-CN zh-TW ru-RU)
     set(_path "${_snow_explorer_root}/packaging/msix/Strings/${_language}/Resources.resw")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_path}")
     file(READ "${_path}" _source)
-    string(REGEX MATCH "name=\"EditVerb\"[^>]*><value>([^<]+)</value>" _match "${_source}")
-    if(NOT _match)
-        message(FATAL_ERROR "Missing MSIX EditVerb title for ${_language}.")
-    endif()
-    set(_title "${CMAKE_MATCH_1}")
-    string(REPLACE "&amp;" "&" _title "${_title}")
-    string(REPLACE "&quot;" "\"" _title "${_title}")
-    string(REPLACE "&apos;" "'" _title "${_title}")
-    string(REPLACE "\\" "\\\\" _title "${_title}")
-    string(REPLACE "\"" "\"\"" _title "${_title}")
-    set("SNOW_EXPLORER_TITLE_${_language}" "${_title}")
+    foreach(_verb Pin Annotate Stitch Split Edit Compress)
+        string(REGEX MATCH "name=\"${_verb}Action\"[^>]*><value>([^<]+)</value>" _match "${_source}")
+        if(NOT _match)
+            message(FATAL_ERROR "Missing MSIX ${_verb} title for ${_language}.")
+        endif()
+        set(_title "${CMAKE_MATCH_1}")
+        string(REPLACE "&amp;" "&" _title "${_title}")
+        string(REPLACE "&quot;" "\"" _title "${_title}")
+        string(REPLACE "&apos;" "'" _title "${_title}")
+        string(REPLACE "\\" "\\\\" _title "${_title}")
+        string(REPLACE "\"" "\"\"" _title "${_title}")
+        set("SNOW_EXPLORER_${_verb}_${_language}" "${_title}")
+    endforeach()
 endforeach()
 configure_file(explorercommand.rc.in generated/explorercommand.rc @ONLY)
 
@@ -53,18 +55,17 @@ add_library(snow_shot_explorer_command SHARED
     explorercommand.cpp explorercommand.h explorercommand.def
     "${CMAKE_CURRENT_BINARY_DIR}/generated/explorercommand.rc")
 set_target_properties(snow_shot_explorer_command PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/snow_shot"
     OUTPUT_NAME SnowShotExplorerCommand
     AUTOMOC OFF AUTOUIC OFF AUTORCC OFF
     MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 target_include_directories(snow_shot_explorer_command PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated"
     "${_snow_explorer_root}/include")
 target_compile_definitions(snow_shot_explorer_command PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN)
-target_link_libraries(snow_shot_explorer_command PRIVATE ole32 shell32 shlwapi uuid user32)
+target_link_libraries(snow_shot_explorer_command PRIVATE ole32 shell32 shlwapi uuid user32 advapi32)
 snow_apply_release_options(snow_shot_explorer_command POLICY size)
 
-if(SNOW_SHOT_DISTRIBUTION_CHANNEL STREQUAL "store")
-    install(TARGETS snow_shot_explorer_command RUNTIME DESTINATION bin COMPONENT SnowShot)
-endif()
+install(TARGETS snow_shot_explorer_command RUNTIME DESTINATION bin COMPONENT SnowShot)
 
 if(SNOW_SHOT_BUILD_TESTS)
     add_executable(snow-shot-explorer-command-tests
@@ -79,7 +80,7 @@ if(SNOW_SHOT_BUILD_TESTS)
         "${_snow_explorer_root}/include")
     target_compile_definitions(snow-shot-explorer-command-tests PRIVATE
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN)
-    target_link_libraries(snow-shot-explorer-command-tests PRIVATE ole32 shell32 shlwapi uuid user32)
+    target_link_libraries(snow-shot-explorer-command-tests PRIVATE ole32 shell32 shlwapi uuid user32 advapi32)
     add_dependencies(snow-shot-explorer-command-tests snow_shot_explorer_command)
     add_test(NAME snow-shot-explorer-command-tests
         COMMAND snow-shot-explorer-command-tests "$<TARGET_FILE:snow_shot_explorer_command>")

@@ -572,12 +572,12 @@ if (-not $store) {
 }
 
 $requiredStageFiles = @(
+    "bin\SnowShotExplorerCommand.dll",
     "bin\snow_shot.exe",
     "bin\crashpad_handler.exe",
     "bin\snow-ocr-process.exe",
     "share\snow-shot\licenses\LICENSES.txt"
 )
-if ($store) { $requiredStageFiles += 'bin\SnowShotExplorerCommand.dll' }
 $missingStageFiles = @($requiredStageFiles | Where-Object {
     -not (Test-Path -LiteralPath (Join-Path $installDirectory $_) -PathType Leaf)
 })
@@ -630,6 +630,7 @@ if ($debugArtifacts.Count -gt 0) {
 $stagedBinaries = @(Get-ChildItem -LiteralPath $installDirectory -Recurse -File |
     Where-Object { $_.Extension.ToLowerInvariant() -in @(".dll", ".exe") })
 $expectedBinaryPaths = @(
+    "bin\SnowShotExplorerCommand.dll",
     "bin\snow_shot.exe",
     "bin\snow-shot-updater.exe",
     "bin\snow-shot-mcp.exe",
@@ -638,7 +639,6 @@ $expectedBinaryPaths = @(
 )
 if ($store) {
     $expectedBinaryPaths = @($expectedBinaryPaths | Where-Object { $_ -ne 'bin\snow-shot-updater.exe' })
-    $expectedBinaryPaths += 'bin\SnowShotExplorerCommand.dll'
 }
 $unexpectedBinaries = @($stagedBinaries | Where-Object {
     $relativePath = [System.IO.Path]::GetRelativePath($installDirectory, $_.FullName)

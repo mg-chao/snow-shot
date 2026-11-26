@@ -9,7 +9,7 @@
 namespace snow_shot::app {
 
 QStringList ShellLaunchCoordinator::Intent::replayArguments() const {
-    auto arguments = shellImageLaunchArguments(paths);
+    auto arguments = fileArguments;
     if (foreground)
         arguments.append(QStringLiteral("--show-main-window"));
     return arguments;
@@ -26,10 +26,17 @@ ShellLaunchCoordinator::Request ShellLaunchCoordinator::parse(const QStringList&
     if (!request.valid)
         return request;
     const auto supported = supportedPinFileExtensions();
-    for (const auto& path : files.paths) {
-        if (supported.contains(QFileInfo(path).suffix().toLower()))
+    for (qsizetype i = 0; i < files.replayArguments.size(); i += 2) {
+        const auto flag = files.replayArguments.at(i);
+        const auto path = files.replayArguments.at(i + 1);
+        if (flag == u"--explorer-selection") {
+            request.fileArguments << flag << path;
+            continue;
+        }
+        if (supported.contains(QFileInfo(path).suffix().toLower())) {
             request.paths.append(path);
-        else
+            request.fileArguments << flag << path;
+        } else
             request.unsupportedPaths.append(path);
     }
     return request;
@@ -39,6 +46,7 @@ ShellLaunchCoordinator::Intent
 ShellLaunchCoordinator::updateCandidate(const Request& request) const {
     auto candidate = m_update;
     candidate.paths.append(request.paths);
+    candidate.fileArguments.append(request.fileArguments);
     candidate.foreground = candidate.foreground || request.foreground;
     return candidate;
 }
@@ -57,6 +65,7 @@ ShellLaunchCoordinator::Intent ShellLaunchCoordinator::retainUpdate(const Reques
 
 void ShellLaunchCoordinator::retainStorage(const Request& request) {
     m_storage.paths.append(request.paths);
+    m_storage.fileArguments.append(request.fileArguments);
     m_storage.foreground = m_storage.foreground || request.foreground;
 }
 

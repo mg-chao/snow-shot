@@ -724,33 +724,7 @@ void ImageExportEditor::loadSource(std::shared_ptr<ScreenshotExportArtifact> art
                         sourceFailed(status.error);
                         return;
                     }
-                    m_sourceJob = {};
-                    m_pendingArtifact.reset();
-                    if (m_source.rows.isValid())
-                        ++m_generation;
-                    m_renderTimer.stop();
-                    m_job.cancel();
-                    cancelDecode();
-                    m_renderGeneration.reset();
-                    m_requestedOptions.reset();
-                    m_renderedPreviewOptions.reset();
-                    m_preparedPixels.reset();
-                    m_encoded.reset();
-                    m_artifact = artifact;
-                    m_source = *result;
-                    m_state.sourceSize = result->rows.size;
-                    m_state.output.size = m_state.sourceSize;
-                    syncDimensionInputs();
-                    updatePresentation();
-                    m_preview->setSource(
-                        m_source.preview, m_state.sourceSize,
-                        [rows = m_source.rows](QRect region,
-                                               const ScreenshotExportCancellation& cancellation,
-                                               QString* error) {
-                            return pipeline::readRegion(rows, region, cancellation, error);
-                        });
-                    m_preview->setOutput(m_source.preview, m_state.sourceSize);
-                    changed();
+                    setPreparedSource(artifact, std::move(*result));
                 },
                 screenshot_export_memory::previewWorkingBytes(rows.size));
             if (!m_sourceJob.isValid())
@@ -758,6 +732,36 @@ void ImageExportEditor::loadSource(std::shared_ptr<ScreenshotExportArtifact> art
         });
     if (!started)
         sourceFailed({});
+}
+
+void ImageExportEditor::setPreparedSource(std::shared_ptr<ScreenshotExportArtifact> artifact,
+                                          pipeline::Source source) {
+    m_sourceJob = {};
+    m_pendingArtifact.reset();
+    if (m_source.rows.isValid())
+        ++m_generation;
+    m_renderTimer.stop();
+    m_job.cancel();
+    cancelDecode();
+    m_renderGeneration.reset();
+    m_requestedOptions.reset();
+    m_renderedPreviewOptions.reset();
+    m_preparedPixels.reset();
+    m_encoded.reset();
+    m_artifact = std::move(artifact);
+    m_source = std::move(source);
+    m_state.sourceSize = m_source.rows.size;
+    m_state.output.size = m_state.sourceSize;
+    syncDimensionInputs();
+    updatePresentation();
+    m_preview->setSource(m_source.preview, m_state.sourceSize,
+                         [rows = m_source.rows](QRect region,
+                                                const ScreenshotExportCancellation& cancellation,
+                                                QString* error) {
+                             return pipeline::readRegion(rows, region, cancellation, error);
+                         });
+    m_preview->setOutput(m_source.preview, m_state.sourceSize);
+    changed();
 }
 
 void ImageExportEditor::sourceFailed(const QString& error) {

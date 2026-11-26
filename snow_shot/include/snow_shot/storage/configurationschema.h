@@ -51,7 +51,8 @@ class ConfigurationSchema final {
     [[nodiscard]] static ConfigurationNormalization normalize(const QString& key,
                                                               const QJsonValue& value);
     [[nodiscard]] static QMap<QString, QJsonValue>
-    migrateLegacyValues(QMap<QString, QJsonValue> values);
+    migrateLegacyValues(QMap<QString, QJsonValue> values, int version = 0,
+                        const QString& defaultScope = QStringLiteral("image_files"));
     // Accepts a JSON number that is a finite integer in [1, INT_MAX].
     [[nodiscard]] static bool parseIntegerVersion(const QJsonValue& value, int* version);
     [[nodiscard]] static int currentVersion();

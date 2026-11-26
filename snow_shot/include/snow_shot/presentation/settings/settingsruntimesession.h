@@ -89,6 +89,7 @@ class SettingsRuntimeSession final : public QObject {
         return m_backend.mouseBindings();
     }
     bool submitExplicitDraft(const QString& fieldId, const QVariant& value);
+    [[nodiscard]] bool applyContextMenuShortcutBatch(const QMap<QString, QJsonValue>& changes);
     bool retry(const QString& fieldId);
     bool discard(const QString& fieldId);
     bool reset(SettingsSectionReset reset);

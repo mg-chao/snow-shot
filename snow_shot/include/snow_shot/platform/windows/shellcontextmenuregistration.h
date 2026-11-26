@@ -5,10 +5,12 @@
 
 #include <QByteArray>
 #include <QMap>
+#include <QJsonValue>
 #include <QString>
 #include <QStringList>
 #include <QtTypes>
 #include <functional>
+#include <optional>
 
 namespace snow_shot::platform::windows {
 
@@ -58,6 +60,7 @@ class ShellContextMenuRegistration final {
         QStringList fileExtensions;
         ShellContextMenuRegistryAccess registry;
         QString packagedPreferencePath;
+        std::optional<bool> useLocalCommandServer;
     };
 
     ShellContextMenuRegistration();
@@ -65,32 +68,28 @@ class ShellContextMenuRegistration final {
 
     [[nodiscard]] static bool isSupported();
     [[nodiscard]] static ShellContextMenuMode modeFromValue(const QString& value);
-    [[nodiscard]] QString expectedCommand() const;
+    [[nodiscard]] static ShellMenuPreferences preferences(const QMap<QString, QJsonValue>& values);
+    [[nodiscard]] ShellContextMenuResult
+    refreshLabels(const ShellMenuPreferences& preferences) const;
     [[nodiscard]] ShellContextMenuRegistrationSnapshot snapshot() const;
     [[nodiscard]] bool restore(const ShellContextMenuRegistrationSnapshot& previous,
                                QString* error = nullptr) const;
-    [[nodiscard]] bool setMode(ShellContextMenuMode mode, QString* error = nullptr) const;
-    [[nodiscard]] bool setMode(ShellContextMenuMode mode, const QString& accessKey,
-                               QString* error = nullptr) const;
-    [[nodiscard]] bool refreshLabels(QString* error = nullptr) const;
-    [[nodiscard]] bool refreshLabels(const QString& accessKey, QString* error = nullptr) const;
-    // Native changes and the preference commit form one transaction.
     [[nodiscard]] ShellContextMenuResult
-    changeMode(ShellContextMenuMode mode, const std::function<bool()>& commitPreference) const;
-    [[nodiscard]] ShellContextMenuResult
-    changeMode(ShellContextMenuMode mode, const QString& accessKey,
-               const std::function<bool()>& commitPreference) const;
+    change(const ShellMenuPreferences& preferences,
+           const std::function<bool()>& commitPreference = {}) const;
 
   private:
     [[nodiscard]] ShellContextMenuResult
-    changePackagedMode(ShellContextMenuMode mode, const QString& accessKey,
+    changePackagedMode(const ShellMenuPreferences& preferences,
                        const std::function<bool()>& commitPreference) const;
     [[nodiscard]] bool ownedByProduct(const ShellContextMenuRegistryKey& key) const;
-    [[nodiscard]] ShellContextMenuRegistryKey enabledKey(ShellContextMenuRegistryKey previous,
-                                                         const QString& accessKey) const;
-    [[nodiscard]] bool apply(ShellContextMenuMode mode, const QString& accessKey,
+    [[nodiscard]] bool apply(const ShellMenuPreferences& preferences,
                              const ShellContextMenuRegistrationSnapshot& previous,
                              QString* error) const;
+    QString classPath(size_t index) const;
+    QString actionPath(size_t index, const QString& extension) const;
+    QString classId(size_t index) const;
+    QString m_classesRoot;
     QString m_associationsRoot;
     QString m_executable;
     QString m_productId;
@@ -98,6 +97,7 @@ class ShellContextMenuRegistration final {
     QStringList m_extensions;
     ShellContextMenuRegistryAccess m_registry;
     QString m_packagedPreferencePath;
+    bool m_useLocalCommandServer;
 };
 
 } // namespace snow_shot::platform::windows

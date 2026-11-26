@@ -56,6 +56,15 @@ void launchArguments() {
             "Windows shell operands must include a drive or UNC root");
     const QStringList windowsPaths{QStringLiteral("C:\\images\\one.png"),
                                    QStringLiteral("\\\\server\\share\\图片 two.jpeg")};
+    const QStringList secondCopy{QStringLiteral("D:/portable/snow_shot.exe")};
+    require(processLaunchOperands(secondCopy).isEmpty() &&
+                !parseShellImageLaunchRequest(secondCopy).requested,
+            "a normal launch from another installation retains foreground activation, including "
+            "legacy IPC frames that still contain the sender's executable");
+    const auto forwarded = processLaunchOperands(secondCopy + windowsPaths);
+    require(forwarded == shellImageLaunchArguments(windowsPaths) &&
+                parseShellImageLaunchRequest(forwarded).paths == windowsPaths,
+            "Open with forwards every positional file as a typed operand");
     require(parseShellImageLaunchRequest(shellImageLaunchArguments(windowsPaths)).paths ==
                 windowsPaths,
             "drive and UNC operands survive forwarding without command-string parsing");

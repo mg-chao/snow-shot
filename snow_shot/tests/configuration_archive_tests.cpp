@@ -482,6 +482,34 @@ void readRejectsInvalidArchives(const QTemporaryDir& temporary) {
     require(!storage::ConfigurationArchive::read(unknownKeys).isValid(),
             "an archive without any compatible settings must be rejected");
 
+    const auto legacyMode = QStringLiteral("system/context_menu_mode");
+    const auto legacyAnnotation = QStringLiteral("system/annotation_mode_when_opening_for_editing");
+    const auto legacyShortcut = QStringLiteral("context_menu_shortcuts/edit_with_snow_shot");
+    const auto menuOptions = QStringLiteral("system/context_menu_options");
+    const auto readLegacy = [&](const QJsonObject& values) {
+        writeZip(unknownKeys, {{QStringLiteral("manifest.json"), manifestBytes(11)},
+                               {QStringLiteral("config.json"), configurationBytes(values)}});
+        return storage::ConfigurationArchive::read(unknownKeys);
+    };
+    for (const auto& invalid :
+         {QJsonObject{{QStringLiteral("not/a_key"), 1}}, QJsonObject{{legacyMode, 42}},
+          QJsonObject{{legacyAnnotation, QStringLiteral("false")}},
+          QJsonObject{{legacyShortcut, QJsonArray{QStringLiteral("Ctrl+E")}}}})
+        require(!readLegacy(invalid).isValid(),
+                "an inferred menu default cannot make invalid legacy settings importable");
+    const auto validShortcut = readLegacy({{legacyShortcut, QJsonArray{QStringLiteral("E")}}});
+    require(validShortcut.isValid() && !validShortcut.explicitlyImported.contains(menuOptions) &&
+                validShortcut.explicitlyImported.contains(
+                    QStringLiteral("context_menu_shortcuts/pin_to_screen_and_annotate")),
+            "a valid legacy shortcut remains importable on its own");
+    const auto mixed =
+        readLegacy({{legacyMode, 42},
+                    {legacyAnnotation, QStringLiteral("false")},
+                    {QStringLiteral("interface/theme_mode"), QStringLiteral("dark")}});
+    require(
+        mixed.isValid() && !mixed.explicitlyImported.contains(menuOptions),
+        "invalid legacy menu fields cannot publish inferred options during a compatible import");
+
     const QString oversized = temporary.filePath(QStringLiteral("oversized.zip"));
     writeZip(oversized, {{QStringLiteral("manifest.json"),
                           manifestBytes(storage::ConfigurationStore::currentSchemaVersion())},

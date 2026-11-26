@@ -9,6 +9,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QSaveFile>
 #include <QSet>
 
@@ -35,22 +37,20 @@ QString contextMenuText(const char* source) {
     return QCoreApplication::translate("ShellContextMenuRegistration", source);
 }
 
-QString menuLabel(const QString& accessKey) {
-    QString label = app::edition::isMini
-                        ? contextMenuText(QT_TRANSLATE_NOOP("ShellContextMenuRegistration",
-                                                            "Edit with Snow Shot Mini"))
-                        : contextMenuText(QT_TRANSLATE_NOOP("ShellContextMenuRegistration",
-                                                            "Edit with Snow Shot"));
+QString menuLabel(size_t index, char key) {
+    static constexpr const char* titles[] = {
+        QT_TRANSLATE_NOOP("ShellContextMenuRegistration", "Pin to screen"),
+        QT_TRANSLATE_NOOP("ShellContextMenuRegistration", "Pin to screen and annotate"),
+        QT_TRANSLATE_NOOP("ShellContextMenuRegistration", "Stitch images"),
+        QT_TRANSLATE_NOOP("ShellContextMenuRegistration", "Split images"),
+        QT_TRANSLATE_NOOP("ShellContextMenuRegistration", "Edit images"),
+        QT_TRANSLATE_NOOP("ShellContextMenuRegistration", "Compress images"),
+    };
+    QString label = contextMenuText(titles[index]);
     label.replace(QLatin1Char('&'), QStringLiteral("&&"));
-    if (!accessKey.isEmpty())
-        label += QStringLiteral(" (&%1)").arg(accessKey);
+    if (key != '.')
+        label += QStringLiteral(" (&%1)").arg(QChar::fromLatin1(key));
     return label;
-}
-
-QString invalidAccessKeyError() {
-    return contextMenuText(
-        QT_TRANSLATE_NOOP("ShellContextMenuRegistration",
-                          "The context menu access key must be one letter (A–Z) or digit (0–9)"));
 }
 
 ShellContextMenuRegistryValue stringValue(const QString& value) {
@@ -253,15 +253,26 @@ ShellContextMenuRegistryAccess nativeRegistryAccess() {
 #endif
     return access;
 }
+
+bool needsLocalCommandServer() {
+#if defined(Q_OS_WIN) && defined(_M_X64)
+    USHORT processMachine = 0;
+    USHORT nativeMachine = 0;
+    return IsWow64Process2(GetCurrentProcess(), &processMachine, &nativeMachine) &&
+           nativeMachine == IMAGE_FILE_MACHINE_ARM64;
+#else
+    return false;
+#endif
+}
 } // namespace
 
 ShellContextMenuRegistration::ShellContextMenuRegistration()
     : ShellContextMenuRegistration(Options{}) {}
 
 ShellContextMenuRegistration::ShellContextMenuRegistration(Options options)
-    : m_associationsRoot((options.classesRoot.isEmpty() ? QStringLiteral("Software\\Classes")
-                                                        : options.classesRoot) +
-                         QStringLiteral("\\SystemFileAssociations")),
+    : m_classesRoot(options.classesRoot.isEmpty() ? QStringLiteral("Software\\Classes")
+                                                  : options.classesRoot),
+      m_associationsRoot(m_classesRoot + QStringLiteral("\\SystemFileAssociations")),
       m_executable(QDir::toNativeSeparators(
           QDir::cleanPath(options.executablePath.isEmpty() ? QCoreApplication::applicationFilePath()
                                                            : options.executablePath))),
@@ -269,7 +280,8 @@ ShellContextMenuRegistration::ShellContextMenuRegistration(Options options)
       m_verbName(options.verbName.isEmpty() ? app::edition::registryName() + QStringLiteral(".Edit")
                                             : options.verbName),
       m_registry(options.registry.read ? std::move(options.registry) : nativeRegistryAccess()),
-      m_packagedPreferencePath(std::move(options.packagedPreferencePath)) {
+      m_packagedPreferencePath(std::move(options.packagedPreferencePath)),
+      m_useLocalCommandServer(options.useLocalCommandServer.value_or(needsLocalCommandServer())) {
 #ifdef Q_OS_WIN
     if (m_packagedPreferencePath.isEmpty() && app::distribution::isStoreManaged())
         m_packagedPreferencePath = QString::fromStdWString(packaged_context_menu::preferencePath());
@@ -306,9 +318,39 @@ ShellContextMenuMode ShellContextMenuRegistration::modeFromValue(const QString& 
     return ShellContextMenuMode::Disabled;
 }
 
-QString ShellContextMenuRegistration::expectedCommand() const {
-    return QStringLiteral("\"%1\" --edit-with-snow-shot \"%2\"")
-        .arg(m_executable, QStringLiteral("%1"));
+QString ShellContextMenuRegistration::classId(size_t index) const {
+    return QStringLiteral("{3F1E90A2-7D4B-4F21-9D8A-6B0C5E2F70%1%2}")
+        .arg(app::edition::isMini ? QStringLiteral("C") : QStringLiteral("B"))
+        .arg(index);
+}
+QString ShellContextMenuRegistration::classPath(size_t index) const {
+    return m_classesRoot + QStringLiteral("\\CLSID\\") + classId(index);
+}
+QString ShellContextMenuRegistration::actionPath(size_t index, const QString& extension) const {
+    const auto action = QString::fromLatin1(shellActionIds[index]);
+    return verbPath(m_associationsRoot, extension,
+                    app::edition::registryName() + QStringLiteral(".File.") + action);
+}
+
+ShellMenuPreferences
+ShellContextMenuRegistration::preferences(const QMap<QString, QJsonValue>& values) {
+    ShellMenuPreferences result;
+    result.mode =
+        modeFromValue(values.value(QStringLiteral("system/context_menu_mode")).toString());
+    const auto options = values.value(QStringLiteral("system/context_menu_options")).toArray();
+    for (size_t i = 0; i < shellActionIds.size(); ++i) {
+        const auto id = QString::fromLatin1(shellActionIds[i]);
+        const auto bindings =
+            values.value(QStringLiteral("context_menu_shortcuts/") + id).toArray();
+        const auto key =
+            bindings.isEmpty()
+                ? QString{}
+                : bindings.first().toObject().value(QStringLiteral("portable")).toString();
+        result.actions[i] = !options.contains(id) ? '-'
+                            : key.isEmpty()       ? '.'
+                                                  : key.front().toLatin1();
+    }
+    return result;
 }
 
 bool ShellContextMenuRegistration::ownedByProduct(const ShellContextMenuRegistryKey& key) const {
@@ -333,65 +375,123 @@ ShellContextMenuRegistrationSnapshot ShellContextMenuRegistration::snapshot() co
     for (const auto& extension : m_extensions)
         if (!registeredExtensions.contains(extension, Qt::CaseInsensitive))
             registeredExtensions.append(extension);
+    const auto capture = [&](const QString& path, bool registered = true) {
+        ShellContextMenuRegistryKey key;
+        if (!m_registry.read(path, &key, &result.error))
+            return false;
+        if (registered || ownedByProduct(key))
+            result.keys.insert(path, std::move(key));
+        return true;
+    };
     for (const auto& extension : registeredExtensions) {
         if (!extension.startsWith(QLatin1Char('.')) || extension.contains(QLatin1Char('\\')) ||
             extension.contains(QLatin1Char('/')))
             continue;
-        const auto path = verbPath(m_associationsRoot, extension, m_verbName);
-        ShellContextMenuRegistryKey key;
-        if (!m_registry.read(path, &key, &result.error))
+        const bool supported = m_extensions.contains(extension, Qt::CaseInsensitive);
+        if (!capture(verbPath(m_associationsRoot, extension, m_verbName), supported))
             return result;
-        if (m_extensions.contains(extension, Qt::CaseInsensitive) || ownedByProduct(key))
-            result.keys.insert(path, std::move(key));
+        for (size_t i = 0; i < shellActionIds.size(); ++i)
+            if (!capture(actionPath(i, extension.toLower()), supported))
+                return result;
+    }
+    for (size_t i = 0; i < shellActionIds.size(); ++i) {
+        // Reconcile wildcard verbs left by earlier builds; new verbs are extension-specific.
+        const QString oldVerb =
+            app::edition::registryName() + u'.' + QString::fromLatin1(shellActionIds[i]);
+        if (!capture(classPath(i)) ||
+            !capture(verbPath(m_classesRoot, QStringLiteral("*"), oldVerb), false))
+            return result;
     }
     result.valid = true;
     return result;
 }
 
-ShellContextMenuRegistryKey
-ShellContextMenuRegistration::enabledKey(ShellContextMenuRegistryKey previous,
-                                         const QString& accessKey) const {
-    previous.exists = true;
-    previous.values.insert(QString(), stringValue(menuLabel(accessKey)));
-    previous.values.insert(QStringLiteral("Icon"),
-                           stringValue(QStringLiteral("\"%1\",0").arg(m_executable)));
-    previous.values.insert(QStringLiteral("MultiSelectModel"),
-                           stringValue(QStringLiteral("Document")));
-    previous.values.insert(QStringLiteral("InstallationExecutable"), stringValue(m_executable));
-    previous.values.insert(QStringLiteral("ProductId"), stringValue(m_productId));
-    auto& command = previous.children[QStringLiteral("command")];
-    command.exists = true;
-    command.values.insert(QString(), stringValue(expectedCommand()));
-    return previous;
-}
-
-bool ShellContextMenuRegistration::apply(ShellContextMenuMode mode, const QString& accessKey,
+bool ShellContextMenuRegistration::apply(const ShellMenuPreferences& prefs,
                                          const ShellContextMenuRegistrationSnapshot& previous,
                                          QString* error) const {
-    QSet<QString> enabledPaths;
-    if (mode != ShellContextMenuMode::Disabled) {
-        const auto imageExtensions = image::supportedImageFileExtensions();
+    QMap<QString, ShellContextMenuRegistryKey> desired;
+    for (size_t i = 0; i < shellActionIds.size(); ++i) {
+        if (prefs.mode == ShellContextMenuMode::Disabled || prefs.actions[i] == '-')
+            continue;
+        const auto label = menuLabel(i, prefs.actions[i]);
+        const auto enabledKey = [&](const QString& path) {
+            auto key = previous.keys.value(path);
+            key.exists = true;
+            key.values.insert(QString(), stringValue(label));
+            key.values.insert(QStringLiteral("ProductId"), stringValue(m_productId));
+            key.values.insert(QStringLiteral("InstallationExecutable"), stringValue(m_executable));
+            return key;
+        };
+        const auto clsid = classId(i);
+        const auto classKey = classPath(i);
+        auto com = enabledKey(classKey);
+        com.values.insert(QStringLiteral("Scope"),
+                          stringValue(prefs.mode == ShellContextMenuMode::ImageFiles
+                                          ? QStringLiteral("images_only")
+                                          : QStringLiteral("image_files")));
+        if (m_useLocalCommandServer) {
+            // A native ARM64 Explorer cannot load the emulated application's x64 DLL.
+            com.children.remove(QStringLiteral("InprocServer32"));
+            auto& server = com.children[QStringLiteral("LocalServer32")];
+            server.exists = true;
+            server.values.insert(QString(),
+                                 stringValue(QStringLiteral("\"%1\" --explorer-command-server %2")
+                                                 .arg(m_executable)
+                                                 .arg(i)));
+            server.values.insert(QStringLiteral("ServerExecutable"), stringValue(m_executable));
+        } else {
+            com.children.remove(QStringLiteral("LocalServer32"));
+            auto& server = com.children[QStringLiteral("InprocServer32")];
+            server.exists = true;
+            server.values.insert(
+                QString(), stringValue(QDir::toNativeSeparators(
+                               QFileInfo(m_executable)
+                                   .dir()
+                                   .filePath(QStringLiteral("SnowShotExplorerCommand.dll")))));
+            server.values.insert(QStringLiteral("ThreadingModel"),
+                                 stringValue(QStringLiteral("Apartment")));
+        }
+        desired.insert(classKey, com);
         for (const auto& extension : m_extensions) {
-            if (mode == ShellContextMenuMode::ImageFiles &&
-                !imageExtensions.contains(extension.mid(1), Qt::CaseInsensitive))
+            if (app::pinDocumentFileFormat(extension.mid(1)) &&
+                (prefs.mode == ShellContextMenuMode::ImageFiles ||
+                 !acceptsDocuments(static_cast<ShellAction>(i))))
                 continue;
-            enabledPaths.insert(verbPath(m_associationsRoot, extension, m_verbName).toLower());
+            const auto path = actionPath(i, extension);
+            auto verb = enabledKey(path);
+            verb.values.insert(QStringLiteral("NeverDefault"), stringValue({}));
+            verb.values.insert(QStringLiteral("Icon"),
+                               stringValue(QStringLiteral("\"%1\",0").arg(m_executable)));
+            verb.values.insert(QStringLiteral("MultiSelectModel"),
+                               stringValue(QStringLiteral("Player")));
+            if (m_useLocalCommandServer) {
+                verb.values.remove(QStringLiteral("ExplorerCommandHandler"));
+                auto& command = verb.children[QStringLiteral("command")];
+                command.exists = true;
+                command.values.insert(QStringLiteral("DelegateExecute"), stringValue(clsid));
+            } else {
+                auto command = verb.children.find(QStringLiteral("command"));
+                if (command != verb.children.end()) {
+                    command->values.remove(QStringLiteral("DelegateExecute"));
+                    if (command->values.isEmpty() && command->children.isEmpty())
+                        verb.children.erase(command);
+                }
+                verb.values.insert(QStringLiteral("ExplorerCommandHandler"), stringValue(clsid));
+            }
+            desired.insert(path, std::move(verb));
         }
     }
     bool changed = false;
     for (auto item = previous.keys.cbegin(); item != previous.keys.cend(); ++item) {
-        auto requested = item.value();
-        if (enabledPaths.contains(item.key().toLower())) {
-            if (requested.exists && !ownedByProduct(requested)) {
-                if (error)
-                    *error = contextMenuText(QT_TRANSLATE_NOOP(
-                        "ShellContextMenuRegistration",
-                        "The Windows context menu entry is owned by another application"));
-                return false;
-            }
-            requested = enabledKey(std::move(requested), accessKey);
-        } else if (ownedByProduct(requested)) {
-            requested = {};
+        const auto requested = desired.value(item.key());
+        if (item->exists && !ownedByProduct(item.value())) {
+            if (!requested.exists)
+                continue;
+            if (error)
+                *error = contextMenuText(QT_TRANSLATE_NOOP(
+                    "ShellContextMenuRegistration",
+                    "The Windows context menu entry is owned by another application"));
+            return false;
         }
         if (requested == item.value())
             continue;
@@ -402,6 +502,45 @@ bool ShellContextMenuRegistration::apply(ShellContextMenuMode mode, const QStrin
     if (changed && m_registry.notifyChanged)
         m_registry.notifyChanged();
     return true;
+}
+
+ShellContextMenuResult
+ShellContextMenuRegistration::refreshLabels(const ShellMenuPreferences& preferences) const {
+    if (app::distribution::isStoreManaged())
+        return {true, {}};
+    const auto previous = snapshot();
+    if (!previous.valid)
+        return {false, previous.error};
+    bool changed = false;
+    for (size_t i = 0; i < shellActionIds.size(); ++i) {
+        if (preferences.actions[i] == '-')
+            continue;
+        QStringList paths{classPath(i)};
+        for (const auto& extension : m_extensions)
+            paths.append(actionPath(i, extension));
+        for (const auto& path : paths) {
+            auto key = previous.keys.value(path);
+            if (!ownedByProduct(key) ||
+                readString(key.values.value(QStringLiteral("InstallationExecutable")))
+                        .compare(m_executable, Qt::CaseInsensitive) != 0)
+                continue;
+            const auto label = stringValue(menuLabel(i, preferences.actions[i]));
+            if (key.values.value({}) == label)
+                continue;
+            key.values.insert({}, label);
+            QString error;
+            if (!m_registry.replace(path, key, &error)) {
+                QString recovery;
+                if (!restore(previous, &recovery))
+                    error += u' ' + recovery;
+                return {false, error};
+            }
+            changed = true;
+        }
+    }
+    if (changed && m_registry.notifyChanged)
+        m_registry.notifyChanged();
+    return {true, {}};
 }
 
 bool ShellContextMenuRegistration::restore(const ShellContextMenuRegistrationSnapshot& previous,
@@ -435,15 +574,9 @@ bool ShellContextMenuRegistration::restore(const ShellContextMenuRegistrationSna
     return success;
 }
 
-ShellContextMenuResult
-ShellContextMenuRegistration::changeMode(ShellContextMenuMode mode,
-                                         const std::function<bool()>& commitPreference) const {
-    return changeMode(mode, QString(), commitPreference);
-}
-
 ShellContextMenuResult ShellContextMenuRegistration::changePackagedMode(
-    ShellContextMenuMode mode, const QString& accessKey,
-    const std::function<bool()>& commitPreference) const {
+    const ShellMenuPreferences& prefs, const std::function<bool()>& commitPreference) const {
+    const auto mode = prefs.mode;
     const auto failure = [] {
         return ShellContextMenuResult{
             false, contextMenuText(
@@ -473,7 +606,14 @@ ShellContextMenuResult ShellContextMenuRegistration::changePackagedMode(
     const QByteArray modeByte = mode == ShellContextMenuMode::Disabled     ? QByteArray("0")
                                 : mode == ShellContextMenuMode::ImageFiles ? QByteArray("2")
                                                                            : QByteArray("1");
-    if (!write(modeByte + accessKey.toLatin1()))
+    const auto bytes =
+        modeByte + QByteArray(prefs.actions.data(), static_cast<qsizetype>(prefs.actions.size()));
+    if (previousBytes == bytes && existed) {
+        if (commitPreference && !commitPreference())
+            return failure();
+        return {true, {}};
+    }
+    if (!write(bytes))
         return failure();
     if (commitPreference && !commitPreference()) {
         auto result = failure();
@@ -492,18 +632,15 @@ ShellContextMenuResult ShellContextMenuRegistration::changePackagedMode(
 }
 
 ShellContextMenuResult
-ShellContextMenuRegistration::changeMode(ShellContextMenuMode mode, const QString& accessKey,
-                                         const std::function<bool()>& commitPreference) const {
-    const QString canonicalKey = shortcuts::canonicalMenuAccessKey(accessKey);
-    if (!accessKey.isEmpty() && canonicalKey.isEmpty())
-        return {false, invalidAccessKeyError()};
+ShellContextMenuRegistration::change(const ShellMenuPreferences& prefs,
+                                     const std::function<bool()>& commitPreference) const {
     if (app::distribution::isStoreManaged())
-        return changePackagedMode(mode, canonicalKey, commitPreference);
+        return changePackagedMode(prefs, commitPreference);
     const auto previous = snapshot();
     if (!previous.valid)
         return {false, previous.error};
     QString error;
-    if (apply(mode, canonicalKey, previous, &error)) {
+    if (apply(prefs, previous, &error)) {
         if (!commitPreference || commitPreference())
             return {true, {}};
         error = contextMenuText(QT_TRANSLATE_NOOP(
@@ -517,58 +654,6 @@ ShellContextMenuRegistration::changeMode(ShellContextMenuMode mode, const QStrin
                                      "Could not restore the Windows context menu registration. %1"))
                      .arg(recoveryError);
     return {false, error};
-}
-
-bool ShellContextMenuRegistration::setMode(ShellContextMenuMode mode, QString* error) const {
-    return setMode(mode, QString(), error);
-}
-
-bool ShellContextMenuRegistration::setMode(ShellContextMenuMode mode, const QString& accessKey,
-                                           QString* error) const {
-    const auto result = changeMode(mode, accessKey, {});
-    if (error)
-        *error = result.error;
-    return result.success;
-}
-
-bool ShellContextMenuRegistration::refreshLabels(QString* error) const {
-    return refreshLabels(QString(), error);
-}
-
-bool ShellContextMenuRegistration::refreshLabels(const QString& accessKey, QString* error) const {
-    const QString canonicalKey = shortcuts::canonicalMenuAccessKey(accessKey);
-    if (!accessKey.isEmpty() && canonicalKey.isEmpty()) {
-        if (error)
-            *error = invalidAccessKeyError();
-        return false;
-    }
-    const auto previous = snapshot();
-    if (!previous.valid) {
-        if (error)
-            *error = previous.error;
-        return false;
-    }
-    bool changed = false;
-    for (auto item = previous.keys.cbegin(); item != previous.keys.cend(); ++item) {
-        if (!ownedByProduct(item.value()) ||
-            readString(item->values.value(QStringLiteral("InstallationExecutable")))
-                    .compare(m_executable, Qt::CaseInsensitive) != 0)
-            continue;
-        auto requested = item.value();
-        requested.values.insert(QString(), stringValue(menuLabel(canonicalKey)));
-        if (requested == item.value())
-            continue;
-        if (!m_registry.replace(item.key(), requested, error)) {
-            QString recoveryError;
-            if (!restore(previous, &recoveryError) && error)
-                *error += QLatin1Char(' ') + recoveryError;
-            return false;
-        }
-        changed = true;
-    }
-    if (changed && m_registry.notifyChanged)
-        m_registry.notifyChanged();
-    return true;
 }
 
 } // namespace snow_shot::platform::windows

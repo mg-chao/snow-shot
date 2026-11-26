@@ -88,71 +88,24 @@ int main(int argc, char** argv) {
             "Store shell registration still belongs to the manifest");
     require(packaged_context_menu::isEnabled(preferencePath),
             "a new installation enables the command before the app first runs");
-    require(!shell.changeMode(ShellContextMenuMode::Disabled, [] { return false; }).success &&
+    ShellMenuPreferences prefs;
+    prefs.mode = ShellContextMenuMode::Disabled;
+    require(!shell.change(prefs, [] { return false; }).success &&
                 !QFile::exists(options.packagedPreferencePath),
-            "a rejected first change restores the absent preference");
-    require(shell.changeMode(ShellContextMenuMode::Disabled, QString(),
-                             [&] {
-                                 preferenceChanged = true;
-                                 return true;
-                             })
-                    .success &&
-                preferenceChanged && !packaged_context_menu::isEnabled(preferencePath),
-            "disabling persists a preference readable by the Qt-free Explorer command");
-    require(!shell.changeMode(ShellContextMenuMode::ImageAndDocumentFiles, [] { return false; })
-                    .success &&
-                !packaged_context_menu::isEnabled(preferencePath),
-            "configuration save failure rolls back the Explorer preference");
-    require(shell.setMode(ShellContextMenuMode::ImageAndDocumentFiles) &&
-                packaged_context_menu::isEnabled(preferencePath) && shell.refreshLabels(),
-            "reenabling and startup reconciliation restore the command");
-    require(registry.writes == 0 && registry.notifications == 2 && registry.keys.isEmpty(),
-            "packaged changes notify Explorer without writing classic registry entries");
-    require(shell.setMode(ShellContextMenuMode::ImageAndDocumentFiles, QStringLiteral("e")) &&
-                packaged_context_menu::readPreference(preferencePath) ==
-                    packaged_context_menu::Preference{ShellContextMenuMode::ImageAndDocumentFiles,
-                                                      L'E'},
-            "packaged preferences persist a canonical classic menu access key");
-    preferenceChanged = false;
-    require(!shell.changeMode(ShellContextMenuMode::ImageAndDocumentFiles, QStringLiteral("Ctrl+E"),
-                              [&] {
-                                  preferenceChanged = true;
-                                  return true;
-                              })
-                    .success &&
-                !preferenceChanged &&
-                packaged_context_menu::readPreference(preferencePath) ==
-                    packaged_context_menu::Preference{ShellContextMenuMode::ImageAndDocumentFiles,
-                                                      L'E'},
-            "invalid access keys cannot change either packaged preference");
-    require(
-        !shell.changeMode(ShellContextMenuMode::Disabled, QStringLiteral("7"), [] { return false; })
-                .success &&
-            packaged_context_menu::readPreference(preferencePath) ==
-                packaged_context_menu::Preference{ShellContextMenuMode::ImageAndDocumentFiles,
-                                                  L'E'},
-        "failed commits restore the menu mode and access key together");
-    require(shell.setMode(ShellContextMenuMode::Disabled, QStringLiteral("7")) &&
-                packaged_context_menu::readPreference(preferencePath) ==
-                    packaged_context_menu::Preference{ShellContextMenuMode::Disabled, L'7'} &&
-                shell.setMode(ShellContextMenuMode::ImageAndDocumentFiles, QStringLiteral("7")) &&
-                packaged_context_menu::readPreference(preferencePath) ==
-                    packaged_context_menu::Preference{ShellContextMenuMode::ImageAndDocumentFiles,
-                                                      L'7'},
-            "disabled menus retain their assigned access keys when reenabled");
-    require(shell.setMode(ShellContextMenuMode::ImageAndDocumentFiles) &&
-                packaged_context_menu::readPreference(preferencePath) ==
-                    packaged_context_menu::Preference{ShellContextMenuMode::ImageAndDocumentFiles},
-            "clearing the assignment leaves the menu enabled without an access key");
-    require(shell.setMode(ShellContextMenuMode::ImageFiles, QStringLiteral("E")) &&
-                packaged_context_menu::readPreference(preferencePath) ==
-                    packaged_context_menu::Preference{ShellContextMenuMode::ImageFiles, L'E'},
-            "image-only scope and its mnemonic round-trip through the packaged preference");
-    require(!shell.changeMode(ShellContextMenuMode::ImageAndDocumentFiles, [] { return false; })
-                    .success &&
-                packaged_context_menu::readPreference(preferencePath).mode ==
-                    ShellContextMenuMode::ImageFiles,
-            "failed scope commits restore the image-only packaged preference");
+            "failed first write restores absent packaged preference");
+    require(shell.change(prefs).success && !packaged_context_menu::isEnabled(preferencePath),
+            "disabling the scope hides all packaged commands");
+    prefs.mode = ShellContextMenuMode::ImageFiles;
+    prefs.actions = {'P', '-', 'S', '.', '-', '7'};
+    require(shell.change(prefs).success &&
+                packaged_context_menu::readPreference(preferencePath) == prefs,
+            "every action persists its own visibility and key");
+    const auto before = prefs;
+    prefs.actions.fill('-');
+    require(!shell.change(prefs, [] { return false; }).success &&
+                packaged_context_menu::readPreference(preferencePath) == before &&
+                registry.writes == 0,
+            "failed commits restore packaged labels and visibility without registry changes");
     QFile malformed(options.packagedPreferencePath);
     for (const QByteArray bytes : {QByteArray("0"), QByteArray("1"), QByteArray("2"),
                                    QByteArray("0E"), QByteArray("1E"), QByteArray("2E")}) {
@@ -164,7 +117,7 @@ int main(int argc, char** argv) {
                               : bytes[0] == '2' ? ShellContextMenuMode::ImageFiles
                                                 : ShellContextMenuMode::ImageAndDocumentFiles;
         require(preference.mode == expected &&
-                    preference.accessKey == (bytes.size() == 2 ? L'E' : L'\0'),
+                    preference.actions[1] == (bytes.size() == 2 ? 'E' : '.'),
                 "legacy and image-only payloads preserve scope and optional access keys");
     }
     for (const QByteArray bytes : {QByteArray(), QByteArray("invalid"), QByteArray("1Eextra"),
@@ -179,11 +132,11 @@ int main(int argc, char** argv) {
     options.packagedPreferencePath += QStringLiteral("/blocked");
     preferenceChanged = false;
     require(!ShellContextMenuRegistration(options)
-                    .changeMode(ShellContextMenuMode::Disabled,
-                                [&] {
-                                    preferenceChanged = true;
-                                    return true;
-                                })
+                    .change({ShellContextMenuMode::Disabled},
+                            [&] {
+                                preferenceChanged = true;
+                                return true;
+                            })
                     .success &&
                 !preferenceChanged,
             "a native preference write failure never commits application settings");

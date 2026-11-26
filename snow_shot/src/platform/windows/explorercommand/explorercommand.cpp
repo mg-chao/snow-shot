@@ -1,5 +1,7 @@
 #include "explorercommand.h"
 #include "supportedformats.h"
+#include "snow_shot/platform/windows/shellbatchfile.h"
+#include <filesystem>
 
 #include <shlwapi.h>
 #include <wrl/client.h>
@@ -7,6 +9,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstring>
+#include <memory>
 #include <new>
 #include <span>
 #include <utility>
@@ -17,8 +20,20 @@ namespace {
 HMODULE commandModule = nullptr;
 std::atomic<ULONG> objectCount{0};
 std::atomic<ULONG> serverLockCount{0};
+DWORD localServerThread = 0;
+bool localServerActivated = false;
 
 constexpr size_t kMaximumCommandLineLength = 32767;
+
+void lockLocalServer(bool lock) {
+    if (!localServerThread)
+        return;
+    if (lock) {
+        CoAddRefServerProcess();
+    } else if (!CoReleaseServerProcess()) {
+        PostThreadMessageW(localServerThread, WM_QUIT, 0, 0);
+    }
+}
 
 packaged_context_menu::Preference contextMenuPreference() {
     return packaged_context_menu::readPreference(packaged_context_menu::preferencePath());
@@ -65,7 +80,7 @@ HRESULT modulePath(HMODULE module, std::wstring* path) {
     }
 }
 
-HRESULT executablePath(HMODULE module, std::wstring* path) {
+HRESULT executablePath(HMODULE module, std::wstring* path, bool mini) {
     HRESULT result = modulePath(module, path);
     if (FAILED(result))
         return result;
@@ -73,7 +88,7 @@ HRESULT executablePath(HMODULE module, std::wstring* path) {
     if (separator == std::wstring::npos)
         return HRESULT_FROM_WIN32(ERROR_BAD_PATHNAME);
     path->resize(separator + 1);
-    path->append(L"snow_shot.exe");
+    path->append(mini ? L"snow_shot_mini.exe" : L"snow_shot.exe");
     return S_OK;
 }
 
@@ -96,51 +111,37 @@ void appendQuoted(std::wstring_view argument, std::wstring* commandLine) {
     commandLine->push_back(L'"');
 }
 
-HRESULT selectionPaths(IShellItemArray* items, std::vector<std::wstring>* paths,
-                       ShellContextMenuMode mode) {
+bool supportedSelectionItem(IShellItemArray* items, DWORD index, ShellContextMenuMode mode,
+                            std::vector<std::wstring>* paths) {
+    Microsoft::WRL::ComPtr<IShellItem> item;
+    if (FAILED(items->GetItemAt(index, &item)) || !item)
+        return false;
+    SFGAOF attributes = 0;
+    if (FAILED(item->GetAttributes(SFGAO_FILESYSTEM | SFGAO_FOLDER, &attributes)) ||
+        (attributes & SFGAO_FILESYSTEM) == 0 || (attributes & SFGAO_FOLDER) != 0)
+        return false;
+    PWSTR nativePath = nullptr;
+    const HRESULT result = item->GetDisplayName(SIGDN_FILESYSPATH, &nativePath);
+    std::unique_ptr<wchar_t, decltype(&CoTaskMemFree)> path(nativePath, CoTaskMemFree);
+    if (FAILED(result) || !path || !isSupportedPath(path.get(), mode))
+        return false;
+    if (paths)
+        paths->emplace_back(path.get());
+    return true;
+}
+
+HRESULT collectSelectionPaths(IShellItemArray* items, ShellContextMenuMode mode,
+                              std::vector<std::wstring>& paths) {
     if (!items)
         return E_INVALIDARG;
     DWORD count = 0;
-    HRESULT result = items->GetCount(&count);
-    if (FAILED(result))
-        return result;
-    if (count == 0)
-        return E_INVALIDARG;
-    // Even empty arguments cannot fit a larger selection in one CreateProcess invocation.
-    if (count > kMaximumCommandLineLength / sizeof(" --edit-with-snow-shot \"\""))
-        return HRESULT_FROM_WIN32(ERROR_FILENAME_EXCED_RANGE);
-    paths->reserve(count);
-    for (DWORD index = 0; index < count; ++index) {
-        Microsoft::WRL::ComPtr<IShellItem> item;
-        result = items->GetItemAt(index, &item);
-        if (FAILED(result))
-            return result;
-        if (!item)
-            return E_UNEXPECTED;
-        SFGAOF attributes = 0;
-        result = item->GetAttributes(SFGAO_FILESYSTEM | SFGAO_FOLDER, &attributes);
-        if (FAILED(result))
-            return result;
-        if ((attributes & SFGAO_FILESYSTEM) == 0 || (attributes & SFGAO_FOLDER) != 0)
-            return E_INVALIDARG;
-        PWSTR nativePath = nullptr;
-        result = item->GetDisplayName(SIGDN_FILESYSPATH, &nativePath);
-        if (FAILED(result))
-            return result;
-        std::wstring path;
-        try {
-            if (nativePath)
-                path.assign(nativePath);
-        } catch (...) {
-            CoTaskMemFree(nativePath);
-            throw;
-        }
-        CoTaskMemFree(nativePath);
-        if (!isSupportedPath(path, mode))
-            return E_INVALIDARG;
-        paths->push_back(std::move(path));
-    }
-    return S_OK;
+    const HRESULT result = items->GetCount(&count);
+    if (FAILED(result) || count == 0)
+        return FAILED(result) ? result : E_INVALIDARG;
+    paths.reserve(count);
+    for (DWORD index = 0; index < count; ++index)
+        supportedSelectionItem(items, index, mode, &paths);
+    return paths.empty() ? S_FALSE : S_OK;
 }
 
 HRESULT launchProcess(const std::wstring& executable, const std::wstring& commandLine) {
@@ -156,21 +157,93 @@ HRESULT launchProcess(const std::wstring& executable, const std::wstring& comman
     return S_OK;
 }
 
-class EditCommand final : public IExplorerCommand {
+CLSID actionClsid(ShellAction action, char edition) {
+    auto clsid = kEditCommandClsid;
+    clsid.Data4[7] = static_cast<unsigned char>(((edition - 'A' + 10) << 4) + actionIndex(action));
+    return clsid;
+}
+
+std::wstring classValue(ShellAction action, char edition, const wchar_t* name) {
+    wchar_t guid[39]{};
+    StringFromGUID2(actionClsid(action, edition), guid, 39);
+    const auto path = std::wstring(L"Software\\Classes\\CLSID\\") + guid;
+    wchar_t value[512]{};
+    DWORD bytes = sizeof(value);
+    return RegGetValueW(HKEY_CURRENT_USER, path.c_str(), name, RRF_RT_REG_SZ, nullptr, value,
+                        &bytes) == ERROR_SUCCESS
+               ? value
+               : L"";
+}
+
+HRESULT launchSelection(const std::wstring& executable, const std::vector<std::wstring>& paths,
+                        ShellAction action, char edition, ProcessLauncher launcher) {
+    const auto directory = shellBatchDirectory(edition == 'C', edition == 'A');
+    if (directory.empty())
+        return E_FAIL;
+    std::error_code error;
+    std::filesystem::create_directories(directory, error);
+    if (error)
+        return HRESULT_FROM_WIN32(error.value());
+    GUID guid{};
+    wchar_t token[39]{};
+    if (FAILED(CoCreateGuid(&guid)) || !StringFromGUID2(guid, token, 39))
+        return E_FAIL;
+    const auto filePath = directory / token;
+    HANDLE file = CreateFileW(filePath.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+                              FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE)
+        return HRESULT_FROM_WIN32(GetLastError());
+    auto write = [&](const std::wstring& line) {
+        DWORD written = 0;
+        const auto bytes = static_cast<DWORD>(line.size() * sizeof(wchar_t));
+        return WriteFile(file, line.data(), bytes, &written, nullptr) && written == bytes;
+    };
+    bool ok = write(std::to_wstring(actionIndex(action)) + L"\n");
+    for (const auto& path : paths) {
+        if (!ok)
+            break;
+        ok = write(path) && write(L"\n");
+    }
+    CloseHandle(file);
+    HRESULT result = E_FAIL;
+    if (ok) {
+        std::wstring command;
+        appendQuoted(executable, &command);
+        command.append(L" --explorer-selection ").append(token);
+        result = launcher(executable, command);
+    }
+    if (FAILED(result))
+        DeleteFileW(filePath.c_str());
+    return result;
+}
+
+class EditCommand final : public IExplorerCommand,
+                          public IExecuteCommand,
+                          public IObjectWithSelection {
   public:
-    EditCommand(HMODULE module, ProcessLauncher launcher,
-                PreferenceReader preferenceReader) noexcept
-        : m_module(module), m_launcher(launcher), m_preferenceReader(preferenceReader) {
+    EditCommand(HMODULE module, ProcessLauncher launcher, PreferenceReader preferenceReader,
+                ShellAction action, char edition) noexcept
+        : m_action(action), m_edition(edition), m_module(module), m_launcher(launcher),
+          m_preferenceReader(preferenceReader) {
         ++objectCount;
+        if (localServerThread) {
+            localServerActivated = true;
+            lockLocalServer(true);
+        }
     }
 
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** object) override {
         if (!object)
             return E_POINTER;
         *object = nullptr;
-        if (iid != IID_IUnknown && iid != IID_IExplorerCommand)
+        if (iid == IID_IUnknown || iid == IID_IExplorerCommand)
+            *object = static_cast<IExplorerCommand*>(this);
+        else if (iid == IID_IExecuteCommand)
+            *object = static_cast<IExecuteCommand*>(this);
+        else if (iid == IID_IObjectWithSelection)
+            *object = static_cast<IObjectWithSelection*>(this);
+        else
             return E_NOINTERFACE;
-        *object = static_cast<IExplorerCommand*>(this);
         AddRef();
         return S_OK;
     }
@@ -190,8 +263,16 @@ class EditCommand final : public IExplorerCommand {
         if (!title)
             return E_POINTER;
         *title = nullptr;
+        if (m_edition != 'A') {
+            try {
+                return SHStrDupW(classValue(m_action, m_edition, nullptr).c_str(), title);
+            } catch (...) {
+                return E_OUTOFMEMORY;
+            }
+        }
         const wchar_t* text = nullptr;
-        const int length = LoadStringW(m_module, 101, reinterpret_cast<PWSTR>(&text), 0);
+        const int length = LoadStringW(m_module, static_cast<UINT>(110 + actionIndex(m_action)),
+                                       reinterpret_cast<PWSTR>(&text), 0);
         if (length <= 0)
             return HRESULT_FROM_WIN32(ERROR_RESOURCE_NAME_NOT_FOUND);
         try {
@@ -201,7 +282,7 @@ class EditCommand final : public IExplorerCommand {
                 if (text[index] == L'&')
                     label.push_back(L'&');
             }
-            const auto accessKey = m_preferenceReader().accessKey;
+            const auto accessKey = m_preferenceReader().actions[actionIndex(m_action)];
             if (packaged_context_menu::isAccessKey(accessKey)) {
                 label.append(L" (&");
                 label.push_back(accessKey);
@@ -239,26 +320,36 @@ class EditCommand final : public IExplorerCommand {
     HRESULT STDMETHODCALLTYPE GetCanonicalName(GUID* name) override {
         if (!name)
             return E_POINTER;
-        *name = kEditCommandClsid;
+        *name = actionClsid(m_action, m_edition);
         return S_OK;
     }
 
-    HRESULT STDMETHODCALLTYPE GetState(IShellItemArray* items, BOOL, EXPCMDSTATE* state) override {
+    HRESULT STDMETHODCALLTYPE GetState(IShellItemArray* items, BOOL okToBeSlow,
+                                       EXPCMDSTATE* state) override {
         if (!state)
             return E_POINTER;
         *state = ECS_HIDDEN;
+        if (!items)
+            return S_OK;
+        // Checking a Store preference and inspecting a shell item can both require I/O.
+        // Explorer retries E_PENDING on a background thread with okToBeSlow set.
+        if (m_edition == 'A' && !okToBeSlow)
+            return E_PENDING;
         try {
-            const auto preference = m_preferenceReader();
-            if (preference.mode == ShellContextMenuMode::Disabled)
+            const auto mode = effectiveMode();
+            if (mode == ShellContextMenuMode::Disabled)
                 return S_OK;
-            std::vector<std::wstring> paths;
-            if (FAILED(selectionPaths(items, &paths, preference.mode)))
+            DWORD count = 0;
+            if (FAILED(items->GetCount(&count)) || count == 0)
                 return S_OK;
-            std::wstring executable;
-            std::wstring commandLine;
-            if (SUCCEEDED(executablePath(m_module, &executable)) &&
-                SUCCEEDED(buildCommandLine(executable, paths, &commandLine)))
-                *state = ECS_ENABLED;
+            // Explorer already matched standalone verbs against the configured extensions.
+            // Store declarations are fixed, so apply the user's current scope here as well.
+            if (m_edition == 'A') {
+                for (DWORD index = 0; index < count; ++index)
+                    if (!supportedSelectionItem(items, index, mode, nullptr))
+                        return S_OK;
+            }
+            *state = ECS_ENABLED;
             return S_OK;
         } catch (...) {
             return E_OUTOFMEMORY;
@@ -267,22 +358,18 @@ class EditCommand final : public IExplorerCommand {
 
     HRESULT STDMETHODCALLTYPE Invoke(IShellItemArray* items, IBindCtx*) override {
         try {
-            const auto preference = m_preferenceReader();
-            if (preference.mode == ShellContextMenuMode::Disabled)
+            const auto mode = effectiveMode();
+            if (mode == ShellContextMenuMode::Disabled)
                 return E_ACCESSDENIED;
             std::vector<std::wstring> paths;
-            HRESULT result = selectionPaths(items, &paths, preference.mode);
-            if (FAILED(result))
+            HRESULT result = collectSelectionPaths(items, mode, paths);
+            if (result != S_OK)
                 return result;
             std::wstring executable;
-            result = executablePath(m_module, &executable);
+            result = executablePath(m_module, &executable, m_edition == 'C');
             if (FAILED(result))
                 return result;
-            std::wstring commandLine;
-            result = buildCommandLine(executable, paths, &commandLine);
-            if (FAILED(result))
-                return result;
-            return m_launcher(executable, commandLine);
+            return launchSelection(executable, paths, m_action, m_edition, m_launcher);
         } catch (...) {
             return E_OUTOFMEMORY;
         }
@@ -302,20 +389,77 @@ class EditCommand final : public IExplorerCommand {
         return E_NOTIMPL;
     }
 
+    // DelegateExecute marshals the original selection into the emulated local server.
+    HRESULT STDMETHODCALLTYPE SetSelection(IShellItemArray* selection) override {
+        m_selection = selection;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE GetSelection(REFIID iid, void** selection) override {
+        if (!selection)
+            return E_POINTER;
+        *selection = nullptr;
+        return m_selection ? m_selection.CopyTo(iid, selection) : E_FAIL;
+    }
+    HRESULT STDMETHODCALLTYPE Execute() override {
+        return Invoke(m_selection.Get(), nullptr);
+    }
+    HRESULT STDMETHODCALLTYPE SetKeyState(DWORD) override {
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE SetParameters(PCWSTR) override {
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE SetPosition(POINT) override {
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE SetShowWindow(int) override {
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE SetNoShowUI(BOOL) override {
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE SetDirectory(PCWSTR) override {
+        return S_OK;
+    }
+
   private:
     ~EditCommand() {
         --objectCount;
+        lockLocalServer(false);
     }
 
     std::atomic<ULONG> m_references{1};
+    ShellContextMenuMode effectiveMode() const {
+        ShellContextMenuMode mode;
+        if (m_edition == 'A') {
+            const auto prefs = m_preferenceReader();
+            if (prefs.actions[actionIndex(m_action)] == '-')
+                return ShellContextMenuMode::Disabled;
+            mode = prefs.mode;
+        } else {
+            const auto scope = classValue(m_action, m_edition, L"Scope");
+            if (scope != L"image_files" && scope != L"images_only")
+                return ShellContextMenuMode::Disabled;
+            mode = scope == L"images_only" ? ShellContextMenuMode::ImageFiles
+                                           : ShellContextMenuMode::ImageAndDocumentFiles;
+        }
+        return mode == ShellContextMenuMode::ImageAndDocumentFiles && !acceptsDocuments(m_action)
+                   ? ShellContextMenuMode::ImageFiles
+                   : mode;
+    }
+
+    ShellAction m_action;
+    char m_edition;
     HMODULE m_module;
     ProcessLauncher m_launcher;
     PreferenceReader m_preferenceReader;
+    Microsoft::WRL::ComPtr<IShellItemArray> m_selection;
 };
 
 class CommandFactory final : public IClassFactory {
   public:
-    CommandFactory() noexcept {
+    CommandFactory(ShellAction action, char edition) noexcept
+        : m_action(action), m_edition(edition) {
         ++objectCount;
     }
 
@@ -348,11 +492,13 @@ class CommandFactory final : public IClassFactory {
         if (outer)
             return CLASS_E_NOAGGREGATION;
         Microsoft::WRL::ComPtr<IExplorerCommand> command;
-        HRESULT result = createEditCommand(commandModule, launchProcess, &command);
+        HRESULT result =
+            createEditCommand(commandModule, launchProcess, &command, nullptr, m_action, m_edition);
         return FAILED(result) ? result : command->QueryInterface(iid, object);
     }
 
     HRESULT STDMETHODCALLTYPE LockServer(BOOL lock) override {
+        lockLocalServer(lock != FALSE);
         if (lock)
             ++serverLockCount;
         else
@@ -361,6 +507,8 @@ class CommandFactory final : public IClassFactory {
     }
 
   private:
+    ShellAction m_action;
+    char m_edition;
     ~CommandFactory() {
         --objectCount;
     }
@@ -397,38 +545,17 @@ bool isSupportedPath(std::wstring_view path, ShellContextMenuMode mode) noexcept
     return false;
 }
 
-HRESULT buildCommandLine(const std::wstring& executable, const std::vector<std::wstring>& paths,
-                         std::wstring* commandLine) {
-    if (!commandLine)
-        return E_POINTER;
-    commandLine->clear();
-    if (!isAbsolutePath(executable) || executable.find(L'\0') != std::wstring::npos ||
-        paths.empty())
-        return E_INVALIDARG;
-    std::wstring result;
-    appendQuoted(executable, &result);
-    for (const auto& path : paths) {
-        if (!isSupportedPath(path))
-            return E_INVALIDARG;
-        result.append(L" --edit-with-snow-shot ");
-        appendQuoted(path, &result);
-        // CreateProcess's limit includes the terminating NUL.
-        if (result.size() >= kMaximumCommandLineLength)
-            return HRESULT_FROM_WIN32(ERROR_FILENAME_EXCED_RANGE);
-    }
-    *commandLine = std::move(result);
-    return S_OK;
-}
-
 HRESULT createEditCommand(HMODULE module, ProcessLauncher launcher, IExplorerCommand** command,
-                          PreferenceReader preferenceReader) noexcept {
+                          PreferenceReader preferenceReader, ShellAction action,
+                          char edition) noexcept {
     if (!command)
         return E_POINTER;
     *command = nullptr;
     if (!launcher)
         return E_INVALIDARG;
     auto* instance = new (std::nothrow)
-        EditCommand(module, launcher, preferenceReader ? preferenceReader : contextMenuPreference);
+        EditCommand(module, launcher, preferenceReader ? preferenceReader : contextMenuPreference,
+                    action, edition);
     if (!instance)
         return E_OUTOFMEMORY;
     *command = instance;
@@ -442,9 +569,13 @@ extern "C" HRESULT __stdcall DllGetClassObject(REFCLSID clsid, REFIID iid, void*
     if (!object)
         return E_POINTER;
     *object = nullptr;
-    if (clsid != kEditCommandClsid)
+    using snow_shot::platform::windows::ShellAction;
+    const auto action = static_cast<ShellAction>(clsid.Data4[7] & 15);
+    const auto edition = static_cast<char>('A' + (clsid.Data4[7] >> 4) - 10);
+    if ((clsid.Data4[7] & 15) >= 6 || edition < 'A' || edition > 'C' ||
+        clsid != actionClsid(action, edition))
         return CLASS_E_CLASSNOTAVAILABLE;
-    auto* factory = new (std::nothrow) CommandFactory;
+    auto* factory = new (std::nothrow) CommandFactory(action, edition);
     if (!factory)
         return E_OUTOFMEMORY;
     const HRESULT result = factory->QueryInterface(iid, object);
@@ -455,6 +586,63 @@ extern "C" HRESULT __stdcall DllGetClassObject(REFCLSID clsid, REFIID iid, void*
 extern "C" HRESULT __stdcall DllCanUnloadNow() {
     using namespace snow_shot::platform::windows::explorer;
     return objectCount == 0 && serverLockCount == 0 ? S_OK : S_FALSE;
+}
+
+HRESULT snow_shot::platform::windows::explorer::serveExplorerCommand(REFCLSID registrationId,
+                                                                     ShellAction action,
+                                                                     bool mini) {
+    HRESULT result = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    if (FAILED(result))
+        return result;
+    Microsoft::WRL::ComPtr<IClassFactory> factory;
+    factory.Attach(new (std::nothrow) CommandFactory(action, mini ? 'C' : 'B'));
+    result = factory ? S_OK : E_OUTOFMEMORY;
+    DWORD registration = 0;
+    if (SUCCEEDED(result)) {
+        localServerThread = GetCurrentThreadId();
+        localServerActivated = false;
+        result = CoRegisterClassObject(registrationId, factory.Get(), CLSCTX_LOCAL_SERVER,
+                                       REGCLS_SINGLEUSE, &registration);
+    }
+    if (SUCCEEDED(result)) {
+        // Bound an activation whose client disappears before requesting its command.
+        const auto timer = SetTimer(nullptr, 0, 60000, nullptr);
+        if (!timer) {
+            result = HRESULT_FROM_WIN32(GetLastError());
+        } else {
+            MSG message{};
+            for (;;) {
+                const auto received = GetMessageW(&message, nullptr, 0, 0);
+                if (received <= 0) {
+                    if (received < 0)
+                        result = HRESULT_FROM_WIN32(GetLastError());
+                    break;
+                }
+                if (message.message == WM_TIMER && message.wParam == timer &&
+                    !localServerActivated) {
+                    result = CO_E_SERVER_EXEC_FAILURE;
+                    break;
+                }
+                TranslateMessage(&message);
+                DispatchMessageW(&message);
+            }
+            KillTimer(nullptr, timer);
+        }
+        CoRevokeClassObject(registration);
+    }
+    localServerThread = 0;
+    factory.Reset();
+    CoUninitialize();
+    return result;
+}
+
+extern "C" HRESULT __stdcall SnowShotRunExplorerCommandServer(ULONG index, BOOL mini) {
+    using namespace snow_shot::platform::windows;
+    using namespace snow_shot::platform::windows::explorer;
+    if (index >= shellActionIds.size())
+        return E_INVALIDARG;
+    const auto action = static_cast<ShellAction>(index);
+    return serveExplorerCommand(actionClsid(action, mini ? 'C' : 'B'), action, mini != FALSE);
 }
 
 BOOL WINAPI DllMain(HINSTANCE module, DWORD reason, LPVOID) {

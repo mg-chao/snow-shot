@@ -42,10 +42,6 @@
             <translation>無法插入標註範本</translation>
         </message>
         <message>
-            <source>Could not open the selected file: %1</source>
-            <translation>無法開啟所選檔案：%1</translation>
-        </message>
-        <message>
             <source>Could not read the selected files from Finder. Please try again</source>
             <translation>無法讀取 Finder 中所選的檔案，請重試</translation>
         </message>

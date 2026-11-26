@@ -469,7 +469,7 @@ constexpr SchemaString kFloatingToolbarDropBehaviors[] = {u"pin_to_screen", u"im
                                                           u"image_splitting", u"image_editing"};
 constexpr SchemaAllowedValues kFloatingToolbarDropBehaviorValues = {
     kFloatingToolbarDropBehaviors, std::size(kFloatingToolbarDropBehaviors)};
-constexpr int kConfigurationSchemaVersion = 11;
+constexpr int kConfigurationSchemaVersion = 12;
 constexpr ConfigurationIntegerRange kSchemaRange1{kConfigurationSchemaVersion,
                                                   kConfigurationSchemaVersion, 1};
 constexpr SchemaString kSchemaStrings4[] = {u"system", u"light", u"dark"};
@@ -530,6 +530,11 @@ constexpr SchemaString kDefaultShutterSoundTargets[] = {u"direct_capture"};
 constexpr SchemaString kShutterSoundTargets[] = {u"direct_capture", u"normal_screenshot"};
 constexpr SchemaAllowedValues kShutterSoundTargetsAllowed = {kShutterSoundTargets,
                                                              std::size(kShutterSoundTargets)};
+constexpr SchemaString kMenuDefaults[] = {u"pin_to_screen"};
+constexpr SchemaString kMenuActions[] = {u"pin_to_screen", u"pin_to_screen_and_annotate",
+                                         u"stitch_images", u"split_images",
+                                         u"edit_images",   u"compress_images"};
+constexpr SchemaAllowedValues kAllowedMenuActions{kMenuActions, std::size(kMenuActions)};
 constexpr SchemaString kDefaultFullscreenDisableScope[] = {u"global_shortcuts"};
 constexpr SchemaString kFullscreenDisableScopeValues[] = {u"global_shortcuts", u"global_mouse"};
 constexpr SchemaAllowedValues kFullscreenDisableScopeAllowed = {
@@ -941,8 +946,8 @@ constexpr SchemaEntryDescriptor kEntryDescriptors[] = {
 #endif
     {u"system/context_menu_mode", stringDefault(u"image_files"), ConfigurationValueKind::String,
      nullptr, &kSchemaAllowed7},
-    {u"system/annotation_mode_when_opening_for_editing", booleanDefault(true),
-     ConfigurationValueKind::Boolean},
+    {u"system/context_menu_options", stringsDefault(kMenuDefaults),
+     ConfigurationValueKind::StringList, nullptr, &kAllowedMenuActions},
     {u"system/launch_as_administrator", booleanDefault(false), ConfigurationValueKind::Boolean},
     {u"mcp/enabled", booleanDefault(false), ConfigurationValueKind::Boolean},
 #ifdef Q_OS_MACOS
@@ -1408,7 +1413,17 @@ constexpr SchemaEntryDescriptor kEntryDescriptors[] = {
      ConfigurationValueKind::StringList, nullptr, nullptr, 2},
     {u"screenshot_shortcuts/redo", stringsDefault(kSchemaStrings80),
      ConfigurationValueKind::StringList, nullptr, nullptr, 2},
-    {u"context_menu_shortcuts/edit_with_snow_shot", emptyArrayDefault(),
+    {u"context_menu_shortcuts/pin_to_screen", emptyArrayDefault(),
+     ConfigurationValueKind::ShortcutList, nullptr, nullptr, 1},
+    {u"context_menu_shortcuts/pin_to_screen_and_annotate", emptyArrayDefault(),
+     ConfigurationValueKind::ShortcutList, nullptr, nullptr, 1},
+    {u"context_menu_shortcuts/stitch_images", emptyArrayDefault(),
+     ConfigurationValueKind::ShortcutList, nullptr, nullptr, 1},
+    {u"context_menu_shortcuts/split_images", emptyArrayDefault(),
+     ConfigurationValueKind::ShortcutList, nullptr, nullptr, 1},
+    {u"context_menu_shortcuts/edit_images", emptyArrayDefault(),
+     ConfigurationValueKind::ShortcutList, nullptr, nullptr, 1},
+    {u"context_menu_shortcuts/compress_images", emptyArrayDefault(),
      ConfigurationValueKind::ShortcutList, nullptr, nullptr, 1},
     {u"screen_recording_shortcuts/previous_recording_area", stringsDefault(kSchemaStrings59),
      ConfigurationValueKind::StringList, nullptr, nullptr, 2},
@@ -2830,7 +2845,7 @@ ConfigurationNormalization ConfigurationSchema::normalize(const QString& key,
         const auto normalized = mouse::encode(*binding);
         return {normalized, true, normalized != value};
     }
-    if (key == QStringLiteral("context_menu_shortcuts/edit_with_snow_shot")) {
+    if (key.startsWith(u"context_menu_shortcuts/")) {
         if (!value.isArray() || value.toArray().size() > 1)
             return {};
         QJsonArray normalized;
@@ -3154,8 +3169,27 @@ void repairOcrCopyShortcut(QMap<QString, QJsonValue>& values) {
 }
 } // namespace
 
-QMap<QString, QJsonValue>
-ConfigurationSchema::migrateLegacyValues(QMap<QString, QJsonValue> values) {
+QMap<QString, QJsonValue> ConfigurationSchema::migrateLegacyValues(QMap<QString, QJsonValue> values,
+                                                                   int version,
+                                                                   const QString& defaultScope) {
+    if (version > 0 && version < 12) {
+        const QString modeKey = QStringLiteral("system/context_menu_mode");
+        const auto mode = normalize(modeKey, values.value(modeKey));
+        const QString scope = mode.valid ? mode.value.toString() : defaultScope;
+        const bool annotate =
+            values.take(QStringLiteral("system/annotation_mode_when_opening_for_editing"))
+                .toBool(true);
+        const QString action = annotate ? QStringLiteral("pin_to_screen_and_annotate")
+                                        : QStringLiteral("pin_to_screen");
+        const QString options = QStringLiteral("system/context_menu_options");
+        if (!values.contains(options))
+            values.insert(options, scope == u"disabled" ? QJsonArray{} : QJsonArray{action});
+        const auto oldKey = QStringLiteral("context_menu_shortcuts/edit_with_snow_shot");
+        const auto newKey = QStringLiteral("context_menu_shortcuts/") + action;
+        if (values.contains(oldKey) && !values.contains(newKey))
+            values.insert(newKey, values.value(oldKey));
+        values.remove(oldKey);
+    }
     const QString pinnedPrefix = QStringLiteral("pin_to_screen_shortcuts/");
     for (auto it = values.lowerBound(pinnedPrefix);
          it != values.end() && it.key().startsWith(pinnedPrefix); ++it) {

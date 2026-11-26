@@ -52,6 +52,16 @@ void classificationPreservesLaunchPolicy() {
 
 void prospectiveAdmissionAndReplayOwnDifferentStates() {
     Coordinator coordinator;
+    const QStringList batch = {QStringLiteral("--explorer-selection"),
+                               QStringLiteral("{be2c0d98-226f-4dd2-b3b7-f57b8ee36c7a}")};
+    coordinator.retainStorage(Coordinator::parse(batch));
+    require(coordinator.takeStorage().replayArguments() == batch,
+            "storage replay preserves the selection token");
+    require(coordinator.retainUpdate(Coordinator::parse(batch)).replayArguments() == batch &&
+                coordinator.takeUpdate().replayArguments() == batch,
+            "updater replay preserves the selection token");
+    require(!Coordinator::parse({batch.first(), QStringLiteral("../file")}).valid,
+            "batch IDs must be GUIDs");
     const QString first = QDir::temp().filePath(QStringLiteral("first.png"));
     const QString second = QDir::temp().filePath(QStringLiteral("second.md"));
     const auto firstRequest = files({first});

@@ -8,6 +8,7 @@
 #include "snow_shot/storage/exporttasks.h"
 #include "snow_shot/presentation/translationpagecontroller.h"
 
+#include <QCryptographicHash>
 #include <QElapsedTimer>
 #include <QDir>
 #include <QFile>
@@ -287,6 +288,12 @@ class Device {
     void signIn(const QString& id) {
         account.signIn(id, u"password"_s);
         waitUntil([this] { return account.signedIn(); }, "account signed in");
+    }
+
+    void signInAndSync(const QString& id) {
+        signIn(id);
+        waitUntil([this] { return sync.lastSuccessfulSync().isValid() && !sync.checking(); },
+                  "complete the signed-in account's first sync");
     }
 
     void check() {
@@ -841,6 +848,142 @@ void atomicShortcutSwap(const QString& path, const QString& first, const QString
             "the rejected swap preserves both previous server bindings");
 }
 
+#ifdef Q_OS_WIN
+void explorerSettingsOnUpgrade(const QString& path) {
+    Service service;
+    const auto options = u"system/context_menu_options"_s;
+    const auto scope = u"system/context_menu_mode"_s;
+    const auto shortcut = u"context_menu_shortcuts/compress_images"_s;
+    const auto legacyToggle = u"system/annotation_mode_when_opening_for_editing"_s;
+    {
+        ConfigurationStore legacy(path, true, true, 100);
+        require(legacy.setCloudSyncState(
+                    {{u"version"_s, 1}, {u"signed_out"_s, QJsonObject{{legacyToggle, false}}}}) &&
+                    legacy.flushNow().success,
+                "persist a signed-out baseline that has no modern Explorer settings");
+    }
+    service.set(u"A"_s, legacyToggle, true);
+    Device device(path, service);
+    device.signIn(u"A"_s);
+    const QJsonArray annotate{u"pin_to_screen_and_annotate"_s};
+    waitUntil([&] { return device.store.value(options) == annotate; },
+              "migrate the account's legacy annotation setting");
+    device.check();
+    const QJsonArray tools{u"stitch_images"_s, u"edit_images"_s};
+    service.set(u"A"_s, options, tools);
+    service.set(u"A"_s, scope, u"images_only"_s);
+    const QJsonArray accessKey{QJsonObject{{u"portable"_s, u"C"_s}}};
+    service.set(u"A"_s, shortcut, accessKey);
+    device.check();
+    require(device.store.value(options) == tools && device.store.value(scope) == u"images_only"_s &&
+                device.store.value(shortcut) == accessKey,
+            "modern Explorer settings override legacy annotation and retain a hidden shortcut");
+
+    device.account.signOut();
+    service.holdRead = true;
+    device.signIn(u"B"_s);
+    waitUntil([&] { return service.held.size() == 1; }, "hold the second account's first read");
+    const QJsonArray pin{u"pin_to_screen"_s};
+    require(device.store.value(options) == pin &&
+                device.store.value(scope) == device.store.defaultValue(scope) &&
+                device.store.value(shortcut) == QJsonArray{},
+            "switching accounts restores the legacy baseline before reading the cloud");
+    service.holdRead = false;
+    service.release();
+    device.check();
+    require(service.operation(u"B"_s, options).isEmpty() &&
+                service.operation(u"B"_s, scope).isEmpty() &&
+                service.operation(u"B"_s, shortcut).isEmpty(),
+            "the second account cannot upload the previous account's Explorer settings");
+}
+
+void writeLegacyExplorerProfile(const QString& path, const Service& service,
+                                const QJsonObject& profile, const QString& scope) {
+    const auto toggle = u"system/annotation_mode_when_opening_for_editing"_s;
+    const auto owner = QString::fromLatin1(
+        QCryptographicHash::hash(service.origin().toUtf8() + '\0' + 'A', QCryptographicHash::Sha256)
+            .toHex());
+    const QJsonObject journal{{u"version"_s, 1},
+                              {u"signed_out"_s, QJsonObject{{toggle, false}}},
+                              {u"profiles"_s, QJsonObject{{owner, profile}}}};
+    const QJsonObject document{
+        {u"storage"_s, QJsonObject{{u"schema_version"_s, 11}}},
+        {u"system"_s, QJsonObject{{u"context_menu_mode"_s, scope},
+                                  {u"annotation_mode_when_opening_for_editing"_s, false}}},
+        {u"context_menu_shortcuts"_s, QJsonObject{{u"edit_with_snow_shot"_s, QJsonArray{u"K"_s}}}},
+        {u"_cloud_settings_sync"_s, journal}};
+    QFile file(path);
+    require(file.open(QIODevice::WriteOnly | QIODevice::Truncate) &&
+                file.write(QJsonDocument(document).toJson()) > 0,
+            "persist a v11 installation with local Explorer settings and a signed-out journal");
+}
+
+void explorerDeviceSettingsOnUpgrade(const QString& path) {
+    const auto toggle = u"system/annotation_mode_when_opening_for_editing"_s;
+    const auto scope = u"system/context_menu_mode"_s;
+    const auto options = u"system/context_menu_options"_s;
+    const auto pin = u"context_menu_shortcuts/pin_to_screen"_s;
+    const auto annotate = u"context_menu_shortcuts/pin_to_screen_and_annotate"_s;
+    const QJsonArray key{QJsonObject{{u"portable"_s, u"K"_s}}};
+    Service service;
+    const QJsonObject existing{{u"joined"_s, true}, {u"values"_s, QJsonObject{{toggle, true}}}};
+    writeLegacyExplorerProfile(path, service, existing, u"disabled"_s);
+    Device device(path, service);
+    require(device.store.value(scope) == u"disabled"_s && device.store.value(pin) == key,
+            "the signed-out v11 installation retains its disabled menu and custom access key");
+    device.signInAndSync(u"A"_s);
+    require(device.store.value(scope) == u"disabled"_s &&
+                device.store.value(options) == QJsonArray{} &&
+                device.store.value(annotate) == key && device.store.value(pin) == QJsonArray{},
+            "an existing account inherits the device scope and the access key for its own action");
+    device.account.signOut();
+    device.signInAndSync(u"B"_s);
+    require(device.store.value(scope) == u"disabled"_s &&
+                device.store.value(options) == QJsonArray{} && device.store.value(pin) == key &&
+                device.store.value(annotate) == QJsonArray{} &&
+                service.operation(u"B"_s, pin).value(u"value"_s) == key,
+            "a new account inherits the signed-out scope and access key after switching accounts");
+}
+
+void pendingExplorerEditOnUpgrade(const QString& path, bool sent, bool modern) {
+    const auto toggle = u"system/annotation_mode_when_opening_for_editing"_s;
+    const auto options = u"system/context_menu_options"_s;
+    const auto set = [](bool value) {
+        return QJsonObject{{u"op"_s, u"set"_s}, {u"value"_s, value}};
+    };
+    const auto edit = [&](bool desired, int sequence) {
+        return QJsonObject{{u"operation"_s, set(desired)},
+                           {u"base"_s, set(!sent)},
+                           {u"fallback"_s, !sent},
+                           {u"sequence"_s, QString::number(sequence)}};
+    };
+    const QJsonArray editImages{u"edit_images"_s};
+    Service service;
+    service.set(u"A"_s, toggle, true);
+    if (modern)
+        service.set(u"A"_s, options, editImages);
+    QJsonObject profile{{u"joined"_s, true},
+                        {u"read"_s, true},
+                        {u"revision"_s, QString::number(service.revisions.value(u"A"_s))},
+                        {u"client_version"_s, QCoreApplication::applicationVersion()},
+                        {u"sequence"_s, u"2"_s},
+                        {u"values"_s, QJsonObject{{toggle, false}}},
+                        {u"confirmed"_s, QJsonObject{{toggle, set(!sent)}}},
+                        {u"pending"_s, QJsonObject{{toggle, edit(false, 2)}}}};
+    // The first upload reached the server before the second edit went offline.
+    if (sent)
+        profile.insert(u"sent"_s, QJsonObject{{toggle, edit(true, 1)}});
+    writeLegacyExplorerProfile(path, service, profile, u"image_files"_s);
+    Device device(path, service);
+    device.signInAndSync(u"A"_s);
+    const auto expected = modern ? editImages : QJsonArray{u"pin_to_screen"_s};
+    require(device.store.value(options) == expected &&
+                service.operation(u"A"_s, options).value(u"value"_s) == expected &&
+                service.operation(u"A"_s, toggle) == set(true),
+            "reconcile the legacy edit under its modern key while preserving newer cloud options");
+}
+#endif
+
 void mousePreferencesOnUpgrade(const QString& path) {
     using namespace snow_shot::mouse;
     Service service;
@@ -1221,6 +1364,16 @@ int main(int argc, char* argv[]) {
     QGuiApplication application(argc, argv);
     QTemporaryDir temp;
     require(temp.isValid(), "temporary settings directory");
+#ifdef Q_OS_WIN
+    if (application.arguments().contains(u"--explorer-upgrade"_s)) {
+        explorerSettingsOnUpgrade(temp.filePath(u"explorer.json"_s));
+        explorerDeviceSettingsOnUpgrade(temp.filePath(u"explorer-device.json"_s));
+        pendingExplorerEditOnUpgrade(temp.filePath(u"explorer-pending.json"_s), false, false);
+        pendingExplorerEditOnUpgrade(temp.filePath(u"explorer-sent.json"_s), true, false);
+        pendingExplorerEditOnUpgrade(temp.filePath(u"explorer-modern.json"_s), true, true);
+        return 0;
+    }
+#endif
     runCloudSettingsLayoutTests();
     accountLifecycle(temp.filePath(u"device.json"_s));
     unchangedChecksShareNextFlush(temp.filePath(u"unchanged.json"_s));
