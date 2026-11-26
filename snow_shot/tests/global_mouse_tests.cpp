@@ -527,14 +527,23 @@ void managerLoadsLiveSettingsAndCoalescesOnlyMovement() {
         require(storage.configuration().setValue(QString::fromLatin1(key), QJsonObject{}),
                 "explicitly clearing a default must be accepted");
     }
-    manager.beginButtonDrag(Action::ScreenshotOcr);
-    require(input->buttonDrags == 1 && input->buttonAction == Action::ScreenshotOcr,
+    manager.beginButtonDrag(Action::Screenshot);
+    require(input->buttonDrags == 1 && input->buttonAction == Action::Screenshot,
             "direct button drags must work with unset bindings");
     manager.setCaptureAvailable(false);
     manager.beginButtonDrag(Action::ScreenshotPinToScreen);
     require(input->buttonDrags == 1, "busy capture must reject a direct button drag");
     manager.setCaptureAvailable(true);
     auto& store = storage.configuration();
+    require(store.setValue(
+                QStringLiteral("global_mouse/screenshot"),
+                QJsonObject{{QStringLiteral("activation_key"), QStringLiteral("shift")},
+                            {QStringLiteral("mouse_button"), QStringLiteral("left_drag")}}) &&
+                input->configuration.bindings.size() == 1 &&
+                input->configuration.bindings.first().action == Action::Screenshot,
+            "plain screenshot bindings must reach the native backend immediately");
+    require(store.setValue(QStringLiteral("global_mouse/screenshot"), QJsonObject{}),
+            "plain screenshot bindings must be clearable");
     require(store.setValue(
                 QStringLiteral("global_mouse/screenshot_ocr_copy"),
                 QJsonObject{{QStringLiteral("activation_key"), QStringLiteral("shift")},

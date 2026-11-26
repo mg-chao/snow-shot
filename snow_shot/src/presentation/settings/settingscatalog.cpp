@@ -3471,6 +3471,14 @@ adqt::icons::IconRef catalogEditIcon() {
 }
 #endif
 
+constexpr CatalogInlineItem catalogItemGlobalMouseScreenshot{
+    .kind = CatalogItemKind::GlobalMouse,
+    .id = u"global-mouse.screenshot",
+    .title = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Screenshot")),
+    .key = u"global_mouse/screenshot",
+    .binding = int(SettingsGlobalMouseAction::Screenshot),
+};
+
 constexpr CatalogInlineItem catalogItemGlobalMouseScreenshotCopy{
     .kind = CatalogItemKind::GlobalMouse,
     .id = u"global-mouse.screenshot-copy",
@@ -4096,6 +4104,7 @@ constexpr CatalogSectionRecord catalogPageGlobalHotkeysSections[] = {
 };
 
 constexpr CatalogItemFactory catalogPageGlobalMouseSectionScreenshotItems[] = {
+    {nullptr, &catalogItemGlobalMouseScreenshot},
     {nullptr, &catalogItemGlobalMouseScreenshotCopy},
     {nullptr, &catalogItemGlobalMouseScreenshotFixed},
     {nullptr, &catalogItemGlobalMouseScreenshotOcr},
@@ -5709,6 +5718,8 @@ QString shortcutConfigurationKey(GlobalShortcutAction action) {
 
 QString globalMouseConfigurationKey(SettingsGlobalMouseAction action) {
     switch (action) {
+    case SettingsGlobalMouseAction::Screenshot:
+        return QStringLiteral("global_mouse/screenshot");
     case SettingsGlobalMouseAction::ScreenshotCopy:
         return QStringLiteral("global_mouse/screenshot_copy");
     case SettingsGlobalMouseAction::ScreenshotPinToScreen:

@@ -42,6 +42,8 @@ enum class WriteMode {
 
 QString globalMouseFieldId(settings::SettingsGlobalMouseAction action) {
     switch (action) {
+    case settings::SettingsGlobalMouseAction::Screenshot:
+        return QStringLiteral("global-mouse.screenshot");
     case settings::SettingsGlobalMouseAction::ScreenshotCopy:
         return QStringLiteral("global-mouse.screenshot-copy");
     case settings::SettingsGlobalMouseAction::ScreenshotPinToScreen:
@@ -556,6 +558,7 @@ class FakeSettingsBackend final : public settings::SettingsBackend {
             m_recordingToolbar = value.value<storage::ScreenshotToolbarLayout>();
         } else if (fieldId.startsWith(QStringLiteral("global-mouse."))) {
             for (const auto action : {
+                     settings::SettingsGlobalMouseAction::Screenshot,
                      settings::SettingsGlobalMouseAction::ScreenshotCopy,
                      settings::SettingsGlobalMouseAction::ScreenshotPinToScreen,
                      settings::SettingsGlobalMouseAction::ScreenshotOcr,
@@ -1517,10 +1520,10 @@ void auxiliaryIntegerValuesRemainReactiveWithoutSyntheticFields() {
 void globalMouseCombinationsUseTypedStateAndRejectDuplicates() {
     using Action = settings::SettingsGlobalMouseAction;
     using Combination = settings::SettingsGlobalMouseCombination;
-    const Action actions[]{Action::ScreenshotCopy,        Action::ScreenshotPinToScreen,
-                           Action::ScreenshotOcr,         Action::ScreenshotOcrCopy,
-                           Action::ScreenshotTranslation, Action::ScreenshotQuickSave,
-                           Action::ScreenshotSave};
+    const Action actions[]{
+        Action::Screenshot,          Action::ScreenshotCopy,    Action::ScreenshotPinToScreen,
+        Action::ScreenshotOcr,       Action::ScreenshotOcrCopy, Action::ScreenshotTranslation,
+        Action::ScreenshotQuickSave, Action::ScreenshotSave};
     const Combination combinations[]{
         {{snow_shot::presentation::globalMouseActivationKeys().at(0)}, QStringLiteral("left_drag")},
         {{snow_shot::presentation::globalMouseActivationKeys().at(1)},
@@ -1534,6 +1537,7 @@ void globalMouseCombinationsUseTypedStateAndRejectDuplicates() {
         {{snow_shot::presentation::globalMouseActivationKeys().at(1),
           snow_shot::presentation::globalMouseActivationKeys().at(2)},
          QStringLiteral("left_drag")},
+        {{QStringLiteral("shift")}, QStringLiteral("side_button_2_drag")},
     };
 
     const settings::SettingsRegistry& registry = settings::builtInSettingsRegistry();
@@ -1567,7 +1571,7 @@ void globalMouseCombinationsUseTypedStateAndRejectDuplicates() {
     require(!session.globalMouseCombinationAvailable(actions[1], {{}, QStringLiteral("left_drag")}),
             "a global binding must require at least one activation key");
 
-    for (int index = 1; index < 6; ++index) {
+    for (std::size_t index = 1; index < std::size(actions); ++index) {
         require(session.applyGlobalMouseCombination(actions[index], combinations[index]),
                 "each global mouse action must accept an independent unique combination");
     }

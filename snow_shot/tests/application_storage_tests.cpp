@@ -1494,6 +1494,7 @@ void settingsSchemaDefaultsAndValidationAreComplete() {
 
 void globalMouseCombinationSchemaIsStrictAndPersistent() {
     const QStringList keys{
+        QStringLiteral("global_mouse/screenshot"),
         QStringLiteral("global_mouse/screenshot_copy"),
         QStringLiteral("global_mouse/screenshot_fixed"),
         QStringLiteral("global_mouse/screenshot_ocr"),

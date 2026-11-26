@@ -6919,6 +6919,9 @@ bool ScreenshotController::beginGlobalMouseCapture(
     using Action = snow_shot::presentation::settings::SettingsGlobalMouseAction;
     Impl::PendingSelectionAction pending;
     switch (action) {
+    case Action::Screenshot:
+        pending = Impl::PendingSelectionAction::None;
+        break;
     case Action::ScreenshotCopy:
         pending = Impl::PendingSelectionAction::Copy;
         break;
@@ -7326,6 +7329,11 @@ ScreenshotControllerTestAccess::intelligentSelection(ScreenshotController& contr
 
 bool ScreenshotControllerTestAccess::exportActive(const ScreenshotController& controller) {
     return !controller.m_impl->m_activeImageExports.isEmpty();
+}
+
+ScreenshotController::CaptureAction
+ScreenshotControllerTestAccess::pendingCaptureAction(const ScreenshotController& controller) {
+    return controller.m_impl->m_pendingSelectionAction;
 }
 
 void ScreenshotControllerTestAccess::setDisplayScale(ScreenshotController& controller,

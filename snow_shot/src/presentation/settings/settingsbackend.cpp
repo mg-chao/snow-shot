@@ -209,6 +209,8 @@ QString localShortcutKey(SettingsLocalShortcutScope scope, const QString& shortc
 
 QString globalMouseKey(SettingsGlobalMouseAction action) {
     switch (action) {
+    case SettingsGlobalMouseAction::Screenshot:
+        return QStringLiteral("global_mouse/screenshot");
     case SettingsGlobalMouseAction::ScreenshotCopy:
         return QStringLiteral("global_mouse/screenshot_copy");
     case SettingsGlobalMouseAction::ScreenshotPinToScreen:
@@ -2809,14 +2811,15 @@ SettingsResetResult BuiltInSettingsBackend::resetSectionWithResults(SettingsSect
              "screenshot/delay_seconds"});
     case SettingsSectionReset::GlobalMouse: {
         QMap<QString, QJsonValue> values;
-        for (const auto action : {SettingsGlobalMouseAction::ScreenshotCopy,
-                                  SettingsGlobalMouseAction::ScreenshotPinToScreen,
-                                  SettingsGlobalMouseAction::ScreenshotOcr,
-                                  SettingsGlobalMouseAction::ScreenshotOcrCopy,
-                                  SettingsGlobalMouseAction::ScreenshotTranslation,
-                                  SettingsGlobalMouseAction::ScreenshotSave,
-                                  SettingsGlobalMouseAction::ScreenshotQuickSave,
-                                  SettingsGlobalMouseAction::ScreenRecording}) {
+        for (const auto action :
+             {SettingsGlobalMouseAction::Screenshot, SettingsGlobalMouseAction::ScreenshotCopy,
+              SettingsGlobalMouseAction::ScreenshotPinToScreen,
+              SettingsGlobalMouseAction::ScreenshotOcr,
+              SettingsGlobalMouseAction::ScreenshotOcrCopy,
+              SettingsGlobalMouseAction::ScreenshotTranslation,
+              SettingsGlobalMouseAction::ScreenshotSave,
+              SettingsGlobalMouseAction::ScreenshotQuickSave,
+              SettingsGlobalMouseAction::ScreenRecording}) {
             const QString key = globalMouseKey(action);
             if (storage::ConfigurationSchema::contains(key))
                 values.insert(key, storage::ConfigurationSchema::defaultValue(key));

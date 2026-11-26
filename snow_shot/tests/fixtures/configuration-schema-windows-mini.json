@@ -1125,6 +1125,16 @@
       "allowedStringValues": [],
       "defaultJsonType": 5,
       "defaultStringIsNull": false,
+      "defaultValue": {},
+      "integerRange": null,
+      "key": "global_mouse/screenshot",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
       "defaultValue": {
         "activation_key": "windows",
         "mouse_button": "left_drag"

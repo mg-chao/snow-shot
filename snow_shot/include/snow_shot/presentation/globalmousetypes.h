@@ -50,6 +50,7 @@ enum class SettingsGlobalMouseAction {
     ScreenshotSave,
     ScreenRecording,
     ScreenshotOcrCopy,
+    Screenshot,
 };
 
 struct SettingsGlobalMouseCombination {

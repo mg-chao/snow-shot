@@ -1116,6 +1116,7 @@ constexpr SchemaEntryDescriptor kEntryDescriptors[] = {
     {u"global_shortcuts/fullscreen_disable_scope", stringsDefault(kDefaultFullscreenDisableScope),
      ConfigurationValueKind::StringList, nullptr, &kFullscreenDisableScopeAllowed},
 
+    {u"global_mouse/screenshot", emptyObjectDefault(), ConfigurationValueKind::Structured},
 #ifdef Q_OS_MACOS
     {u"global_mouse/screenshot_copy", emptyObjectDefault(), ConfigurationValueKind::Structured},
 #else

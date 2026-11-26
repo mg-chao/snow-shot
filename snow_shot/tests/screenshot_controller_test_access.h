@@ -47,6 +47,8 @@ class ScreenshotControllerTestAccess {
     static ScreenshotOverlayWindow* presentSelection(ScreenshotController& controller);
     static void confirmCaptureSelection(ScreenshotController& controller,
                                         ScreenshotController::CaptureAction action);
+    [[nodiscard]] static ScreenshotController::CaptureAction
+    pendingCaptureAction(const ScreenshotController& controller);
     [[nodiscard]] static bool exportActive(const ScreenshotController& controller);
     [[nodiscard]] static bool clipboardFormulaPending(const ScreenshotController& controller);
     [[nodiscard]] static quint64 clipboardPinGeneration(const ScreenshotController& controller);

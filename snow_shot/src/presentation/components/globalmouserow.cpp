@@ -33,6 +33,8 @@ constexpr int COMBINATION_TEXT_MAX_WIDTH = 260;
 
 adqt::icons::IconRef actionIcon(settings::SettingsGlobalMouseAction action) {
     switch (action) {
+    case settings::SettingsGlobalMouseAction::Screenshot:
+        return snow_shot::presentation::icons::custom::twotone::ScreenshotFeature();
     case settings::SettingsGlobalMouseAction::ScreenshotCopy:
         return custom_outlined_icons::ScreenshotCopy();
     case settings::SettingsGlobalMouseAction::ScreenshotPinToScreen:

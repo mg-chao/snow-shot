@@ -325,6 +325,25 @@ void capturePreparationRechecksAfterActivityObservers() {
             "activity observer refusal releases the preparation reservation");
 }
 
+void plainGlobalMouseScreenshotHasNoPendingAction() {
+    using Action = snow_shot::presentation::settings::SettingsGlobalMouseAction;
+    int starts = 0;
+    ScreenshotController controller;
+    QObject::connect(&controller, &ScreenshotController::captureActivityChanged, &controller,
+                     [&](const QString& source, bool active) {
+                         if (source != QStringLiteral("selection") || !active)
+                             return;
+                         ++starts;
+                         require(ScreenshotControllerTestAccess::pendingCaptureAction(controller) ==
+                                     ScreenshotController::CaptureAction::None,
+                                 "a plain global mouse screenshot must enter normal editing");
+                         controller.setCaptureSuspended(true);
+                     });
+    require(!controller.beginGlobalMouseCapture(Action::Screenshot, 1, QPointF(2, 3)) &&
+                starts == 1 && !controller.captureAcquisitionActive(),
+            "plain screenshot must prepare capture before the fixture blocks native acquisition");
+}
+
 void capturePreparationSurvivesControllerRetirement() {
     enum class Entry { Action, GlobalMouse, Mcp };
     for (const auto entry : {Entry::Action, Entry::GlobalMouse, Entry::Mcp}) {
@@ -481,6 +500,8 @@ int runScreenshotControllerLifetimeTests(int argc, char** argv) {
     capturePreparationCannotReplaceWorkCreatedWhileClosingABlocker();
     drainRetiredCaptureSurfaces();
     capturePreparationRechecksAfterActivityObservers();
+    drainRetiredCaptureSurfaces();
+    plainGlobalMouseScreenshotHasNoPendingAction();
     drainRetiredCaptureSurfaces();
     capturePreparationSurvivesControllerRetirement();
     drainRetiredCaptureSurfaces();

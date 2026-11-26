@@ -2373,6 +2373,7 @@ void globalMouseSettingsHaveStableContracts() {
         Action action;
     };
     const Expectation expectations[] = {
+        {"global-mouse.screenshot", "Screenshot", "global_mouse/screenshot", Action::Screenshot},
         {"global-mouse.screenshot-copy", "Copy to clipboard", "global_mouse/screenshot_copy",
          Action::ScreenshotCopy},
         {"global-mouse.screenshot-fixed", "Pin to screen", "global_mouse/screenshot_fixed",
@@ -2408,10 +2409,9 @@ void globalMouseSettingsHaveStableContracts() {
             "Screen recording must have its own category and one configurable function");
     require(section->reset == settings::SettingsSectionReset::GlobalMouse &&
                 section->itemLayout == settings::SettingsSectionItemLayout::VerticalList &&
-                section->items.size() == 7 &&
-                section->items.at(2).id == QStringLiteral("global-mouse.screenshot-ocr") &&
-                section->items.at(3).id == QStringLiteral("global-mouse.screenshot-ocr-copy"),
-            "Global mouse Screenshot must use action containers and reset all seven fields");
+                section->items.size() == 8 &&
+                section->items.constFirst().id == QStringLiteral("global-mouse.screenshot"),
+            "Global mouse Screenshot must start with the plain screenshot action");
 
     const auto& navigation = catalog.navigation();
     const auto* quick = std::get_if<settings::SettingsNavigationPageDefinition>(&navigation.at(0));
@@ -2456,8 +2456,8 @@ void globalMouseSettingsHaveStableContracts() {
                 registry.fieldForGlobalMouseAction(expected.action) == descriptor,
             "Global mouse action metadata and typed registry bindings must remain stable");
     }
-    require(registry.fieldsForReset(settings::SettingsSectionReset::GlobalMouse).size() == 8,
-            "Global mouse reset metadata must cover every Screenshot action");
+    require(registry.fieldsForReset(settings::SettingsSectionReset::GlobalMouse).size() == 9,
+            "Global mouse reset metadata must cover every action");
 }
 
 void globalShortcutActionsHaveStableContracts() {
