@@ -1807,10 +1807,6 @@
             <translation>Добавлять маску для подсветки результатов распознавания текста</translation>
         </message>
         <message>
-            <source>Add edit with Snow Shot to the Windows context menu to pin a supported image or document file to the screen</source>
-            <translation>Добавить «Редактировать в Snow Shot» в контекстное меню Windows, чтобы закреплять на экране поддерживаемые изображения и документы</translation>
-        </message>
-        <message>
             <source>Adjust MP4 quality and file size</source>
             <translation>Настройка качества и размера файла MP4</translation>
         </message>
@@ -2071,10 +2067,6 @@
             <translation>Автоматически отключать при наличии активного полноэкранного окна</translation>
         </message>
         <message>
-            <source>Automatically enable annotation mode in new pin to screen windows opened with edit with Snow Shot</source>
-            <translation>Автоматически включать режим разметки в новых закреплённых окнах, открытых через «Редактировать в Snow Shot»</translation>
-        </message>
-        <message>
             <source>Automatically exit screen recording after the recording is saved</source>
             <translation>Автоматически выходить из записи экрана после сохранения записи</translation>
         </message>
@@ -2319,6 +2311,10 @@
             <translation>Выберите версию и размер модели OCR, чтобы сбалансировать скорость и точность распознавания</translation>
         </message>
         <message>
+            <source>Choose the actions to show in File Explorer</source>
+            <translation>Выберите действия для показа в Проводнике</translation>
+        </message>
+        <message>
             <source>Choose the bundled icon used in dark theme, or reuse the regular icon settings</source>
             <translation>Выберите встроенный значок для тёмной темы или используйте обычные настройки значка</translation>
         </message>
@@ -2451,6 +2447,10 @@
             <translation>Выберите, сохранять ли редактируемые сеансы скриншотов, только итоговые изображения или не вести новую историю</translation>
         </message>
         <message>
+            <source>Choose which file types show Snow Shot actions in File Explorer</source>
+            <translation>Выберите типы файлов, для которых Проводник показывает действия Snow Shot</translation>
+        </message>
+        <message>
             <source>Choose which fullscreen windows trigger automatic disabling</source>
             <translation>Выберите, какие полноэкранные окна вызывают автоматическое отключение</translation>
         </message>
@@ -2537,6 +2537,10 @@
         <message>
             <source>Color picker display mode</source>
             <translation>Режим отображения палитры цветов</translation>
+        </message>
+        <message>
+            <source>Compress images</source>
+            <translation>Сжать изображения</translation>
         </message>
         <message>
             <source>Compress selected images</source>
@@ -2999,6 +3003,10 @@
             <translation>Дублировать последнюю область</translation>
         </message>
         <message>
+            <source>Edit images</source>
+            <translation>Редактировать изображения</translation>
+        </message>
+        <message>
             <source>Edit selected images</source>
             <translation>Редактировать выбранные изображения</translation>
         </message>
@@ -3007,20 +3015,8 @@
             <translation>Редактировать выделение</translation>
         </message>
         <message>
-            <source>Edit with Snow Shot</source>
-            <translation>Редактировать в Snow Shot</translation>
-        </message>
-        <message>
-            <source>Edit with Snow Shot Mini</source>
-            <translation>Редактировать в Snow Shot Mini</translation>
-        </message>
-        <message>
             <source>Enable MCP integration</source>
             <translation>Включить интеграцию с MCP</translation>
-        </message>
-        <message>
-            <source>Enable annotation mode when opening for editing</source>
-            <translation>Включать режим разметки при открытии для редактирования</translation>
         </message>
         <message>
             <source>Enable edit mode</source>
@@ -4059,6 +4055,10 @@
             <translation>Закрепить на экране (скриншот с прокруткой)</translation>
         </message>
         <message>
+            <source>Pin to screen and annotate</source>
+            <translation>Закрепить на экране и добавить аннотации</translation>
+        </message>
+        <message>
             <source>Pin to screen management</source>
             <translation>Управление закреплёнными окнами</translation>
         </message>
@@ -4723,6 +4723,10 @@
             <translation>Дополнительный целевой язык</translation>
         </message>
         <message>
+            <source>Select actions</source>
+            <translation>Выберите действия</translation>
+        </message>
+        <message>
             <source>Select dark theme tray icon</source>
             <translation>Тёмный значок в трее для тёмной темы</translation>
         </message>
@@ -5159,6 +5163,10 @@
             <translation>«Приоритет скорости» снижает вычисления на коротком тексте и может изменить результаты распознавания</translation>
         </message>
         <message>
+            <source>Split images</source>
+            <translation>Разделить изображения</translation>
+        </message>
+        <message>
             <source>Split selected images</source>
             <translation>Разделить выбранные изображения</translation>
         </message>
@@ -5217,6 +5225,10 @@
         <message>
             <source>Startup &amp; updates</source>
             <translation>Запуск и обновления</translation>
+        </message>
+        <message>
+            <source>Stitch images</source>
+            <translation>Объединить изображения</translation>
         </message>
         <message>
             <source>Stitch selected images</source>
@@ -5699,6 +5711,14 @@
             <translation>Контекстное меню Windows</translation>
         </message>
         <message>
+            <source>Windows context menu options</source>
+            <translation>Действия контекстного меню Windows</translation>
+        </message>
+        <message>
+            <source>Windows context menu scope</source>
+            <translation>Область действия контекстного меню Windows</translation>
+        </message>
+        <message>
             <source>Zip archives (*.zip);;All files (*.*)</source>
             <translation>Архивы Zip (*.zip);;Все файлы (*.*)</translation>
         </message>
@@ -5828,6 +5848,10 @@
     <context>
         <name>ShellContextMenuRegistration</name>
         <message>
+            <source>Compress images</source>
+            <translation>Сжать изображения</translation>
+        </message>
+        <message>
             <source>Could not access the Windows context menu registry. Windows error %1</source>
             <translation>Не удалось получить доступ к реестру контекстного меню Windows. Ошибка Windows %1</translation>
         </message>
@@ -5844,12 +5868,24 @@
             <translation>Не удалось сохранить настройку контекстного меню Windows</translation>
         </message>
         <message>
-            <source>Edit with Snow Shot</source>
-            <translation>Редактировать в Snow Shot</translation>
+            <source>Edit images</source>
+            <translation>Редактировать изображения</translation>
         </message>
         <message>
-            <source>Edit with Snow Shot Mini</source>
-            <translation>Редактировать в Snow Shot Mini</translation>
+            <source>Pin to screen</source>
+            <translation>Закрепить на экране</translation>
+        </message>
+        <message>
+            <source>Pin to screen and annotate</source>
+            <translation>Закрепить на экране и добавить аннотации</translation>
+        </message>
+        <message>
+            <source>Split images</source>
+            <translation>Разделить изображения</translation>
+        </message>
+        <message>
+            <source>Stitch images</source>
+            <translation>Объединить изображения</translation>
         </message>
         <message>
             <source>The Windows context menu entry is owned by another application</source>
@@ -5858,10 +5894,6 @@
         <message>
             <source>The Windows context menu is only supported on Windows</source>
             <translation>Контекстное меню Windows поддерживается только в Windows</translation>
-        </message>
-        <message>
-            <source>The context menu access key must be one letter (A–Z) or digit (0–9)</source>
-            <translation>Клавиша доступа в контекстном меню должна быть одной буквой (A–Z) или цифрой (0–9)</translation>
         </message>
     </context>
     <context>
@@ -6545,6 +6577,10 @@ Unavailable: %2</source>
         <message>
             <source>The mouse operation is already assigned.</source>
             <translation>Это действие мыши уже назначено.</translation>
+        </message>
+        <message>
+            <source>This context menu shortcut is already assigned</source>
+            <translation>Эта клавиша контекстного меню уже назначена</translation>
         </message>
     </context>
 </TS>

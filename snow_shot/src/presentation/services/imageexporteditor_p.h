@@ -29,6 +29,8 @@ class ImageExportEditor : public QWidget {
     void initializeControls();
     void retranslateControls();
     void loadSource(std::shared_ptr<ScreenshotExportArtifact> artifact);
+    void setPreparedSource(std::shared_ptr<ScreenshotExportArtifact> artifact,
+                           screenshot_save_export::Source source);
     void cancelRender(bool cancelSource);
     void sourceFailed(const QString& error);
     bool saving() const {

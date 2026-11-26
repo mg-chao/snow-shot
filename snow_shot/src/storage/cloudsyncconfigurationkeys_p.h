@@ -6,7 +6,14 @@ namespace snow_shot::storage::detail {
 // Configuration schema v9. Keep the exact keys in the requirements appendix in sync.
 inline constexpr const char* kCloudSettingKeys[] = {
     "interface/language",
-    "system/annotation_mode_when_opening_for_editing",
+    "system/context_menu_mode",
+    "system/context_menu_options",
+    "context_menu_shortcuts/pin_to_screen",
+    "context_menu_shortcuts/pin_to_screen_and_annotate",
+    "context_menu_shortcuts/stitch_images",
+    "context_menu_shortcuts/split_images",
+    "context_menu_shortcuts/edit_images",
+    "context_menu_shortcuts/compress_images",
     "interface/theme_mode",
     "interface/theme_primary_color",
     "interface/app_font_size",

@@ -1807,10 +1807,6 @@
             <translation>Add a mask to highlight text recognition results</translation>
         </message>
         <message>
-            <source>Add edit with Snow Shot to the Windows context menu to pin a supported image or document file to the screen</source>
-            <translation>Add edit with Snow Shot to the Windows context menu to pin a supported image or document file to the screen</translation>
-        </message>
-        <message>
             <source>Adjust MP4 quality and file size</source>
             <translation>Adjust MP4 quality and file size</translation>
         </message>
@@ -2071,10 +2067,6 @@
             <translation>Automatically disable when a focused fullscreen window exists</translation>
         </message>
         <message>
-            <source>Automatically enable annotation mode in new pin to screen windows opened with edit with Snow Shot</source>
-            <translation>Automatically enable annotation mode in new pin to screen windows opened with edit with Snow Shot</translation>
-        </message>
-        <message>
             <source>Automatically exit screen recording after the recording is saved</source>
             <translation>Automatically exit screen recording after the recording is saved</translation>
         </message>
@@ -2319,6 +2311,10 @@
             <translation>Choose the OCR model version and size to balance recognition speed and accuracy</translation>
         </message>
         <message>
+            <source>Choose the actions to show in File Explorer</source>
+            <translation>Choose the actions to show in File Explorer</translation>
+        </message>
+        <message>
             <source>Choose the bundled icon used in dark theme, or reuse the regular icon settings</source>
             <translation>Choose the bundled icon used in dark theme, or reuse the regular icon settings</translation>
         </message>
@@ -2451,6 +2447,10 @@
             <translation>Choose whether to keep editable screenshot sessions, only final images, or no new history</translation>
         </message>
         <message>
+            <source>Choose which file types show Snow Shot actions in File Explorer</source>
+            <translation>Choose which file types show Snow Shot actions in File Explorer</translation>
+        </message>
+        <message>
             <source>Choose which fullscreen windows trigger automatic disabling</source>
             <translation>Choose which fullscreen windows trigger automatic disabling</translation>
         </message>
@@ -2537,6 +2537,10 @@
         <message>
             <source>Color picker display mode</source>
             <translation>Color picker display mode</translation>
+        </message>
+        <message>
+            <source>Compress images</source>
+            <translation>Compress images</translation>
         </message>
         <message>
             <source>Compress selected images</source>
@@ -2999,6 +3003,10 @@
             <translation>Duplicate latest region</translation>
         </message>
         <message>
+            <source>Edit images</source>
+            <translation>Edit images</translation>
+        </message>
+        <message>
             <source>Edit selected images</source>
             <translation>Edit selected images</translation>
         </message>
@@ -3007,20 +3015,8 @@
             <translation>Edit selection</translation>
         </message>
         <message>
-            <source>Edit with Snow Shot</source>
-            <translation>Edit with Snow Shot</translation>
-        </message>
-        <message>
-            <source>Edit with Snow Shot Mini</source>
-            <translation>Edit with Snow Shot Mini</translation>
-        </message>
-        <message>
             <source>Enable MCP integration</source>
             <translation>Enable MCP integration</translation>
-        </message>
-        <message>
-            <source>Enable annotation mode when opening for editing</source>
-            <translation>Enable annotation mode when opening for editing</translation>
         </message>
         <message>
             <source>Enable edit mode</source>
@@ -4059,6 +4055,10 @@
             <translation>Pin to screen (Scrolling screenshot)</translation>
         </message>
         <message>
+            <source>Pin to screen and annotate</source>
+            <translation>Pin to screen and annotate</translation>
+        </message>
+        <message>
             <source>Pin to screen management</source>
             <translation>Pin to screen management</translation>
         </message>
@@ -4723,6 +4723,10 @@
             <translation>Secondary target language</translation>
         </message>
         <message>
+            <source>Select actions</source>
+            <translation>Select actions</translation>
+        </message>
+        <message>
             <source>Select dark theme tray icon</source>
             <translation>Select dark theme tray icon</translation>
         </message>
@@ -5159,6 +5163,10 @@
             <translation>Speed first reduces computation on short text and may change recognition results</translation>
         </message>
         <message>
+            <source>Split images</source>
+            <translation>Split images</translation>
+        </message>
+        <message>
             <source>Split selected images</source>
             <translation>Split selected images</translation>
         </message>
@@ -5217,6 +5225,10 @@
         <message>
             <source>Startup &amp; updates</source>
             <translation>Startup &amp; updates</translation>
+        </message>
+        <message>
+            <source>Stitch images</source>
+            <translation>Stitch images</translation>
         </message>
         <message>
             <source>Stitch selected images</source>
@@ -5699,6 +5711,14 @@
             <translation>Windows context menu</translation>
         </message>
         <message>
+            <source>Windows context menu options</source>
+            <translation>Windows context menu options</translation>
+        </message>
+        <message>
+            <source>Windows context menu scope</source>
+            <translation>Windows context menu scope</translation>
+        </message>
+        <message>
             <source>Zip archives (*.zip);;All files (*.*)</source>
             <translation>Zip archives (*.zip);;All files (*.*)</translation>
         </message>
@@ -5828,6 +5848,10 @@
     <context>
         <name>ShellContextMenuRegistration</name>
         <message>
+            <source>Compress images</source>
+            <translation>Compress images</translation>
+        </message>
+        <message>
             <source>Could not access the Windows context menu registry. Windows error %1</source>
             <translation>Could not access the Windows context menu registry. Windows error %1</translation>
         </message>
@@ -5844,12 +5868,24 @@
             <translation>Could not save the Windows context menu preference</translation>
         </message>
         <message>
-            <source>Edit with Snow Shot</source>
-            <translation>Edit with Snow Shot</translation>
+            <source>Edit images</source>
+            <translation>Edit images</translation>
         </message>
         <message>
-            <source>Edit with Snow Shot Mini</source>
-            <translation>Edit with Snow Shot Mini</translation>
+            <source>Pin to screen</source>
+            <translation>Pin to screen</translation>
+        </message>
+        <message>
+            <source>Pin to screen and annotate</source>
+            <translation>Pin to screen and annotate</translation>
+        </message>
+        <message>
+            <source>Split images</source>
+            <translation>Split images</translation>
+        </message>
+        <message>
+            <source>Stitch images</source>
+            <translation>Stitch images</translation>
         </message>
         <message>
             <source>The Windows context menu entry is owned by another application</source>
@@ -5858,10 +5894,6 @@
         <message>
             <source>The Windows context menu is only supported on Windows</source>
             <translation>The Windows context menu is only supported on Windows</translation>
-        </message>
-        <message>
-            <source>The context menu access key must be one letter (A–Z) or digit (0–9)</source>
-            <translation>The context menu access key must be one letter (A–Z) or digit (0–9)</translation>
         </message>
     </context>
     <context>
@@ -6544,6 +6576,10 @@ Unavailable: %2</translation>
         <message>
             <source>The mouse operation is already assigned.</source>
             <translation>The mouse operation is already assigned.</translation>
+        </message>
+        <message>
+            <source>This context menu shortcut is already assigned</source>
+            <translation>This context menu shortcut is already assigned</translation>
         </message>
     </context>
 </TS>

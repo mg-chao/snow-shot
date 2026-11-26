@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
+#include "snow_shot/presentation/screenshotexportcoordinator.h"
 #include "snow_shot/presentation/imageeditingdocument.h"
 #include "snow_shot/presentation/screenshotpinnedwindow.h"
 #include "snow_shot/platform/selectedfiles.h"
@@ -59,6 +60,9 @@ class ImageEditingWindow final : public QObject {
 
   private:
     friend class ImageEditingWindowCoordinator;
+    void presentFileImage(ImageEditingSource source,
+                          std::shared_ptr<ImageStitchingImportReservation> reservation,
+                          bool rejected);
     void loadImportedImage(QStringList paths,
                            std::optional<ScreenshotClipboardContentSnapshot> snapshot,
                            std::shared_ptr<ImageStitchingImportReservation> reservation,
@@ -73,7 +77,7 @@ class ImageEditingWindowCoordinator final : public QObject {
     explicit ImageEditingWindowCoordinator(ImageEditingServices services,
                                            QObject* parent = nullptr);
     ~ImageEditingWindowCoordinator() override;
-    void presentFiles(const QStringList& paths);
+    void presentFiles(const QStringList& paths, bool skipUnreadable = false);
     void presentDroppedImage(ScreenshotClipboardContentSnapshot snapshot,
                              std::shared_ptr<ImageStitchingImportReservation> reservation);
     void presentSelectedFiles(std::shared_ptr<platform::SelectedFileBackend> backend,
@@ -99,6 +103,7 @@ class ImageEditingWindowCoordinator final : public QObject {
   private:
     ImageEditingWindow* createWindow();
     ImageEditingServices m_services;
+    ScreenshotExportQueue m_fileImports{ScreenshotExportCoordinator::shared(), nullptr, 1};
     QVector<QPointer<ImageEditingWindow>> m_windows;
     quint64 m_windowRevision = 0;
     bool m_handoffPreparing = false;

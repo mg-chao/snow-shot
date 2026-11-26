@@ -222,9 +222,9 @@ void cloudSyncConfiguration() {
     using namespace snow_shot::storage;
     const auto& keys = cloudSettingKeys();
     const QSet<QString> unique(keys.cbegin(), keys.cend());
-    require(keys.size() == 340 && unique.size() == keys.size() &&
-                std::count_if(keys.cbegin(), keys.cend(), cloudSettingPlatformSpecific) == 189,
-            "cloud allowlist requires all 340 unique schema keys and 189 platform records");
+    require(keys.size() == 347 && unique.size() == keys.size() &&
+                std::count_if(keys.cbegin(), keys.cend(), cloudSettingPlatformSpecific) == 195,
+            "cloud allowlist requires all 347 unique schema keys and 195 platform records");
     const QString themeKey = QStringLiteral("interface/theme_mode");
     const QString fontKey = QStringLiteral("interface/app_font_size");
     const QString tasksKey = QStringLiteral("export_tasks/screenshot_copy");

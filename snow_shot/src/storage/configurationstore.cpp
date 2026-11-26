@@ -8,6 +8,7 @@
 #endif
 
 #include "snow_shot/storage/configurationschema.h"
+#include "snow_shot/storage/settingsadapters.h"
 #include "snow_shot/storage/storagelogging.h"
 #include "snow_shot/shortcuts/shortcutbinding.h"
 
@@ -90,7 +91,9 @@ QMap<QString, QJsonValue> overlayFromDocument(const QJsonObject& document) {
         }
     }
     for (const QString& legacyKey :
-         {QStringLiteral("capture_history/enabled"),
+         {QStringLiteral("system/annotation_mode_when_opening_for_editing"),
+          QStringLiteral("context_menu_shortcuts/edit_with_snow_shot"),
+          QStringLiteral("capture_history/enabled"),
           QStringLiteral("screenshot/auto_save_after_copy"),
           QStringLiteral("screenshot/auto_save_after_execution_actions"),
           QStringLiteral("screenshot/copy_after_pinning_to_screen"),
@@ -158,6 +161,51 @@ void reconcileLocalShortcutDefaults(MaterializedConfiguration& result,
     }
 }
 
+#ifdef Q_OS_WIN
+void migrateLegacyMenuProfiles(QJsonObject& document, const QMap<QString, QJsonValue>& overlay,
+                               const QJsonValue& scope) {
+    auto journal = document.value(kCloudSyncStateKey).toObject();
+    if (journal.value(QStringLiteral("version")).toInt() != 1)
+        return;
+
+    // Scope and the single access key belonged to this installation before v12. Capture
+    // them while reading that file, before restoring another account can change them.
+    const auto scopeKey = QStringLiteral("system/context_menu_mode");
+    const auto annotationKey = QStringLiteral("system/annotation_mode_when_opening_for_editing");
+    const auto pinKey = QStringLiteral("context_menu_shortcuts/pin_to_screen");
+    const auto annotateKey = QStringLiteral("context_menu_shortcuts/pin_to_screen_and_annotate");
+    const auto access = ConfigurationSchema::normalize(
+        pinKey, overlay.value(QStringLiteral("context_menu_shortcuts/edit_with_snow_shot")));
+    const auto migrate = [&](QJsonObject values) {
+        if (!values.contains(scopeKey))
+            values.insert(scopeKey, scope);
+        if (!values.contains(annotationKey))
+            values.insert(annotationKey, true);
+        const auto& shortcut = values.value(annotationKey).toBool(true) ? annotateKey : pinKey;
+        if (access.valid && !values.contains(shortcut))
+            values.insert(shortcut, access.value);
+        return values;
+    };
+
+    const auto baseline = QStringLiteral("signed_out");
+    journal.insert(baseline, migrate(journal.value(baseline).toObject()));
+    const auto profilesKey = QStringLiteral("profiles");
+    auto profiles = journal.value(profilesKey).toObject();
+    for (auto it = profiles.begin(); it != profiles.end(); ++it) {
+        auto profile = it.value().toObject();
+        const auto valuesKey = QStringLiteral("values");
+        profile.insert(valuesKey, migrate(profile.value(valuesKey).toObject()));
+        if (!profile.value(QStringLiteral("joined")).toBool()) {
+            const auto seedKey = QStringLiteral("seed");
+            profile.insert(seedKey, migrate(profile.value(seedKey).toObject()));
+        }
+        it.value() = profile;
+    }
+    journal.insert(profilesKey, profiles);
+    document.insert(kCloudSyncStateKey, journal);
+}
+#endif
+
 MaterializedConfiguration materializeConfiguration(const QMap<QString, QJsonValue>& overlay,
                                                    const QMap<QString, QJsonValue>& defaults,
                                                    QJsonObject document, int schemaVersion,
@@ -168,9 +216,23 @@ MaterializedConfiguration materializeConfiguration(const QMap<QString, QJsonValu
     const bool mutateDocument = compatibility != ConfigurationCompatibility::FutureVersion;
     const bool replaceAll = policy == ConfigurationOverlayPolicy::ReplaceAll;
     QMap<QString, QJsonValue> currentOverlay =
-        mutateDocument ? ConfigurationSchema::migrateLegacyValues(overlay) : overlay;
+        mutateDocument ? ConfigurationSchema::migrateLegacyValues(
+                             overlay, schemaVersion,
+                             defaults.value(QStringLiteral("system/context_menu_mode")).toString())
+                       : overlay;
     mouse::reconcile(currentOverlay);
     if (mutateDocument) {
+        for (const auto& [group, key] :
+             {std::pair{QStringLiteral("system"),
+                        QStringLiteral("annotation_mode_when_opening_for_editing")},
+              std::pair{QStringLiteral("context_menu_shortcuts"),
+                        QStringLiteral("edit_with_snow_shot")}}) {
+            auto fields = result.document.value(group).toObject();
+            if (!fields.take(key).isUndefined()) {
+                result.document.insert(group, fields);
+                result.dirty = !replaceAll;
+            }
+        }
         auto history = result.document.value(QStringLiteral("capture_history")).toObject();
         if (history.contains(QStringLiteral("enabled"))) {
             history.remove(QStringLiteral("enabled"));
@@ -339,7 +401,28 @@ MaterializedConfiguration materializeConfiguration(const QMap<QString, QJsonValu
     }
 
     reconcileLocalShortcutDefaults(result, defaultedShortcutKeys, mutateDocument, replaceAll);
+    QSet<QString> assignedMenuKeys;
+    for (auto it = result.values.lowerBound(QStringLiteral("context_menu_shortcuts/"));
+         it != result.values.end() && it.key().startsWith(u"context_menu_shortcuts/"); ++it) {
+        const auto bindings = shortcuts::shortcutBindingsFromJson(it.value(), false);
+        if (bindings.isEmpty())
+            continue;
+        const auto& key = bindings.first().portableText;
+        if (assignedMenuKeys.contains(key)) {
+            it.value() = QJsonArray{};
+            if (mutateDocument) {
+                insertPath(&result.document, it.key(), it.value());
+                result.dirty = true;
+            }
+        }
+        assignedMenuKeys.insert(key);
+    }
 
+#ifdef Q_OS_WIN
+    if (!replaceAll && schemaVersion < 12)
+        migrateLegacyMenuProfiles(result.document, overlay,
+                                  result.values.value(QStringLiteral("system/context_menu_mode")));
+#endif
     int resolvedVersion = schemaVersion;
     const int currentVersion = ConfigurationSchema::currentVersion();
     if (mutateDocument && resolvedVersion < currentVersion) {
@@ -597,6 +680,15 @@ bool ConfigurationStore::setValuesImpl(const QMap<QString, QJsonValue>& values,
         normalizedValues.insert(it.key(), normalized.value);
     }
 
+    QMap<QString, QJsonValue> menuShortcuts;
+    for (auto it = normalizedValues.lowerBound(QStringLiteral("context_menu_shortcuts/"));
+         it != normalizedValues.end() && it.key().startsWith(u"context_menu_shortcuts/"); ++it)
+        menuShortcuts.insert(it.key(), it.value());
+    if (!menuShortcuts.isEmpty() && !localShortcutChangesValid(snapshot(), menuShortcuts)) {
+        rejectMutation(menuShortcuts.firstKey(),
+                       tr("This context menu shortcut is already assigned"));
+        return false;
+    }
     if (mouseChanged && !mouse::changesValid(snapshot(), normalizedValues)) {
         rejectMutation(normalizedValues.firstKey(), tr("The mouse operation is already assigned."));
         return false;

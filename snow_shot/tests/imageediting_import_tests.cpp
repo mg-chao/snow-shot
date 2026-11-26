@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "saturated_export_queue.h"
 #include "snow_shot/presentation/imageeditingwindow.h"
 #include "snow_shot/presentation/collagedocument.h"
 #include "snow_shot/presentation/imageeditingcanvas.h"
@@ -356,13 +357,21 @@ void failedSelectionsAndClose(const QString& first) {
 }
 void importedWindowsParticipateInUpdateHandoff(const QString& first, const QString& second) {
     ImageEditingWindowCoordinator coordinator({});
-    coordinator.presentFiles({first, second});
+    SaturatedExportQueue occupied(coordinator);
+    coordinator.presentFiles(
+        {first, QFileInfo(first).dir().filePath(QStringLiteral("missing.png")), second}, true);
+    require(coordinator.windows().isEmpty() && !coordinator.prepareForUpdateHandoff(),
+            "queued Explorer images wait for capacity and block update handoff");
+    occupied.release();
     awaitCondition([&] { return coordinator.windows().size() == 2; },
                    "multi-file import registers both windows with the coordinator");
     const auto windows = coordinator.windows();
     loaded(*windows[0]);
     loaded(*windows[1]);
     require(coordinator.prepareForUpdateHandoff(), "clean imported windows allow update handoff");
+    require(windows[0]->document()->image().size() == QSize(100, 80) &&
+                windows[1]->document()->image().size() == QSize(60, 50),
+            "queued Explorer imports preserve selection order");
     require(windows[1]->document()->crop(ImageEditingDocument::CropAxis::Rows, 2, 5) &&
                 !coordinator.prepareForUpdateHandoff(),
             "unsaved changes in an additional imported window block update handoff");

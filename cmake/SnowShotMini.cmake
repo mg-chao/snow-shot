@@ -130,6 +130,14 @@ if(MSVC AND SNOW_SHOT_RELEASE_STATIC AND NOT SNOW_SHOT_QT_STATIC)
     set_property(TARGET snow_shot_mini PROPERTY qt_no_entrypoint TRUE)
 endif()
 if(WIN32)
+    add_custom_target(snow_shot_mini_explorer_command
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:snow_shot_mini>"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:snow_shot_explorer_command>"
+            "$<TARGET_FILE_DIR:snow_shot_mini>"
+        DEPENDS snow_shot_explorer_command
+        VERBATIM)
+    add_dependencies(snow_shot_mini snow_shot_mini_explorer_command)
+    install(TARGETS snow_shot_explorer_command RUNTIME DESTINATION bin COMPONENT SnowShotMini)
     set(SNOW_SHOT_PRODUCT_NAME "Snow Shot Mini")
     set(SNOW_SHOT_EXECUTABLE_NAME snow_shot_mini)
     configure_file(resources/windows-app-resource.rc.in

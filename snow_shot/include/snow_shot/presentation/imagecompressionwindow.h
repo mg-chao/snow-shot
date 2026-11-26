@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "snow_shot/presentation/screenshotexportcoordinator.h"
+#include <QStringList>
 #include "snow_shot/platform/selectedfiles.h"
 #include "snow_shot/presentation/screenshotpinnedimagesnapshot.h"
 
@@ -13,6 +15,7 @@ class ImageCompressionWindowCoordinator final : public QObject {
     explicit ImageCompressionWindowCoordinator(
         ScreenshotPinnedImageSnapshotRequest requestPin = {});
     void shutdown();
+    void presentFiles(const QStringList& paths);
     void presentSelectedFiles(std::shared_ptr<platform::SelectedFileBackend> backend,
                               platform::SelectedFileTarget target);
     void presentHistory(const storage::CaptureHistoryRecord& record);
@@ -21,5 +24,6 @@ class ImageCompressionWindowCoordinator final : public QObject {
 
   private:
     ScreenshotPinnedImageSnapshotRequest m_requestPin;
+    ScreenshotExportQueue m_fileImports{ScreenshotExportCoordinator::shared(), nullptr, 1};
 };
 } // namespace snow_shot::presentation

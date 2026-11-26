@@ -1,5 +1,8 @@
 #include "explorercommand.h"
 #include "supportedformats.h"
+#include "snow_shot/platform/windows/shellbatchfile.h"
+#include <chrono>
+#include <fstream>
 
 #include <shellapi.h>
 #include <shlwapi.h>
@@ -101,6 +104,7 @@ class ShellItems final
     }
 
     HRESULT STDMETHODCALLTYPE GetItemAt(DWORD index, IShellItem** item) override {
+        ++itemQueries;
         if (index >= m_entries.size())
             return E_INVALIDARG;
         return Microsoft::WRL::Make<ShellItem>(m_entries[index]).CopyTo(item);
@@ -109,6 +113,7 @@ class ShellItems final
     HRESULT STDMETHODCALLTYPE EnumItems(IEnumShellItems**) override {
         return E_NOTIMPL;
     }
+    DWORD itemQueries = 0;
 
   private:
     std::vector<Entry> m_entries;
@@ -160,30 +165,6 @@ void pathAndCommandLinePolicy() {
     embeddedNul.push_back(L'\0');
     embeddedNul.append(L".png");
     require(!isSupportedPath(embeddedNul), "embedded NUL paths cannot truncate a shell operand");
-
-    const std::wstring executable = L"C:\\Program Files\\Snow Shot\\snow_shot.exe";
-    const std::vector<std::wstring> paths{L"C:\\images\\图片 & (100%) one.png",
-                                          L"\\\\server\\share\\note's two.MD"};
-    std::wstring commandLine;
-    require(buildCommandLine(executable, paths, &commandLine) == S_OK,
-            "supported paths produce a launch command");
-    require(parseCommandLine(commandLine) ==
-                std::vector<std::wstring>{executable, L"--edit-with-snow-shot", paths[0],
-                                          L"--edit-with-snow-shot", paths[1]},
-            "Windows reparses every typed Unicode operand in order without shell expansion");
-    require(buildCommandLine(executable, {}, &commandLine) == E_INVALIDARG && commandLine.empty(),
-            "empty selections cannot activate the application");
-    require(buildCommandLine(executable, {paths[0], L"C:\\bad.exe"}, &commandLine) ==
-                    E_INVALIDARG &&
-                commandLine.empty(),
-            "a mixed selection is rejected as a whole");
-    const std::wstring hugePath = L"C:\\" + std::wstring(33000, L'x') + L".png";
-    require(buildCommandLine(executable, {hugePath}, &commandLine) ==
-                    HRESULT_FROM_WIN32(ERROR_FILENAME_EXCED_RANGE) &&
-                commandLine.empty(),
-            "oversized selections do not truncate or partially launch");
-    require(buildCommandLine(executable, paths, nullptr) == E_POINTER,
-            "command-line output pointers are checked");
 }
 
 void commandBehavior() {
@@ -195,10 +176,18 @@ void commandBehavior() {
         {L"C:\\images\\one.png"}, {L"\\\\server\\share\\图片 two.JPEG"}, {L"C:\\notes\\three.md"}};
     const auto valid = Microsoft::WRL::Make<ShellItems>(selection);
     EXPCMDSTATE state = ECS_HIDDEN;
-    require(command->GetState(valid.Get(), FALSE, &state) == S_OK && state == ECS_ENABLED,
+    require(command->GetState(valid.Get(), FALSE, &state) == E_PENDING && !valid->itemQueries,
+            "a fast Store query does not inspect shell items on the Explorer UI thread");
+    require(command->GetState(valid.Get(), TRUE, &state) == S_OK && state == ECS_ENABLED,
             "modern menu enables supported mixed image and document selections");
-    require(command->Invoke(valid.Get(), nullptr) == S_OK && launchCount == 1,
-            "a complete multiple selection launches Snow Shot once");
+    auto supplied = selection;
+    supplied.insert(supplied.begin(), Entry{L"C:\\files\\ignored.bin"});
+    supplied.insert(supplied.begin() + 2,
+                    Entry{L"C:\\files\\unavailable.png", SFGAO_FILESYSTEM, E_FAIL});
+    const auto invocation = Microsoft::WRL::Make<ShellItems>(std::move(supplied));
+    require(
+        command->Invoke(invocation.Get(), nullptr) == S_OK && launchCount == 1,
+        "one invocation skips unsupported and unavailable files and launches the remaining batch");
     std::wstring expectedExecutable(32768, L'\0');
     expectedExecutable.resize(GetModuleFileNameW(nullptr, expectedExecutable.data(),
                                                  static_cast<DWORD>(expectedExecutable.size())));
@@ -207,28 +196,35 @@ void commandBehavior() {
     require(launchedExecutable == expectedExecutable,
             "launch targets snow_shot.exe beside the extension instead of the COM surrogate");
     const auto arguments = parseCommandLine(launchedCommandLine);
-    require(arguments == std::vector<std::wstring>{expectedExecutable, L"--edit-with-snow-shot",
-                                                   selection[0].path, L"--edit-with-snow-shot",
-                                                   selection[1].path, L"--edit-with-snow-shot",
-                                                   selection[2].path},
-            "Invoke forwards every supported selected path with its own typed operand");
+    require(arguments.size() == 3 && arguments[1] == L"--explorer-selection",
+            "Explorer transfers one selection token");
+    const auto batch =
+        snow_shot::platform::windows::shellBatchDirectory(false, true) / arguments[2];
+    std::ifstream input(batch, std::ios::binary);
+    const std::string bytes{std::istreambuf_iterator<char>(input), {}};
+    const auto expectedBatch =
+        L"0\n" + selection[0].path + L"\n" + selection[1].path + L"\n" + selection[2].path + L"\n";
+    require(bytes.size() == expectedBatch.size() * sizeof(wchar_t) &&
+                std::memcmp(bytes.data(), expectedBatch.data(), bytes.size()) == 0,
+            "the batch preserves ordered Unicode paths and action");
+    input.close();
+    std::filesystem::remove(batch);
 
     menuPreference.mode = ShellContextMenuMode::Disabled;
-    require(command->GetState(valid.Get(), FALSE, &state) == S_OK && state == ECS_HIDDEN &&
+    require(command->GetState(valid.Get(), TRUE, &state) == S_OK && state == ECS_HIDDEN &&
                 command->Invoke(valid.Get(), nullptr) == E_ACCESSDENIED && launchCount == 1,
             "disabling hides an existing command and prevents stale menu invocations");
     menuPreference.mode = ShellContextMenuMode::ImageAndDocumentFiles;
-    require(command->GetState(valid.Get(), FALSE, &state) == S_OK && state == ECS_ENABLED,
+    require(command->GetState(valid.Get(), TRUE, &state) == S_OK && state == ECS_ENABLED,
             "reenabling is visible without recreating the command or restarting Explorer");
 
     menuPreference.mode = ShellContextMenuMode::ImageFiles;
     const auto images = Microsoft::WRL::Make<ShellItems>(
         std::vector<Entry>{{L"C:\\images\\one.PNG"}, {L"C:\\images\\two.JPEG"}});
-    require(command->GetState(images.Get(), FALSE, &state) == S_OK && state == ECS_ENABLED,
+    require(command->GetState(images.Get(), TRUE, &state) == S_OK && state == ECS_ENABLED,
             "image-only mode accepts multiple images case-insensitively");
-    require(command->GetState(valid.Get(), FALSE, &state) == S_OK && state == ECS_HIDDEN &&
-                command->Invoke(valid.Get(), nullptr) == E_INVALIDARG && launchCount == 1,
-            "switching to image-only hides mixed selections and rejects stale invocations");
+    require(command->GetState(valid.Get(), TRUE, &state) == S_OK && state == ECS_HIDDEN,
+            "the Store command respects image-only scope for every selected file");
     for (const auto extension : kSupportedExtensions) {
         const auto path = std::wstring(L"C:\\files\\item") + std::wstring(extension);
         const bool image =
@@ -240,7 +236,7 @@ void commandBehavior() {
     menuPreference.mode = ShellContextMenuMode::ImageAndDocumentFiles;
 
     for (const auto& entries :
-         {std::vector<Entry>{}, std::vector<Entry>{{L"C:\\images\\valid.png"}, {L"C:\\bad.exe"}},
+         {std::vector<Entry>{}, std::vector<Entry>{{L"C:\\bad.exe"}},
           std::vector<Entry>{{L"C:\\images\\directory.png", SFGAO_FILESYSTEM | SFGAO_FOLDER}},
           std::vector<Entry>{{L"C:\\images\\virtual.png", 0}},
           std::vector<Entry>{{L"C:\\images\\missing.png", SFGAO_FILESYSTEM, E_ACCESSDENIED}},
@@ -248,9 +244,9 @@ void commandBehavior() {
               {L"C:\\images\\blocked.png", SFGAO_FILESYSTEM, S_OK, E_ACCESSDENIED}}}) {
         const auto invalid = Microsoft::WRL::Make<ShellItems>(entries);
         state = ECS_ENABLED;
-        require(command->GetState(invalid.Get(), FALSE, &state) == S_OK && state == ECS_HIDDEN,
+        require(command->GetState(invalid.Get(), TRUE, &state) == S_OK && state == ECS_HIDDEN,
                 "invalid, folder, virtual, unavailable, and empty selections hide the command");
-        require(FAILED(command->Invoke(invalid.Get(), nullptr)) && launchCount == 1,
+        require(command->Invoke(invalid.Get(), nullptr) != S_OK && launchCount == 1,
                 "invocation revalidates the selection before any process starts");
     }
     state = ECS_ENABLED;
@@ -267,7 +263,7 @@ void commandBehavior() {
     const std::wstring unassignedTitle(title);
     CoTaskMemFree(title);
     for (const wchar_t accessKey : {L'E', L'7', L'\0'}) {
-        menuPreference.accessKey = accessKey;
+        menuPreference.actions[0] = accessKey ? static_cast<char>(accessKey) : '.';
         const auto expected = unassignedTitle + (accessKey ? std::wstring(L" (&") + accessKey + L")"
                                                            : std::wstring());
         require(command->GetTitle(nullptr, &title) == S_OK && title && title == expected,
@@ -334,7 +330,7 @@ std::wstring titleResource(HMODULE module, WORD language) {
     require(resource != nullptr, "the native title has a resource for each package language");
     const auto* text = static_cast<const wchar_t*>(LockResource(LoadResource(module, resource)));
     require(text != nullptr, "the native string table can be read");
-    for (int index = 0; index < (101 % 16); ++index)
+    for (int index = 0; index < (110 % 16); ++index)
         text += 1 + static_cast<size_t>(*text);
     return std::wstring(text + 1, static_cast<size_t>(*text));
 }
@@ -359,7 +355,7 @@ void localizedTitles(HMODULE module, IExplorerCommand* command) {
         {L"ru-RU\0", MAKELANGID(LANG_RUSSIAN, SUBLANG_DEFAULT)},
         {L"de-DE\0en-US\0", MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US)}};
     require(titleResource(module, MAKELANGID(LANG_RUSSIAN, SUBLANG_DEFAULT)) ==
-                L"Редактировать в Snow Shot",
+                L"Закрепить на экране",
             "the DLL embeds the Russian edit command title");
     for (const auto& [names, language] : languages) {
         require(SetThreadPreferredUILanguages(MUI_LANGUAGE_NAME, names, &count) != FALSE,
@@ -372,12 +368,12 @@ void localizedTitles(HMODULE module, IExplorerCommand* command) {
         ComPtr<IExplorerCommand> assigned;
         require(createEditCommand(module, captureLaunch, &assigned, readMenuPreference) == S_OK,
                 "create a command with the saved access key and the DLL's native resources");
-        menuPreference.accessKey = L'E';
+        menuPreference.actions[0] = 'E';
         require(assigned->GetTitle(nullptr, &title) == S_OK && title &&
                     title == titleResource(module, language) + L" (&E)",
                 "every localized menu title keeps the assigned access key");
         CoTaskMemFree(title);
-        menuPreference.accessKey = L'\0';
+        menuPreference.actions[0] = '.';
     }
     require(SetThreadPreferredUILanguages(MUI_LANGUAGE_NAME, originalLanguages.data(), &count) !=
                 FALSE,
@@ -391,6 +387,10 @@ void packagedDll(const wchar_t* path) {
         exportedFunction<decltype(&DllGetClassObject)>(module, "DllGetClassObject");
     const auto canUnloadNow =
         exportedFunction<decltype(&DllCanUnloadNow)>(module, "DllCanUnloadNow");
+    const auto runServer = exportedFunction<decltype(&SnowShotRunExplorerCommandServer)>(
+        module, "SnowShotRunExplorerCommandServer");
+    require(runServer(6, FALSE) == E_INVALIDARG,
+            "the packaged DLL supplies the local-server entry point used by the application");
     require(canUnloadNow() == S_OK, "newly loaded DLL is initially idle");
     {
         ComPtr<IClassFactory> factory;
@@ -418,12 +418,199 @@ void packagedDll(const wchar_t* path) {
     FreeLibrary(module);
 }
 
+void legacyStoreProjection() {
+    namespace fs = std::filesystem;
+    GUID id{};
+    wchar_t guid[39]{};
+    require(SUCCEEDED(CoCreateGuid(&id)) && StringFromGUID2(id, guid, 39), "unique Store fixture");
+    const auto root = fs::temp_directory_path() / guid;
+    const auto local = root / L"ExamplePackage" / L"LocalState";
+    require(fs::create_directory(root), "create a private Store fixture");
+    fs::create_directories(local);
+    const auto preference = local / L"context-menu-enabled";
+    std::ofstream(local / L"config.json")
+        << R"({"system":{"annotation_mode_when_opening_for_editing":false}})";
+    std::ofstream(preference) << "2K";
+    const auto legacy =
+        snow_shot::platform::windows::packaged_context_menu::readPreference(preference.wstring());
+    require(legacy.mode == ShellContextMenuMode::ImageFiles && legacy.actions[0] == '-' &&
+                legacy.actions[1] == 'K',
+            "legacy scope and access key come from the projection alone");
+    std::ofstream(preference) << "2K-----";
+    const auto migrated =
+        snow_shot::platform::windows::packaged_context_menu::readPreference(preference.wstring());
+    require(migrated.mode == legacy.mode && migrated.actions[0] == 'K' &&
+                migrated.actions[1] == '-',
+            "the app's migrated projection replaces the legacy fallback");
+    fs::remove_all(root);
+}
+
+void expiredSelectionBatches() {
+    namespace fs = std::filesystem;
+    GUID id{};
+    wchar_t guid[39]{};
+    require(SUCCEEDED(CoCreateGuid(&id)) && StringFromGUID2(id, guid, 39), "unique batch fixture");
+    const auto directory = fs::temp_directory_path() / guid;
+    require(fs::create_directory(directory), "create private batch fixture");
+    const auto stale = directory / L"{FB6BC742-5B83-4E49-B26F-4B6CE72CA1A2}";
+    const auto fresh = directory / L"{FB6BC742-5B83-4E49-B26F-4B6CE72CA1A3}";
+    const auto busy = directory / L"{FB6BC742-5B83-4E49-B26F-4B6CE72CA1A4}";
+    const auto foreign = directory / L"{unrelated}";
+    const auto nullToken = directory / L"{00000000-0000-0000-0000-000000000000}";
+    const auto folder = directory / L"{FB6BC742-5B83-4E49-B26F-4B6CE72CA1A5}";
+    const auto expired = fs::file_time_type::clock::now() - std::chrono::hours(24 * 8);
+    for (const auto& file : {stale, fresh, busy, foreign, nullToken}) {
+        std::ofstream(file) << "fixture";
+        if (file != fresh)
+            fs::last_write_time(file, expired);
+    }
+    fs::create_directory(folder);
+    fs::last_write_time(folder, expired);
+    HANDLE reader = CreateFileW(busy.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                                FILE_ATTRIBUTE_NORMAL, nullptr);
+    require(reader != INVALID_HANDLE_VALUE, "hold an active batch open");
+    snow_shot::platform::windows::removeExpiredShellBatches(directory);
+    require(!fs::exists(stale) && fs::exists(fresh) && fs::exists(busy) && fs::exists(foreign) &&
+                fs::exists(nullToken) && fs::is_directory(folder),
+            "cleanup only retires expired, unused files with batch tokens");
+    CloseHandle(reader);
+    snow_shot::platform::windows::removeExpiredShellBatches(directory);
+    require(!fs::exists(busy), "a formerly busy orphan is collected after its reader closes");
+    fs::remove_all(directory);
+}
+
+void delegatedSelection() {
+    using namespace snow_shot::platform::windows;
+    ComPtr<IExplorerCommand> command;
+    menuPreference.mode = ShellContextMenuMode::ImageAndDocumentFiles;
+    menuPreference.actions[actionIndex(ShellAction::Edit)] = '.';
+    launchResult = S_OK;
+    require(createEditCommand(GetModuleHandleW(nullptr), captureLaunch, &command,
+                              readMenuPreference, ShellAction::Edit) == S_OK,
+            "create delegate");
+    ComPtr<IObjectWithSelection> object;
+    ComPtr<IExecuteCommand> execute;
+    require(SUCCEEDED(command.As(&object)) && SUCCEEDED(command.As(&execute)),
+            "the local server exposes the standard selection and execution interfaces");
+    const auto selection = Microsoft::WRL::Make<ShellItems>(
+        std::vector<Entry>{{L"C:\\one.png"}, {L"C:\\ignored.md"}, {L"C:\\第二张.jpg"}});
+    ComPtr<IShellItemArray> roundTrip;
+    require(object->SetSelection(selection.Get()) == S_OK &&
+                object->GetSelection(IID_PPV_ARGS(&roundTrip)) == S_OK &&
+                roundTrip.Get() == selection.Get() && execute->Execute() == S_OK,
+            "DelegateExecute retains and dispatches the complete shell selection");
+    const auto arguments = parseCommandLine(launchedCommandLine);
+    const auto batch = shellBatchDirectory(false, true) / arguments.at(2);
+    std::ifstream input(batch, std::ios::binary);
+    const std::string bytes{std::istreambuf_iterator<char>(input), {}};
+    const std::wstring expected = L"4\nC:\\one.png\nC:\\第二张.jpg\n";
+    require(bytes.size() == expected.size() * sizeof(wchar_t) &&
+                std::memcmp(bytes.data(), expected.data(), bytes.size()) == 0,
+            "the delegated action writes one batch with the ordered, supported files");
+    input.close();
+    std::filesystem::remove(batch);
+}
+
+void delegatedProcess() {
+    GUID clsid{};
+    wchar_t id[39]{};
+    require(SUCCEEDED(CoCreateGuid(&clsid)) && StringFromGUID2(clsid, id, 39),
+            "a private COM class keeps the process test independent of installed editions");
+    std::wstring executable(32768, L'\0');
+    executable.resize(
+        GetModuleFileNameW(nullptr, executable.data(), static_cast<DWORD>(executable.size())));
+    auto arguments = L"\"" + executable + L"\" --serve-private-command " + id;
+    STARTUPINFOW startup{};
+    startup.cb = sizeof(startup);
+    PROCESS_INFORMATION process{};
+    require(CreateProcessW(executable.c_str(), arguments.data(), nullptr, nullptr, FALSE,
+                           CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process),
+            "start a private out-of-process command server");
+    CloseHandle(process.hThread);
+    require(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)), "initialize the COM client");
+    {
+        ComPtr<IExecuteCommand> execute;
+        const auto deadline = GetTickCount64() + 10000;
+        while (GetTickCount64() < deadline && !execute) {
+            const auto activation =
+                CoCreateInstance(clsid, nullptr, CLSCTX_LOCAL_SERVER, IID_PPV_ARGS(&execute));
+            if (SUCCEEDED(activation))
+                break;
+            require(activation == REGDB_E_CLASSNOTREG &&
+                        WaitForSingleObject(process.hProcess, 20) == WAIT_TIMEOUT,
+                    "the private class can activate through the standard COM proxy");
+        }
+        require(execute && SUCCEEDED(execute->SetShowWindow(SW_SHOWNORMAL)),
+                "IExecuteCommand calls reach the helper process");
+        ComPtr<IObjectWithSelection> delegate;
+        ComPtr<IShellItem> item;
+        ComPtr<IShellItemArray> selection;
+        ComPtr<IShellItemArray> returned;
+        DWORD count = 0;
+        require(SUCCEEDED(execute.As(&delegate)) &&
+                    SUCCEEDED(SHCreateItemFromParsingName(executable.c_str(), nullptr,
+                                                          IID_PPV_ARGS(&item))) &&
+                    SUCCEEDED(SHCreateShellItemArrayFromShellItem(item.Get(),
+                                                                  IID_PPV_ARGS(&selection))) &&
+                    SUCCEEDED(delegate->SetSelection(selection.Get())) &&
+                    SUCCEEDED(delegate->GetSelection(IID_PPV_ARGS(&returned))) &&
+                    SUCCEEDED(returned->GetCount(&count)) && count == 1,
+                "the standard proxy marshals shell items into and out of the helper process");
+    }
+    CoUninitialize();
+    DWORD exitCode = 0;
+    require(WaitForSingleObject(process.hProcess, 5000) == WAIT_OBJECT_0 &&
+                GetExitCodeProcess(process.hProcess, &exitCode) && exitCode == 0,
+            "releasing the command exits the single-use server");
+    CloseHandle(process.hProcess);
+}
+
 } // namespace
 
 int wmain(int argc, wchar_t** argv) {
+    if (argc == 3 && std::wstring_view(argv[1]) == L"--serve-private-command") {
+        GUID clsid{};
+        using snow_shot::platform::windows::ShellAction;
+        return SUCCEEDED(IIDFromString(argv[2], &clsid)) &&
+                       SUCCEEDED(serveExplorerCommand(clsid, ShellAction::Edit, false))
+                   ? EXIT_SUCCESS
+                   : EXIT_FAILURE;
+    }
     require(argc == 2, "pass the built Explorer command DLL for activation smoke tests");
+    legacyStoreProjection();
+    expiredSelectionBatches();
     pathAndCommandLinePolicy();
     commandBehavior();
+    delegatedSelection();
+    delegatedProcess();
+    using namespace snow_shot::platform::windows;
+    const auto docs =
+        Microsoft::WRL::Make<ShellItems>(std::vector<Entry>{{L"C:\\selection\\notes.md"}});
+    const auto mixed = Microsoft::WRL::Make<ShellItems>(std::vector<Entry>{
+        {L"C:\\selection\\notes.md"}, {L"C:\\selection\\one.png"}, {L"C:\\selection\\file.bin"}});
+    for (size_t i = 0; i < shellActionIds.size(); ++i) {
+        const auto action = static_cast<ShellAction>(i);
+        ComPtr<IExplorerCommand> cmd;
+        require(createEditCommand(GetModuleHandleW(nullptr), captureLaunch, &cmd,
+                                  readMenuPreference, action) == S_OK,
+                "construct each Explorer action");
+        menuPreference.actions.fill('-');
+        EXPCMDSTATE state = ECS_ENABLED;
+        require(cmd->GetState(mixed.Get(), TRUE, &state) == S_OK && state == ECS_HIDDEN &&
+                    cmd->Invoke(mixed.Get(), nullptr) == E_ACCESSDENIED,
+                "unchecked actions never activate");
+        menuPreference.actions[i] = 'K';
+        menuPreference.mode = ShellContextMenuMode::ImageAndDocumentFiles;
+        require(cmd->GetState(docs.Get(), TRUE, &state) == S_OK &&
+                    state == static_cast<EXPCMDSTATE>(acceptsDocuments(action) ? ECS_ENABLED
+                                                                               : ECS_HIDDEN),
+                "document-only selection exposes only pin actions");
+        menuPreference.mode = ShellContextMenuMode::ImageFiles;
+        require(cmd->GetState(docs.Get(), TRUE, &state) == S_OK && state == ECS_HIDDEN &&
+                    cmd->GetState(mixed.Get(), TRUE, &state) == S_OK && state == ECS_HIDDEN,
+                "Store commands retain their configured file scope");
+    }
+    menuPreference = {};
     comLifecycle();
     packagedDll(argv[1]);
     return EXIT_SUCCESS;

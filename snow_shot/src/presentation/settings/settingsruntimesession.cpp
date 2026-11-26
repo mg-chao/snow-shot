@@ -1667,6 +1667,11 @@ bool SettingsRuntimeSession::applyLocalShortcuts(SettingsLocalShortcutScope scop
     return descriptor != nullptr && submitDraft(descriptor->id, shortcutListVariant(shortcuts));
 }
 
+bool SettingsRuntimeSession::applyContextMenuShortcutBatch(
+    const QMap<QString, QJsonValue>& changes) {
+    return m_backend.applyContextMenuShortcutBatch(changes);
+}
+
 quint64 SettingsRuntimeSession::suspendGlobalShortcuts() {
     return m_backend.suspendGlobalShortcuts();
 }

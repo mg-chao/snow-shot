@@ -390,8 +390,9 @@ void ScreenshotExportCoordinator::shutdown() {
 }
 
 ScreenshotExportQueue::ScreenshotExportQueue(ScreenshotExportCoordinator& coordinator,
-                                             QObject* parent)
-    : QObject(parent), m_coordinator(&coordinator) {
+                                             QObject* parent, int maximumConcurrentJobs)
+    : QObject(parent), m_coordinator(&coordinator),
+      m_maximumConcurrentJobs(std::max(1, maximumConcurrentJobs)) {
     coordinator.assertOwnerThread();
     Q_ASSERT(QThread::currentThread() == thread());
     coordinator.m_impl->queues.append(this);
@@ -433,9 +434,8 @@ bool ScreenshotExportQueue::active() const {
 
 void ScreenshotExportQueue::dispatch() {
     Q_ASSERT(QThread::currentThread() == thread());
-    constexpr qsizetype maximumConcurrentJobs = 2;
     while (m_coordinator && m_coordinator->acceptingSubmissions() &&
-           m_jobs.size() < maximumConcurrentJobs && !m_requests.isEmpty()) {
+           m_jobs.size() < m_maximumConcurrentJobs && !m_requests.isEmpty()) {
         const auto& request = m_requests.head();
         const quint64 id = ++m_nextId;
         auto job = m_coordinator->submit(

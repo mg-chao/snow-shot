@@ -190,6 +190,31 @@ ScreenshotExportTaskResult prepareImage(QImage image, const std::shared_ptr<Load
                               "The image is too large or there is not enough memory to load it");
     return {};
 }
+ScreenshotExportCoordinator::Work readSplitFile(const QString& path,
+                                                const ImageSplitWindowServices& services,
+                                                const std::shared_ptr<LoadedImage>& loaded) {
+    return [path, loaded,
+            reader = services.readFile](const ScreenshotExportCancellation& cancellation) {
+        const auto cancelled = [&cancellation] { return cancellation.isCancellationRequested(); };
+        QImage image;
+        if (reader) {
+            image = reader(path, cancelled).value_or(QImage());
+        } else {
+            QString error;
+            loaded->reservation = reserveImageStitchingImport(0, &error);
+            if (loaded->reservation)
+                image = readImageImportFile(path, std::nullopt, cancelled,
+                                            [loaded, &error](qint64 bytes) {
+                                                return loaded->reservation->resize(bytes, &error);
+                                            });
+            if (image.isNull() && !error.isEmpty())
+                return loadingFailure(
+                    loaded, ScreenshotExportFailureStage::Source,
+                    "The image is too large or there is not enough memory to load it");
+        }
+        return prepareImage(std::move(image), loaded, cancellation);
+    };
+}
 } // namespace
 
 struct ImageSplitWindow::Impl final {
@@ -1065,31 +1090,9 @@ void ImageSplitWindow::replaceFile(const QString& path) {
     d.beginLoading();
     const auto token = d.generation;
     auto loaded = std::make_shared<LoadedImage>();
-    const auto reader = d.services.readFile;
     d.job = ScreenshotExportCoordinator::shared().submit(
         this, ScreenshotExportCoordinator::Priority::Background,
-        [path, loaded, reader](const ScreenshotExportCancellation& cancellation) {
-            const auto cancelled = [&cancellation] {
-                return cancellation.isCancellationRequested();
-            };
-            QImage image;
-            if (reader) {
-                image = reader(path, cancelled).value_or(QImage());
-            } else {
-                QString error;
-                loaded->reservation = reserveImageStitchingImport(0, &error);
-                if (loaded->reservation)
-                    image = readImageImportFile(
-                        path, std::nullopt, cancelled, [loaded, &error](qint64 bytes) {
-                            return loaded->reservation->resize(bytes, &error);
-                        });
-                if (image.isNull() && !error.isEmpty())
-                    return loadingFailure(
-                        loaded, ScreenshotExportFailureStage::Source,
-                        "The image is too large or there is not enough memory to load it");
-            }
-            return prepareImage(std::move(image), loaded, cancellation);
-        },
+        readSplitFile(path, d.services, loaded),
         [this, path, loaded, token](ScreenshotExportTaskResult result) {
             m_impl->finishLoading(loaded, QFileInfo(path).fileName(), {}, true, token,
                                   std::move(result));
@@ -1248,13 +1251,38 @@ void ImageSplitWindowCoordinator::presentSource(ImageSplitSource source) {
         window->presentSource(std::move(source));
 }
 
-void ImageSplitWindowCoordinator::presentFiles(const QStringList& paths) {
+void ImageSplitWindowCoordinator::presentFiles(const QStringList& paths, bool skipUnreadable) {
+    if (m_shutdown)
+        return;
     for (const auto& path : paths) {
-        auto* window = createWindow();
-        if (!window)
+        if (!skipUnreadable) {
+            auto* window = createWindow();
+            if (!window)
+                break;
+            window->m_impl->present();
+            window->replaceFile(path);
+            continue;
+        }
+        auto loaded = std::make_shared<LoadedImage>();
+        if (!m_fileImports.enqueue(
+                ScreenshotExportCoordinator::Priority::Background,
+                readSplitFile(path, m_services, loaded), [this, path, loaded](auto result) {
+                    if (!result.succeeded())
+                        return;
+                    const QPointer<ImageSplitWindow> window = createWindow();
+                    if (!window)
+                        return;
+                    auto& impl = *window->m_impl;
+                    impl.finishLoading(loaded, QFileInfo(path).fileName(), {}, false,
+                                       impl.generation, std::move(result));
+                    if (window && !window->document()->image().isNull())
+                        impl.present();
+                    else if (window) {
+                        m_windows.removeAll(window);
+                        window->deleteLater();
+                    }
+                }))
             break;
-        window->m_impl->present();
-        window->replaceFile(path);
     }
 }
 
@@ -1342,6 +1370,7 @@ void ImageSplitWindowCoordinator::presentPinnedRecord(const QString& recordId) {
 }
 void ImageSplitWindowCoordinator::shutdown() {
     m_shutdown = true;
+    m_fileImports.cancel();
     const auto active = m_windows;
     for (const auto& window : active)
         if (window)

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "saturated_export_queue.h"
 #include "snow_shot/presentation/imagecompressionwindow.h"
 #include "snow_shot/presentation/screenshotclipboardservice.h"
 #include "snow_shot/presentation/screenshotexportcoordinator.h"
@@ -442,6 +443,28 @@ void runImageCompressionTests() {
         modal->reject();
     }
     clipboardImports(first, source.size());
+    {
+        ImageCompressionWindowCoordinator windows;
+        const auto smaller = dir.filePath(QStringLiteral("smaller.png"));
+        require(source.copy(0, 0, 64, 48).save(smaller), "write a distinct compression input");
+        SaturatedExportQueue occupied(windows);
+        windows.presentFiles({first, dir.filePath(QStringLiteral("missing.png")), smaller});
+        require(windows.findChildren<AdModal*>().isEmpty(),
+                "queued compression files wait for a worker before opening windows");
+        occupied.release();
+        until([&] {
+            const auto modals =
+                windows.findChildren<AdModal*>(QStringLiteral("imageCompressionWindow"));
+            return modals.size() == 2 && modals[0]->isOpen() && modals[1]->isOpen();
+        });
+        const auto modals =
+            windows.findChildren<AdModal*>(QStringLiteral("imageCompressionWindow"));
+        require(child<AdInputNumber>(modals[0]->contentWidget(), "saveWidthInput")->value() ==
+                        source.width() &&
+                    child<AdInputNumber>(modals[1]->contentWidget(), "saveWidthInput")->value() ==
+                        64,
+                "queued compression windows retain the selected files in order");
+    }
     {
         ImageCompressionWindowCoordinator windows;
         selection->paths = {first, dir.filePath(QStringLiteral("ignored.txt")), second};

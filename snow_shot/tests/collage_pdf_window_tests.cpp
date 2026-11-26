@@ -82,7 +82,8 @@ void prepare(ImageStitchingWindow& window) {
 QString status(ImageStitchingWindow& window) {
     auto* service = adqt::widgets::AdMessageService::instance(window.editor()->window());
     for (auto* message : service->findChildren<adqt::widgets::AdMessageHandle*>())
-        if (message->isOpen() && message->key() == QStringLiteral("collageStatus"))
+        if (message->isOpen() && (message->key() == QStringLiteral("collageStatus") ||
+                                  message->key() == QStringLiteral("collagePdfExportResult")))
             return message->content();
     return {};
 }
@@ -257,7 +258,10 @@ void partialFailureReportsAndRetryCloses() {
     QObject::connect(&window, &ImageStitchingWindow::pdfExportFinished, &window,
                      [&](const auto&) { ++completed; });
     window.save();
-    waitUntil([&] { return !window.busy(); }, "partial export completes");
+    QTemporaryDir directory;
+    window.addFiles({directory.filePath(QStringLiteral("missing.png"))}, true);
+    waitUntil([&] { return !window.busy() && !window.loading(); },
+              "partial export and deferred import complete");
     require(window.modal()->isOpen() && completed == 1 && window.document()->items().size() == 2 &&
                 status(window).contains(QStringLiteral("Saved pages: 1")) &&
                 status(window).contains(QStringLiteral("001_second.pdf")) &&

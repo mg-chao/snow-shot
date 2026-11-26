@@ -961,10 +961,6 @@ so every moment on screen can be expressed clearly and shared easily</source>
             <translation>Обновление готово. Откройте «О программе», чтобы перезапустить приложение и обновить Snow Shot</translation>
         </message>
         <message>
-            <source>Could not open the selected file: %1</source>
-            <translation>Не удалось открыть выбранный файл: %1</translation>
-        </message>
-        <message>
             <source>Could not pin selected files to screen</source>
             <translation>Не удалось закрепить выбранные файлы на экране</translation>
         </message>

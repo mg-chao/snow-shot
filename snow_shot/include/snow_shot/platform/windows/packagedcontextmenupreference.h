@@ -13,12 +13,7 @@
 
 namespace snow_shot::platform::windows::packaged_context_menu {
 
-struct Preference {
-    ShellContextMenuMode mode = ShellContextMenuMode::ImageAndDocumentFiles;
-    wchar_t accessKey = L'\0';
-
-    friend bool operator==(const Preference&, const Preference&) = default;
-};
+using Preference = ShellMenuPreferences;
 
 inline bool isAccessKey(wchar_t key) {
     return (key >= L'A' && key <= L'Z') || (key >= L'0' && key <= L'9');
@@ -58,20 +53,33 @@ inline Preference readPreference(const std::wstring& path) {
                     ? ShellContextMenuMode::ImageAndDocumentFiles
                     : ShellContextMenuMode::Disabled};
     }
-    // The original one-byte mode remains valid. An optional second byte stores
-    // the canonical ASCII access key; the third byte detects malformed payloads.
-    char value[3]{};
+    char bytes[8]{};
     DWORD read = 0;
-    const bool success = ReadFile(file, value, sizeof(value), &read, nullptr) != FALSE;
+    const bool ok = ReadFile(file, bytes, sizeof(bytes), &read, nullptr) != FALSE;
     CloseHandle(file);
-    if (!success || (read != 1 && read != 2) ||
-        (value[0] != '0' && value[0] != '1' && value[0] != '2') ||
-        (read == 2 && !isAccessKey(value[1])))
+    if (!ok || (read != 7 && read != 1 && read != 2) ||
+        (bytes[0] != '0' && bytes[0] != '1' && bytes[0] != '2'))
         return {ShellContextMenuMode::Disabled};
-    const auto mode = value[0] == '0'   ? ShellContextMenuMode::Disabled
-                      : value[0] == '2' ? ShellContextMenuMode::ImageFiles
-                                        : ShellContextMenuMode::ImageAndDocumentFiles;
-    return {mode, read == 2 ? static_cast<wchar_t>(value[1]) : L'\0'};
+    Preference result;
+    result.mode = bytes[0] == '2'   ? ShellContextMenuMode::ImageFiles
+                  : bytes[0] == '1' ? ShellContextMenuMode::ImageAndDocumentFiles
+                                    : ShellContextMenuMode::Disabled;
+    if (read < 7) {
+        // The earlier preference stored only the scope and optional key. The app replaces
+        // this projection from its migrated configuration during its first startup.
+        if (read == 2 && !isAccessKey(bytes[1]))
+            return {ShellContextMenuMode::Disabled};
+        result.actions.fill('-');
+        result.actions[actionIndex(ShellAction::Annotate)] = read == 2 ? bytes[1] : '.';
+    } else {
+        for (size_t i = 0; i < result.actions.size(); ++i) {
+            const char key = bytes[i + 1];
+            if (key != '.' && key != '-' && !isAccessKey(key))
+                return {ShellContextMenuMode::Disabled};
+            result.actions[i] = key;
+        }
+    }
+    return result;
 }
 
 inline bool isEnabled(const std::wstring& path) {

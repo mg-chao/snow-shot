@@ -347,10 +347,146 @@ fn shell_cleanup_and_migration_are_scoped_to_owned_loaded_and_offline_profiles()
         "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList\\S-1-5-21-200",
     );
     set(profile_key.0, "ProfileImagePath", profile.to_str().unwrap());
+    let class_id = |index: u8| {
+        let edition = if edition::MINI { 'C' } else { 'B' };
+        format!("{{3F1E90A2-7D4B-4F21-9D8A-6B0C5E2F70{edition}{index}}}")
+    };
+    let id = class_id(2);
+    let previous_path = previous_executable.display().to_string().replace('/', "\\");
+    let destination_path = destination_executable
+        .display()
+        .to_string()
+        .replace('/', "\\");
+    let register_owner = |path: &str| {
+        let key = create(current.0, path);
+        set(key.0, "ProductId", edition::PRODUCT);
+        set(key.0, "InstallationExecutable", &previous_path);
+        key
+    };
+    let old_wildcard = format!(r"*\shell\{}.stitch_images", edition::REGISTRY_NAME);
+    let scoped_verb = verb_path(
+        ".obsolete-format",
+        &format!("{}.File.stitch_images", edition::REGISTRY_NAME),
+    );
+    let modern_class = format!(r"CLSID\{id}");
+    for path in [&old_wildcard, &scoped_verb, &modern_class] {
+        let key = register_owner(path);
+        if path != &modern_class {
+            set(key.0, "ExplorerCommandHandler", &id);
+        } else {
+            let server = create(key.0, "InprocServer32");
+            set(
+                server.0,
+                "",
+                &previous_executable
+                    .with_file_name("SnowShotExplorerCommand.dll")
+                    .display()
+                    .to_string(),
+            );
+        }
+    }
+    let blocked_path = verb_path(
+        ".protected",
+        &format!("{}.File.pin_to_screen", edition::REGISTRY_NAME),
+    );
+    let blocked = register_owner(&blocked_path);
+    set(blocked.0, "ExplorerCommandHandler", &class_id(0));
+
+    let delegate_path = verb_path(
+        ".png",
+        &format!("{}.File.compress_images", edition::REGISTRY_NAME),
+    );
+    let delegate = register_owner(&delegate_path);
+    set(
+        create(delegate.0, "command").0,
+        "DelegateExecute",
+        &class_id(5),
+    );
+    drop(delegate);
+    let local_class = format!(r"CLSID\{}", class_id(5));
+    let local_server = format!(r"{local_class}\LocalServer32");
+    drop(register_owner(&local_class));
+    let server = create(current.0, &local_server);
+    set(
+        server.0,
+        "",
+        &format!("\"{previous_path}\" --explorer-command-server 5"),
+    );
+    set(server.0, "ServerExecutable", &previous_path);
+    drop(server);
+    let interrupted_class = format!(r"CLSID\{}", class_id(3));
+    let interrupted_server = format!(r"{interrupted_class}\LocalServer32");
+    drop(register_owner(&interrupted_class));
+    let server = create(current.0, &interrupted_server);
+    set(
+        server.0,
+        "",
+        &format!("\"{destination_path}\" --explorer-command-server 3"),
+    );
+    set(server.0, "ServerExecutable", &previous_path);
+    drop(server);
+    let foreign_class = format!(r"CLSID\{}", class_id(4));
+    let server = create(register_owner(&foreign_class).0, "LocalServer32");
+    set(server.0, "", &format!("\"{previous_path}\" --other-tool"));
+    set(server.0, "ServerExecutable", &previous_path);
+    drop(server);
+
     let denied = create(current.0, &verb_path(".png", edition::SHELL_VERB));
     deny_writes(denied.0, true);
+    deny_writes(blocked.0, true);
     let failed = platform::migrate_installation_shell_verbs(&previous, &destination).unwrap_err();
+    deny_writes(blocked.0, false);
+    deny_writes(denied.0, false);
     assert_eq!(failed.code, "shell_registration_failed");
+    assert_eq!(read(blocked.0, "InstallationExecutable"), previous_path);
+    // A denied modern key must not strand later actions or legacy verbs in the same profile.
+    assert_eq!(
+        read(create(current.0, &scoped_verb).0, "InstallationExecutable"),
+        destination_path
+    );
+    assert_eq!(
+        read(
+            create(current.0, &delegate_path).0,
+            "InstallationExecutable"
+        ),
+        destination_path
+    );
+    let server = create(current.0, &local_server);
+    assert_eq!(
+        read(server.0, ""),
+        format!("\"{destination_path}\" --explorer-command-server 5")
+    );
+    assert_eq!(read(server.0, "ServerExecutable"), destination_path);
+    drop(server);
+    assert_eq!(
+        read(
+            create(current.0, &interrupted_class).0,
+            "InstallationExecutable"
+        ),
+        destination_path
+    );
+    assert_eq!(
+        read(create(current.0, &interrupted_server).0, "ServerExecutable"),
+        destination_path
+    );
+    assert_eq!(
+        read(
+            create(current.0, &foreign_class).0,
+            "InstallationExecutable"
+        ),
+        previous_path
+    );
+    assert_eq!(
+        read(
+            create(
+                current.0,
+                &verb_path(".obsolete-format", edition::SHELL_VERB)
+            )
+            .0,
+            "InstallationExecutable"
+        ),
+        destination_path
+    );
     assert_eq!(
         read(denied.0, "InstallationExecutable"),
         previous_executable.display().to_string().replace('/', "\\")
@@ -364,7 +500,6 @@ fn shell_cleanup_and_migration_are_scoped_to_owned_loaded_and_offline_profiles()
             .to_string()
             .replace('/', "\\")
     );
-    deny_writes(denied.0, false);
     platform::migrate_installation_shell_verbs(&previous, &destination).unwrap();
     let offline = load_hive(&hive_path);
     for classes in [current.0, loaded.0, offline.0] {
@@ -399,14 +534,44 @@ fn shell_cleanup_and_migration_are_scoped_to_owned_loaded_and_offline_profiles()
         );
     }
     drop(offline);
+    assert!(!exists(current.0, &old_wildcard));
+    let scoped = create(current.0, &scoped_verb);
+    assert_eq!(
+        read(scoped.0, "Icon"),
+        format!(
+            "\"{}\",0",
+            destination_executable
+                .display()
+                .to_string()
+                .replace('/', "\\")
+        )
+    );
+    drop(scoped);
     // Old-root uninstall cannot remove registrations migrated to the new root.
     platform::remove_installation_shell_verbs(&previous).unwrap();
     assert!(exists(current.0, &verb_path(".png", edition::SHELL_VERB)));
+    assert!(exists(current.0, &foreign_class));
+    assert!(exists(current.0, &delegate_path));
+    assert!(exists(current.0, &local_class));
     std::fs::create_dir_all(&destination).unwrap();
     transaction::uninstall(&destination, false).unwrap();
     assert!(exists(current.0, &verb_path(".png", edition::SHELL_VERB)));
+    let blocked_parent = create(current.0, r"SystemFileAssociations\.protected\shell");
+    deny_writes(blocked_parent.0, true);
+    let cleanup = platform::remove_installation_shell_verbs(&destination);
+    deny_writes(blocked_parent.0, false);
+    drop(blocked);
+    assert_eq!(cleanup.unwrap_err().code, "shell_registration_failed");
+    assert!(exists(current.0, &blocked_path));
+    assert!(!exists(current.0, &verb_path(".png", edition::SHELL_VERB)));
+    assert!(!exists(current.0, &old_wildcard));
+    assert!(!exists(current.0, &scoped_verb));
+    assert!(!exists(current.0, &modern_class));
+    assert!(!exists(current.0, &delegate_path));
+    assert!(!exists(current.0, &local_class));
+    assert!(!exists(current.0, &interrupted_class));
     transaction::uninstall(&destination, true).unwrap();
-    platform::remove_installation_shell_verbs(&destination).unwrap();
+    assert!(!exists(current.0, &blocked_path));
     let offline = load_hive(&hive_path);
     for classes in [current.0, loaded.0, offline.0] {
         for extension in [".png", ".obsolete-format"] {

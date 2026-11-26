@@ -19,10 +19,12 @@ class ShellLaunchCoordinator final {
         bool autostart = false;
         bool foreground = false;
         QStringList paths;
+        QStringList fileArguments;
         QStringList unsupportedPaths;
     };
     struct Intent {
         QStringList paths;
+        QStringList fileArguments;
         bool foreground = false;
 
         // Normal replay arguments omit updater-private flags. An empty intent is not a launch.
