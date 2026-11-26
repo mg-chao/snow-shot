@@ -9,6 +9,7 @@
 #include "widgets/scroll_area.h"
 #include "snow_shot/presentation/settings/settingscatalog.h"
 #include "snow_shot/presentation/styles/thememanager.h"
+#include "snow_shot/presentation/websiteurl.h"
 #include "snow_shot/storage/accountsecretstore.h"
 #include "snow_shot/storage/applicationstorage.h"
 #include "widgets/button.h"
@@ -1997,7 +1998,7 @@ void emptyAccountTransactionsMatchScreenshotHistory() {
             "loaded transactions replace the complete empty state and release its space");
 }
 
-void accountBenefitsLinksFollowUiLanguage() {
+void accountWebsiteLinksFollowUiLanguage() {
     using adqt::widgets::AdButton;
     auto& languages = snow_shot::presentation::LanguageManager::instance();
     require(languages.setLanguage(QStringLiteral("en_US")), "select English for account layout");
@@ -2012,9 +2013,10 @@ void accountBenefitsLinksFollowUiLanguage() {
     auto* registration = page.findChild<AdButton*>(QStringLiteral("accountSwitchForm"));
     auto* authLink = page.findChild<AdButton*>(QStringLiteral("accountAuthBenefits"));
     auto* profileLink = page.findChild<AdButton*>(QStringLiteral("accountProfileBenefits"));
+    const auto* agreement = page.findChild<QLabel*>(QStringLiteral("accountAgreementText"));
     const auto* cumulative = page.findChild<QLabel*>(QStringLiteral("accountCumulativeRecharge"));
-    require(registration && authLink && profileLink && cumulative,
-            "account page exposes both benefits links and the total top-ups label");
+    require(registration && authLink && profileLink && agreement && cumulative,
+            "account page exposes website links and the total top-ups label");
     require(authLink->isVisible() && !profileLink->isVisible() &&
                 registration->geometry().right() < authLink->geometry().left() &&
                 registration->geometry().center().y() == authLink->geometry().center().y(),
@@ -2033,13 +2035,16 @@ void accountBenefitsLinksFollowUiLanguage() {
     struct LocalizedLink {
         const char* locale;
         const char16_t* label;
-        const char16_t* path;
+        const char16_t* prefix;
     };
     const LocalizedLink variants[] = {
-        {"en_US", u"View account benefits", u"/pricing.html"},
-        {"zh_CN", u"查看账号权益", u"/zh/pricing.html"},
-        {"zh_TW", u"查看帳號權益", u"/zh/pricing.html"},
+        {"en_US", u"View account benefits", u""},
+        {"zh_CN", u"查看账号权益", u"/zh"},
+        {"zh_TW", u"查看帳號權益", u"/zh"},
+        {"ru", u"Посмотреть преимущества аккаунта", u""},
     };
+    const QUrl privacyUrl(snow_shot::app::distribution::privacyPolicyUrl());
+    const QUrl termsUrl(snow_shot::app::distribution::userAgreementUrl());
     for (auto* link : {authLink, profileLink}) {
         if (link == profileLink) {
             service.signIn(QStringLiteral("TestUser"), QStringLiteral("long-password"));
@@ -2062,10 +2067,25 @@ void accountBenefitsLinksFollowUiLanguage() {
             QApplication::processEvents();
             require(link->text() == QStringView(variant.label),
                     "visible account benefits link updates its label");
+            const QString prefix = QString::fromUtf16(variant.prefix);
             receiver.openedUrl = QUrl();
             link->click();
-            require(receiver.openedUrl.path() == QStringView(variant.path),
+            require(receiver.openedUrl.path() == prefix + QStringLiteral("/pricing.html"),
                     "account benefits link opens the localized website path");
+            if (link == authLink) {
+                const auto terms = termsUrl.resolved(QUrl(prefix + QStringLiteral("/terms.html")));
+                const auto privacy =
+                    privacyUrl.path() == QStringLiteral("/privacy.html") &&
+                            privacyUrl.host() == termsUrl.host()
+                        ? privacyUrl.resolved(QUrl(prefix + QStringLiteral("/privacy.html")))
+                        : snow_shot::presentation::localizedWebsiteUrl(privacyUrl);
+                for (const QUrl& url : {terms, privacy}) {
+                    require(agreement->text().contains(
+                                QStringLiteral("href=\"%1\"")
+                                    .arg(url.toString(QUrl::FullyEncoded).toHtmlEscaped())),
+                            "registration links follow the current application language");
+                }
+            }
         }
     }
     QDesktopServices::unsetUrlHandler(QStringLiteral("https"));
@@ -2695,6 +2715,11 @@ int main(int argc, char** argv) {
         snow_shot::storage::ApplicationStorage::instance().shutdown();
         return 0;
     }
+    if (arguments.contains(QStringLiteral("--website-links-only"))) {
+        accountWebsiteLinksFollowUiLanguage();
+        snow_shot::storage::ApplicationStorage::instance().shutdown();
+        return 0;
+    }
     registrationRequiresExplicitAgreement();
     registrationDraftSurvivesExpiredPurchase();
     reopenedRegistrationPurchaseReturnsToRegistration();
@@ -2733,7 +2758,7 @@ int main(int argc, char** argv) {
     accountServerValidationStaysWithFields();
     accountNetworkFailuresUseMessages();
     secureStore();
-    accountBenefitsLinksFollowUiLanguage();
+    accountWebsiteLinksFollowUiLanguage();
     snow_shot::storage::ApplicationStorage::instance().shutdown();
     return 0;
 }

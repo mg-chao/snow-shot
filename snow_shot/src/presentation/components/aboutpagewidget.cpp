@@ -6,6 +6,7 @@
 #include "snow_shot/presentation/components/pagecontainerwidget.h"
 #include "snow_shot/presentation/styles/mainwindowcomponenttoken.h"
 #include "snow_shot/presentation/styles/thememanager.h"
+#include "snow_shot/presentation/websiteurl.h"
 #include "snow_shot/update/updateservice.h"
 #include "snow_shot/app/distribution.h"
 
@@ -55,6 +56,7 @@ namespace custom = snow_shot::presentation::icons::custom;
 namespace outlined = adqt::icons::antd::outlined;
 using adqt::widgets::AdButton;
 using adqt::widgets::AdDivider;
+using snow_shot::presentation::localizedWebsiteUrl;
 
 QLabel* aboutLabel(const QString& objectName, QWidget* parent) {
     auto* label = new QLabel(parent);
@@ -306,11 +308,6 @@ class AboutResourceButton final : public AdButton {
     QColor m_contentColor;
     qreal m_contentDpr = 0;
 };
-
-QUrl aboutChangelogUrl() {
-    return QUrl(QStringLiteral(SNOW_SHOT_WEBSITE_URL))
-        .resolved(QUrl(QStringLiteral("/changelog.html")));
-}
 
 QUrl aboutProjectUrl(const QString& suffix = {}) {
     QUrl url(QStringLiteral(SNOW_SHOT_PROJECT_URL));
@@ -673,20 +670,25 @@ AboutPageWidget::AboutPageWidget(QWidget* parent, UrlOpener urlOpener,
         }
     });
     connect(m_ui->copyFeedbackTimer, &QTimer::timeout, this, &AboutPageWidget::retranslateUi);
-    connect(m_ui->releaseNotes, &AdButton::clicked, this,
-            [this]() { openProjectLink(aboutChangelogUrl()); });
+    connect(m_ui->releaseNotes, &AdButton::clicked, this, [this] {
+        openProjectLink(localizedWebsiteUrl(QUrl(QStringLiteral("/changelog.html"))));
+    });
     connect(m_ui->resources[0], &QAbstractButton::clicked, this,
-            [this]() { openProjectLink(QUrl(QStringLiteral(SNOW_SHOT_WEBSITE_URL))); });
+            [this] { openProjectLink(localizedWebsiteUrl()); });
     connect(m_ui->resources[1], &QAbstractButton::clicked, this,
             [this]() { openProjectLink(aboutProjectUrl()); });
     connect(m_ui->resources[2], &QAbstractButton::clicked, this,
             [this]() { openProjectLink(aboutProjectUrl(QStringLiteral("/issues"))); });
     connect(m_ui->resources[3], &QAbstractButton::clicked, this,
             [this]() { openProjectLink(QUrl(QStringLiteral(SNOW_SHOT_QQ_GROUP_4_URL))); });
-    connect(m_ui->privacyPolicy, &AdButton::clicked, this,
-            [this] { openProjectLink(QUrl(snow_shot::app::distribution::privacyPolicyUrl())); });
-    connect(m_ui->userAgreement, &AdButton::clicked, this,
-            [this] { openProjectLink(QUrl(snow_shot::app::distribution::userAgreementUrl())); });
+    connect(m_ui->privacyPolicy, &AdButton::clicked, this, [this] {
+        openProjectLink(
+            localizedWebsiteUrl(QUrl(snow_shot::app::distribution::privacyPolicyUrl())));
+    });
+    connect(m_ui->userAgreement, &AdButton::clicked, this, [this] {
+        openProjectLink(
+            localizedWebsiteUrl(QUrl(snow_shot::app::distribution::userAgreementUrl())));
+    });
     connect(&themeManager, &styles::ThemeManager::themeChanged, this, &AboutPageWidget::applyTheme);
     connect(&adqt::theme::ThemeManager::instance(), &adqt::theme::ThemeManager::themeChanged, this,
             [this] { updateSkinBackgrounds(); });
@@ -884,10 +886,11 @@ void AboutPageWidget::retranslateUi() {
                                                                      : outlined::Copy());
     m_ui->releaseNotes->setText(tr("Changelog"));
     m_ui->releaseNotes->setAccessibleName(tr("Changelog"));
-    m_ui->releaseNotes->setToolTip(aboutChangelogUrl().toDisplayString());
+    m_ui->releaseNotes->setToolTip(
+        localizedWebsiteUrl(QUrl(QStringLiteral("/changelog.html"))).toDisplayString());
     m_ui->resources[0]->setCopy(tr("Official website"),
                                 tr("Discover more features and ways to use it"),
-                                QUrl(QStringLiteral(SNOW_SHOT_WEBSITE_URL)));
+                                localizedWebsiteUrl());
     m_ui->resources[1]->setCopy(tr("GitHub"), tr("View the source and improve it together"),
                                 aboutProjectUrl());
     m_ui->resources[2]->setCopy(tr("Feedback and suggestions"),
@@ -904,11 +907,13 @@ void AboutPageWidget::retranslateUi() {
     m_ui->privacyPolicy->setText(tr("Privacy policy"));
     m_ui->privacyPolicy->setAccessibleName(tr("Privacy policy"));
     m_ui->privacyPolicy->setToolTip(
-        QUrl(snow_shot::app::distribution::privacyPolicyUrl()).toDisplayString());
+        localizedWebsiteUrl(QUrl(snow_shot::app::distribution::privacyPolicyUrl()))
+            .toDisplayString());
     m_ui->userAgreement->setText(tr("User agreement"));
     m_ui->userAgreement->setAccessibleName(tr("User agreement"));
     m_ui->userAgreement->setToolTip(
-        QUrl(snow_shot::app::distribution::userAgreementUrl()).toDisplayString());
+        localizedWebsiteUrl(QUrl(snow_shot::app::distribution::userAgreementUrl()))
+            .toDisplayString());
     m_ui->copyright->setText(
         tr("Copyright © %1 %2").arg(QStringLiteral("2025–2026"), QStringLiteral("mg-chao")));
     m_ui->slogan->setText(

@@ -5,8 +5,8 @@
 #include "snow_shot/presentation/components/emptystateicon.h"
 #include "snow_shot/presentation/components/icons/snowshoticons.h"
 #include "snow_shot/presentation/components/pagecontainerwidget.h"
-#include "snow_shot/presentation/languagemanager.h"
 #include "snow_shot/presentation/styles/thememanager.h"
+#include "snow_shot/presentation/websiteurl.h"
 #include "antd_icons.h"
 #include "icon_renderer.h"
 #include "snowimageqtcodec.h"
@@ -41,6 +41,7 @@
 
 using namespace adqt::widgets;
 using snow_shot::app::AccountSessionService;
+using snow_shot::presentation::localizedWebsiteUrl;
 namespace styles = snow_shot::presentation::styles;
 
 namespace {
@@ -317,13 +318,7 @@ AccountPageWidget::AccountPageWidget(AccountSessionService* service, QWidget* pa
         button->setIconRef(adqt::icons::antd::outlined::Export());
         button->setIconPosition(AdButton::IconPosition::Trailing);
         connect(button, &AdButton::clicked, button, [] {
-            const auto locale =
-                snow_shot::presentation::LanguageManager::instance().currentLocale();
-            const auto path = locale.language() == QLocale::Chinese
-                                  ? QStringLiteral("/zh/pricing.html")
-                                  : QStringLiteral("/pricing.html");
-            QDesktopServices::openUrl(
-                QUrl(QStringLiteral(SNOW_SHOT_WEBSITE_URL)).resolved(QUrl(path)));
+            QDesktopServices::openUrl(localizedWebsiteUrl(QUrl(QStringLiteral("/pricing.html"))));
         });
         return button;
     };
@@ -670,14 +665,16 @@ void AccountPageWidget::retranslateUi() {
     const QString agreement = tr("User agreement");
     const QString privacy = tr("Privacy policy");
     const QString consent = tr("I have read and agree to the %1 and %2");
-    const auto link = [](const QString& url, const QString& title) {
+    const auto link = [](const QUrl& url, const QString& title) {
         return QStringLiteral("<a href=\"%1\">%2</a>")
-            .arg(url.toHtmlEscaped(), title.toHtmlEscaped());
+            .arg(url.toString(QUrl::FullyEncoded).toHtmlEscaped(), title.toHtmlEscaped());
     };
     m_agreement->setAccessibleName(consent.arg(agreement, privacy));
     m_agreementText->setText(consent.toHtmlEscaped().arg(
-        link(snow_shot::app::distribution::userAgreementUrl(), agreement),
-        link(snow_shot::app::distribution::privacyPolicyUrl(), privacy)));
+        link(localizedWebsiteUrl(QUrl(snow_shot::app::distribution::userAgreementUrl())),
+             agreement),
+        link(localizedWebsiteUrl(QUrl(snow_shot::app::distribution::privacyPolicyUrl())),
+             privacy)));
     m_submit->setText(m_registration ? tr("Register and continue") : tr("Sign in"));
     m_switch->setText(m_registration ? tr("Already have an account? Sign in")
                                      : tr("Create an account"));

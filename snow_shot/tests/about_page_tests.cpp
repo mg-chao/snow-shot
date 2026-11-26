@@ -3,11 +3,13 @@
 #include "snow_shot/presentation/components/maincontentheaderwidget.h"
 #include "snow_shot/presentation/components/sidebarwidget.h"
 #include "snow_shot/presentation/globalshortcutmanager.h"
+#include "snow_shot/presentation/languagemanager.h"
 #include "snow_shot/presentation/mainwindow.h"
 #include "snow_shot/presentation/settings/settingsbackend.h"
 #include "snow_shot/presentation/settings/settingsruntimesession.h"
 #include "snow_shot/presentation/settings/settingssearchindex.h"
 #include "snow_shot/presentation/styles/thememanager.h"
+#include "snow_shot/presentation/websiteurl.h"
 #include "snow_shot/storage/applicationstorage.h"
 #include "snow_shot/storage/configurationschema.h"
 #include "snow_shot/update/updateservice.h"
@@ -430,6 +432,65 @@ void projectLinksAreExplicitAccessibleAndRecoverable() {
     canOpen = true;
     child<QAbstractButton>(page, "aboutWebsite")->click();
     require(error->isHidden() && error->text().isEmpty(), "successful retries clear link errors");
+    page.hide();
+}
+
+void websiteLinksFollowApplicationLanguage() {
+    using snow_shot::presentation::localizedWebsiteUrl;
+    QList<QUrl> opened;
+    AboutPageWidget page(nullptr, [&](const QUrl& url) {
+        opened.append(url);
+        return true;
+    });
+    page.resize(700, 540);
+    page.show();
+    auto& languages = snow_shot::presentation::LanguageManager::instance();
+    const QString previousLanguage = languages.languagePreference();
+    const QUrl website(QStringLiteral(SNOW_SHOT_TEST_WEBSITE_URL));
+    const QUrl privacy(snow_shot::app::distribution::privacyPolicyUrl());
+    const QUrl terms(snow_shot::app::distribution::userAgreementUrl());
+    const std::pair<const char*, bool> locales[] = {
+        {"en_US", false},
+        {"zh_CN", true},
+        {"zh_TW", true},
+        {"ru", false},
+    };
+    for (const auto& [locale, chinese] : locales) {
+        require(languages.setLanguage(QString::fromLatin1(locale)), "select the About language");
+        flushEvents();
+        const QString prefix = chinese ? QStringLiteral("/zh") : QString();
+        const std::pair<const char*, QUrl> links[] = {
+            {"aboutWebsite", chinese ? website.resolved(QUrl(QStringLiteral("/zh/"))) : website},
+            {"aboutReleaseNotes",
+             website.resolved(QUrl(prefix + QStringLiteral("/changelog.html")))},
+            {"aboutPrivacyPolicy",
+             privacy.path() == QStringLiteral("/privacy.html") && privacy.host() == terms.host()
+                 ? privacy.resolved(QUrl(prefix + QStringLiteral("/privacy.html")))
+                 : localizedWebsiteUrl(privacy)},
+            {"aboutUserAgreement", terms.resolved(QUrl(prefix + QStringLiteral("/terms.html")))},
+        };
+        for (const auto& [name, url] : links) {
+            auto* button = child<QAbstractButton>(page, name);
+            require(button->toolTip() == url.toDisplayString(),
+                    "the website tooltip follows the current application language");
+            const auto previousCount = opened.size();
+            button->click();
+            require(opened.size() == previousCount + 1 && opened.back() == url,
+                    "the About link opens the website page for the current application language");
+        }
+
+        const QUrl relative(QStringLiteral("/zh/guide%2Fintro.html?tab=1%262#heading"));
+        const QUrl expected = website.resolved(
+            QUrl(prefix + QStringLiteral("/guide%2Fintro.html?tab=1%262#heading")));
+        require(
+            localizedWebsiteUrl(relative) == expected && localizedWebsiteUrl(expected) == expected,
+            "website paths safely switch languages and preserve URL encoding, query and fragment");
+        const QUrl external(QStringLiteral("https://example.org/zh/privacy.html?tab=1#heading"));
+        require(localizedWebsiteUrl(external) == external,
+                "external URLs keep their original destinations");
+    }
+    require(languages.setLanguage(previousLanguage), "restore the About language");
+    flushEvents();
     page.hide();
 }
 
@@ -1211,6 +1272,11 @@ int main(int argc, char** argv) {
     require(storage.initialize({directory.path(), directory.path(), 8000}).success,
             "initialize isolated storage");
     styles::ThemeManager::instance().initialize(application);
+    if (application.arguments().contains(QStringLiteral("--website-links-only"))) {
+        websiteLinksFollowApplicationLanguage();
+        storage.shutdown();
+        return 0;
+    }
     if (application.arguments().contains(QStringLiteral("--updates-only"))) {
         updatePolicyAndUnavailableCopy();
         updateStatesFitTheVersionPanel();
@@ -1247,6 +1313,7 @@ int main(int argc, char** argv) {
     traySettingsAndFunctionNavigation();
     mainNavigationSearchThemesAndLanguages();
     largerTypeKeepsEveryActionReachable();
+    websiteLinksFollowApplicationLanguage();
     storage.shutdown();
     return 0;
 }
