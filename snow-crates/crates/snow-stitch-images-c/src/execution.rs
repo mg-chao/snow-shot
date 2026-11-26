@@ -6,7 +6,11 @@ use rayon::{ThreadPool, ThreadPoolBuildError, ThreadPoolBuilder};
 use snow_stitch_images::StitchError;
 
 const QOS_CLASS_DEFAULT: u32 = 0x15;
-static POOL: OnceLock<Result<ThreadPool, String>> = OnceLock::new();
+
+#[derive(Default)]
+pub(super) struct Execution {
+    pool: OnceLock<Result<ThreadPool, String>>,
+}
 
 fn apply_default_qos() -> i32 {
     unsafe extern "C" {
@@ -22,7 +26,7 @@ fn build_pool(
     initialize_worker: impl Fn(usize) -> i32 + Sync,
 ) -> Result<ThreadPool, String> {
     let pool = build().map_err(|error| format!("could not create stitching workers: {error}"))?;
-    // Complete initialization on every worker before the shared pool is
+    // Complete initialization on every worker before the pool is
     // published. A native failure must not run stitch work with inherited QoS.
     let results = pool.broadcast(|context| initialize_worker(context.index()));
     for (worker, code) in results.into_iter().enumerate() {
@@ -35,38 +39,43 @@ fn build_pool(
     Ok(pool)
 }
 
-fn pool() -> Result<&'static ThreadPool, StitchError> {
-    POOL.get_or_init(|| {
-        build_pool(
-            || {
-                ThreadPoolBuilder::new()
-                    .thread_name(|index| format!("snow-stitch-{index}"))
-                    .build()
-            },
-            |_| apply_default_qos(),
-        )
-    })
-    .as_ref()
-    .map_err(|message| StitchError::InvalidFrame {
-        message: message.clone(),
-    })
-}
-
-pub(super) fn install<F, R>(operation: F) -> Result<R, StitchError>
-where
-    F: FnOnce() -> R + Send,
-    R: Send,
-{
-    let pool = pool()?;
-    #[cfg(feature = "perf-instrumentation")]
-    {
-        let (result, snapshot) = pool.install(|| snow_stitch_images::perf::capture(operation));
-        snow_stitch_images::perf::merge(snapshot);
-        Ok(result)
+impl Execution {
+    fn pool(&self) -> Result<&ThreadPool, StitchError> {
+        // Keep workers across resets of one session and let Rayon retire them
+        // when its session is destroyed.
+        self.pool
+            .get_or_init(|| {
+                build_pool(
+                    || {
+                        ThreadPoolBuilder::new()
+                            .thread_name(|index| format!("snow-stitch-{index}"))
+                            .build()
+                    },
+                    |_| apply_default_qos(),
+                )
+            })
+            .as_ref()
+            .map_err(|message| StitchError::InvalidFrame {
+                message: message.clone(),
+            })
     }
-    #[cfg(not(feature = "perf-instrumentation"))]
+
+    pub(super) fn install<F, R>(&self, operation: F) -> Result<R, StitchError>
+    where
+        F: FnOnce() -> R + Send,
+        R: Send,
     {
-        Ok(pool.install(operation))
+        let pool = self.pool()?;
+        #[cfg(feature = "perf-instrumentation")]
+        {
+            let (result, snapshot) = pool.install(|| snow_stitch_images::perf::capture(operation));
+            snow_stitch_images::perf::merge(snapshot);
+            Ok(result)
+        }
+        #[cfg(not(feature = "perf-instrumentation"))]
+        {
+            Ok(pool.install(operation))
+        }
     }
 }
 
@@ -112,21 +121,23 @@ mod tests {
         apply_current_thread();
         assert_eq!(native_qos(), qos.native_class());
 
-        let shared_pool = pool().unwrap();
-        let workers = shared_pool.broadcast(|_| (thread::current().id(), native_qos()));
+        let execution = Execution::default();
+        let pool = execution.pool().unwrap();
+        let workers = pool.broadcast(|_| (thread::current().id(), native_qos()));
         assert!(workers.iter().all(|(_, class)| *class == QOS_CLASS_DEFAULT));
-        let nested = install(|| {
-            rayon::join(
-                || (native_qos(), shared_pool.current_thread_index().is_some()),
-                || {
-                    (0..128)
-                        .into_par_iter()
-                        .map(|_| (native_qos(), shared_pool.current_thread_index().is_some()))
-                        .collect::<Vec<_>>()
-                },
-            )
-        })
-        .unwrap();
+        let nested = execution
+            .install(|| {
+                rayon::join(
+                    || (native_qos(), pool.current_thread_index().is_some()),
+                    || {
+                        (0..128)
+                            .into_par_iter()
+                            .map(|_| (native_qos(), pool.current_thread_index().is_some()))
+                            .collect::<Vec<_>>()
+                    },
+                )
+            })
+            .unwrap();
         assert_eq!(nested.0, (QOS_CLASS_DEFAULT, true));
         assert!(nested.1.iter().all(|value| *value == nested.0));
         assert_eq!(native_qos(), qos.native_class());
@@ -136,9 +147,8 @@ mod tests {
         assert_eq!(receiver.recv().unwrap(), qos.native_class());
 
         check_ffi_inputs(qos.native_class());
-        assert!(std::ptr::eq(shared_pool, pool().unwrap()));
         assert_eq!(
-            shared_pool.broadcast(|_| (thread::current().id(), native_qos())),
+            pool.broadcast(|_| (thread::current().id(), native_qos())),
             workers
         );
         assert_eq!(native_qos(), qos.native_class());
@@ -152,12 +162,75 @@ mod tests {
     unsafe extern "C" fn release_observed_pixels(context: *mut c_void) {
         // SAFETY: each transferred context owns one Box and is released once.
         let owner = unsafe { Box::from_raw(context.cast::<ObservedPixels>()) };
-        let on_stitch_worker = pool().unwrap().current_thread_index().is_some();
+        let on_stitch_worker = thread::current()
+            .name()
+            .is_some_and(|name| name.starts_with("snow-stitch-"));
         owner
             .released
             .lock()
             .unwrap()
             .push((native_qos(), on_stitch_worker));
+    }
+
+    #[test]
+    fn ffi_session_reuses_workers_until_destroy() {
+        use std::{collections::HashSet, sync::mpsc, time::Duration};
+
+        struct WorkerExit(mpsc::Sender<thread::ThreadId>, thread::ThreadId);
+
+        impl Drop for WorkerExit {
+            fn drop(&mut self) {
+                let _ = self.0.send(self.1);
+            }
+        }
+
+        thread_local! {
+            static EXIT: RefCell<Option<WorkerExit>> = const { RefCell::new(None) };
+        }
+
+        let config = ffi_config(StitchConfig::default());
+        let session = unsafe { snow_stitch_session_create(&config) };
+        assert!(!session.is_null());
+        assert_eq!(unsafe { snow_stitch_session_reset(session) }, 1);
+        assert!(unsafe { &*session }.session.execution.pool.get().is_none());
+
+        let released = Arc::new(Mutex::new(Vec::new()));
+        let mut outcome: SnowStitchFrameOutcome = unsafe { std::mem::zeroed() };
+        push_external(session, &released, &mut outcome);
+        let (sender, receiver) = mpsc::channel();
+        let workers = unsafe { &*session }
+            .session
+            .execution
+            .pool()
+            .unwrap()
+            .broadcast(|_| {
+                let id = thread::current().id();
+                EXIT.with_borrow_mut(|exit| *exit = Some(WorkerExit(sender.clone(), id)));
+                id
+            });
+        drop(sender);
+        assert!(!workers.is_empty());
+
+        assert_eq!(unsafe { snow_stitch_session_reset(session) }, 1);
+        push_external(session, &released, &mut outcome);
+        let pool = unsafe { &*session }.session.execution.pool().unwrap();
+        assert_eq!(pool.broadcast(|_| thread::current().id()), workers);
+        assert_eq!(receiver.try_recv(), Err(mpsc::TryRecvError::Empty));
+        unsafe { snow_stitch_session_destroy(session) };
+
+        let exited: HashSet<_> = (0..workers.len())
+            .map(|_| receiver.recv_timeout(Duration::from_secs(5)).unwrap())
+            .collect();
+        assert_eq!(exited, workers.into_iter().collect());
+
+        let next_session = unsafe { snow_stitch_session_create(&config) };
+        assert!(!next_session.is_null());
+        push_external(next_session, &released, &mut outcome);
+        let pool = unsafe { &*next_session }.session.execution.pool().unwrap();
+        let next_workers = pool.broadcast(|_| thread::current().id());
+        assert_eq!(next_workers.len(), exited.len());
+        assert!(next_workers.iter().all(|id| !exited.contains(id)));
+        unsafe { snow_stitch_session_destroy(next_session) };
     }
 
     fn push_external(
@@ -286,19 +359,24 @@ mod tests {
     fn nested_install_preserves_caller_and_worker_performance_records() {
         use snow_stitch_images::perf::{Scope, Stage, reset, snapshot};
 
+        let execution = Execution::default();
         reset();
         Scope::new(Stage::FrameFreeze).finish();
-        install(|| {
-            Scope::new(Stage::Initialization).finish();
-            install(|| Scope::new(Stage::Grayscale).finish()).unwrap();
-            Scope::new(Stage::CandidateScoring).finish();
-        })
-        .unwrap();
-        let failure = install(|| {
-            Scope::new(Stage::Refinement).finish();
-            Err::<(), _>("injected stitch failure")
-        })
-        .unwrap();
+        execution
+            .install(|| {
+                Scope::new(Stage::Initialization).finish();
+                execution
+                    .install(|| Scope::new(Stage::Grayscale).finish())
+                    .unwrap();
+                Scope::new(Stage::CandidateScoring).finish();
+            })
+            .unwrap();
+        let failure = execution
+            .install(|| {
+                Scope::new(Stage::Refinement).finish();
+                Err::<(), _>("injected stitch failure")
+            })
+            .unwrap();
         assert_eq!(failure, Err("injected stitch failure"));
         let counters = snapshot();
         for stage in [

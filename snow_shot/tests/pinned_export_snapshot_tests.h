@@ -2,7 +2,6 @@
 #pragma once
 
 #include <cmath>
-#include "snow_shot/presentation/screenshotexportcache.h"
 
 namespace {
 QByteArray pinnedExportHistoryStroke(QPointF offset = {}) {
@@ -82,37 +81,46 @@ void pinnedSnapshotMemoryMetadataTracksCachedDocument() {
             "drawing snapshots plan their committed document before caching memory metadata");
 }
 
-void pinnedExportCacheRetainsOnlyCompletedOutput() {
+void pinnedExportPixelsAreSharedOnlyWhileCommandsOwnThem() {
     using Access = ScreenshotPinnedWindowTestAccess;
-    auto& cache = ScreenshotExportCache::pinnedPixels();
-    cache.clear();
-    const auto cleanup = qScopeGuard([&] { cache.clear(); });
     QImage held;
     {
         PinnedSelectionFixture fixture;
         auto& window = fixture.add({40, 60});
         Access::setGeneralOpacity(window, 55);
-        auto artifact = Access::viewportExport(window);
-        require(cache.retainedBytes() == 0, "pending export donors do not enter output retention");
-        held = pinnedExportSnapshotPixels(artifact, window);
-        require(cache.retainedBytes() == held.sizeInBytes(),
-                "cache charges the actual completed pixel storage");
-        artifact.reset();
-        const auto repeated = pinnedExportSnapshotPixels(Access::viewportExport(window), window);
-        require(held.constBits() == repeated.constBits(),
-                "completed pixels survive command release and are shared by later commands");
-        cache.clear();
+        {
+            const auto copy = Access::viewportExport(window);
+            const auto save = Access::fileSave(window);
+            ScreenshotExportImageResult copyResult;
+            ScreenshotExportImageResult saveResult;
+            int completed = 0;
+            const bool copyStarted = copy && copy->requestImage(&window, [&](auto result) {
+                copyResult = std::move(result);
+                ++completed;
+            });
+            const bool saveStarted = save && save->requestImage(&window, [&](auto result) {
+                saveResult = std::move(result);
+                ++completed;
+            });
+            require(copyStarted && saveStarted, "overlapping pinned export requests start");
+            QElapsedTimer deadline;
+            deadline.start();
+            while (completed != 2 && deadline.elapsed() < 10000)
+                waitForUi(1);
+            require(completed == 2 && copyResult.succeeded() && saveResult.succeeded(),
+                    "overlapping pinned export requests finish");
+            require(copyResult.image.constBits() == saveResult.image.constBits(),
+                    "overlapping commands share one pinned export raster");
+            held = std::move(copyResult.image);
+        }
         const auto fresh = pinnedExportSnapshotPixels(Access::viewportExport(window), window);
         require(fresh.constBits() != held.constBits() && fresh == held,
-                "trimmed export recomputes pixels without invalidating a held consumer");
-        require(Access::crop(window, QRectF(10, 20, 40, 30)), "select a small retained crop");
-        cache.clear();
+                "a later command renders again after both command artifacts are released");
+        require(Access::crop(window, QRectF(10, 20, 40, 30)), "select a small output crop");
         const auto crop = pinnedExportSnapshotPixels(Access::viewportExport(window), window);
-        require(cache.retainedBytes() == crop.sizeInBytes() && crop.size() == QSize(40, 30),
-                "cropped exports charge final dimensions rather than the full composition");
+        require(crop.size() == QSize(40, 30), "the crop controls the final export dimensions");
     }
-    require(cache.retainedBytes() == 0 && !held.isNull(),
-            "destroying a window releases cached output while external pixels remain valid");
+    require(!held.isNull(), "the delivered image remains usable after the pin closes");
 }
 
 void pinnedCapturedPresentationReplacesDonor() {

@@ -416,6 +416,8 @@ struct FrameOutcome {
 struct StitchSession {
     config: StitchConfig,
     stitcher: Stitcher,
+    #[cfg(target_os = "macos")]
+    execution: execution::Execution,
 }
 
 impl StitchSession {
@@ -429,6 +431,8 @@ impl StitchSession {
                 record_decisions: true,
                 ..StitchOptions::default()
             })?,
+            #[cfg(target_os = "macos")]
+            execution: execution::Execution::default(),
         })
     }
 
@@ -443,7 +447,7 @@ impl StitchSession {
         let frame = frame?;
         let initial = self.stitcher.input_count() == 0;
         #[cfg(target_os = "macos")]
-        let decision = execution::install(|| self.stitcher.push(frame))??;
+        let decision = self.execution.install(|| self.stitcher.push(frame))??;
         #[cfg(not(target_os = "macos"))]
         let decision = self.stitcher.push(frame)?;
         let (width, height) = self

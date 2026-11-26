@@ -183,6 +183,10 @@ class ModernJob final : public std::enable_shared_from_this<ModernJob> {
         }
     }
 
+    void cancel() {
+        finish({Service::Status::Cancelled, {}});
+    }
+
   private:
     void finish(Service::Result result) {
         {
@@ -326,11 +330,8 @@ class PhotoPrintJob final : public std::enable_shared_from_this<PhotoPrintJob> {
         m_owner = owner;
         m_completion = std::move(completion);
         const auto self = shared_from_this();
-        m_ownerDestroyed = QObject::connect(owner, &QObject::destroyed, qApp, [self] {
-            self->m_cancelled->store(true, std::memory_order_release);
-            if (self->m_window)
-                PostMessageW(self->m_window, WM_CLOSE, 0, 0);
-        });
+        m_ownerDestroyed =
+            QObject::connect(owner, &QObject::destroyed, qApp, [self] { self->cancel(); });
         m_directory = std::make_shared<QTemporaryDir>(QDir::tempPath() +
                                                       QStringLiteral("/snow-shot-print-XXXXXX"));
         const QString path =
@@ -344,7 +345,7 @@ class PhotoPrintJob final : public std::enable_shared_from_this<PhotoPrintJob> {
             watcher, &QFutureWatcher<bool>::finished, qApp, [self, watcher, path, api] {
                 const bool saved = watcher->result();
                 watcher->deleteLater();
-                if (!self->m_owner) {
+                if (!self->m_owner || self->m_cancelled->load(std::memory_order_acquire)) {
                     self->completeLater({Service::Status::Cancelled, {}});
                 } else if (!saved) {
                     logWindowsPrintResult(
@@ -367,6 +368,12 @@ class PhotoPrintJob final : public std::enable_shared_from_this<PhotoPrintJob> {
                 const bool saved = image.save(path, "PNG");
                 return saved && !cancelled->load(std::memory_order_acquire);
             })));
+    }
+
+    void cancel() {
+        m_cancelled->store(true, std::memory_order_release);
+        if (m_window)
+            PostMessageW(m_window, WM_CLOSE, 0, 0);
     }
 
   private:
@@ -507,7 +514,7 @@ class PhotoPrintJob final : public std::enable_shared_from_this<PhotoPrintJob> {
         job->m_window = window;
         logPrintEvent("print.native_ui_shown",
                       {{QStringLiteral("backend"), QStringLiteral("windows_photo_wizard")}});
-        if (!job->m_owner) {
+        if (!job->m_owner || job->m_cancelled->load(std::memory_order_acquire)) {
             PostMessageW(window, WM_CLOSE, 0, 0);
             return;
         }
@@ -523,7 +530,7 @@ class PhotoPrintJob final : public std::enable_shared_from_this<PhotoPrintJob> {
         // Completion ends the interaction even when Shell keeps its data object alive.
         const auto activity = std::move(m_activity);
         auto completion = std::move(m_completion);
-        if (!m_owner)
+        if (!m_owner || m_cancelled->load(std::memory_order_acquire))
             result = {Service::Status::Cancelled, {}};
         if (m_hook) {
             s_jobs.erase(m_hook);
@@ -565,12 +572,24 @@ PhotoPrintDataObject::~PhotoPrintDataObject() {
     m_directory.reset();
     job->dataReleased();
 }
+Service::NativeBackend legacyNativeBackend(ScreenshotWindowsPrintDialogApi api = {}) {
+    return [api](QWidget* owner, QImage image, Service::Completion completion,
+                 Service::CancelNative& cancel) {
+        const auto job = std::make_shared<PhotoPrintJob>();
+        cancel = [weak = std::weak_ptr(job)] {
+            if (const auto active = weak.lock())
+                active->cancel();
+        };
+        job->start(owner, image, std::move(completion), api);
+    };
+}
 } // namespace
 
-ScreenshotPrintService::Backend screenshotNativePrintBackend(bool legacy) {
+ScreenshotPrintService::NativeBackend screenshotNativePrintBackend(bool legacy) {
     if (legacy)
-        return screenshotLegacyWindowsPrintBackend();
-    return [](QWidget* owner, QImage image, Service::Completion completion) {
+        return legacyNativeBackend();
+    return [](QWidget* owner, QImage image, Service::Completion completion,
+              Service::CancelNative& cancel) {
         if (!isWindows11()) {
             logPrintEvent("print.native_ui_unavailable",
                           {{QStringLiteral("backend"), QStringLiteral("windows_modern")},
@@ -578,17 +597,24 @@ ScreenshotPrintService::Backend screenshotNativePrintBackend(bool legacy) {
             completion({Service::Status::Unavailable, {}});
             return;
         }
-        std::make_shared<ModernJob>()->start(owner, std::move(image), std::move(completion));
+        const auto job = std::make_shared<ModernJob>();
+        cancel = [weak = std::weak_ptr(job)] {
+            if (const auto active = weak.lock())
+                active->cancel();
+        };
+        job->start(owner, std::move(image), std::move(completion));
     };
 }
 
-ScreenshotPrintService::Backend screenshotClassicWindowsPrintBackend() {
-    return screenshotLegacyWindowsPrintBackend();
+ScreenshotPrintService::NativeBackend screenshotClassicWindowsPrintBackend() {
+    return legacyNativeBackend();
 }
 
 ScreenshotPrintService::Backend
 screenshotLegacyWindowsPrintBackend(ScreenshotWindowsPrintDialogApi api) {
-    return [api](QWidget* owner, QImage image, Service::Completion completion) {
-        std::make_shared<PhotoPrintJob>()->start(owner, image, std::move(completion), api);
+    return [backend = legacyNativeBackend(api)](QWidget* owner, QImage image,
+                                                Service::Completion completion) {
+        Service::CancelNative unused;
+        backend(owner, std::move(image), std::move(completion), unused);
     };
 }

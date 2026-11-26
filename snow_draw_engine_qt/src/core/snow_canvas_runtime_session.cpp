@@ -26,6 +26,7 @@ void clearDrawingCachesForCurrentThread() {
     snow_canvas_renderer::resetWatermarkRenderCacheForCurrentThread();
     snow_canvas_text_render::clearRenderCacheForCurrentThread();
     snow_canvas_pressure_mask::clearCacheForCurrentThread();
+    snow_clear_speech_bubble_geometry_cache_for_current_thread();
 }
 
 QByteArray serializedRuntimeBytes(SnowRuntime runtime,

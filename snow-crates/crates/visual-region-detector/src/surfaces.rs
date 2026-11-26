@@ -7,13 +7,17 @@ use crate::geometry::Rect;
 use crate::grid::{Image, Mask};
 use crate::mask::{cc, fill_holes, morphology};
 use crate::selection::merge;
+use snow_memory::RasterArray;
 
 pub(crate) fn estimate_surfaces(bgr: &Image) -> Result<(Image, Vec<Rect>, Mask)> {
     let (w, h) = (bgr.w, bgr.h);
-    let keys: Vec<_> = bgr.data.iter().map(|p| quant_key(p, 8)).collect();
+    // 32 levels per channel produces 15-bit keys.
+    let mut keys = RasterArray::<u16>::zeroed(bgr.data.len());
     let mut counts = vec![0; 32768];
-    for k in &keys {
-        counts[*k] += 1;
+    for (key, pixel) in keys.iter_mut().zip(&bgr.data) {
+        let index = quant_key(pixel, 8);
+        *key = index as u16;
+        counts[index] += 1;
     }
     let mut candidates = Vec::new();
     for (key, count) in counts.iter().enumerate() {
@@ -23,7 +27,10 @@ pub(crate) fn estimate_surfaces(bgr: &Image) -> Result<(Image, Vec<Rect>, Mask)>
         let mask = Mask {
             w,
             h,
-            data: keys.iter().map(|k| u8::from(*k == key)).collect(),
+            data: keys
+                .iter()
+                .map(|&k| u8::from(usize::from(k) == key))
+                .collect(),
         };
         let (labels, stats) = cc(&mask)?;
         for c in stats {
@@ -31,31 +38,26 @@ pub(crate) fn estimate_surfaces(bgr: &Image) -> Result<(Image, Vec<Rect>, Mask)>
             if c.area < 200 || r.w < 10 || r.h < 10 || f64::from(c.area) < 0.3 * r.area() as f64 {
                 continue;
             }
-            let component = Mask {
+            let positions = || (r.y..r.y2()).flat_map(|y| (r.x..r.x2()).map(move |x| (x, y)));
+            let filled = fill_holes(Mask {
                 w: r.w,
                 h: r.h,
-                data: labels
-                    .crop(r)
-                    .data
-                    .iter()
-                    .map(|v| if *v == c.id { 255 } else { 0 })
+                data: positions()
+                    .map(|(x, y)| if *labels.at(x, y) == c.id { 255 } else { 0 })
                     .collect(),
-            };
-            let filled = fill_holes(&component)?;
+            });
             if (filled.data.iter().filter(|v| **v > 0).count() as f64) < 0.65 * r.area() as f64 {
                 continue;
             }
-            let crop = bgr.crop(r);
             let color = median_color(
-                crop.data
-                    .iter()
-                    .zip(&component.data)
-                    .filter(|(_, m)| **m > 0)
-                    .map(|(p, _)| *p),
+                positions()
+                    .filter(|&(x, y)| *labels.at(x, y) == c.id)
+                    .map(|(x, y)| *bgr.at(x, y)),
             );
             candidates.push((r, filled, color));
         }
     }
+    drop(keys);
     let mut bg = backend::median_blur_image(bgr, 31)?;
     let mut border = Mask::new(w, h, 0);
     let mut surfaces = Vec::new();

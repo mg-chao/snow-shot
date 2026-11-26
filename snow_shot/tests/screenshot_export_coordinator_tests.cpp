@@ -1,5 +1,4 @@
 #include "snow_shot/presentation/screenshotexportcoordinator.h"
-#include "snow_shot/presentation/screenshotexportcache.h"
 #include "snow_shot/runtime/runtimeactivitytracker.h"
 
 #include <QCoreApplication>
@@ -43,32 +42,6 @@ bool processUntil(const std::function<bool()>& predicate, int timeoutMs = 5000) 
         QThread::msleep(1);
     }
     return predicate();
-}
-
-void exportCacheBoundsAggregateRetention() {
-    ScreenshotExportCache cache(8);
-    auto held = std::make_shared<int>(11);
-    std::weak_ptr<int> oldest;
-    std::weak_ptr<int> newest;
-    for (int index = 0; index < 100; ++index) {
-        auto value = std::make_shared<int>(index);
-        oldest = newest;
-        newest = value;
-        cache.retain(held, 4);
-        cache.retain(value, 4);
-        cache.touch(held.get());
-        require(oldest.expired() && cache.retainedBytes() == 8,
-                "aggregate export cache evicts LRU entries across many owners");
-    }
-    cache.retain(held, 9);
-    require(cache.retainedBytes() == 4 && *held == 11,
-            "oversized output is not retained and consumers survive eviction");
-    cache.clear();
-    require(newest.expired() && cache.retainedBytes() == 0 && *held == 11,
-            "pressure trimming releases optional storage without invalidating consumers");
-    cache.retain(held, 4);
-    cache.remove(held.get());
-    require(cache.retainedBytes() == 0, "owner invalidation releases retained output immediately");
 }
 
 void workingBytesGateJobsWithoutOccupyingWorkers() {
@@ -862,7 +835,6 @@ int main(int argc, char** argv) {
         }
         completionRunsOnceOnGuiThread();
         receiverAffinityDoesNotMoveCoordinatorCompletion();
-        exportCacheBoundsAggregateRetention();
         workingBytesGateJobsWithoutOccupyingWorkers();
         cancellationPropagates();
         destroyedReceiverSuppressesCompletion();

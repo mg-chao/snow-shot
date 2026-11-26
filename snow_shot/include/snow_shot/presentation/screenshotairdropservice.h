@@ -25,17 +25,21 @@ class ScreenshotAirDropService final : public QObject {
     // The backend retains completion until native sharing ends. That retention also
     // keeps the temporary PNG alive, even when the source window has been destroyed.
     using Backend = std::function<void(QWidget*, QString, Completion)>;
+    using CancelNative = std::function<void()>;
+    using NativeBackend = std::function<void(QWidget*, QString, Completion, CancelNative&)>;
 
     explicit ScreenshotAirDropService(Backend backend, QObject* parent = nullptr);
+    ScreenshotAirDropService(NativeBackend backend, QObject* parent);
     ~ScreenshotAirDropService() override;
     [[nodiscard]] static ScreenshotAirDropService& shared();
     [[nodiscard]] bool shareImage(QObject* receiver, QWidget* owner, QImage snapshot,
                                   QString filename, Completion completion);
+    bool cancel(QObject* receiver);
     [[nodiscard]] bool busy() const;
 
   private:
     struct Request;
-    void finish(const std::shared_ptr<Request>& request, Result result);
-    Backend m_backend;
+    void finish(const std::shared_ptr<Request>& request, Result result, bool cancelNative = false);
+    NativeBackend m_backend;
     std::shared_ptr<Request> m_request;
 };

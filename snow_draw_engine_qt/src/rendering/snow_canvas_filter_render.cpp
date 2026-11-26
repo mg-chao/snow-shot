@@ -54,13 +54,11 @@ class FilterWorkerPool {
         Barrier* barrier = nullptr;
     };
 
-    FilterWorkerPool() {
+    explicit FilterWorkerPool(std::chrono::milliseconds expiry = std::chrono::seconds(2))
+        : m_expiry(expiry) {
         const int ideal = QThread::idealThreadCount();
-        const int count = std::min(8, std::max(1, ideal > 0 ? ideal - 1 : 1));
-        m_threads.reserve(static_cast<std::size_t>(count));
-        for (int index = 0; index < count; ++index) {
-            m_threads.emplace_back([this] { workerLoop(); });
-        }
+        m_workerLimit = static_cast<std::size_t>(
+            std::clamp(ideal > 1 ? ideal - 1 : 1, 1, static_cast<int>(m_threads.size())));
     }
 
     ~FilterWorkerPool() {
@@ -70,17 +68,28 @@ class FilterWorkerPool {
         }
         m_ready.notify_all();
         for (std::thread& thread : m_threads) {
-            thread.join();
+            if (thread.joinable()) {
+                thread.join();
+            }
         }
     }
 
     std::size_t workerCount() const {
-        return m_threads.size();
+        return m_workerLimit;
     }
 
     void submit(Task task) {
         {
             std::lock_guard<std::mutex> lock(m_mutex);
+            if (m_busyWorkers + m_tasks.size() >= m_liveWorkers && m_liveWorkers < m_workerLimit) {
+                // Allocate a thread before publishing the job. If construction throws,
+                // the caller still owns the unsubmitted job and its barrier slot.
+                auto slot =
+                    std::find_if(m_threads.begin(), m_threads.end(),
+                                 [](const std::thread& thread) { return !thread.joinable(); });
+                *slot = std::thread([this, slot] { workerLoop(*slot); });
+                ++m_liveWorkers;
+            }
             m_tasks.push_back(task);
         }
         m_ready.notify_one();
@@ -92,19 +101,25 @@ class FilterWorkerPool {
     }
 
   private:
-    void workerLoop() {
+    void workerLoop(std::thread& self) {
         g_insideFilterWorker = true;
+        std::unique_lock<std::mutex> lock(m_mutex);
         for (;;) {
-            Task task;
-            {
-                std::unique_lock<std::mutex> lock(m_mutex);
-                m_ready.wait(lock, [this] { return m_stopping || !m_tasks.empty(); });
-                if (m_stopping && m_tasks.empty()) {
-                    return;
-                }
-                task = m_tasks.front();
-                m_tasks.pop_front();
+            if (!m_ready.wait_for(lock, m_expiry,
+                                  [this] { return m_stopping || !m_tasks.empty(); })) {
+                // No pool state is accessed after unlocking on return. The slot is
+                // reusable immediately and the system can reclaim the thread's stack.
+                self.detach();
+                --m_liveWorkers;
+                return;
             }
+            if (m_stopping && m_tasks.empty()) {
+                return;
+            }
+            const Task task = m_tasks.front();
+            m_tasks.pop_front();
+            ++m_busyWorkers;
+            lock.unlock();
             std::exception_ptr failure;
             try {
                 task.invoke(task.context, task.begin, task.end);
@@ -115,7 +130,7 @@ class FilterWorkerPool {
                 failure = std::current_exception();
             }
             {
-                std::lock_guard<std::mutex> lock(task.barrier->mutex);
+                std::lock_guard<std::mutex> barrierLock(task.barrier->mutex);
                 if (failure && task.barrier->failure == nullptr) {
                     task.barrier->failure = failure;
                 }
@@ -127,21 +142,25 @@ class FilterWorkerPool {
 #endif
                 task.barrier->ready.notify_one();
             }
+            lock.lock();
+            --m_busyWorkers;
         }
     }
 
     std::mutex m_mutex;
     std::condition_variable m_ready;
     std::deque<Task> m_tasks;
-    std::vector<std::thread> m_threads;
+    std::array<std::thread, 8> m_threads;
+    const std::chrono::milliseconds m_expiry;
+    std::size_t m_workerLimit;
+    std::size_t m_liveWorkers = 0;
+    std::size_t m_busyWorkers = 0;
     bool m_stopping = false;
 };
 
-// Process-lifetime worker pool for the synchronous row kernels. Every dispatch
-// joins its jobs through wait() before returning, so the task queue is empty
-// whenever no rendering call is on the stack and the destructor (which runs at
-// process exit) only wakes and joins idle workers. Keep this contract: never
-// dispatch filter work from static destructors or other post-main code.
+// Every dispatch joins its jobs through wait() before returning. Short-lived
+// idle workers keep consecutive filter frames warm without holding their
+// stacks for the lifetime of the renderer.
 FilterWorkerPool& workerPool() {
     static FilterWorkerPool pool;
     return pool;

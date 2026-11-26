@@ -481,6 +481,12 @@ void ScreenshotQrController::invalidate() {
     emit stateChanged();
 }
 
+void ScreenshotQrController::endSession() {
+    if (m_recognition)
+        m_recognition->endAutomaticRecognitionSession();
+    invalidate();
+}
+
 bool ScreenshotQrController::available() const {
     return !m_busy && !m_detections.isEmpty();
 }

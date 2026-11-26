@@ -39,6 +39,7 @@ class ScreenshotQrController final : public QObject {
     // Updates presentation only; temporary selection gestures retain recognition results.
     void synchronize(const QPainterPath& selection, bool editing, bool moveActive);
     void invalidate();
+    void endSession();
     void setEnabled(bool enabled);
     void setSuspended(bool suspended);
     void setMarkersVisible(bool visible);

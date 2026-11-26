@@ -239,7 +239,7 @@ fn opencv_fixtures_match_pure_rust_primitives() {
         .iter()
         .map(|value| value.as_i64().unwrap() as i32)
         .collect();
-    assert_eq!(labels.data, expected_labels);
+    assert_eq!(&*labels.data, expected_labels);
     assert_eq!(
         components.len(),
         cases["cc_simple"]["n"].as_u64().unwrap() as usize - 1
@@ -274,7 +274,7 @@ fn opencv_fixtures_match_pure_rust_primitives() {
         .iter()
         .map(|value| value.as_i64().unwrap() as i32)
         .collect();
-    assert_eq!(labels.data, expected_labels);
+    assert_eq!(&*labels.data, expected_labels);
     assert_eq!(components[0].area, 128);
 
     let row = [0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0];

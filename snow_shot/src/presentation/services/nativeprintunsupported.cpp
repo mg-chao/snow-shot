@@ -1,5 +1,5 @@
 #include "nativeprintbackend.h"
 
-ScreenshotPrintService::Backend screenshotNativePrintBackend(bool) {
+ScreenshotPrintService::NativeBackend screenshotNativePrintBackend(bool) {
     return {};
 }

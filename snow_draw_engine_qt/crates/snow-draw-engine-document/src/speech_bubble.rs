@@ -543,6 +543,17 @@ thread_local! {
     static GEOMETRY_CACHE: RefCell<GeometryCache> = RefCell::new(GeometryCache::default());
 }
 
+/// Releases derived bubble geometry after a document has finished rendering on this thread.
+pub fn clear_speech_bubble_geometry_cache_for_current_thread() {
+    GEOMETRY_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        *cache = GeometryCache {
+            builds: cache.builds,
+            ..GeometryCache::default()
+        };
+    });
+}
+
 pub fn speech_bubble_geometry_build_count() -> u64 {
     GEOMETRY_CACHE.with(|cache| cache.borrow().builds)
 }
@@ -1333,6 +1344,27 @@ mod tests {
             opacity: 1.0,
         })
     }
+
+    #[test]
+    fn clearing_speech_bubble_geometry_cache_releases_paths_and_allows_rebuild() {
+        let rectangle = bubble(HighlightShape::Rectangle);
+        let thought_bubble = bubble(HighlightShape::ThoughtBubble);
+        let rectangle_path = speech_bubble_path_geometry(&rectangle);
+        let thought_bubble_path = speech_bubble_path_geometry(&thought_bubble);
+        assert!(speech_bubble_geometry_retained_bytes() > 0);
+        let builds = speech_bubble_geometry_build_count();
+
+        clear_speech_bubble_geometry_cache_for_current_thread();
+
+        assert_eq!(speech_bubble_geometry_retained_bytes(), 0);
+        assert_eq!(speech_bubble_path_geometry(&rectangle), rectangle_path);
+        assert_eq!(
+            speech_bubble_path_geometry(&thought_bubble),
+            thought_bubble_path
+        );
+        assert_eq!(speech_bubble_geometry_build_count(), builds + 2);
+    }
+
     #[test]
     fn speech_bubble_styled_bounds_and_hits_include_only_visible_ink_excursions() {
         use snow_draw_engine_core::arrow::StrokeRenderingStyle;

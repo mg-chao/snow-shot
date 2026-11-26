@@ -77,7 +77,6 @@
 #include "snow_shot/presentation/screenshotocrvisuals.h"
 #include "snow_shot/presentation/screenshotmessageservice.h"
 #include "snow_shot/presentation/screenshotexportartifact.h"
-#include "snow_shot/presentation/screenshotexportcache.h"
 #include "snow_shot/presentation/screenshotpinnedrenderpreparation.h"
 #include "snow_shot/presentation/screenshotpinnedrecognition.h"
 #include "snow_shot/presentation/screenshotrecognitionsessioncontroller.h"
@@ -954,11 +953,6 @@ struct ScreenshotPinnedWindow::PinnedRenderCache final {
         std::weak_ptr<ScreenshotExportArtifact> pixels;
         ScreenshotPinnedViewportRenderPlan plan;
     };
-    ~PinnedRenderCache() {
-        for (const auto& entry : entries)
-            if (const auto pixels = entry.pixels.lock())
-                ScreenshotExportCache::pinnedPixels().remove(pixels.get());
-    }
     QByteArray revision;
     std::vector<Entry> entries;
 };
@@ -6690,7 +6684,6 @@ ScreenshotPinnedWindow::cachedPinnedExportSource(ScreenshotPinnedViewportExportS
                                     [&](const auto& entry) { return entry.key == key; });
     if (found != entries.end()) {
         pixels = found->pixels.lock();
-        ScreenshotExportCache::pinnedPixels().touch(pixels.get());
         applyPlan(found->plan);
         auto entry = std::move(*found);
         entries.erase(found);
@@ -6709,12 +6702,9 @@ ScreenshotPinnedWindow::cachedPinnedExportSource(ScreenshotPinnedViewportExportS
         renderRequest.clipboardAppearance.reset();
         pixels = std::make_shared<ScreenshotExportArtifact>(
             ScreenshotExportSource::fromPinnedViewport(std::move(renderRequest)));
-        // Track pending snapshots weakly; only completed output enters the global byte budget.
-        if (entries.size() >= 2) {
-            if (const auto oldest = entries.front().pixels.lock())
-                ScreenshotExportCache::pinnedPixels().remove(oldest.get());
+        // Command sources own the snapshot. The window indexes it only while it has an owner.
+        if (entries.size() >= 2)
             entries.erase(entries.begin());
-        }
         entries.push_back({key, pixels, *plan});
     }
     // Each command owns its cancellation and current clipboard placement. Pixel
@@ -6725,27 +6715,16 @@ ScreenshotPinnedWindow::cachedPinnedExportSource(ScreenshotPinnedViewportExportS
             return pixels->requestImage(receiver, [callback = std::move(callback), key, owner,
                                                    weakPixels = std::weak_ptr(pixels)](
                                                       ScreenshotExportImageResult result) mutable {
-                if (owner) {
-                    const qint64 bytes = result.succeeded() ? result.image.sizeInBytes() : 0;
-                    static_cast<void>(
-                        QMetaObject::invokeMethod(owner, [key, owner, weakPixels, bytes] {
-                            if (!owner || !owner->m_pinnedRenderCache)
-                                return;
-                            auto& cache = owner->m_pinnedRenderCache->entries;
-                            const auto pixels = weakPixels.lock();
-                            const auto found =
-                                std::find_if(cache.begin(), cache.end(), [&](const auto& entry) {
-                                    return entry.key == key && entry.pixels.lock() == pixels;
-                                });
-                            if (found == cache.end())
-                                return;
-                            if (bytes > 0)
-                                ScreenshotExportCache::pinnedPixels().retain(pixels, bytes);
-                            else {
-                                ScreenshotExportCache::pinnedPixels().remove(pixels.get());
-                                cache.erase(found);
-                            }
-                        }));
+                if (owner && !result.succeeded()) {
+                    static_cast<void>(QMetaObject::invokeMethod(owner, [key, owner, weakPixels] {
+                        if (!owner || !owner->m_pinnedRenderCache)
+                            return;
+                        auto& cache = owner->m_pinnedRenderCache->entries;
+                        const auto pixels = weakPixels.lock();
+                        std::erase_if(cache, [&](const auto& entry) {
+                            return entry.key == key && entry.pixels.lock() == pixels;
+                        });
+                    }));
                 }
                 callback(std::move(result.image));
             });

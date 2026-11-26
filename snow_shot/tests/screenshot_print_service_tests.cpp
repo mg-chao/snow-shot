@@ -525,6 +525,94 @@ void sharedServiceUsesNativeBackendWithLegacyFallback() {
             "shared service must retain its backend selection across requests");
 }
 
+void cancelledPrintWaitsForNativeTeardown() {
+    QWidget owner;
+    QObject receiver;
+    QObject nextReceiver;
+    Service::Completion primary;
+    Service::Completion legacy;
+    int primaryStarts = 0;
+    int nativeCancels = 0;
+    int completions = 0;
+    Service service(
+        [&](QWidget*, QImage, Service::Completion done, Service::CancelNative&) {
+            ++primaryStarts;
+            primary = std::move(done);
+        },
+        [&](QWidget*, QImage, Service::Completion done, Service::CancelNative& cancelNative) {
+            legacy = std::move(done);
+            cancelNative = [&] { ++nativeCancels; };
+        },
+        nullptr);
+    require(service.printImage(&receiver, &owner, image(),
+                               [&](auto result) {
+                                   require(result.status == Service::Status::Cancelled &&
+                                               result.submittedImage.isNull(),
+                                           "explicit cancellation delivers no rendered image");
+                                   ++completions;
+                               }),
+            "start pending print");
+    processUntil([&] { return bool(primary); });
+    primary({Service::Status::Unavailable, {}});
+    processUntil([&] { return bool(legacy); });
+    require(!service.cancel(&nextReceiver) && service.busy(), "cancellation is receiver-scoped");
+    require(service.cancel(&receiver) && nativeCancels == 1 && completions == 1,
+            "the caller receives cancellation immediately");
+    require(!service.cancel(&receiver) && service.busy() && nativeCancels == 1,
+            "native cancellation stays pending and is sent once");
+    primary({Service::Status::Submitted, {}});
+    flush();
+    require(!service.printImage(&nextReceiver, &owner, image(), [](auto) {}) && primaryStarts == 1,
+            "only the active backend's teardown can admit a second print");
+
+    legacy({Service::Status::Submitted, {}});
+    processUntil([&] { return !service.busy(); });
+    require(completions == 1, "native teardown only releases the service after cancellation");
+    require(service.printImage(&nextReceiver, &owner, image(),
+                               [&](auto result) {
+                                   require(result.status == Service::Status::Submitted,
+                                           "second print receives its own outcome");
+                                   ++completions;
+                               }),
+            "a new print can start after native teardown");
+    processUntil([&] { return primaryStarts == 2; });
+    legacy({Service::Status::Failed, {}});
+    flush();
+    require(service.busy() && completions == 1, "ignore native callbacks from the retired print");
+    primary({Service::Status::Submitted, {}});
+    processUntil([&] { return completions == 2; });
+    require(!service.busy(), "the second print completes normally");
+}
+
+void cancellationDuringBackendStartupUsesLateHook() {
+    QWidget owner;
+    QObject receiver;
+    Service::Completion native;
+    int nativeCancels = 0;
+    int completions = 0;
+    Service service(
+        [&](QWidget*, QImage, Service::Completion done, Service::CancelNative& cancelNative) {
+            require(service.cancel(&receiver) && service.busy(),
+                    "backend startup can receive cancellation before installing its hook");
+            native = std::move(done);
+            cancelNative = [&] { ++nativeCancels; };
+        },
+        {}, nullptr);
+    require(service.printImage(&receiver, &owner, image(),
+                               [&](auto result) {
+                                   require(result.status == Service::Status::Cancelled,
+                                           "startup cancellation reaches the caller");
+                                   ++completions;
+                               }),
+            "start print with a late cancellation hook");
+    processUntil([&] { return bool(native); });
+    require(service.busy() && nativeCancels == 1 && completions == 1,
+            "startup installs and invokes the cancellation hook exactly once");
+    native({Service::Status::Cancelled, {}});
+    processUntil([&] { return !service.busy(); });
+    require(!service.busy() && completions == 1, "native acknowledgement releases admission");
+}
+
 void persistedPrintDiagnostics() {
     print_tests::LogSession logs;
     QWidget owner;
@@ -650,9 +738,9 @@ void persistedPrintDiagnostics() {
 }
 } // namespace
 
-ScreenshotPrintService::Backend screenshotNativePrintBackend(bool legacy) {
+ScreenshotPrintService::NativeBackend screenshotNativePrintBackend(bool legacy) {
     sharedBackendSelections.push_back(legacy);
-    return [legacy](QWidget*, QImage, Service::Completion completion) {
+    return [legacy](QWidget*, QImage, Service::Completion completion, Service::CancelNative&) {
         sharedBackendStarts.push_back(legacy);
         completion({legacy && sharedBackendStatus == Service::Status::Unavailable
                         ? Service::Status::HandedOff
@@ -675,6 +763,8 @@ int main(int argc, char** argv) {
     onePagePlacementAndInteraction();
     printingPreservesOwnerAndWindowFlags();
     sharedServiceUsesNativeBackendWithLegacyFallback();
+    cancelledPrintWaitsForNativeTeardown();
+    cancellationDuringBackendStartupUsesLateHook();
     persistedPrintDiagnostics();
     return 0;
 }

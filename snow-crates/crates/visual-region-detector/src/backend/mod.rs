@@ -9,7 +9,7 @@
 
 use crate::error::Result;
 use crate::geometry::Rect;
-use crate::grid::{Grid, Image, Mask};
+use crate::grid::{Image, Labels, Mask};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum MorphOp {
@@ -45,7 +45,7 @@ pub(crate) trait Backend {
         shape: KernelShape,
     ) -> Result<Mask>;
 
-    fn connected_components(input: &Mask) -> Result<(Grid<i32>, Vec<Component>)>;
+    fn connected_components(input: &Mask) -> Result<(Labels, Vec<Component>)>;
 
     fn median_blur_image(input: &Image, kernel: i32) -> Result<Image>;
 
@@ -81,7 +81,7 @@ pub(crate) fn morphology(
     ActiveBackend::morphology(input, op, kernel_width, kernel_height, shape)
 }
 
-pub(crate) fn connected_components(input: &Mask) -> Result<(Grid<i32>, Vec<Component>)> {
+pub(crate) fn connected_components(input: &Mask) -> Result<(Labels, Vec<Component>)> {
     ActiveBackend::connected_components(input)
 }
 

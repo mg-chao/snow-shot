@@ -333,6 +333,65 @@ void cachedDecodersAreIsolatedAndExpireWhenIdle() {
             "restored model files recover without retaining an initialization failure");
 }
 
+void endingAutomaticRecognitionReclaimsWorkerAfterQueuedRequests() {
+    ScreenshotQrRecognitionService service;
+    const auto mode = ScreenshotQrRecognitionMode::QrOnly;
+    const QImage image = qrFixture();
+    const auto first = recognize(service, image, "initial automatic recognition timed out", mode);
+    require(first.contents == QStringList{QString::fromLatin1(kPayload)},
+            "automatic recognition decodes the fixture");
+    const QPointer<QThread> worker(service.findChild<QThread*>());
+    service.endAutomaticRecognitionSession();
+    const auto repeat = recognize(service, image, "repeat automatic recognition timed out", mode);
+    require(repeat.contents == first.contents && worker && worker == service.findChild<QThread*>(),
+            "the next automatic capture can reuse the worker during the idle grace period");
+
+    QEventLoop loop;
+    QTimer timeout;
+    timeout.setSingleShot(true);
+    QObject::connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+    bool canceledCompletionRan = false;
+    bool queuedCompletionRan = false;
+    const auto canceled = service.recognize(
+        image, &loop, [&](ScreenshotQrRecognitionResult) { canceledCompletionRan = true; }, mode);
+    const auto queued = service.recognize(
+        image, &loop,
+        [&](ScreenshotQrRecognitionResult result) {
+            require(result.contents == first.contents && worker,
+                    "an accepted queued request finishes even after the session ends");
+            queuedCompletionRan = true;
+            loop.quit();
+        },
+        mode);
+    require(canceled && queued, "both automatic recognition requests are accepted");
+    service.endAutomaticRecognitionSession();
+    service.cancel(canceled);
+    timeout.start(10'000);
+    loop.exec();
+    require(!canceledCompletionRan && queuedCompletionRan,
+            "ending a capture suppresses the canceled request while preserving queued work");
+    waitForWorkerRelease(service);
+    require(!worker, "the automatic worker is reclaimed without its normal 30-second delay");
+}
+
+void endingAutomaticRecognitionPreservesExplicitWarmWorker() {
+    ScreenshotQrRecognitionService service;
+    const auto first = recognize(service, eanFixture(), "first explicit recognition timed out");
+    require(first.contents == QStringList{QString::fromLatin1(kEanPayload)},
+            "explicit recognition decodes one-dimensional barcodes");
+    const QPointer<QThread> worker(service.findChild<QThread*>());
+    const auto* idleTimer = service.findChild<QTimer*>();
+    require(idleTimer && idleTimer->isActive(), "the explicit worker is waiting to be reclaimed");
+    const int idleInterval = idleTimer->interval();
+    service.endAutomaticRecognitionSession();
+    require(idleTimer->interval() == idleInterval,
+            "ending automatic recognition preserves the explicit worker's idle timeout");
+    const auto repeated = recognize(service, eanFixture(), "repeat explicit recognition timed out");
+    require(repeated.contents == first.contents && worker &&
+                worker == service.findChild<QThread*>(),
+            "the same worker still services consecutive manual requests");
+}
+
 void destroyingReceiverCancelsQueuedCompletion() {
     ScreenshotQrRecognitionService service(nullptr, {}, 20);
     bool completed = false;
@@ -374,6 +433,8 @@ int main(int argc, char** argv) {
     unicodeModelsDirectoryStillLoadsAndDecodes();
     queuedRequestsShareTheSerializedWorker();
     cachedDecodersAreIsolatedAndExpireWhenIdle();
+    endingAutomaticRecognitionReclaimsWorkerAfterQueuedRequests();
+    endingAutomaticRecognitionPreservesExplicitWarmWorker();
     destroyingReceiverCancelsQueuedCompletion();
     destroyingServiceCancelsPendingRequests();
     return 0;

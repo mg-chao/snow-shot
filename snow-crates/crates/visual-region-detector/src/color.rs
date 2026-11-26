@@ -1,25 +1,37 @@
 //! Color statistics and global/local foreground estimation.
 
 use crate::geometry::{Rect, expand};
-use crate::grid::{Grid, Image, Mask};
+use crate::grid::{Image, Labels, Mask};
 
-fn median(values: &mut [u8]) -> f64 {
-    values.sort_unstable();
-    let n = values.len();
-    if n.is_multiple_of(2) {
-        (f64::from(values[n / 2 - 1]) + f64::from(values[n / 2])) / 2.
-    } else {
-        f64::from(values[n / 2])
-    }
-}
-pub(crate) fn median_color(pixels: impl Iterator<Item = [u8; 3]>) -> [f64; 3] {
-    let mut c = [Vec::new(), Vec::new(), Vec::new()];
-    for p in pixels {
-        for i in 0..3 {
-            c[i].push(p[i]);
+fn median(histogram: &[usize; 256], count: usize) -> f64 {
+    let mut cumulative = 0;
+    let mut lower = 0;
+    let left = (count - 1) / 2;
+    let right = count / 2;
+    for (value, frequency) in histogram.iter().enumerate() {
+        if cumulative <= left {
+            lower = value;
+        }
+        cumulative += frequency;
+        if cumulative > right {
+            return (lower + value) as f64 / 2.;
         }
     }
-    c.map(|mut v| median(&mut v))
+    unreachable!("a median requires at least one sample")
+}
+pub(crate) fn median_color(pixels: impl Iterator<Item = [u8; 3]>) -> [f64; 3] {
+    let mut histograms = [[0usize; 256]; 3];
+    let mut count = 0;
+    for p in pixels {
+        for (histogram, value) in histograms.iter_mut().zip(p) {
+            histogram[usize::from(value)] += 1;
+        }
+        count += 1;
+    }
+    assert!(count > 0, "a median requires at least one sample");
+    histograms
+        .each_ref()
+        .map(|histogram| median(histogram, count))
 }
 pub(crate) fn quant_key(p: &[u8; 3], step: u8) -> usize {
     let n = 256 / usize::from(step);
@@ -115,13 +127,14 @@ pub(crate) fn boundary_contrast(bgr: &Image, r: Rect) -> f64 {
     if ring.is_empty() {
         return 0.;
     }
-    let inside = median_color(bgr.crop(r).data.into_iter());
+    let inside =
+        median_color((r.y..r.y2()).flat_map(|y| (r.x..r.x2()).map(move |x| *bgr.at(x, y))));
     let outside = median_color(ring.into_iter());
     (0..3)
         .map(|i| (inside[i] - outside[i]).abs())
         .fold(0., f64::max)
 }
-pub(crate) fn roi_std(bgr: &Image, r: Rect, labels: &Grid<i32>, id: i32) -> f64 {
+pub(crate) fn roi_std(bgr: &Image, r: Rect, labels: &Labels, id: i32) -> f64 {
     let mut sum = [0.; 3];
     let mut n = 0.;
     for y in r.y..r.y2() {
@@ -149,4 +162,16 @@ pub(crate) fn roi_std(bgr: &Image, r: Rect, labels: &Grid<i32>, id: i32) -> f64 
         }
     }
     var.iter().map(|v| (v / n).sqrt()).sum::<f64>() / 3.
+}
+
+#[cfg(test)]
+mod tests {
+    use super::median_color;
+
+    #[test]
+    fn histogram_median_keeps_even_midpoints_and_repeated_values() {
+        let pixels = [[0, 8, 255], [255, 8, 3], [1, 8, 3], [254, 9, 3]];
+        assert_eq!(median_color(pixels.into_iter()), [127.5, 8., 3.]);
+        assert_eq!(median_color(pixels.into_iter().take(3)), [1., 8., 3.]);
+    }
 }

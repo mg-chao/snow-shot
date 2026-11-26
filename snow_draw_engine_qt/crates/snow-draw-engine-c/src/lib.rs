@@ -44,6 +44,7 @@ pub use abi::magnifier_exports::*;
 pub use abi::patch_exports::*;
 pub use abi::path_exports::*;
 pub use abi::snap_exports::*;
+pub use abi::speech_bubble_exports::snow_clear_speech_bubble_geometry_cache_for_current_thread;
 pub use abi::stroke_exports::*;
 pub use abi::style_exports::*;
 pub use abi::text_exports::*;

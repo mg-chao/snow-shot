@@ -18,6 +18,7 @@
 #include <QDateTime>
 #include <QMargins>
 #include <QHash>
+#include <QJsonArray>
 #include <QPoint>
 #include <QPointer>
 #include <QRect>
@@ -507,6 +508,7 @@ class ScreenshotToolPalette final : public QWidget,
     [[nodiscard]] MaterializationState actionFamilyStateForTests(ActionFamily family) const;
     [[nodiscard]] MaterializationState styleFamilyStateForTests(Tool tool) const;
     [[nodiscard]] StyleReconcileStats lastStyleReconcileStatsForTests() const;
+    [[nodiscard]] qsizetype loadedDrawTemplateCountForTests() const;
     // Null until the recording effect settings dialog has been built, and null
     // again once it closes. Lets tests assert absence without waiting for the
     // deferred deletion to run.
@@ -1164,7 +1166,7 @@ class ScreenshotToolPalette final : public QWidget,
     QPointer<adqt::widgets::AdFormItem> m_drawTemplateNameItem;
     QPointer<adqt::widgets::AdAlert> m_drawTemplateAlert;
     int m_drawTemplateAlertKind = 0;
-    QVector<snow_shot::storage::DrawTemplate> m_drawTemplates;
+    QJsonArray m_drawTemplateRecords;
     QByteArray m_pendingDrawTemplatePayload;
     QString m_deleteDrawTemplateName;
     std::function<QByteArray()> m_selectedDrawTemplatePayload;
