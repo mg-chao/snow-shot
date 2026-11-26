@@ -186,6 +186,7 @@ inline constexpr const char* kCloudSettingKeys[] = {
     "global_shortcuts/disable_on_focused_fullscreen_window",
     "global_shortcuts/fullscreen_window_filter",
     "global_shortcuts/fullscreen_disable_scope",
+    "global_mouse/screenshot",
     "global_mouse/screenshot_copy",
     "global_mouse/screenshot_fixed",
     "global_mouse/screenshot_ocr",

@@ -21,7 +21,7 @@
 namespace snow_shot::storage {
 namespace {
 
-static_assert(std::size(detail::kCloudSettingKeys) == 298);
+static_assert(std::size(detail::kCloudSettingKeys) == 299);
 
 const auto kTranslationModelKey = QStringLiteral("screenshot_translation/model");
 const auto kInterfaceLanguageKey = QStringLiteral("interface/language");

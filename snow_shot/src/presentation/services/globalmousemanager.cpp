@@ -29,6 +29,7 @@ struct GlobalMouseManager::Impl {
         configuration.bindings.clear();
         using Action = settings::SettingsGlobalMouseAction;
         const std::array pairs{
+            std::pair{Action::Screenshot, "global_mouse/screenshot"},
             std::pair{Action::ScreenshotCopy, "global_mouse/screenshot_copy"},
             std::pair{Action::ScreenshotPinToScreen, "global_mouse/screenshot_fixed"},
             std::pair{Action::ScreenshotOcr, "global_mouse/screenshot_ocr"},

@@ -851,7 +851,7 @@
       "allowedStringValues": [],
       "defaultJsonType": 1,
       "defaultStringIsNull": false,
-      "defaultValue": false,
+      "defaultValue": true,
       "integerRange": null,
       "key": "screenshot_translation/copy_translation_results_as_image",
       "maximumListItems": -1,
@@ -1395,6 +1395,16 @@
       "key": "global_shortcuts/fullscreen_disable_scope",
       "maximumListItems": -1,
       "valueKind": "StringList"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 5,
+      "defaultStringIsNull": false,
+      "defaultValue": {},
+      "integerRange": null,
+      "key": "global_mouse/screenshot",
+      "maximumListItems": -1,
+      "valueKind": "Structured"
     },
     {
       "allowedStringValues": [],
