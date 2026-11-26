@@ -1,6 +1,6 @@
 # OCR protocol 8
 
-Runtime 1.5.1 uses a binary stdin/stdout command channel. Diagnostics use stderr.
+Runtime 1.5.2 uses a binary stdin/stdout command channel. Diagnostics use stderr.
 The application and runtime are released together; earlier protocols are incompatible.
 All integers and IEEE-754 floats are little-endian. A string is a `u32` byte
 length followed by UTF-8. Frames have a 20-byte header: `SOCR`, version `u16`,
@@ -52,9 +52,12 @@ and local V6 models, without orientation classification. On multi-core workers,
 detector and recognizer model parsing overlap before compilation by the library.
 GPU kernels remain embedded in the executable, compressed at build time and decompressed only
 when a Vulkan pipeline is requested.
-Both processing modes use the library's default detector, which enlarges the
-short side toward 736 pixels within the library's image limits. Accuracy first
-uses the library recognizer defaults, including a 320-pixel width floor. Speed
+Both processing modes use the native detector policy. The worker pads each
+axis to a multiple of 32 on the right or bottom with the mean source corner
+color. Inputs that exceed the padded detector limits are resized
+proportionally before padding. Detection boxes are mapped to the source
+raster, which also supplies recognition crops. Accuracy first uses a
+320-pixel recognition width floor. Speed
 first uses a 48-pixel width floor. Widths are aligned to 32 pixels. The host
 checks the exact runtime version during the handshake.
 

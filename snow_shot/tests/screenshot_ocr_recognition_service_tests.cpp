@@ -9,6 +9,7 @@
 #include <QEventLoop>
 #include <QFile>
 #include <QImage>
+#include <QPainter>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -371,8 +372,8 @@ void diskBackedEngineCompletesThroughTheQtWorker(bool managedRuntime = false) {
                        : options.processPath;
 #else
         managedRuntime ? QDir(QCoreApplication::applicationDirPath())
-                             .filePath(QStringLiteral("assets/ocr/runtimes/1.5.1/windows-x64/"
-                                                      "snow-ocr-process-1.5.1-windows-x64.exe"))
+                             .filePath(QStringLiteral("assets/ocr/runtimes/1.5.2/windows-x64/"
+                                                      "snow-ocr-process-1.5.2-windows-x64.exe"))
                        : options.processPath;
 #endif
     if (managedRuntime) {
@@ -1017,8 +1018,24 @@ void versionedModelsRecognizeText(const QString& modelRoot, const QString& fixtu
                                           ScreenshotOcrTextDetectionProcessing::SpeedFirst}) {
                 configuration.textDetectionProcessing = processing;
                 service.setRuntimeConfiguration(configuration);
-                const QVector<QImage> cases{whiteImage(), image.copy(20, 20, 130, 70),
-                                            image.scaled(2100, 660)};
+                const auto textStrip = [](QSize size, const QImage& text, QPoint origin) {
+                    QImage strip(size, QImage::Format_RGB32);
+                    strip.fill(Qt::white);
+                    QPainter painter(&strip);
+                    painter.drawImage(origin, text);
+                    return strip;
+                };
+                const auto shortText = image.copy(20, 20, 130, 70);
+                const auto edgeText = image.copy(35, 35, 350, 40);
+                const QVector<QImage> cases{
+                    whiteImage(),
+                    shortText,
+                    image.scaled(2100, 660),
+                    textStrip(QSize(950, 136), edgeText, QPoint(600, 102)),
+                    textStrip(QSize(136, 950), shortText, QPoint(3, 720)),
+                    textStrip(QSize(384, 8193), edgeText, QPoint(20, 7520)),
+                    textStrip(QSize(17, 11), {}, {}),
+                };
                 for (qsizetype index = 0; index < cases.size(); ++index) {
                     bool done = false;
                     const QImage& input = cases.at(index);
@@ -1041,13 +1058,29 @@ void versionedModelsRecognizeText(const QString& modelRoot, const QString& fixtu
                                             "coordinates");
                             }
                             text.remove(u' ');
-                            if (index == 0)
+                            if (index == 0 || index == 6)
                                 require(output.presentation->lines.isEmpty(),
                                         "blank images must have no text");
-                            else if (index == 1)
-                                require(text.contains(QStringLiteral("Snow"), Qt::CaseInsensitive),
-                                        "narrow text must survive both recognition width floors");
-                            else
+                            else if (index != 2) {
+                                const QString expected = index == 5 ? QStringLiteral("Shot12345")
+                                                                    : QStringLiteral("Snow");
+                                require(text.contains(expected, Qt::CaseInsensitive),
+                                        "strip text must survive both recognition width floors");
+                                if (index >= 3) {
+                                    const auto bounds =
+                                        output.presentation->lines.constFirst().quad.boundingRect();
+                                    require(bounds.isValid(), "strip crop must remain valid");
+                                    if (index == 3)
+                                        require(bounds.right() > 935 && bounds.bottom() > 125,
+                                                "edge text must map to the lower right");
+                                    if (index == 4)
+                                        require(bounds.top() > 700,
+                                                "vertical strip text must map to its source row");
+                                    if (index == 5)
+                                        require(bounds.top() > 7400,
+                                                "downscaled text must map to its source row");
+                                }
+                            } else
                                 require(
                                     text.contains(QStringLiteral("SnowShot12345")) &&
                                         text.contains(QStringLiteral("\u6587\u5b57\u8bc6\u522b")),
@@ -1193,7 +1226,7 @@ void actualOcrCrashAfterInference() {
     const auto bytes = dump.readAll();
     dump.close();
     require(bytes.contains(diagnostics.status().sessionId.toUtf8()) &&
-                bytes.contains("ocr.operation_started") && bytes.contains("1.5.1"),
+                bytes.contains("ocr.operation_started") && bytes.contains("1.5.2"),
             "actual OCR dump retains parent session, operation and runtime version");
     require(diagnostics.flush(), "actual OCR final diagnostics flush");
     diagnostics.shutdown();
@@ -1331,6 +1364,23 @@ void downloadedRuntimeRecognizesText(const QString& archive) {
                 staged.filePath(QStringLiteral("asset-manifest.json")),
                 QDir(assetsOptions.offlineRoot).filePath(QStringLiteral("asset-manifest.json"))),
         "online fixture stages only the trusted descriptor");
+    const QString previousWorker = qEnvironmentVariable("SNOW_TEST_OCR_PREVIOUS_RUNTIME");
+    if (!previousWorker.isEmpty()) {
+        const QFileInfo previous(previousWorker);
+        const QString platform = previous.completeBaseName().section(QStringLiteral("1.5.1-"), 1);
+        const QDir previousCache(
+            QDir(assetsOptions.cacheRoot).filePath(QStringLiteral("runtimes/1.5.1/") + platform));
+        require(!platform.isEmpty() && QDir().mkpath(previousCache.path()) &&
+                    QFile::copy(previous.absoluteFilePath(),
+                                previousCache.filePath(previous.fileName())) &&
+                    QFile::copy(previous.dir().filePath(QStringLiteral("runtime-manifest.json")),
+                                previousCache.filePath(QStringLiteral("runtime-manifest.json"))),
+                "upgrade fixture needs a previously installed runtime");
+        QFile marker(previousCache.filePath(QStringLiteral(".complete.json")));
+        require(marker.open(QIODevice::WriteOnly) &&
+                    marker.write(R"({"schema":1,"component":"1.5.1"})") > 0,
+                "upgrade fixture must mark the previous runtime as complete");
+    }
     int downloads = 0;
     assetsOptions.downloadOverride = [&](const QString& url, const QString& destination,
                                          QString* error) {
@@ -1350,7 +1400,8 @@ void downloadedRuntimeRecognizesText(const QString& archive) {
     QString failure;
     QObject::connect(&assets, &ScreenshotOcrAssets::ready, &assets,
                      [&](const ScreenshotOcrResolvedAssets& resolved) {
-                         ready = resolved.valid() && !resolved.offline;
+                         ready = resolved.valid() && !resolved.offline &&
+                                 resolved.runtimeVersion == QStringLiteral("1.5.2");
                      });
     QObject::connect(&assets, &ScreenshotOcrAssets::failed, &assets,
                      [&](const QString& error) { failure = error; });

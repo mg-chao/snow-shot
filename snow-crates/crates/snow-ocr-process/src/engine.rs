@@ -2,6 +2,7 @@ use super::{Config, TextDetectionProcessing, acceleration::Context};
 use simd_paddle_ocr_rs::{
     builder::OcrModelSet,
     cpu::CpuContext,
+    detector::DetResizePolicy,
     error::ErrorKind,
     image::{ImageError, ImageResult, ImageView, PixelFormat},
     model::Model,
@@ -118,6 +119,43 @@ pub(super) fn make_engine_for_models(
     processing: TextDetectionProcessing,
     gpu: Option<Arc<Context>>,
 ) -> ImageResult<Engine> {
+    make_engine_with_policy(
+        detector,
+        recognizer,
+        dictionary,
+        thread_budget,
+        processing,
+        gpu,
+        DetResizePolicy::Native,
+    )
+}
+
+#[cfg(feature = "sizing-validation")]
+impl Engine {
+    pub(super) fn detector_for_validation(
+        &self,
+    ) -> ImageResult<simd_paddle_ocr_rs::detector::Detector> {
+        let plan = self.request.plan();
+        let mut detector = plan.extractor().detector().request()?;
+        detector
+            .set_execution_context(plan.cpu_context().clone(), plan.cpu_context().capacity())?;
+        Ok(detector)
+    }
+
+    pub(super) fn detected_on_gpu(&self) -> bool {
+        self.request.extractor().detector().uses_gpu()
+    }
+}
+
+pub(super) fn make_engine_with_policy(
+    detector: &Path,
+    recognizer: &Path,
+    dictionary: &Path,
+    thread_budget: usize,
+    processing: TextDetectionProcessing,
+    gpu: Option<Arc<Context>>,
+    policy: DetResizePolicy,
+) -> ImageResult<Engine> {
     let (detection, recognition) = prepare_pair(
         thread_budget > 1,
         || load_model(detector, "detection"),
@@ -135,6 +173,7 @@ pub(super) fn make_engine_for_models(
         .builder()
         .cpu_context(Arc::new(CpuContext::new(thread_budget.max(1))?))
         .execution_target(target)
+        .detector_resize_policy(policy)
         .direction_classification(false);
     #[cfg(feature = "gpu")]
     if let Some(gpu) = gpu {
