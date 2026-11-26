@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "snow_shot/presentation/imageeditingdocument.h"
-#include "snow_shot/presentation/screenshotdefaultstyles.h"
+#include "snow_shot/presentation/screenshotcanvastoolstyles.h"
 #include "snow_draw_engine_qt/snow_canvas_image.h"
 #include <QCryptographicHash>
 #include <QCoreApplication>
@@ -112,7 +112,7 @@ QImage joinStrip(const QImage& current, const ImageEditingDocument::Crop& crop,
 } // namespace
 
 ImageEditingDocument::ImageEditingDocument(QObject* parent)
-    : QObject(parent), m_runtime(SnowCanvasRuntimeConfig{screenshotCanvasStyleDefaults()}) {
+    : QObject(parent), m_runtime(SnowCanvasRuntimeConfig{screenshotCanvasToolStyleDefaults()}) {
     m_runtime.setDocumentChangedHandler([this] {
         m_exportCache = {};
         pruneCrops();
