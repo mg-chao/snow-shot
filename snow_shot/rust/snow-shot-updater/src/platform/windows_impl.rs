@@ -11,7 +11,7 @@ use windows::Win32::Foundation::{
 use windows::Win32::Globalization::{CSTR_EQUAL, CompareStringOrdinal};
 use windows::Win32::Storage::FileSystem::{
     FILE_ATTRIBUTE_REPARSE_POINT, GetFileAttributesW, INVALID_FILE_ATTRIBUTES, MOVE_FILE_FLAGS,
-    MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+    MOVEFILE_DELAY_UNTIL_REBOOT, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
 };
 use windows::Win32::System::Registry::{
     HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_CREATE_SUB_KEY, KEY_QUERY_VALUE,
@@ -139,6 +139,24 @@ pub fn remove_application_file(destination: &Path, retired: &Path) -> Result<()>
         .map_err(|error| replacement_error(destination, retired, error))?;
     let _ = std::fs::remove_file(retired);
     Ok(())
+}
+
+pub fn delete_on_restart(path: &Path) -> Result<()> {
+    let path = wide(absolute(path));
+    unsafe {
+        MoveFileExW(
+            PCWSTR(path.as_ptr()),
+            PCWSTR::null(),
+            MOVEFILE_DELAY_UNTIL_REBOOT,
+        )
+    }
+    .map_err(|error| {
+        io_error(
+            "owned_file_remove_failed",
+            "Could not remove an owned application file",
+            error,
+        )
+    })
 }
 
 pub fn path_has_reparse(path: &Path) -> bool {

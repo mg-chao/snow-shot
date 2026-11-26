@@ -2,6 +2,7 @@
 #ifndef SNOW_SHOT_PRESENTATION_IMAGESPLITWINDOW_H
 #define SNOW_SHOT_PRESENTATION_IMAGESPLITWINDOW_H
 
+#include "snow_shot/presentation/screenshotexportcoordinator.h"
 #include "snow_shot/presentation/imagesplitdocument.h"
 #include "snow_shot/platform/selectedfiles.h"
 #include "snow_shot/presentation/screenshotclipboardcontent.h"
@@ -106,7 +107,7 @@ class ImageSplitWindowCoordinator final : public QObject {
     void presentHistory(const storage::CaptureHistoryRecord& record);
     void presentPinnedRecord(const QString& recordId);
     void presentSource(ImageSplitSource source);
-    void presentFiles(const QStringList& paths);
+    void presentFiles(const QStringList& paths, bool skipUnreadable = false);
     void presentDroppedImage(ScreenshotClipboardContentSnapshot snapshot,
                              std::shared_ptr<ImageStitchingImportReservation> reservation);
     void presentSelectedFiles(std::shared_ptr<platform::SelectedFileBackend> backend,
@@ -117,6 +118,7 @@ class ImageSplitWindowCoordinator final : public QObject {
   private:
     ImageSplitWindow* createWindow();
     ImageSplitWindowServices m_services;
+    ScreenshotExportQueue m_fileImports{ScreenshotExportCoordinator::shared(), nullptr, 1};
     QVector<QPointer<ImageSplitWindow>> m_windows;
     bool m_shutdown = false;
 };

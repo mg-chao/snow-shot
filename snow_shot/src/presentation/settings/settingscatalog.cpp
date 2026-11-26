@@ -2621,13 +2621,41 @@ SettingsItemDefinition autoStartItem() {
 }
 
 #ifdef Q_OS_WIN
+SettingsItemDefinition contextMenuOptionsItem() {
+    SettingsMultiSelectDefinition payload;
+    payload.binding = SettingsMultiSelectBinding::ContextMenuOptions;
+    payload.placeholder = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Select actions"));
+    payload.options = {
+        {QStringLiteral("pin_to_screen"),
+         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Pin to screen"))},
+        {QStringLiteral("pin_to_screen_and_annotate"),
+         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Pin to screen and annotate"))},
+        {QStringLiteral("stitch_images"),
+         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Stitch images"))},
+        {QStringLiteral("split_images"),
+         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Split images"))},
+        {QStringLiteral("edit_images"),
+         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Edit images"))},
+        {QStringLiteral("compress_images"),
+         settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Compress images"))},
+    };
+    return {
+        QStringLiteral("system.context-menu-options"),
+        settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Windows context menu options")),
+        settingsText(
+            QT_TRANSLATE_NOOP("SettingsCatalog", "Choose the actions to show in File Explorer")),
+        {},
+        QStringLiteral("system/context_menu_options"),
+        std::move(payload),
+    };
+}
+
 SettingsItemDefinition contextMenuModeItem() {
     return fixedSelectItem(
         QStringLiteral("system.context-menu-mode"),
-        QT_TRANSLATE_NOOP("SettingsCatalog", "Windows context menu"),
+        QT_TRANSLATE_NOOP("SettingsCatalog", "Windows context menu scope"),
         QT_TRANSLATE_NOOP("SettingsCatalog",
-                          "Add edit with Snow Shot to the Windows context menu to pin a "
-                          "supported image or document file to the screen"),
+                          "Choose which file types show Snow Shot actions in File Explorer"),
         QStringLiteral("system/context_menu_mode"), SettingsSelectBinding::ContextMenuMode,
         {{QStringLiteral("images_only"),
           settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Image files"))},
@@ -3545,20 +3573,6 @@ constexpr CatalogInlineItem catalogItemGlobalMouseScreenRecording{
     .binding = int(SettingsGlobalMouseAction ::ScreenRecording),
 };
 
-#if defined(Q_OS_WIN)
-constexpr CatalogInlineItem catalogItemSystemAnnotationModeWhenOpeningForEditing{
-    .kind = CatalogItemKind::Switch,
-    .id = u"system.annotation-mode-when-opening-for-editing",
-    .title = settingsText(
-        QT_TRANSLATE_NOOP("SettingsCatalog", "Enable annotation mode when opening for editing")),
-    .description = settingsText(QT_TRANSLATE_NOOP(
-        "SettingsCatalog", "Automatically enable annotation mode in new pin to screen "
-                           "windows opened with edit with Snow Shot")),
-    .key = u"system/annotation_mode_when_opening_for_editing",
-    .binding = int(SettingsSwitchBinding ::AnnotationModeWhenOpeningForEditing),
-};
-
-#endif
 constexpr CatalogInlineItem catalogItemScreenshotKeepAnnotationsEditableAfterPinningToScreen{
     .kind = CatalogItemKind::Switch,
     .id = u"screenshot.keep-annotations-editable-after-pinning-to-screen",
@@ -3727,18 +3741,81 @@ constexpr CatalogInlineItem catalogItemExtendedFeaturesStandaloneTranslationWind
 
 #endif
 #if defined(Q_OS_WIN)
-constexpr CatalogInlineItem catalogItemWindowsContextMenuShortcutEditWithSnowShot{
+constexpr CatalogInlineItem catalogItemWindowsContextMenuShortcutPinToScreen{
     .kind = CatalogItemKind::LocalShortcut,
-    .id = u"windows-context-menu-shortcut.edit_with_snow_shot",
-    .title = settingsText(app ::edition ::isMini
-                              ? QT_TRANSLATE_NOOP("SettingsCatalog", "Edit with Snow Shot Mini")
-                              : QT_TRANSLATE_NOOP("SettingsCatalog", "Edit with Snow Shot")),
+    .id = u"windows-context-menu-shortcut.pin_to_screen",
+    .title = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Pin to screen")),
     .description = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
                                                   "Use one letter (A–Z) or digit (0–9) when the "
                                                   "classic Windows context menu is open")),
-    .key = u"context_menu_shortcuts/edit_with_snow_shot",
+    .key = u"context_menu_shortcuts/pin_to_screen",
     .binding = int(SettingsLocalShortcutScope ::WindowsContextMenu),
-    .shortcutId = u"edit_with_snow_shot",
+    .shortcutId = u"pin_to_screen",
+    .icon = catalogEditIcon,
+    .maximumShortcutCount = 1,
+};
+constexpr CatalogInlineItem catalogItemWindowsContextMenuShortcutPinToScreenAndAnnotate{
+    .kind = CatalogItemKind::LocalShortcut,
+    .id = u"windows-context-menu-shortcut.pin_to_screen_and_annotate",
+    .title = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Pin to screen and annotate")),
+    .description = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
+                                                  "Use one letter (A–Z) or digit (0–9) when the "
+                                                  "classic Windows context menu is open")),
+    .key = u"context_menu_shortcuts/pin_to_screen_and_annotate",
+    .binding = int(SettingsLocalShortcutScope ::WindowsContextMenu),
+    .shortcutId = u"pin_to_screen_and_annotate",
+    .icon = catalogEditIcon,
+    .maximumShortcutCount = 1,
+};
+constexpr CatalogInlineItem catalogItemWindowsContextMenuShortcutStitchImages{
+    .kind = CatalogItemKind::LocalShortcut,
+    .id = u"windows-context-menu-shortcut.stitch_images",
+    .title = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Stitch images")),
+    .description = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
+                                                  "Use one letter (A–Z) or digit (0–9) when the "
+                                                  "classic Windows context menu is open")),
+    .key = u"context_menu_shortcuts/stitch_images",
+    .binding = int(SettingsLocalShortcutScope ::WindowsContextMenu),
+    .shortcutId = u"stitch_images",
+    .icon = catalogEditIcon,
+    .maximumShortcutCount = 1,
+};
+constexpr CatalogInlineItem catalogItemWindowsContextMenuShortcutSplitImages{
+    .kind = CatalogItemKind::LocalShortcut,
+    .id = u"windows-context-menu-shortcut.split_images",
+    .title = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Split images")),
+    .description = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
+                                                  "Use one letter (A–Z) or digit (0–9) when the "
+                                                  "classic Windows context menu is open")),
+    .key = u"context_menu_shortcuts/split_images",
+    .binding = int(SettingsLocalShortcutScope ::WindowsContextMenu),
+    .shortcutId = u"split_images",
+    .icon = catalogEditIcon,
+    .maximumShortcutCount = 1,
+};
+constexpr CatalogInlineItem catalogItemWindowsContextMenuShortcutEditImages{
+    .kind = CatalogItemKind::LocalShortcut,
+    .id = u"windows-context-menu-shortcut.edit_images",
+    .title = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Edit images")),
+    .description = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
+                                                  "Use one letter (A–Z) or digit (0–9) when the "
+                                                  "classic Windows context menu is open")),
+    .key = u"context_menu_shortcuts/edit_images",
+    .binding = int(SettingsLocalShortcutScope ::WindowsContextMenu),
+    .shortcutId = u"edit_images",
+    .icon = catalogEditIcon,
+    .maximumShortcutCount = 1,
+};
+constexpr CatalogInlineItem catalogItemWindowsContextMenuShortcutCompressImages{
+    .kind = CatalogItemKind::LocalShortcut,
+    .id = u"windows-context-menu-shortcut.compress_images",
+    .title = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Compress images")),
+    .description = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog",
+                                                  "Use one letter (A–Z) or digit (0–9) when the "
+                                                  "classic Windows context menu is open")),
+    .key = u"context_menu_shortcuts/compress_images",
+    .binding = int(SettingsLocalShortcutScope ::WindowsContextMenu),
+    .shortcutId = u"compress_images",
     .icon = catalogEditIcon,
     .maximumShortcutCount = 1,
 };
@@ -4157,10 +4234,8 @@ constexpr CatalogItemFactory catalogPageGeneralSectionSystemGeneralItems[] = {
     {restartAsAdministratorItem},
 #endif
 #if defined(Q_OS_WIN)
+    {contextMenuOptionsItem},
     {contextMenuModeItem},
-#endif
-#if defined(Q_OS_WIN)
-    {nullptr, &catalogItemSystemAnnotationModeWhenOpeningForEditing},
 #endif
     {updateModeItem},
 };
@@ -4753,7 +4828,12 @@ constexpr TranslatableText catalogPageTextRecognitionTranslationAliases[] = {
 
 #if defined(Q_OS_WIN)
 constexpr CatalogItemFactory catalogPageShortcutsMouseSectionWindowsContextMenuShortcutsItems[] = {
-    {nullptr, &catalogItemWindowsContextMenuShortcutEditWithSnowShot},
+    {nullptr, &catalogItemWindowsContextMenuShortcutPinToScreen},
+    {nullptr, &catalogItemWindowsContextMenuShortcutPinToScreenAndAnnotate},
+    {nullptr, &catalogItemWindowsContextMenuShortcutStitchImages},
+    {nullptr, &catalogItemWindowsContextMenuShortcutSplitImages},
+    {nullptr, &catalogItemWindowsContextMenuShortcutEditImages},
+    {nullptr, &catalogItemWindowsContextMenuShortcutCompressImages},
 };
 
 #endif
@@ -6718,10 +6798,6 @@ QStringList SettingsCatalog::validationErrors() const {
                     case SettingsSwitchBinding::AutoStartAtBoot:
                         expectedKey = QStringLiteral("system/auto_start_at_boot");
                         break;
-                    case SettingsSwitchBinding::AnnotationModeWhenOpeningForEditing:
-                        expectedKey =
-                            QStringLiteral("system/annotation_mode_when_opening_for_editing");
-                        break;
                     case SettingsSwitchBinding::DrawingAutomaticallySelectNewlyCreatedElements:
                         expectedKey =
                             QStringLiteral("drawing/automatically_select_newly_created_elements");
@@ -6768,6 +6844,9 @@ QStringList SettingsCatalog::validationErrors() const {
                         break;
                     case SettingsMultiSelectBinding::ScreenshotShutterSoundNotification:
                         expectedKey = QStringLiteral("screenshot/shutter_sound_notification");
+                        break;
+                    case SettingsMultiSelectBinding::ContextMenuOptions:
+                        expectedKey = QStringLiteral("system/context_menu_options");
                         break;
                     case SettingsMultiSelectBinding::FullscreenDisableScope:
                         expectedKey = QStringLiteral("global_shortcuts/fullscreen_disable_scope");

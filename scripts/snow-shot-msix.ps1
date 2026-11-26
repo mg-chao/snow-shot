@@ -35,8 +35,9 @@ function Read-SnowMsixIdentity {
 }
 
 function Get-SnowMsixFileExtensions {
-    $headers = @('snow_shot/include/snow_shot/image/supportedimagefiles.h',
-        'snow_shot/include/snow_shot/app/supportedpinfiles.h')
+    param([switch]$ImagesOnly)
+    $headers = @('snow_shot/include/snow_shot/image/supportedimagefiles.h')
+    if (-not $ImagesOnly) { $headers += 'snow_shot/include/snow_shot/app/supportedpinfiles.h' }
     $extensions = @(foreach ($header in $headers) {
         $source = Get-Content -LiteralPath (Join-Path $script:SnowMsixRepoRoot $header) -Raw
         foreach ($match in [regex]::Matches($source, '\{"([a-z0-9]+)",\s*(?:ImageFileCodec|PinDocumentFormat)::')) {
@@ -213,11 +214,17 @@ function Write-SnowMsixManifest {
     $extensions = @(Get-SnowMsixFileExtensions)
     $types = @($extensions | ForEach-Object { "              <uap:FileType>$_</uap:FileType>" })
     $text = $text.Replace('@FileTypes@', ($types -join "`n"))
-    $menuTypes = @($extensions | ForEach-Object {
-        "            <desktop5:ItemType Type=`"$_`">`n" +
-        '              <desktop5:Verb Id="EditWithSnowShot" Clsid="3F1E90A2-7D4B-4F21-9D8A-6B0C5E2F7093" />' + "`n" +
+    $images = @(Get-SnowMsixFileExtensions -ImagesOnly)
+    $pinActions = @('Pin', 'Annotate')
+    $imageActions = $pinActions + @('Stitch', 'Split', 'Edit', 'Compress')
+    $menuTypes = foreach ($extension in $extensions) {
+        '            <desktop5:ItemType Type="{0}">' -f $extension
+        $actions = if ($images -contains $extension) { $imageActions } else { $pinActions }
+        for ($index = 0; $index -lt $actions.Count; $index++) {
+            '              <desktop5:Verb Id="{0}" Clsid="3F1E90A2-7D4B-4F21-9D8A-6B0C5E2F70A{1}" />' -f $actions[$index], $index
+        }
         '            </desktop5:ItemType>'
-    })
+    }
     $text = $text.Replace('@ContextMenuItemTypes@', ($menuTypes -join "`n"))
     if ($text -match '@[A-Za-z]+@') { throw 'An MSIX manifest placeholder was not resolved.' }
     $null = [xml]$text

@@ -7119,18 +7119,14 @@ bool ScreenshotController::handleActiveScreenshotShortcut(
 }
 
 void ScreenshotController::pinFilesToScreen(QStringList paths,
-                                            std::function<void()> firstFileFinished) {
+                                            std::function<void()> firstFileFinished,
+                                            bool initialAnnotationMode) {
     const auto pending = std::make_shared<std::function<void()>>(std::move(firstFileFinished));
     const auto finish = [pending] {
         if (*pending)
             std::exchange(*pending, {})();
     };
-    const bool initialAnnotationMode =
-        snow_shot::storage::SystemSettings().annotationModeWhenOpeningForEditing();
-    const auto failure = [this, finish](const QString& path) {
-        emit selectedFilePinFailed(tr("Could not open the selected file: %1").arg(path));
-        finish();
-    };
+    const auto failure = [finish](const QString&) { finish(); };
     const auto supported = ScreenshotClipboardContentReader::supportedFileExtensions();
     QStringList supportedPaths;
     for (const QString& path : paths) {

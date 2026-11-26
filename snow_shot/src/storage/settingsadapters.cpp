@@ -250,13 +250,18 @@ struct LocalShortcutGroup {
     LocalShortcutPolicy policy;
 };
 
-const std::array<LocalShortcutGroup, 4>& localShortcutGroups() {
-    static const std::array<LocalShortcutGroup, 4> groups{{
+const std::array<LocalShortcutGroup, 5>& localShortcutGroups() {
+    static const std::array<LocalShortcutGroup, 5> groups{{
         {QStringLiteral("screenshot_shortcuts/"), screenshotShortcutActionIds(),
          LocalShortcutPolicy::Screenshot},
         {QStringLiteral("drawing_shortcuts/"), drawingShortcutToolIds(),
          LocalShortcutPolicy::Drawing},
         {QStringLiteral("pin_to_screen_shortcuts/"), pinToScreenShortcutActionIds(),
+         LocalShortcutPolicy::WindowCommand},
+        {QStringLiteral("context_menu_shortcuts/"),
+         {QStringLiteral("pin_to_screen"), QStringLiteral("pin_to_screen_and_annotate"),
+          QStringLiteral("stitch_images"), QStringLiteral("split_images"),
+          QStringLiteral("edit_images"), QStringLiteral("compress_images")},
          LocalShortcutPolicy::WindowCommand},
         {QStringLiteral("screen_recording_shortcuts/"), screenRecordingShortcutActionIds(),
          LocalShortcutPolicy::WindowCommand},
@@ -3224,17 +3229,6 @@ QStringList TraySettings::menuOptions() const {
 
 bool TraySettings::setMenuOptions(const QStringList& options) const {
     return cache().setValue(QStringLiteral("tray/menu_options"), stringArray(options));
-}
-
-bool SystemSettings::annotationModeWhenOpeningForEditing() const {
-    return cache()
-        .value(QStringLiteral("system/annotation_mode_when_opening_for_editing"))
-        .toBool();
-}
-
-bool SystemSettings::setAnnotationModeWhenOpeningForEditing(bool enabled) const {
-    return cache().setValue(QStringLiteral("system/annotation_mode_when_opening_for_editing"),
-                            enabled);
 }
 
 bool SystemSettings::launchAsAdministrator() const {

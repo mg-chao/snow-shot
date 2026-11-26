@@ -123,13 +123,13 @@ class ScreenshotExportCoordinator final : public QObject {
     std::shared_ptr<Impl> m_impl;
 };
 
-// GUI-thread FIFO admission for independent requests. Only two jobs per queue enter the
-// coordinator at once; the remaining work waits for capacity without decoding images.
+// GUI-thread FIFO admission. Use one concurrent job when results must be delivered in order.
+// The remaining work waits for capacity without decoding images.
 // cancel(), destruction and coordinator shutdown discard pending work and completions.
 class ScreenshotExportQueue final : public QObject {
   public:
     explicit ScreenshotExportQueue(ScreenshotExportCoordinator& coordinator,
-                                   QObject* parent = nullptr);
+                                   QObject* parent = nullptr, int maximumConcurrentJobs = 2);
     ~ScreenshotExportQueue() override;
     [[nodiscard]] bool enqueue(ScreenshotExportCoordinator::Priority priority,
                                ScreenshotExportCoordinator::Work work,
@@ -148,6 +148,7 @@ class ScreenshotExportQueue final : public QObject {
         qint64 estimatedWorkingBytes = 0;
     };
     QPointer<ScreenshotExportCoordinator> m_coordinator;
+    const int m_maximumConcurrentJobs;
     QQueue<Request> m_requests;
     QHash<quint64, ScreenshotExportJobHandle> m_jobs;
     quint64 m_generation = 0;

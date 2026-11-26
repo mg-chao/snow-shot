@@ -43,7 +43,9 @@ class ConfigurationArchive final {
 
     // Reads and validates an archive.  Unknown or invalid keys are dropped;
     // on success `values` holds only keys the current schema accepts.
-    [[nodiscard]] static ConfigurationArchiveReadResult read(const QString& archivePath);
+    [[nodiscard]] static ConfigurationArchiveReadResult
+    read(const QString& archivePath,
+         const QString& defaultContextMenuScope = QStringLiteral("image_files"));
 };
 
 } // namespace snow_shot::storage

@@ -19,283 +19,143 @@ void require(bool condition, const char* message) {
     }
 }
 
-void commandAndOwnership() {
+void actionsAndRollback() {
     Registry registry;
     auto options = registry.options();
-    const auto executable = QDir::toNativeSeparators(options.executablePath);
+    options.useLocalCommandServer = false;
+    options.fileExtensions.append(QStringLiteral("md"));
     windows::ShellContextMenuRegistration registration(options);
-    require(registration.expectedCommand() == QStringLiteral("\"%1\" --edit-with-snow-shot \"%2\"")
-                                                  .arg(executable, QStringLiteral("%1")),
-            "command quotes executable and Explorer's Unicode file argument");
-    require(registration.setMode(windows::ShellContextMenuMode::ImageAndDocumentFiles),
-            "enable supported image verbs");
-    require(registry.keys.size() == 2 && registry.notifications == 1,
-            "enabling creates one verb per supported image extension and notifies Explorer once");
-    for (const auto& extension : {QStringLiteral("png"), QStringLiteral("jpg")}) {
-        const auto key = registry.keys.value(Registry::path(extension));
-        require(key.exists &&
-                    stringText(key.values.value(QStringLiteral("ProductId"))) ==
-                        snow_shot::app::edition::productId() &&
-                    stringText(key.values.value(QStringLiteral("InstallationExecutable"))) ==
-                        executable &&
-                    stringText(key.values.value(QStringLiteral("MultiSelectModel"))) ==
-                        QStringLiteral("Document") &&
-                    stringText(key.values.value(QStringLiteral("Icon"))) ==
-                        QStringLiteral("\"%1\",0").arg(executable) &&
-                    stringText(key.children.value(QStringLiteral("command")).values.value({})) ==
-                        registration.expectedCommand(),
-                "each image verb records installation ownership, icon, document model and command");
-    }
-    const int writes = registry.writes;
-    require(registration.setMode(windows::ShellContextMenuMode::ImageAndDocumentFiles) &&
-                registry.writes == writes && registry.notifications == 1,
-            "startup reconciliation is idempotent");
-    require(!registry.keys.contains(Registry::path(QStringLiteral("txt"))) &&
-                !registry.keys.contains(Registry::path(QStringLiteral("html"))),
-            "context menu excludes supported text and HTML pinning formats");
-}
-
-void accessKeysAndRollback() {
-    Registry registry;
-    windows::ShellContextMenuRegistration registration(registry.options());
-    const QString baseLabel = snow_shot::app::edition::isMini
-                                  ? QStringLiteral("Edit with Snow Shot Mini")
-                                  : QStringLiteral("Edit with Snow Shot");
-    const auto label = [&] {
-        return stringText(
-            registry.keys.value(Registry::path(QStringLiteral("png"))).values.value({}));
+    windows::ShellMenuPreferences prefs;
+    windows::ShellContextMenuRegistryKey legacy;
+    legacy.exists = true;
+    legacy.values.insert(QStringLiteral("ProductId"),
+                         stringValue(snow_shot::app::edition::productId()));
+    registry.keys.insert(Registry::path(QStringLiteral("obsolete")), legacy);
+    const auto fileVerb = [](const QString& extension, const QString& action) {
+        return Registry::path(extension, snow_shot::app::edition::registryName() +
+                                             QStringLiteral(".File.") + action);
     };
-    require(registration.setMode(windows::ShellContextMenuMode::ImageAndDocumentFiles,
-                                 QStringLiteral("e")) &&
-                label() == baseLabel + QStringLiteral(" (&E)"),
-            "startup registration canonicalizes and displays the configured logical access key");
-    const int writes = registry.writes;
-    require(registration.setMode(windows::ShellContextMenuMode::ImageAndDocumentFiles,
-                                 QStringLiteral("E")) &&
-                registry.writes == writes,
-            "startup reconciliation with an unchanged access key is idempotent");
-    const auto before = registry.keys;
-    QString error;
-    for (const auto& invalid : {QStringLiteral("Ctrl+E"), QStringLiteral("F1"), QStringLiteral("&"),
-                                QStringLiteral("雪"), QStringLiteral("EE")}) {
-        require(!registration.setMode(windows::ShellContextMenuMode::ImageAndDocumentFiles, invalid,
-                                      &error) &&
-                    !error.isEmpty() && !registration.refreshLabels(invalid, &error) &&
-                    registry.keys == before,
-                "invalid native access keys cannot change registry labels");
-    }
-    registry.writesBeforeFailure = 1;
-    require(!registration.setMode(windows::ShellContextMenuMode::ImageAndDocumentFiles,
-                                  QStringLiteral("S")) &&
-                registry.keys == before,
-            "partial native access key updates roll back every image verb");
-    require(!registration
-                    .changeMode(windows::ShellContextMenuMode::ImageAndDocumentFiles,
-                                QStringLiteral("7"), [] { return false; })
-                    .success &&
-                registry.keys == before,
-            "a rejected preference commit restores the previous mnemonic");
-    require(registration.refreshLabels(QStringLiteral("7")) &&
-                label() == baseLabel + QStringLiteral(" (&7)"),
-            "label refresh shares digit mnemonic formatting with registration");
-    require(registration.refreshLabels(QString()) && label() == baseLabel,
-            "clearing a key removes the suffix entirely");
-    require(registration.setMode(windows::ShellContextMenuMode::Disabled, QStringLiteral("E")) &&
-                registry.keys.isEmpty() && registration.refreshLabels(QStringLiteral("S")) &&
-                registry.keys.isEmpty(),
-            "refreshing an access key does not create disabled menu entries");
-}
-
-void preservationRelocationAndRollback() {
-    Registry registry;
-    windows::ShellContextMenuRegistration registration(registry.options());
-    require(registration.setMode(windows::ShellContextMenuMode::ImageAndDocumentFiles),
-            "create rollback baseline");
-    const auto png = Registry::path(QStringLiteral("png"));
-    const auto jpg = Registry::path(QStringLiteral("jpg"));
-    registry.keys[png].values.insert(QStringLiteral("CustomValue"), {3, QByteArray("\0\1\2", 3)});
-    auto& child = registry.keys[png].children[QStringLiteral("custom-child")];
-    child.exists = true;
-    child.values.insert(QString(), stringValue(QStringLiteral("retain child")));
-    const auto retainedChild = child;
-    auto neighbor = registry.keys.value(png);
-    neighbor.values.insert(QStringLiteral("ProductId"), stringValue(QStringLiteral("unrelated")));
-    const auto neighborPath = Registry::path(QStringLiteral("png"), QStringLiteral("Other.Edit"));
-    registry.keys.insert(neighborPath, neighbor);
-    const auto otherEdition =
-        Registry::path(QStringLiteral("png"), snow_shot::app::edition::isMini
-                                                  ? QStringLiteral("SnowShot.Edit")
-                                                  : QStringLiteral("SnowShotMini.Edit"));
-    registry.keys.insert(otherEdition, neighbor);
-    auto stale = registry.keys.value(jpg);
-    stale.values.insert(QStringLiteral("InstallationExecutable"),
-                        stringValue(QStringLiteral("C:\\Previous installation\\snow_shot.exe")));
-    const auto stalePath = Registry::path(QStringLiteral("obsolete"));
-    registry.keys.insert(stalePath, stale);
-    registry.keys[jpg].values.insert(
-        QStringLiteral("InstallationExecutable"),
-        stringValue(QStringLiteral("C:\\Previous installation\\snow_shot.exe")));
-    require(registration.setMode(windows::ShellContextMenuMode::ImageAndDocumentFiles) &&
-                !registry.keys.contains(stalePath) &&
-                registry.keys.value(neighborPath) == neighbor &&
-                registry.keys.value(otherEdition) == neighbor &&
-                registry.keys.value(png).values.value(QStringLiteral("CustomValue")) ==
-                    windows::ShellContextMenuRegistryValue{3, QByteArray("\0\1\2", 3)} &&
-                registry.keys.value(png).children.value(QStringLiteral("custom-child")) ==
-                    retainedChild,
-            "reconciliation removes stale extensions, replaces relocated ownership and preserves "
-            "neighbors");
-    const auto baseline = registry.keys;
-    registry.writesBeforeFailure = 1;
-    int commits = 0;
-    const auto failed = registration.changeMode(windows::ShellContextMenuMode::Disabled, [&] {
-        ++commits;
-        return true;
-    });
-    require(!failed.success && failed.error == QStringLiteral("injected write failure") &&
-                commits == 0 && registry.keys == baseline,
-            "partial native failure restores raw values and subkeys before any preference commit");
-    const auto unsaved =
-        registration.changeMode(windows::ShellContextMenuMode::Disabled, [] { return false; });
-    require(!unsaved.success && !unsaved.error.isEmpty() && registry.keys == baseline,
-            "failed preference persistence restores the complete registration snapshot");
-    require(registration.setMode(windows::ShellContextMenuMode::Disabled) &&
-                registry.keys.size() == 2 && registry.keys.value(neighborPath) == neighbor &&
-                registry.keys.value(otherEdition) == neighbor,
-            "disable removes only this product's verbs and preserves neighboring editions");
-    registry.failReads = true;
-    require(!registration.setMode(windows::ShellContextMenuMode::ImageAndDocumentFiles) &&
-                registry.keys.size() == 2,
-            "read failure never changes native registration");
-}
-
-void foreignOwnerAndLanguageRefresh() {
-    Registry registry;
-    windows::ShellContextMenuRegistration registration(registry.options());
-    require(registration.refreshLabels() && registry.keys.isEmpty(),
-            "language refresh does not create context menu entries");
-    require(registration.setMode(windows::ShellContextMenuMode::ImageAndDocumentFiles),
-            "create label baseline");
-    const auto png = Registry::path(QStringLiteral("png"));
-    registry.keys[png].values.insert(QString(), stringValue(QStringLiteral("old localized label")));
-    const auto command = registry.keys[png].children.value(QStringLiteral("command"));
-    require(registration.refreshLabels() &&
-                stringText(registry.keys[png].values.value({})) ==
-                    (snow_shot::app::edition::isMini ? QStringLiteral("Edit with Snow Shot Mini")
-                                                     : QStringLiteral("Edit with Snow Shot")) &&
-                registry.keys[png].children.value(QStringLiteral("command")) == command,
-            "language refresh replaces the display label and preserves command data");
-    registry.keys[png].values.insert(QStringLiteral("ProductId"),
-                                     stringValue(QStringLiteral("foreign")));
-    const auto baseline = registry.keys;
-    require(!registration.setMode(windows::ShellContextMenuMode::ImageAndDocumentFiles) &&
-                registry.keys == baseline,
-            "enable refuses a foreign owner without leaving partial registry changes");
-    require(registration.setMode(windows::ShellContextMenuMode::Disabled) &&
-                registry.keys.value(png) == baseline.value(png),
-            "disable preserves a foreign owner using the same verb name");
-}
-
-void authoritativeSuffixes() {
-    Registry registry;
-    auto options = registry.options();
-    options.fileExtensions = snow_shot::image::supportedImageFileExtensions();
-    options.fileExtensions.removeAll(QStringLiteral("bmp"));
-    windows::ShellContextMenuRegistration previousRegistration(options);
-    require(previousRegistration.setMode(windows::ShellContextMenuMode::ImageAndDocumentFiles) &&
-                !registry.keys.contains(Registry::path(QStringLiteral("bmp"))),
-            "previous installations register the existing formats without BMP");
-    options.fileExtensions.clear();
-    windows::ShellContextMenuRegistration registration(std::move(options));
-    const auto previous = registry.keys;
-    registry.writesBeforeFailure = 0;
-    require(!registration.setMode(windows::ShellContextMenuMode::ImageAndDocumentFiles) &&
-                registry.keys == previous,
-            "failed BMP registration preserves the previous installation's image verbs");
-    require(registration.setMode(windows::ShellContextMenuMode::ImageAndDocumentFiles) &&
-                registry.keys.size() == snow_shot::app::supportedPinFileExtensions().size(),
-            "default registrar uses the shared authoritative pin extension list");
-    for (const auto& extension : snow_shot::app::supportedPinFileExtensions())
-        require(registry.keys.contains(Registry::path(extension)),
-                "every supported image or document extension receives the context menu entry");
-    for (const auto& document : snow_shot::app::kPinDocumentFileFormats) {
-        const auto entry =
-            registry.keys.value(Registry::path(QString::fromLatin1(document.suffix)));
-        require(entry.exists &&
-                    stringText(entry.children.value(QStringLiteral("command")).values.value({})) ==
-                        registration.expectedCommand(),
-                "startup upgrades add every document extension with the existing command");
-    }
-    const auto bmp = Registry::path(QStringLiteral("bmp"));
-    const auto key = registry.keys.value(bmp);
-    require(key.exists &&
-                stringText(key.values.value(QStringLiteral("ProductId"))) ==
-                    snow_shot::app::edition::productId() &&
-                stringText(key.children.value(QStringLiteral("command")).values.value({})) ==
-                    registration.expectedCommand(),
-            "startup reconciliation adds an owned BMP verb using the current edition command");
-    const int writes = registry.writes;
-    require(registration.setMode(windows::ShellContextMenuMode::ImageAndDocumentFiles) &&
-                registry.writes == writes,
-            "BMP registration is idempotent on later launches");
-    const auto enabled = registry.keys;
-    registry.writesBeforeFailure = 1;
-    require(!registration.setMode(windows::ShellContextMenuMode::Disabled) &&
-                registry.keys == enabled,
-            "partial removal failure restores BMP and the existing image verbs");
-    require(!registration.changeMode(windows::ShellContextMenuMode::Disabled, [] { return false; })
-                    .success &&
-                registry.keys == enabled,
-            "failed preference persistence restores BMP with the rest of the menu");
-    require(registration.setMode(windows::ShellContextMenuMode::Disabled) &&
-                registry.keys.isEmpty(),
-            "disabling the menu removes BMP and every other owned image verb");
-}
-
-void imageOnlyScope() {
-    Registry registry;
-    auto options = registry.options();
-    options.fileExtensions.clear();
-    windows::ShellContextMenuRegistration registration(options);
-    using Mode = windows::ShellContextMenuMode;
-    require(registration.modeFromValue(QStringLiteral("image_files")) ==
-                    Mode::ImageAndDocumentFiles &&
-                registration.modeFromValue(QStringLiteral("images_only")) == Mode::ImageFiles &&
-                registration.modeFromValue(QStringLiteral("disabled")) == Mode::Disabled,
-            "saved legacy and new scope values retain their distinct meanings");
-    require(registration.setMode(Mode::ImageAndDocumentFiles, QStringLiteral("E")),
-            "prepare owned image and document verbs");
+    registry.keys.insert(fileVerb(QStringLiteral("obsolete"), QStringLiteral("pin_to_screen")),
+                         legacy);
+    const auto oldWildcard = QStringLiteral("software\\snowshottests\\*\\shell\\") +
+                             snow_shot::app::edition::registryName().toLower() +
+                             QStringLiteral(".pin_to_screen");
+    registry.keys.insert(oldWildcard, legacy);
+    prefs.actions = {'P', 'A', '.', '-', 'E', '-'};
+    require(registration.change(prefs).success && registry.keys.size() == 14 &&
+                !registry.keys.contains(oldWildcard),
+            "four actions register on both images, two on documents, and stale wildcard verbs are "
+            "removed");
     const auto broad = registry.keys;
+    const auto writes = registry.writes;
+    require(registration.change(prefs).success && registry.writes == writes,
+            "startup reconciliation is idempotent");
+    const auto pngPin = fileVerb(QStringLiteral("png"), QStringLiteral("pin_to_screen"));
+    const auto mdPin = fileVerb(QStringLiteral("md"), QStringLiteral("pin_to_screen"));
+    const auto verb = registry.keys.value(pngPin);
+    require(stringText(verb.values.value({})) == QStringLiteral("Pin to screen (&P)") &&
+                stringText(verb.values.value(QStringLiteral("MultiSelectModel"))) ==
+                    QStringLiteral("Player"),
+            "pin uses the assigned menu key and receives whole Explorer selections");
+    require(registry.keys.value(mdPin) == verb &&
+                !registry.keys.contains(
+                    fileVerb(QStringLiteral("md"), QStringLiteral("edit_images"))) &&
+                !registry.keys.contains(
+                    fileVerb(QStringLiteral("obsolete"), QStringLiteral("pin_to_screen"))),
+            "per-extension verbs use the same command and title, and only pinning is registered on "
+            "documents");
+    const auto clsid = stringText(verb.values.value(QStringLiteral("ExplorerCommandHandler")));
+    const auto classPath = QStringLiteral("software\\snowshottests\\clsid\\") + clsid.toLower();
+    require(registry.keys.value(classPath).exists &&
+                stringText(registry.keys.value(classPath).values.value(QStringLiteral("Scope"))) ==
+                    QStringLiteral("image_files"),
+            "the verb resolves to its class and broad scope");
+    prefs.mode = windows::ShellContextMenuMode::ImageFiles;
     registry.writesBeforeFailure = 1;
-    require(!registration.setMode(Mode::ImageFiles, QStringLiteral("7")) && registry.keys == broad,
-            "partial scope changes restore document registrations and image access keys");
-    require(!registration.changeMode(Mode::ImageFiles, [] { return false; }).success &&
-                registry.keys == broad,
-            "rejected preference commits restore the complete broad scope");
-    require(registration.setMode(Mode::ImageFiles, QStringLiteral("E")) &&
-                registry.keys.size() == snow_shot::image::supportedImageFileExtensions().size(),
-            "image-only mode removes all previously registered document verbs");
-    for (const auto& extension : snow_shot::image::supportedImageFileExtensions())
-        require(registry.keys.contains(Registry::path(extension)),
-                "image-only mode keeps every supported image extension");
-    const auto narrow = registry.keys;
-    const int writes = registry.writes;
-    require(registration.setMode(Mode::ImageFiles, QStringLiteral("E")) &&
-                registry.writes == writes && registry.keys == narrow,
-            "image-only startup reconciliation is idempotent");
-    require(registration.refreshLabels(QStringLiteral("7")) &&
-                registry.keys.size() == narrow.size(),
-            "language and access-key refresh cannot reintroduce document verbs");
-    require(registration.setMode(Mode::ImageAndDocumentFiles) &&
-                registry.keys.size() == broad.size(),
-            "broadening restores every supported document extension");
-    auto foreign = registry.keys.value(Registry::path(QStringLiteral("txt")));
+    require(!registration.change(prefs).success && registry.keys == broad,
+            "partial native writes roll back");
+    require(!registration.change(prefs, [] { return false; }).success && registry.keys == broad,
+            "a failed preference commit restores every class and verb");
+    require(registration.change(prefs).success && registry.keys.size() == 12 &&
+                !registry.keys.contains(mdPin) && registry.keys.contains(pngPin) &&
+                stringText(registry.keys.value(classPath).values.value(QStringLiteral("Scope"))) ==
+                    QStringLiteral("images_only"),
+            "scope updates reach Explorer");
+    prefs.actions[0] = 'Q';
+    require(registration.refreshLabels(prefs).success &&
+                stringText(registry.keys.value(pngPin).values.value({})) ==
+                    QStringLiteral("Pin to screen (&Q)") &&
+                registry.keys.value(pngPin).values.value({}) ==
+                    registry.keys.value(classPath).values.value({}),
+            "label refresh updates the extension verb and its command class");
+    auto foreign = verb;
     foreign.values.insert(QStringLiteral("ProductId"), stringValue(QStringLiteral("foreign")));
-    registry.keys.insert(Registry::path(QStringLiteral("txt")), foreign);
-    require(registration.setMode(Mode::ImageFiles) &&
-                registry.keys.value(Registry::path(QStringLiteral("txt"))) == foreign &&
-                registration.setMode(Mode::Disabled) && registry.keys.size() == 1,
-            "narrowing and disabling preserve a foreign-owned document verb");
+    registry.keys.insert(pngPin, foreign);
+    require(!registration.change(prefs).success && registry.keys.value(pngPin) == foreign,
+            "foreign ownership prevents overwriting");
+    prefs.mode = windows::ShellContextMenuMode::Disabled;
+    require(registration.change(prefs).success && registry.keys.size() == 1 &&
+                registry.keys.value(pngPin) == foreign,
+            "disable removes only owned registrations");
+}
+
+void nativeAndEmulatedServers() {
+    Registry registry;
+    auto options = registry.options();
+    options.useLocalCommandServer = true;
+    windows::ShellContextMenuRegistration emulated(options);
+    const windows::ShellMenuPreferences prefs;
+    require(emulated.change(prefs).success, "register an ARM64 host for the x64 installation");
+    const auto verbPath =
+        Registry::path(QStringLiteral("png"), snow_shot::app::edition::registryName() +
+                                                  QStringLiteral(".File.pin_to_screen"));
+    auto& verb = registry.keys[verbPath];
+    const auto clsid = stringText(verb.children.value(QStringLiteral("command"))
+                                      .values.value(QStringLiteral("DelegateExecute")));
+    const auto classPath = QStringLiteral("software\\snowshottests\\clsid\\") + clsid.toLower();
+    const auto server =
+        registry.keys.value(classPath).children.value(QStringLiteral("LocalServer32"));
+    const auto executable = QDir::toNativeSeparators(options.executablePath);
+    require(
+        !clsid.isEmpty() && !verb.values.contains(QStringLiteral("ExplorerCommandHandler")) &&
+            stringText(verb.values.value(QStringLiteral("MultiSelectModel"))) ==
+                QStringLiteral("Player") &&
+            !registry.keys.value(classPath).children.contains(QStringLiteral("InprocServer32")) &&
+            stringText(server.values.value(QStringLiteral("ServerExecutable"))) == executable &&
+            stringText(server.values.value({})) ==
+                QStringLiteral("\"%1\" --explorer-command-server 0").arg(executable),
+        "ARM64 Explorer activates the x64 verb out of process with one multi-selection");
+    verb.values.insert(QStringLiteral("Extended"), stringValue({}));
+    auto& custom = verb.children[QStringLiteral("custom")];
+    custom.exists = true;
+    custom.values.insert(QStringLiteral("Opaque"), {3, QByteArray("\0\1\2", 3)});
+    const auto originalCustom = custom;
+    registry.keys[classPath].values.insert(QStringLiteral("OtherValue"),
+                                           stringValue(QStringLiteral("keep")));
+    require(emulated.change(prefs).success &&
+                registry.keys.value(verbPath).children.value(QStringLiteral("custom")) ==
+                    originalCustom &&
+                registry.keys.value(verbPath).values.contains(QStringLiteral("Extended")) &&
+                registry.keys.value(classPath).values.contains(QStringLiteral("OtherValue")),
+            "startup reconciliation preserves custom registry values and subkeys");
+    options.useLocalCommandServer = false;
+    windows::ShellContextMenuRegistration native(options);
+    require(
+        native.change(prefs).success &&
+            registry.keys.value(classPath).children.contains(QStringLiteral("InprocServer32")) &&
+            !registry.keys.value(classPath).children.contains(QStringLiteral("LocalServer32")) &&
+            stringText(registry.keys.value(verbPath).values.value(
+                QStringLiteral("ExplorerCommandHandler"))) == clsid &&
+            !registry.keys.value(verbPath).children.contains(QStringLiteral("command")) &&
+            registry.keys.value(verbPath).children.value(QStringLiteral("custom")) ==
+                originalCustom,
+        "installing the native edition removes the obsolete delegate and retains custom data");
+    require(
+        emulated.change(prefs).success &&
+            !registry.keys.value(classPath).children.contains(QStringLiteral("InprocServer32")) &&
+            !registry.keys.value(verbPath).values.contains(
+                QStringLiteral("ExplorerCommandHandler")),
+        "reverting to emulation removes the old in-process activation path");
 }
 
 #ifdef Q_OS_WIN
@@ -314,25 +174,18 @@ void isolatedNativeRegistry() {
         QStringLiteral("C:/Native Snow Shot/雪/") + snow_shot::app::edition::executableName();
     options.fileExtensions = {QStringLiteral("png"), QStringLiteral("jpg"), QStringLiteral("bmp")};
     windows::ShellContextMenuRegistration registration(std::move(options));
-    require(registration.setMode(windows::ShellContextMenuMode::ImageAndDocumentFiles,
-                                 QStringLiteral("E")),
-            "native isolated registry can enable the image verbs with an access key");
+    windows::ShellMenuPreferences prefs;
+    prefs.actions[0] = 'E';
+    require(registration.change(prefs).success, "enable an isolated native verb");
     const auto before = registration.snapshot();
-    for (const auto& key : before.keys)
-        require(stringText(key.values.value({})).endsWith(QStringLiteral(" (&E)")),
-                "native registry labels retain the mnemonic marker");
-    require(before.valid && before.keys.size() == 3 &&
-                before.keys
-                    .value(root + QStringLiteral("\\SystemFileAssociations\\.bmp\\shell\\") +
-                           snow_shot::app::edition::registryName() + QStringLiteral(".Edit"))
-                    .exists,
-            "native snapshots include the BMP verb in the isolated registry root");
-    require(!registration.changeMode(windows::ShellContextMenuMode::Disabled, [] { return false; })
-                    .success &&
+    require(before.valid && std::count_if(before.keys.cbegin(), before.keys.cend(),
+                                          [](const auto& key) { return key.exists; }) == 4,
+            "only three extension verbs and their COM server are registered");
+    prefs.mode = windows::ShellContextMenuMode::Disabled;
+    require(!registration.change(prefs, [] { return false; }).success &&
                 registration.snapshot().keys == before.keys,
-            "native rollback restores registration trees in an isolated HKCU root");
-    require(registration.setMode(windows::ShellContextMenuMode::Disabled),
-            "native isolated registry can disable the image verbs");
+            "a failed commit restores native keys");
+    require(registration.change(prefs).success, "disable the isolated native verb");
     const auto disabled = registration.snapshot();
     require(disabled.valid && std::all_of(disabled.keys.cbegin(), disabled.keys.cend(),
                                           [](const auto& key) { return !key.exists; }),
@@ -354,12 +207,8 @@ void isolatedNativeRegistry() {
 
 int main(int argc, char** argv) {
     QCoreApplication app(argc, argv);
-    commandAndOwnership();
-    accessKeysAndRollback();
-    preservationRelocationAndRollback();
-    foreignOwnerAndLanguageRefresh();
-    authoritativeSuffixes();
-    imageOnlyScope();
+    actionsAndRollback();
+    nativeAndEmulatedServers();
 #ifdef Q_OS_WIN
     isolatedNativeRegistry();
 #endif

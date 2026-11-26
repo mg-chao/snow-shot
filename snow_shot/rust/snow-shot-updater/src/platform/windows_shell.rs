@@ -171,20 +171,238 @@ fn owned(key: HKEY, executable: &Path) -> Result<bool> {
     let Some(value) = read(command.0, "", false)? else {
         return Ok(false);
     };
-    let Some(value) = value.to_str() else {
-        return Ok(false);
-    };
-    let Some((target, arguments)) = value
-        .strip_prefix('"')
+    Ok(command_targets(
+        &value,
+        executable,
+        " --edit-with-snow-shot \"%1\"",
+    ))
+}
+
+fn command_targets(value: &OsStr, executable: &Path, arguments: &str) -> bool {
+    let Some((target, actual_arguments)) = value
+        .to_str()
+        .and_then(|value| value.strip_prefix('"'))
         .and_then(|value| value.split_once('"'))
     else {
+        return false;
+    };
+    actual_arguments == arguments && same_executable(OsStr::new(target), executable)
+}
+
+#[derive(Clone, Copy)]
+enum ActionKey<'a> {
+    Verb(&'a str),
+    Class(usize),
+}
+
+enum ActionRegistration {
+    Verb,
+    InprocServer,
+    LocalServer(usize),
+}
+
+fn owned_action(
+    key: HKEY,
+    executable: &Path,
+    action: ActionKey<'_>,
+    replacement: Option<&Path>,
+) -> Result<Option<ActionRegistration>> {
+    if read(key, "ProductId", false)?.as_deref() != Some(OsStr::new(crate::edition::PRODUCT))
+        || !read(key, "InstallationExecutable", false)?
+            .is_some_and(|owner| same_executable(&owner, executable))
+    {
+        return Ok(None);
+    }
+    match action {
+        ActionKey::Verb(clsid) => {
+            let handler = if let Some(handler) = read(key, "ExplorerCommandHandler", false)? {
+                Some(handler)
+            } else if let Some(command) = open(key, "command", KEY_READ)? {
+                read(command.0, "DelegateExecute", false)?
+            } else {
+                None
+            };
+            Ok(handler
+                .is_some_and(|handler| equal(handler, clsid))
+                .then_some(ActionRegistration::Verb))
+        }
+        ActionKey::Class(index) => {
+            // The ownership marker is written last. A retried migration may see server values
+            // already changed to its exact destination.
+            let targets = std::iter::once(executable).chain(replacement);
+            if let Some(server) = open(key, "InprocServer32", KEY_READ)? {
+                return Ok(read(server.0, "", false)?
+                    .is_some_and(|path| {
+                        targets.clone().any(|target| {
+                            same_executable(
+                                &path,
+                                &target.with_file_name("SnowShotExplorerCommand.dll"),
+                            )
+                        })
+                    })
+                    .then_some(ActionRegistration::InprocServer));
+            }
+            let Some(server) = open(key, "LocalServer32", KEY_READ)? else {
+                return Ok(None);
+            };
+            let arguments = format!(" --explorer-command-server {index}");
+            let owned = read(server.0, "ServerExecutable", false)?
+                .is_some_and(|path| targets.clone().any(|target| same_executable(&path, target)))
+                && read(server.0, "", false)?.is_some_and(|command| {
+                    targets
+                        .clone()
+                        .any(|target| command_targets(&command, target, &arguments))
+                });
+            Ok(owned.then_some(ActionRegistration::LocalServer(index)))
+        }
+    }
+}
+
+fn update_action_key(
+    classes: HKEY,
+    parent_path: &Path,
+    name: &str,
+    executable: &Path,
+    replacement: Option<&Path>,
+    action: ActionKey<'_>,
+) -> Result<bool> {
+    let relative = parent_path.join(name);
+    let Some(key) = open(classes, &relative, KEY_READ)? else {
         return Ok(false);
     };
-    Ok(arguments == " --edit-with-snow-shot \"%1\""
-        && same_executable(OsStr::new(target), executable))
+    if owned_action(key.0, executable, action, replacement)?.is_none() {
+        return Ok(false);
+    }
+    drop(key);
+    if let Some(replacement) = replacement {
+        let Some(key) = open(classes, &relative, KEY_READ | KEY_WRITE)? else {
+            return Ok(false);
+        };
+        let Some(registration) = owned_action(key.0, executable, action, Some(replacement))? else {
+            return Ok(false);
+        };
+        let replacement_path = normalized(replacement);
+        match registration {
+            ActionRegistration::Verb => write(key.0, "Icon", format!("\"{replacement_path}\",0"))?,
+            ActionRegistration::InprocServer => {
+                let Some(server) = open(key.0, "InprocServer32", KEY_READ | KEY_WRITE)? else {
+                    return Ok(false);
+                };
+                write(
+                    server.0,
+                    "",
+                    normalized(&replacement.with_file_name("SnowShotExplorerCommand.dll")),
+                )?;
+            }
+            ActionRegistration::LocalServer(index) => {
+                let Some(server) = open(key.0, "LocalServer32", KEY_READ | KEY_WRITE)? else {
+                    return Ok(false);
+                };
+                write(
+                    server.0,
+                    "",
+                    format!("\"{replacement_path}\" --explorer-command-server {index}"),
+                )?;
+                write(server.0, "ServerExecutable", &replacement_path)?;
+            }
+        }
+        write(key.0, "InstallationExecutable", replacement_path)?;
+    } else {
+        let Some(parent) = open(classes, parent_path, KEY_READ | KEY_WRITE)? else {
+            return Ok(false);
+        };
+        let Some(key) = open(parent.0, name, KEY_READ)? else {
+            return Ok(false);
+        };
+        if owned_action(key.0, executable, action, None)?.is_none() {
+            return Ok(false);
+        }
+        drop(key);
+        let name = wide(name);
+        check("RegDeleteTreeW", unsafe {
+            RegDeleteTreeW(parent.0, PCWSTR(name.as_ptr()))
+        })?;
+    }
+    Ok(true)
+}
+
+fn extension_menu_paths(classes: HKEY) -> Result<Vec<PathBuf>> {
+    let mut extension_menus = Vec::new();
+    if let Some(associations) = open(classes, ASSOCIATIONS, KEY_READ)? {
+        for extension in names(associations.0)? {
+            if extension.to_string_lossy().starts_with('.') {
+                extension_menus.push(Path::new(ASSOCIATIONS).join(extension).join("shell"));
+            }
+        }
+    }
+    Ok(extension_menus)
 }
 
 fn update_classes(classes: HKEY, executable: &Path, replacement: Option<&Path>) -> Result<bool> {
+    let mut changed = false;
+    let mut failure = None;
+    let extension_menus = extension_menu_paths(classes).unwrap_or_else(|error| {
+        failure = Some(error);
+        Vec::new()
+    });
+    let mut record = |result: Result<bool>| match result {
+        Ok(updated) => changed |= updated,
+        Err(error) => {
+            failure.get_or_insert(error);
+        }
+    };
+    let edition = if crate::edition::MINI { 'C' } else { 'B' };
+    for (index, action) in [
+        "pin_to_screen",
+        "pin_to_screen_and_annotate",
+        "stitch_images",
+        "split_images",
+        "edit_images",
+        "compress_images",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let clsid = format!("{{3F1E90A2-7D4B-4F21-9D8A-6B0C5E2F70{edition}{index}}}");
+        // Earlier builds registered all-file verbs. Remove them even when relocating an install.
+        let old_wildcard = format!("{}.{action}", crate::edition::REGISTRY_NAME);
+        record(update_action_key(
+            classes,
+            Path::new(r"*\shell"),
+            &old_wildcard,
+            executable,
+            None,
+            ActionKey::Verb(&clsid),
+        ));
+        let file_verb = format!("{}.File.{action}", crate::edition::REGISTRY_NAME);
+        for parent in &extension_menus {
+            record(update_action_key(
+                classes,
+                parent,
+                &file_verb,
+                executable,
+                replacement,
+                ActionKey::Verb(&clsid),
+            ));
+        }
+        record(update_action_key(
+            classes,
+            Path::new("CLSID"),
+            &clsid,
+            executable,
+            replacement,
+            ActionKey::Class(index),
+        ));
+    }
+    record(update_legacy_classes(classes, executable, replacement));
+    failure.map_or(Ok(changed), Err)
+}
+
+fn update_legacy_classes(
+    classes: HKEY,
+    executable: &Path,
+    replacement: Option<&Path>,
+) -> Result<bool> {
     let Some(associations) = open(classes, ASSOCIATIONS, KEY_READ)? else {
         return Ok(false);
     };

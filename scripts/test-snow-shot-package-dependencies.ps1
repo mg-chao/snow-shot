@@ -137,7 +137,7 @@ function Test-PackageStageCase {
 try {
     Test-PackageStageCase standalone-stage $false
     Test-PackageStageCase store-stage $true
-    Test-PackageStageCase standalone-extension $false 'Release staging contains unexpected binary files*' -AddExtension
+    Test-PackageStageCase standalone-missing-extension $false 'Release staging is missing required runtime files*SnowShotExplorerCommand.dll*' -MissingExtension
     Test-PackageStageCase store-missing-extension $true 'Release staging is missing required runtime files*SnowShotExplorerCommand.dll*' -MissingExtension
     Test-PackageDependencyCase x64-color-management x64 0x8664 @('MSCMS.dll')
     Test-PackageDependencyCase arm64-color-management arm64 0xaa64 @('mscms.dll')

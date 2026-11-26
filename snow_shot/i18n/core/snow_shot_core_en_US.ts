@@ -961,10 +961,6 @@ so every moment on screen can be expressed clearly and shared easily</translatio
             <translation>An update is ready. Open About to restart and update Snow Shot</translation>
         </message>
         <message>
-            <source>Could not open the selected file: %1</source>
-            <translation>Could not open the selected file: %1</translation>
-        </message>
-        <message>
             <source>Could not pin selected files to screen</source>
             <translation>Could not pin selected files to screen</translation>
         </message>

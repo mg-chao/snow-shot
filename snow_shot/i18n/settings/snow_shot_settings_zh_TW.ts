@@ -1807,10 +1807,6 @@
             <translation>加入遮罩以醒目顯示文字辨識結果</translation>
         </message>
         <message>
-            <source>Add edit with Snow Shot to the Windows context menu to pin a supported image or document file to the screen</source>
-            <translation>將「使用 Snow Shot 編輯」新增至 Windows 右鍵選單，以將支援的影像或文件檔案固定到螢幕</translation>
-        </message>
-        <message>
             <source>Adjust MP4 quality and file size</source>
             <translation>調整 MP4 畫質與檔案大小</translation>
         </message>
@@ -2071,10 +2067,6 @@
             <translation>存在焦點全螢幕視窗時自動停用</translation>
         </message>
         <message>
-            <source>Automatically enable annotation mode in new pin to screen windows opened with edit with Snow Shot</source>
-            <translation>透過「使用 Snow Shot 編輯」開啟新的固定到螢幕視窗時，自動啟用標註模式</translation>
-        </message>
-        <message>
             <source>Automatically exit screen recording after the recording is saved</source>
             <translation>儲存錄製內容後自動退出螢幕錄製</translation>
         </message>
@@ -2319,6 +2311,10 @@
             <translation>選擇 OCR 模型版本和大小，以平衡辨識速度和準確率</translation>
         </message>
         <message>
+            <source>Choose the actions to show in File Explorer</source>
+            <translation>選擇要在檔案總管中顯示的動作</translation>
+        </message>
+        <message>
             <source>Choose the bundled icon used in dark theme, or reuse the regular icon settings</source>
             <translation>選擇深色主題使用的內建圖示，或沿用一般圖示設定</translation>
         </message>
@@ -2451,6 +2447,10 @@
             <translation>選擇保留可編輯的螢幕擷取工作階段、僅保留最終影像或停用新歷史記錄</translation>
         </message>
         <message>
+            <source>Choose which file types show Snow Shot actions in File Explorer</source>
+            <translation>選擇哪些檔案類型要顯示 Snow Shot 動作</translation>
+        </message>
+        <message>
             <source>Choose which fullscreen windows trigger automatic disabling</source>
             <translation>選擇哪些全螢幕視窗會觸發自動停用</translation>
         </message>
@@ -2537,6 +2537,10 @@
         <message>
             <source>Color picker display mode</source>
             <translation>顏色選擇器顯示模式</translation>
+        </message>
+        <message>
+            <source>Compress images</source>
+            <translation>進行影像壓縮</translation>
         </message>
         <message>
             <source>Compress selected images</source>
@@ -2999,6 +3003,10 @@
             <translation>複製最新選取範圍</translation>
         </message>
         <message>
+            <source>Edit images</source>
+            <translation>進行影像編輯</translation>
+        </message>
+        <message>
             <source>Edit selected images</source>
             <translation>編輯選取的影像</translation>
         </message>
@@ -3007,20 +3015,8 @@
             <translation>編輯選取範圍</translation>
         </message>
         <message>
-            <source>Edit with Snow Shot</source>
-            <translation>使用 Snow Shot 編輯</translation>
-        </message>
-        <message>
-            <source>Edit with Snow Shot Mini</source>
-            <translation>使用 Snow Shot Mini 編輯</translation>
-        </message>
-        <message>
             <source>Enable MCP integration</source>
             <translation>啟用 MCP 整合</translation>
-        </message>
-        <message>
-            <source>Enable annotation mode when opening for editing</source>
-            <translation>開啟編輯時啟用標註模式</translation>
         </message>
         <message>
             <source>Enable edit mode</source>
@@ -4059,6 +4055,10 @@
             <translation>固定到螢幕（捲動截圖）</translation>
         </message>
         <message>
+            <source>Pin to screen and annotate</source>
+            <translation>固定到螢幕並標註</translation>
+        </message>
+        <message>
             <source>Pin to screen management</source>
             <translation>固定到螢幕管理</translation>
         </message>
@@ -4723,6 +4723,10 @@
             <translation>次要目標語言</translation>
         </message>
         <message>
+            <source>Select actions</source>
+            <translation>選擇操作</translation>
+        </message>
+        <message>
             <source>Select dark theme tray icon</source>
             <translation>選擇深色主題系統匣圖示</translation>
         </message>
@@ -5159,6 +5163,10 @@
             <translation>速度優先會減少短文字的計算量，並可能改變辨識結果</translation>
         </message>
         <message>
+            <source>Split images</source>
+            <translation>進行影像分割</translation>
+        </message>
+        <message>
             <source>Split selected images</source>
             <translation>分割選取的影像</translation>
         </message>
@@ -5217,6 +5225,10 @@
         <message>
             <source>Startup &amp; updates</source>
             <translation>啟動與更新</translation>
+        </message>
+        <message>
+            <source>Stitch images</source>
+            <translation>進行影像拼接</translation>
         </message>
         <message>
             <source>Stitch selected images</source>
@@ -5699,6 +5711,14 @@
             <translation>Windows 右鍵選單</translation>
         </message>
         <message>
+            <source>Windows context menu options</source>
+            <translation>Windows 右鍵選單選項</translation>
+        </message>
+        <message>
+            <source>Windows context menu scope</source>
+            <translation>Windows 右鍵選單範圍</translation>
+        </message>
+        <message>
             <source>Zip archives (*.zip);;All files (*.*)</source>
             <translation>Zip 壓縮檔 (*.zip);;所有檔案 (*.*)</translation>
         </message>
@@ -5828,6 +5848,10 @@
     <context>
         <name>ShellContextMenuRegistration</name>
         <message>
+            <source>Compress images</source>
+            <translation>進行影像壓縮</translation>
+        </message>
+        <message>
             <source>Could not access the Windows context menu registry. Windows error %1</source>
             <translation>無法存取 Windows 右鍵選單登錄。Windows 錯誤 %1</translation>
         </message>
@@ -5844,12 +5868,24 @@
             <translation>無法儲存 Windows 右鍵選單偏好設定</translation>
         </message>
         <message>
-            <source>Edit with Snow Shot</source>
-            <translation>使用 Snow Shot 編輯</translation>
+            <source>Edit images</source>
+            <translation>進行影像編輯</translation>
         </message>
         <message>
-            <source>Edit with Snow Shot Mini</source>
-            <translation>使用 Snow Shot Mini 編輯</translation>
+            <source>Pin to screen</source>
+            <translation>固定到螢幕</translation>
+        </message>
+        <message>
+            <source>Pin to screen and annotate</source>
+            <translation>固定到螢幕並標註</translation>
+        </message>
+        <message>
+            <source>Split images</source>
+            <translation>進行影像分割</translation>
+        </message>
+        <message>
+            <source>Stitch images</source>
+            <translation>進行影像拼接</translation>
         </message>
         <message>
             <source>The Windows context menu entry is owned by another application</source>
@@ -5858,10 +5894,6 @@
         <message>
             <source>The Windows context menu is only supported on Windows</source>
             <translation>Windows 右鍵選單僅在 Windows 上受支援</translation>
-        </message>
-        <message>
-            <source>The context menu access key must be one letter (A–Z) or digit (0–9)</source>
-            <translation>右鍵選單存取鍵必須為一個字母（A–Z）或數字（0–9）</translation>
         </message>
     </context>
     <context>
@@ -6543,6 +6575,10 @@ Unavailable: %2</source>
         <message>
             <source>The mouse operation is already assigned.</source>
             <translation>此滑鼠操作已指派給其他動作。</translation>
+        </message>
+        <message>
+            <source>This context menu shortcut is already assigned</source>
+            <translation>此右鍵選單快捷鍵已被使用</translation>
         </message>
     </context>
 </TS>

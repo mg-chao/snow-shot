@@ -3,6 +3,8 @@
 
 #include <QDateTime>
 #include <QObject>
+#include <QMap>
+#include <QJsonValue>
 
 #include <functional>
 #include <memory>
@@ -24,6 +26,8 @@ class CloudSettingsSyncService final : public QObject {
         int trayIntervalMs = 30 * 60'000;
         int retryInitialMs = 5000;
         bool observeConnectivity = true;
+        std::function<bool(const QMap<QString, QJsonValue>&, const std::function<bool()>&)>
+            commitMenuSettings;
         std::function<QDateTime()> utcNow = QDateTime::currentDateTimeUtc;
     };
 

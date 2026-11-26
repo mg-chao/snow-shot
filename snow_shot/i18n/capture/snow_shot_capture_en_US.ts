@@ -42,10 +42,6 @@
             <translation>Could not insert the annotation template</translation>
         </message>
         <message>
-            <source>Could not open the selected file: %1</source>
-            <translation>Could not open the selected file: %1</translation>
-        </message>
-        <message>
             <source>Could not read the selected files from Finder. Please try again</source>
             <translation>Could not read the selected files from Finder. Please try again</translation>
         </message>

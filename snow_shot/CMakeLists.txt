@@ -126,7 +126,7 @@ if(SNOW_SHOT_ENABLE_STRICT_COMPILE)
 endif()
 snow_enable_clang_tidy()
 
-if(WIN32 AND (SNOW_SHOT_BUILD_TESTS OR SNOW_SHOT_DISTRIBUTION_CHANNEL STREQUAL "store"))
+if(WIN32)
     add_subdirectory(src/platform/windows/explorercommand)
 endif()
 
@@ -2250,7 +2250,7 @@ qt_add_executable(snow_shot
     ${PROJECT_SOURCES}
 )
 snow_shot_link_macos_window_platform(snow_shot)
-if(WIN32 AND SNOW_SHOT_DISTRIBUTION_CHANNEL STREQUAL "store")
+if(WIN32)
     add_dependencies(snow_shot snow_shot_explorer_command)
 endif()
 if(SNOW_SHOT_BUILD_TESTS)
@@ -10223,6 +10223,12 @@ if(SNOW_SHOT_BUILD_TESTS)
         COMMAND snow-shot-cloud-settings-sync-tests -platform offscreen)
     set_tests_properties(snow-shot-cloud-settings-sync-tests PROPERTIES LABELS unit TIMEOUT 45
         ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}")
+    if(WIN32)
+        add_test(NAME snow-shot-cloud-settings-sync-explorer-upgrade-tests
+            COMMAND snow-shot-cloud-settings-sync-tests -platform offscreen --explorer-upgrade)
+        set_tests_properties(snow-shot-cloud-settings-sync-explorer-upgrade-tests PROPERTIES
+            LABELS unit TIMEOUT 45 ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}")
+    endif()
 
     add_executable(snow-shot-api-client-tests
         tests/snowshot_api_client_tests.cpp

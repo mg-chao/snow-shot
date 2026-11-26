@@ -128,7 +128,21 @@ pub fn validate_relaunch_arguments(arguments: &[String]) -> crate::Result<()> {
     let mut seen = std::collections::HashSet::new();
     let mut arguments = arguments.iter();
     while let Some(argument) = arguments.next() {
-        let valid = if argument == "--edit-with-snow-shot" {
+        let valid = if argument == "--explorer-selection" {
+            arguments.next().is_some_and(|token| {
+                let bytes = token.as_bytes();
+                bytes.len() == 38
+                    && bytes[0] == b'{'
+                    && bytes[37] == b'}'
+                    && bytes[1..37].iter().enumerate().all(|(i, byte)| {
+                        if matches!(i, 8 | 13 | 18 | 23) {
+                            *byte == b'-'
+                        } else {
+                            byte.is_ascii_hexdigit()
+                        }
+                    })
+            })
+        } else if argument == "--edit-with-snow-shot" {
             arguments.next().is_some_and(|path| {
                 std::path::Path::new(path).is_absolute()
                     && !path.contains(['\0', '"'])
@@ -281,6 +295,19 @@ mod tests {
             .push(br#"{"protocol":2,"id":1,"command":"execute"}"#)
             .unwrap();
         assert!(truncated.finish().is_err());
+    }
+
+    #[test]
+    fn explorer_selection_survives_relaunch() {
+        let flag = "--explorer-selection".to_owned();
+        assert!(
+            validate_relaunch_arguments(&[
+                flag.clone(),
+                "{00000001-0000-0000-0000-000000000000}".to_owned()
+            ])
+            .is_ok()
+        );
+        assert!(validate_relaunch_arguments(&[flag, "../selection".to_owned()]).is_err());
     }
 
     #[test]

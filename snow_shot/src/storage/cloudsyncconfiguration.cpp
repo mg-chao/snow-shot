@@ -21,7 +21,7 @@
 namespace snow_shot::storage {
 namespace {
 
-static_assert(std::size(detail::kCloudSettingKeys) == 299);
+static_assert(std::size(detail::kCloudSettingKeys) == 306);
 
 const auto kTranslationModelKey = QStringLiteral("screenshot_translation/model");
 const auto kInterfaceLanguageKey = QStringLiteral("interface/language");
@@ -84,7 +84,7 @@ bool platformSupportsCloudKey(const QString& key) {
         return false;
 
 #ifndef Q_OS_WIN
-    if (key == QStringLiteral("system/annotation_mode_when_opening_for_editing") ||
+    if (key.startsWith(u"system/context_menu_") || key.startsWith(u"context_menu_shortcuts/") ||
         key == QStringLiteral("global_shortcuts/toggle_window_under_cursor_always_on_top"))
         return false;
 #endif
@@ -153,8 +153,8 @@ bool cloudSettingSupported(const QString& key) {
 }
 
 bool cloudSettingPlatformSpecific(const QString& key) {
-    return mouse::isKey(key) || key.startsWith(kGlobalShortcutPrefix) ||
-           key.startsWith(kGlobalMousePrefix) ||
+    return key.startsWith(u"context_menu_shortcuts/") || mouse::isKey(key) ||
+           key.startsWith(kGlobalShortcutPrefix) || key.startsWith(kGlobalMousePrefix) ||
            key.startsWith(QStringLiteral("screenshot_shortcuts/")) ||
            key.startsWith(QStringLiteral("drawing_shortcuts/")) ||
            key.startsWith(QStringLiteral("pin_to_screen_shortcuts/")) ||

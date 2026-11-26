@@ -353,15 +353,20 @@ endif()
         $association.MultiSelectModel -ceq 'Document') 'Open with and default file activation must retain typed file arguments.'
     Require ($manifest.SelectNodes('//uap2:SupportedVerbs', $ns).Count -eq 0) 'Only the native Explorer command should contribute an edit menu entry, including when Snow Shot is the default app.'
     $commands = @($manifest.SelectNodes('//desktop4:FileExplorerContextMenus/desktop5:ItemType', $ns))
-    Require (($commands.Type -join ',') -ceq ($types -join ',')) 'Explorer context menus must cover exactly the supported file types without changing default associations.'
-    $comClass = $manifest.SelectSingleNode('//com:SurrogateServer/com:Class', $ns)
-    Require ($null -ne $comClass -and $comClass.Path -ceq 'bin\SnowShotExplorerCommand.dll' -and
-        $comClass.ThreadingModel -ceq 'STA' -and
-        (Test-Path -LiteralPath (Join-Path $stage $comClass.Path) -PathType Leaf)) 'Packaged COM must load the staged native Explorer command DLL.'
+    Require (($commands.Type -join ',') -ceq ($types -join ',')) 'Explorer commands must use the same supported file extensions as file activation.'
+    $classes = @($manifest.SelectNodes('//com:SurrogateServer/com:Class', $ns))
+    Require ($classes.Count -eq 6) 'Each action needs a distinct registered class.'
+    $imageTypes = @(Get-SnowMsixFileExtensions -ImagesOnly)
     foreach ($command in $commands) {
-        $verb = $command.SelectSingleNode('desktop5:Verb', $ns)
-        Require ($verb.Id -ceq 'EditWithSnowShot' -and $verb.Clsid -ceq $comClass.Id -and
-            $verb.Clsid -ceq '3F1E90A2-7D4B-4F21-9D8A-6B0C5E2F7093') 'Each Explorer verb must activate the registered command CLSID.'
+        $verbs = @($command.SelectNodes('desktop5:Verb', $ns))
+        $expectedIds = if ($imageTypes -contains $command.Type) { 'Pin,Annotate,Stitch,Split,Edit,Compress' } else { 'Pin,Annotate' }
+        Require (($verbs.Id -join ',') -ceq $expectedIds) "Unexpected Explorer actions for $($command.Type)."
+        for ($index = 0; $index -lt $verbs.Count; $index++) {
+            Require ($verbs[$index].Clsid -ceq "3F1E90A2-7D4B-4F21-9D8A-6B0C5E2F70A$index") 'Each file action must resolve to its own Explorer command.'
+            $class = $classes | Where-Object Id -CEQ $verbs[$index].Clsid
+            Require ($class.Path -ceq 'bin\SnowShotExplorerCommand.dll' -and $class.ThreadingModel -ceq 'STA' -and
+                (Test-Path -LiteralPath (Join-Path $stage $class.Path) -PathType Leaf)) 'Explorer must activate the staged native command.'
+        }
     }
     $minimum = $manifest.SelectSingleNode('//m:TargetDeviceFamily', $ns).MinVersion
     Require ($minimum -ceq '10.0.19041.0') 'The x64 Store package must retain its Windows 10 baseline.'
@@ -392,7 +397,10 @@ endif()
     Require ($languages -ccontains 'ru-RU') 'The MSIX manifest must declare Russian.'
     foreach ($language in $languages) {
         $resources = [xml](Get-Content -LiteralPath (Join-Path $stage "Strings/$language/Resources.resw") -Raw)
-        Require (@($resources.root.data).Count -eq 4 -and @($resources.root.data | Where-Object { [string]::IsNullOrWhiteSpace($_.value) }).Count -eq 0) 'All manifest languages require complete resource strings.'
+        foreach ($name in @('DisplayName', 'Description', 'FileTypesDisplayName', 'PinAction', 'AnnotateAction', 'StitchAction', 'SplitAction', 'EditAction', 'CompressAction')) {
+            $resource = $resources.SelectSingleNode("/root/data[@name='$name']/value")
+            Require ($resource -and -not [string]::IsNullOrWhiteSpace($resource.InnerText)) "Missing $language resource for $name."
+        }
     }
     $assetRoot = Join-Path $script:SnowMsixRepoRoot 'snow_shot/packaging/msix/Assets'
     $source = Get-Content -LiteralPath (Join-Path $assetRoot 'source.json') -Raw | ConvertFrom-Json

@@ -86,6 +86,7 @@
 #include <QWheelEvent>
 
 #ifdef Q_OS_WIN
+#include <QTextStream>
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -3507,6 +3508,41 @@ int runScreenshotControllerClipboardTests(int argc, char** argv) {
             require(maintenance == 1, "startup maintenance runs only once");
             closePins();
         }
+#ifdef Q_OS_WIN
+        {
+            const auto previousLocal = qgetenv("LOCALAPPDATA");
+            qputenv("LOCALAPPDATA", directory.path().toUtf8());
+            const auto restoreLocal = qScopeGuard([&] { qputenv("LOCALAPPDATA", previousLocal); });
+            const QDir batches(directory.filePath(QStringLiteral("SnowShot/ExplorerSelections")));
+            require(batches.mkpath(QStringLiteral(".")), "create an isolated Explorer inbox");
+            snow_shot::app::ApplicationController controller(application);
+            const auto submitStitch = [&](const QStringList& paths) {
+                const auto token = QUuid::createUuid().toString();
+                QFile batch(batches.filePath(token));
+                require(batch.open(QIODevice::WriteOnly), "write Explorer selection");
+                QTextStream stream(&batch);
+                stream.setEncoding(QStringConverter::Utf16LE);
+                stream << "2\n";
+                for (const auto& item : paths)
+                    stream << item << '\n';
+                stream.flush();
+                batch.close();
+                controller.handleLaunchRequest({QStringLiteral("--explorer-selection"), token});
+                require(!batch.exists(), "consume the batch exactly once");
+            };
+            submitStitch({path, directory.filePath(QStringLiteral("notes.md")),
+                          directory.filePath(QStringLiteral("missing.png")), path});
+            auto* stitching =
+                controller.findChild<snow_shot::presentation::ImageStitchingWindowCoordinator*>();
+            require(stitching && stitching->window(), "Explorer dispatch opens stitching");
+            auto* window = stitching->window();
+            waitUntil([&] { return window->document()->items().size() == 2; },
+                      "mixed Explorer batch loads all readable images into one document");
+            submitStitch({path});
+            waitUntil([&] { return window->document()->items().size() == 3; },
+                      "another Explorer selection appends to the same open document");
+        }
+#endif
         {
             ScreenshotController controller;
             int completed = 0;

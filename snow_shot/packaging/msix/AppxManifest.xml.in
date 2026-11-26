@@ -46,8 +46,12 @@
         <com:Extension Category="windows.comServer">
           <com:ComServer>
             <com:SurrogateServer DisplayName="Snow Shot">
-              <com:Class Id="3F1E90A2-7D4B-4F21-9D8A-6B0C5E2F7093"
-                Path="bin\SnowShotExplorerCommand.dll" ThreadingModel="STA" />
+              <com:Class Id="3F1E90A2-7D4B-4F21-9D8A-6B0C5E2F70A0" Path="bin\SnowShotExplorerCommand.dll" ThreadingModel="STA" />
+              <com:Class Id="3F1E90A2-7D4B-4F21-9D8A-6B0C5E2F70A1" Path="bin\SnowShotExplorerCommand.dll" ThreadingModel="STA" />
+              <com:Class Id="3F1E90A2-7D4B-4F21-9D8A-6B0C5E2F70A2" Path="bin\SnowShotExplorerCommand.dll" ThreadingModel="STA" />
+              <com:Class Id="3F1E90A2-7D4B-4F21-9D8A-6B0C5E2F70A3" Path="bin\SnowShotExplorerCommand.dll" ThreadingModel="STA" />
+              <com:Class Id="3F1E90A2-7D4B-4F21-9D8A-6B0C5E2F70A4" Path="bin\SnowShotExplorerCommand.dll" ThreadingModel="STA" />
+              <com:Class Id="3F1E90A2-7D4B-4F21-9D8A-6B0C5E2F70A5" Path="bin\SnowShotExplorerCommand.dll" ThreadingModel="STA" />
             </com:SurrogateServer>
           </com:ComServer>
         </com:Extension>
