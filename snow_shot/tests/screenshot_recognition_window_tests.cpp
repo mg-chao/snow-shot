@@ -1656,6 +1656,77 @@ HWND windowAtPhysicalPoint(const POINT& point) {
 
 #endif
 
+void recognitionStaysBelowOverlappingToolbar() {
+    QScreen* screen = QGuiApplication::primaryScreen();
+    require(screen != nullptr, "a primary screen is required");
+    const QRect screenGeometry = screen->geometry();
+    const QRect selection(screenGeometry.bottomLeft() + QPoint(24, -240), QSize(360, 230));
+    const QRect toolbarGeometry(selection.bottomRight() - QPoint(175, 30), QSize(176, 40));
+
+    QWidget overlay(nullptr, Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+    overlay.setGeometry(screenGeometry);
+    overlay.show();
+
+    QWidget toolbar(&overlay, Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint |
+                                  Qt::WindowDoesNotAcceptFocus);
+    toolbar.setAttribute(Qt::WA_ShowWithoutActivating);
+    toolbar.setGeometry(toolbarGeometry);
+    toolbar.show();
+
+    ScreenshotRecognitionWindow window({});
+    require(window.present({.screen = screen,
+                            .transientOwner = &overlay,
+                            .geometry = selection,
+                            .canvasSelection = QRectF(QPointF(), QSizeF(selection.size())),
+                            .screenshotToolbar = &toolbar}),
+            "show the recognition surface over a selection that overlaps the toolbar");
+    const QRect overlap = selection.intersected(toolbarGeometry);
+    const QRect localOverlap = overlap.translated(-selection.topLeft());
+    auto presentation = std::make_shared<ScreenshotOcrPresentation>();
+    presentation->selection = QRect(QPoint(), selection.size());
+    ScreenshotOcrLine line;
+    line.text = QStringLiteral("Recognized text behind the toolbar");
+    line.quad = QPolygonF(QRectF(localOverlap.adjusted(4, 3, -4, -3)));
+    presentation->lines.push_back(std::move(line));
+    window.setOcrPresentation(presentation);
+
+    const auto checkToolbarInput = [&](const char* toolbarMessage) {
+        // Activation can enqueue the toolbar raise while the first pass processes native events.
+        QApplication::processEvents();
+        QApplication::processEvents();
+        require(window.geometry() == selection && window.showsOcrLayer(),
+                "toolbar overlap must preserve the recognition surface and its content");
+#ifdef Q_OS_WIN
+        if (QGuiApplication::platformName() == QStringLiteral("windows")) {
+            const QRect nativeSelection = nativeClientGeometry(window);
+            const QRect nativeOverlap = nativeSelection.intersected(nativeClientGeometry(toolbar));
+            require(!nativeOverlap.isEmpty(), "the native windows must also overlap");
+            const QPoint overlapPoint = nativeOverlap.center();
+            require(windowAtPhysicalPoint({overlapPoint.x(), overlapPoint.y()}) ==
+                        reinterpret_cast<HWND>(toolbar.winId()),
+                    toolbarMessage);
+            const QPoint outsidePoint = nativeSelection.topLeft() + QPoint(12, 12);
+            require(windowAtPhysicalPoint({outsidePoint.x(), outsidePoint.y()}) ==
+                        reinterpret_cast<HWND>(window.winId()),
+                    "the unobstructed part of the OCR window must still receive input");
+        }
+#endif
+        Q_UNUSED(toolbarMessage);
+    };
+    checkToolbarInput("the toolbar must receive input when OCR results are shown");
+    overlay.activateWindow();
+    QApplication::processEvents();
+    window.activateWindow();
+    checkToolbarInput("the toolbar must receive input after native OCR activation");
+    window.raise();
+    checkToolbarInput("the toolbar must receive input after raising the OCR window");
+
+    PhysicalKeyEvent selectAll(QEvent::KeyPress, Qt::Key_A, Qt::ControlModifier);
+    QApplication::sendEvent(&window, &selectAll);
+    require(presentation->selectedText() == presentation->lines.front().text,
+            "the recognition surface must still select text behind a toolbar overlap");
+}
+
 void recognitionMessageUsesOnlyItsPaintedShadow() {
     auto& themes = adqt::theme::ThemeManager::instance();
     const auto originalTheme = themes.config();
@@ -4584,6 +4655,10 @@ int main(int argc, char** argv) {
         recognitionWindowCanExtendBeyondItsDpiScreen();
         ocrTextHighlightingTests();
         recognitionMessageUsesOnlyItsPaintedShadow();
+        return 0;
+    }
+    if (application.arguments().contains(QStringLiteral("--toolbar-overlap-only"))) {
+        recognitionStaysBelowOverlappingToolbar();
         return 0;
     }
     if (application.arguments().contains(QStringLiteral("--ocr-box-selection-only"))) {
