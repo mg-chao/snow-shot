@@ -2196,6 +2196,30 @@ void plainExportUsesDirectSourceFastPath() {
             "cleared watermark styles and retained history must not count as document content");
 }
 
+void nativeFilteredExportPreservesTranslucentBackdrop() {
+    SnowCanvasRuntime runtime;
+    require(
+        !runtime
+             .applyAnnotationTransaction(QByteArrayLiteral(
+                 R"({"version":1,"operations":[{"type":"rectangle_filter","bounds":[8,4,30,20],"style":{"filter":"gaussian_blur","strength":0.5}}]})"))
+             .isEmpty(),
+        "the native export fixture includes a blur");
+    QImage source(48, 32, QImage::Format_ARGB32_Premultiplied);
+    source.fill(Qt::transparent);
+    {
+        QPainter painter(&source);
+        painter.fillRect(QRect(12, 8, 12, 16), QColor(40, 135, 220, 128));
+    }
+    const QRectF frame(source.rect());
+    const QList<CanvasExportSource> sources{{source, frame}};
+    const auto backdrop =
+        SnowCanvasRuntime::renderImageSourcesToImage(frame, source.size(), sources);
+    const auto expected = runtime.renderToImage(frame, source.size(), sources, backdrop);
+    const auto actual = runtime.renderToImage(frame, source.size(), sources);
+    require(!actual.isNull() && actual != source && actual == expected,
+            "a native filtered export with a shared backdrop preserves projection and alpha");
+}
+
 void annotatedExportUsesDirectSourceFastPath() {
     SnowCanvasRuntime runtime;
     SnowCanvasWidget canvas(runtime);
@@ -4065,6 +4089,7 @@ int main(int argc, char** argv) {
         exportWithoutRuntimeStillRendersSources();
         sourceOnlyExportMatchesDocumentSamplingOnWorkers();
         plainExportUsesDirectSourceFastPath();
+        nativeFilteredExportPreservesTranslucentBackdrop();
         annotatedExportUsesDirectSourceFastPath();
         runtimeExportPreservesOffscreenSourceBoundaries();
         runtimeExportUsesExactFractionalProjection();
@@ -4147,6 +4172,7 @@ int main(int argc, char** argv) {
     exportWithoutRuntimeStillRendersSources();
     sourceOnlyExportMatchesDocumentSamplingOnWorkers();
     plainExportUsesDirectSourceFastPath();
+    nativeFilteredExportPreservesTranslucentBackdrop();
     annotatedExportUsesDirectSourceFastPath();
     scalarAvx2AndThreadingProduceIdenticalPixels();
     maskedKernelsMatchAcrossBackendsAndRespectBlurMemoryBound();

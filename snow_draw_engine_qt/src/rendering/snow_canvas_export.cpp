@@ -371,10 +371,19 @@ QImage renderToImage(SnowRuntime runtime, const QRectF& virtualSelectionRect,
         return output;
     }
 
-    const QSize sceneSize = outputSize;
     QImage background = preparedBackground;
     if (background.isNull()) {
-        background = renderImageSourcesToImage(virtualSelectionRect, sceneSize, sources);
+        if (!backgroundOverlay && sources.size() == 1 && sources.front().coverage.isEmpty() &&
+            sources.front().canvasRect == virtualSelectionRect &&
+            virtualSelectionRect.size() == QSizeF(outputSize) &&
+            sources.front().image.size() == outputSize &&
+            sources.front().image.format() == QImage::Format_ARGB32_Premultiplied &&
+            sources.front().image.devicePixelRatio() == 1.0) {
+            // Filters can read this native backdrop directly without a second full raster.
+            background = sources.front().image;
+        } else {
+            background = renderImageSourcesToImage(virtualSelectionRect, outputSize, sources);
+        }
     }
     if (backgroundOverlay) {
         // Filters need a complete composed backdrop; ordinary drawing uses the output
