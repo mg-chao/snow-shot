@@ -208,6 +208,29 @@ impl TiledCanvas {
         Ok(tiles)
     }
 
+    /// Whether the current canvas already contains the complete repaint overlap.
+    /// Walk from the bottom so the cost is independent of the accumulated height.
+    pub(crate) fn tail_matches_rows(&self, frame: &Frame, start: u32, end: u32) -> bool {
+        if self.axis != StitchAxis::Vertical || self.validate_axis_range(frame, start, end).is_err()
+        {
+            return false;
+        }
+        let stride = self.cross_extent as usize * self.channels();
+        let mut remaining = &frame.pixels()[start as usize * stride..end as usize * stride];
+        for tile in self.tiles.iter().rev() {
+            if remaining.is_empty() {
+                break;
+            }
+            let count = remaining.len().min(tile.pixels.len());
+            let (prefix, suffix) = remaining.split_at(remaining.len() - count);
+            if !tile.pixels.ends_with(suffix) {
+                return false;
+            }
+            remaining = prefix;
+        }
+        remaining.is_empty()
+    }
+
     pub fn append_axis(&mut self, frame: &Frame, start: u32, end: u32) -> Result<(), StitchError> {
         self.validate_axis_range(frame, start, end)?;
         let new_extent = self
@@ -1134,6 +1157,20 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn tail_comparison_crosses_tiles_and_checks_every_channel() {
+        let rows: Vec<_> = (0..CANVAS_TILE_SPAN * 3 + 11).collect();
+        let frame = axis_values_frame(StitchAxis::Vertical, 3, &rows);
+        let canvas = TiledCanvas::new_from_frame(&frame, StitchAxis::Vertical).unwrap();
+        let end = frame.height();
+        let start = CANVAS_TILE_SPAN - 1;
+        assert!(canvas.tail_matches_rows(&frame, start, end));
+        let mut altered = frame.clone();
+        altered.pixels_mut()[(start as usize * 3) * 4 + 3] ^= 1;
+        assert!(!canvas.tail_matches_rows(&altered, start, end));
+        assert!(canvas.tail_matches_rows(&altered, start + 1, end));
     }
 
     #[test]

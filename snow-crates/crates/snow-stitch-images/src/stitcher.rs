@@ -424,13 +424,20 @@ impl StitchAccumulator {
                 let band = band_height(self.viewport_extent, transition.growth)?;
                 let overlap = band - transition.growth;
                 let canvas_perf = crate::perf::Scope::new(crate::perf::Stage::CanvasComposition);
-                let old_end = self.canvas.extent() - overlap;
-                self.canvas.truncate_end(old_end)?;
-                self.canvas.append_axis(
-                    &self.previous_raw,
-                    self.viewport_extent - band,
-                    self.viewport_extent,
-                )?;
+                let repaint_start = self.viewport_extent - band;
+                let added_start = self.viewport_extent - transition.growth;
+                let copy_from =
+                    if self
+                        .canvas
+                        .tail_matches_rows(&self.previous_raw, repaint_start, added_start)
+                    {
+                        added_start
+                    } else {
+                        self.canvas.truncate_end(self.canvas.extent() - overlap)?;
+                        repaint_start
+                    };
+                self.canvas
+                    .append_axis(&self.previous_raw, copy_from, self.viewport_extent)?;
                 canvas_perf.finish();
                 let _perf = crate::perf::Scope::new(crate::perf::Stage::ReferenceSynthesis);
                 synthesize_append_axis_in_place(

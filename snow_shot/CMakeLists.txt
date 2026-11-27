@@ -10647,6 +10647,9 @@ if(SNOW_SHOT_BUILD_BENCHMARKS)
     add_executable(snow-shot-scrolling-image-performance-benchmark
         tests/scrolling_image_performance_benchmark.cpp)
     snow_shot_configure_scrolling_replay_target(snow-shot-scrolling-image-performance-benchmark)
+    add_executable(snow-shot-scrolling-corpus-performance-benchmark
+        tests/scrolling_corpus_performance_benchmark.cpp)
+    snow_shot_configure_scrolling_replay_target(snow-shot-scrolling-corpus-performance-benchmark)
     add_executable(snow-shot-scrolling-hover-preview-benchmark
         tests/scrolling_hover_preview_benchmark.cpp)
     snow_shot_configure_scrolling_replay_target(snow-shot-scrolling-hover-preview-benchmark)

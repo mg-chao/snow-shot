@@ -124,6 +124,24 @@ impl Scope {
     pub fn finish(self) {}
 }
 
+/// Join independent stages and return both workers' inclusive counters to the caller.
+pub(crate) fn join<A: Send, B: Send>(
+    left: impl FnOnce() -> A + Send,
+    right: impl FnOnce() -> B + Send,
+) -> (A, B) {
+    #[cfg(feature = "perf-instrumentation")]
+    {
+        let ((a, first), (b, second)) = rayon::join(|| capture(left), || capture(right));
+        merge(first);
+        merge(second);
+        (a, b)
+    }
+    #[cfg(not(feature = "perf-instrumentation"))]
+    {
+        rayon::join(left, right)
+    }
+}
+
 #[cfg(all(test, feature = "perf-instrumentation"))]
 mod tests {
     use super::*;
@@ -170,6 +188,29 @@ mod tests {
             assert_eq!(snapshot().calls[Stage::FrameFreeze as usize], 3);
             merge(measured);
             assert_eq!(snapshot().calls[index], expected_calls);
+        }
+    }
+
+    #[test]
+    fn joined_stages_contribute_once_to_the_calling_thread() {
+        reset();
+        Scope::new(Stage::PushTotal).finish();
+        assert_eq!(
+            join(
+                || {
+                    Scope::new(Stage::Grayscale).finish();
+                    3
+                },
+                || {
+                    Scope::new(Stage::FeatureExtraction).finish();
+                    7
+                }
+            ),
+            (3, 7)
+        );
+        let record = snapshot();
+        for stage in [Stage::PushTotal, Stage::Grayscale, Stage::FeatureExtraction] {
+            assert_eq!(record.calls[stage as usize], 1);
         }
     }
 

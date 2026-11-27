@@ -431,6 +431,7 @@ if(NOT TARGET snow-benchmarks)
         snow-shot-scrolling-preview-benchmark
         snow-shot-scrolling-result-async-benchmark
         snow-shot-scrolling-image-performance-benchmark
+        snow-shot-scrolling-corpus-performance-benchmark
     )
         if(TARGET ${_snow_benchmark})
             add_dependencies(snow-benchmarks ${_snow_benchmark})

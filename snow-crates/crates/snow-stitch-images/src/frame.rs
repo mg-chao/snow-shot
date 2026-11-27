@@ -450,6 +450,10 @@ impl Frame {
         self.pixels.into_buffer()
     }
 
+    pub(crate) fn has_shared_pixels(&self) -> bool {
+        matches!(self.pixels, FramePixels::Shared(_))
+    }
+
     pub(crate) fn pixels_mut(&mut self) -> &mut RasterBuffer {
         self.pixels.make_owned()
     }
@@ -538,6 +542,9 @@ impl Frame {
         let _perf = crate::perf::Scope::new(crate::perf::Stage::DuplicateCheck);
         if self.geometry() != other.geometry() {
             return false;
+        }
+        if self.pixels.as_ptr() == other.pixels.as_ptr() {
+            return true;
         }
         match self.pixel_format {
             PixelFormat::Gray8 | PixelFormat::Rgb8 => self.pixels == other.pixels,

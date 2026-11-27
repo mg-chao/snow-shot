@@ -443,31 +443,37 @@ pub(super) unsafe fn descriptor(image: &Image, keypoint: Keypoint) -> [u8; 32] {
     let cosine = radians.cos();
     let sine = radians.sin();
     let (pattern_x, pattern_y) = orb_pattern_xy();
-    let mut samples = [0_u8; 512];
+    if image.pixels.len() > i32::MAX as usize {
+        return descriptor_scalar(image, keypoint);
+    }
+    let center = vdupq_n_s32((center_y * image.width as isize + center_x) as i32);
+    let pixels = image.pixels.as_slice();
+    let mut bytes = [0; 32];
     unsafe {
-        for start in (0..512).step_by(4) {
-            let x = vcvtq_f32_s32(vld1q_s32(pattern_x.as_ptr().add(start)));
-            let y = vcvtq_f32_s32(vld1q_s32(pattern_y.as_ptr().add(start)));
-            let rx = vcvtnq_s32_f32(vsubq_f32(vmulq_n_f32(x, cosine), vmulq_n_f32(y, sine)));
-            let ry = vcvtnq_s32_f32(vaddq_f32(vmulq_n_f32(x, sine), vmulq_n_f32(y, cosine)));
-            let mut xs = [0_i32; 4];
-            let mut ys = [0_i32; 4];
-            vst1q_s32(xs.as_mut_ptr(), rx);
-            vst1q_s32(ys.as_mut_ptr(), ry);
-            for lane in 0..4 {
-                samples[start + lane] = image.pixels[(center_y + ys[lane] as isize) as usize
-                    * image.width
-                    + (center_x + xs[lane] as isize) as usize];
+        let weights = vld1_u8([1, 2, 4, 8, 16, 32, 64, 128].as_ptr());
+        for (index, byte) in bytes.iter_mut().enumerate() {
+            let mut samples = [0_u8; 16];
+            for (group, dst) in samples.chunks_exact_mut(4).enumerate() {
+                let start = 16 * index + group * 4;
+                let x = vcvtq_f32_s32(vld1q_s32(pattern_x.as_ptr().add(start)));
+                let y = vcvtq_f32_s32(vld1q_s32(pattern_y.as_ptr().add(start)));
+                let rx = vcvtnq_s32_f32(vsubq_f32(vmulq_n_f32(x, cosine), vmulq_n_f32(y, sine)));
+                let ry = vcvtnq_s32_f32(vaddq_f32(vmulq_n_f32(x, sine), vmulq_n_f32(y, cosine)));
+                let at = vmlaq_n_s32(vaddq_s32(center, rx), ry, image.width as i32);
+                let mut offsets = [0; 4];
+                vst1q_s32(offsets.as_mut_ptr(), at);
+                for (dst, offset) in dst.iter_mut().zip(offsets) {
+                    *dst = pixels[offset as usize];
+                }
             }
+            let group = vld1q_u8(samples.as_ptr());
+            let (low, high) = (vget_low_u8(group), vget_high_u8(group));
+            let bits = vclt_u8(vuzp1_u8(low, high), vuzp2_u8(low, high));
+            *byte = vaddv_u8(vand_u8(bits, weights));
         }
     }
     executed(3);
-    std::array::from_fn(|byte| {
-        (0..8).fold(0, |value, bit| {
-            value
-                | (u8::from(samples[byte * 16 + bit * 2] < samples[byte * 16 + bit * 2 + 1]) << bit)
-        })
-    })
+    bytes
 }
 
 #[cfg(test)]
