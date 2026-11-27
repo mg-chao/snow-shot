@@ -4289,7 +4289,8 @@ void ScreenshotController::Impl::pinClipboardContentToScreen() {
         snapshot->encodedImages.isEmpty() && !snapshot->localImage.has_value() &&
         ((snapshot->nativeDib.has_value() && snapshot->nativeDib->isValid()) ||
          (!snapshot->detachedImage.isNull() && !snapshot->detachedImage.size().isEmpty()));
-    const char* perfScenario = !snapshot->encodedImages.isEmpty() ? "clipboard-image-encoded"
+    const bool encodedImage = !snapshot->encodedImages.isEmpty() || !snapshot->nativeTiff.isEmpty();
+    const char* perfScenario = encodedImage                       ? "clipboard-image-encoded"
                                : clipboardFastPath                ? "clipboard-image-detached"
                                : snapshot->localImage.has_value() ? "clipboard-file-image"
                                : !snapshot->html.isEmpty()        ? "clipboard-html"

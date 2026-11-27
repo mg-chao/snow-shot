@@ -107,6 +107,8 @@ struct ScreenshotClipboardContentSnapshot final {
     std::optional<PinnedColorSwatchStyle> colorSwatchStyle;
     QList<ScreenshotClipboardEncodedImage> encodedImages;
     std::optional<ScreenshotClipboardNativeDib> nativeDib;
+    // Native encoded bytes stay intact until the decode worker can use ImageIO.
+    QByteArray nativeTiff;
     QImage detachedImage;
     std::optional<ScreenshotClipboardLocalImage> localImage;
     QString html;
@@ -115,14 +117,15 @@ struct ScreenshotClipboardContentSnapshot final {
     qreal devicePixelRatio = 1.0;
     std::optional<ScreenshotClipboardPlacement> placement = std::nullopt;
     std::optional<ScreenshotClipboardAppearance> appearance = std::nullopt;
+    bool nativePngFallback = false;
 
     snow_shot::storage::PinnedTextFormat textFormat =
         snow_shot::storage::PinnedTextFormat::PlainText;
 
     [[nodiscard]] bool isValid() const {
         return !encodedImages.isEmpty() || (nativeDib.has_value() && nativeDib->isValid()) ||
-               !detachedImage.isNull() || localImage.has_value() || !html.isEmpty() ||
-               !text.isEmpty();
+               !nativeTiff.isEmpty() || !detachedImage.isNull() || localImage.has_value() ||
+               !html.isEmpty() || !text.isEmpty();
     }
 };
 
