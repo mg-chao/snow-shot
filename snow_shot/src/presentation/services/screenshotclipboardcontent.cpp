@@ -72,6 +72,16 @@ using AllocationCheck = ScreenshotClipboardContentReader::AllocationCheck;
 using snow_shot::app::PinDocumentFormat;
 using snow_shot::storage::PinnedTextFormat;
 
+QStringList clipboardFileIconMimeTypes([[maybe_unused]] const QMimeData& mimeData) {
+#ifdef Q_OS_MACOS
+    return snow_shot::platform::macos::clipboardFileIconMimeTypes(mimeData);
+#else
+    return {};
+#endif
+}
+
+constexpr QLatin1StringView kQtImageMimeType("application/x-qt-image");
+
 bool isTextFile(const QString& suffix) {
     return snow_shot::app::pinDocumentFileFormat(suffix).has_value();
 }
@@ -703,6 +713,7 @@ snow_shot::presentation::detail::snapshotClipboardMimeData(
             return std::nullopt;
     }
 
+    const auto fileIconTypes = clipboardFileIconMimeTypes(*mimeData);
     for (const EncodedImageFormat& candidate : kEncodedImageFormats) {
         const QLatin1String mimeType(candidate.mimeType);
         // Reuse the exact encoded formats copied under the native clipboard lock.
@@ -712,7 +723,7 @@ snow_shot::presentation::detail::snapshotClipboardMimeData(
                             return encoded.mimeType == mimeType;
                         }))
             continue;
-        if (!mimeData->hasFormat(mimeType)) {
+        if (fileIconTypes.contains(mimeType) || !mimeData->hasFormat(mimeType)) {
             continue;
         }
         // QMimeData may invoke an external lazy provider and offers no byte-size
@@ -728,7 +739,7 @@ snow_shot::presentation::detail::snapshotClipboardMimeData(
         }
     }
 
-    if (includeDetachedImage) {
+    if (includeDetachedImage && !fileIconTypes.contains(kQtImageMimeType)) {
         if (allocate && mimeData->hasImage() &&
             !allocate(snapshotBytes(snapshot) + kMaximumClipboardImageBytes))
             return std::nullopt;
@@ -1099,12 +1110,16 @@ QStringList ScreenshotClipboardContentReader::localFilePaths(const QMimeData* mi
 }
 
 bool ScreenshotClipboardContentReader::hasSupportedInlineImage(const QMimeData* mimeData) {
-    return mimeData &&
-           (mimeData->hasImage() ||
-            std::any_of(std::begin(kEncodedImageFormats), std::end(kEncodedImageFormats),
-                        [mimeData](const EncodedImageFormat& format) {
-                            return mimeData->hasFormat(QLatin1String(format.mimeType));
-                        }));
+    if (!mimeData)
+        return false;
+    const auto fileIconTypes = clipboardFileIconMimeTypes(*mimeData);
+    return (!fileIconTypes.contains(kQtImageMimeType) && mimeData->hasImage()) ||
+           std::any_of(std::begin(kEncodedImageFormats), std::end(kEncodedImageFormats),
+                       [mimeData, &fileIconTypes](const EncodedImageFormat& format) {
+                           const QLatin1String mimeType(format.mimeType);
+                           return !fileIconTypes.contains(mimeType) &&
+                                  mimeData->hasFormat(mimeType);
+                       });
 }
 
 QStringList ScreenshotClipboardContentReader::filePathsForImport(const QMimeData* mimeData) {
@@ -1268,7 +1283,8 @@ snapshotClipboardOnce(QClipboard* clipboard, qreal devicePixelRatio, AllocationC
         // Providers that expose only QMimeData::imageData() remain supported.
         SNOW_SHOT_PIN_PERF_COUNTER("clipboard.native_dib_fallback", 1);
         const auto* mime = clipboard->mimeData();
-        if (mime && (!imagesOnly || mime->hasImage() || !snapshot->encodedImages.isEmpty())) {
+        if (mime && (!imagesOnly || mime->hasImage() || !snapshot->encodedImages.isEmpty()) &&
+            !clipboardFileIconMimeTypes(*mime).contains(kQtImageMimeType)) {
             if (checked && !checked(snapshotBytes(*snapshot) + kMaximumClipboardImageBytes))
                 return std::nullopt;
             const auto value = mime->imageData();

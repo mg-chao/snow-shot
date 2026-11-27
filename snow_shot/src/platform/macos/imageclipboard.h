@@ -1,11 +1,13 @@
 #ifndef SNOW_SHOT_PLATFORM_MACOS_IMAGECLIPBOARD_H
 #define SNOW_SHOT_PLATFORM_MACOS_IMAGECLIPBOARD_H
 
+#include <QStringList>
 #include <QtTypes>
 #include <optional>
 
 class QByteArray;
 class QClipboard;
+class QMimeData;
 class QString;
 
 namespace snow_shot::platform::macos {
@@ -18,6 +20,7 @@ publishImageClipboard(QClipboard* clipboard, const QByteArray& png, const QByteA
 // derived from its PNG, so a reader retaining PNG needs no bitmap fallback.
 // Callers must check the clipboard revision around the complete snapshot.
 [[nodiscard]] bool imageClipboardBitmapIsDerivedFromPng();
+[[nodiscard]] QStringList clipboardFileIconMimeTypes(const QMimeData& mimeData);
 } // namespace snow_shot::platform::macos
 
 #endif

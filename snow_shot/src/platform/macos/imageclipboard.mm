@@ -6,6 +6,7 @@
 #include <QGuiApplication>
 #include <QImage>
 #include <QImageReader>
+#include <QMimeData>
 #include <QObject>
 #include <QPointer>
 #include <QUtiMimeConverter>
@@ -184,6 +185,36 @@ bool imageClipboardBitmapIsDerivedFromPng() {
         !imagePasteboardOwner->published)
         return false;
     return NSPasteboard.generalPasteboard.changeCount == imagePasteboardOwner->native->revision;
+}
+
+QStringList clipboardFileIconMimeTypes(const QMimeData& mimeData) {
+    if (QGuiApplication::platformName() != QStringLiteral("cocoa") || !mimeData.hasUrls() ||
+        QGuiApplication::clipboard()->mimeData() != &mimeData)
+        return {};
+
+    @autoreleasepool {
+        bool hasFileIcon = false;
+        bool hasExplicitPng = false;
+        bool hasExplicitTiff = false;
+        // Cocoa can synthesize PNG and TIFF from Finder's ICNS. The individual
+        // items list the original representations without those conversions.
+        for (NSPasteboardItem* item in NSPasteboard.generalPasteboard.pasteboardItems) {
+            const auto* types = item.types;
+            if ([types containsObject:NSPasteboardTypePNG])
+                hasExplicitPng = true;
+            if ([types containsObject:NSPasteboardTypeTIFF])
+                hasExplicitTiff = true;
+            if ([types containsObject:NSPasteboardTypeFileURL] &&
+                [types containsObject:@"com.apple.icns"])
+                hasFileIcon = true;
+        }
+        QStringList formats;
+        if (hasFileIcon && !hasExplicitPng)
+            formats.append(QStringLiteral("image/png"));
+        if (hasFileIcon && !hasExplicitTiff)
+            formats.append(QStringLiteral("application/x-qt-image"));
+        return formats;
+    }
 }
 
 std::optional<quint64> publishImageClipboard(QClipboard* clipboard, const QByteArray& png,
