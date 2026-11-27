@@ -5,6 +5,11 @@ use std::{
 
 use rayon::prelude::*;
 
+mod registration;
+use registration::{Registration, RegistrationSearch};
+#[cfg(test)]
+mod table_tests;
+
 use crate::{
     CandidateDiagnostics, Frame, Geometry, MotionDiagnostics, MotionEstimate,
     MotionEstimatorOptions, MotionStage, PixelFormat, StitchAxis, StitchError,
@@ -55,6 +60,7 @@ struct FeatureEvidence {
 
 struct EvaluationImages<'a> {
     reference: &'a Frame,
+    previous_raw: &'a Frame,
     incoming: &'a Frame,
     reference_gray: &'a GrayImage,
     incoming_gray: &'a GrayImage,
@@ -78,18 +84,14 @@ impl EvaluatedMotion {
     }
 
     fn needs_full_resolution(&self) -> bool {
-        !matches!(self.estimate.outcome, crate::MotionOutcome::Motion { .. })
-            || self.margin <= 0.0
-            || !self
-                .estimate
-                .diagnostics
-                .candidates
-                .first()
-                .is_some_and(|candidate| {
-                    candidate
-                        .precise_alignment_error
-                        .is_some_and(|error| error < 1.0)
-                })
+        let Some(best) = self.estimate.diagnostics.candidates.first() else {
+            return true;
+        };
+        let precise = best
+            .precise_alignment_error
+            .is_some_and(|error| error < 1.0);
+        self.estimate.offset().is_none()
+            || !(best.overlap_blocks.is_some() || (self.margin > 0.0 && precise))
     }
 }
 
@@ -788,9 +790,16 @@ fn score_candidate(
         spatial_coverage,
         alignment_error,
         precise_alignment_error: None,
+        overlap_blocks: None,
         residual_gain,
         score,
     }
+}
+
+fn has_motion_support(candidate: &CandidateDiagnostics) -> bool {
+    candidate.raw_inliers >= MIN_INLIER_MATCHES
+        && candidate.inlier_tiles >= MIN_INLIER_TILES
+        && candidate.residual_gain >= MIN_RESIDUAL_GAIN
 }
 
 fn luminance_at(frame: &Frame, x: u32, y: u32) -> u8 {
@@ -1207,15 +1216,21 @@ impl VerticalMotionEstimator {
             .as_ref()
             .expect("prepared reference grayscale");
         cache.previous_features = Some(incoming_features);
+        let primary_extent = self
+            .axis
+            .primary_extent(self.geometry.width, self.geometry.height);
+        let maximum_shift = (primary_extent as f32 * self.options.max_motion_ratio).floor() as i32;
         let images = EvaluationImages {
             reference: motion_reference,
+            previous_raw,
             incoming,
             reference_gray,
             incoming_gray: &incoming_gray,
             direct: &direct,
             zero_alignment,
         };
-        let mut evaluated = self.evaluate(&images, evidence);
+        let mut search = None;
+        let mut evaluated = self.evaluate(&images, evidence, maximum_shift, &mut search);
         if self.sampling.reduced() && evaluated.needs_full_resolution() {
             let pyramid = self.full_pyramid_plan.get_or_init(|| {
                 crate::orb::PyramidPlan::new(
@@ -1235,7 +1250,7 @@ impl VerticalMotionEstimator {
                 &mut cache.full_reference_features,
             );
             cache.previous_full_features = Some(incoming_features);
-            evaluated = self.evaluate(&images, evidence);
+            evaluated = self.evaluate(&images, evidence, maximum_shift, &mut search);
         }
         cache.previous_raw = Some(Arc::new(incoming_gray));
         Ok(self.commit_evaluation(evaluated))
@@ -1255,13 +1270,16 @@ impl VerticalMotionEstimator {
         }
     }
 
-    fn evaluate(
+    fn evaluate<'a>(
         &self,
-        images: &EvaluationImages<'_>,
+        images: &EvaluationImages<'a>,
         evidence: FeatureEvidence,
+        maximum_shift: i32,
+        search: &mut Option<RegistrationSearch<'a>>,
     ) -> EvaluatedMotion {
         let EvaluationImages {
             reference: motion_reference,
+            previous_raw,
             incoming,
             reference_gray,
             incoming_gray,
@@ -1269,34 +1287,38 @@ impl VerticalMotionEstimator {
             zero_alignment,
         } = *images;
         let direct_similarity = direct.mean();
-        let primary_extent = self
-            .axis
-            .primary_extent(self.geometry.width, self.geometry.height);
-        let maximum_shift = (primary_extent as f32 * self.options.max_motion_ratio)
-            .floor()
-            .clamp(0.0, i32::MAX as f32) as i32;
         let mut diagnostics = MotionDiagnostics::at(MotionStage::EmptyDescriptors);
         diagnostics.reference_keypoints = evidence.reference_features;
         diagnostics.incoming_keypoints = evidence.incoming_features;
         diagnostics.direct_similarity = direct_similarity;
-        if evidence.observations.is_empty() {
-            return EvaluatedMotion::rejected(direct_similarity < 0.6, 0.0, diagnostics);
-        }
-
         let observations = evidence.observations;
         diagnostics.mutual_matches = observations.len() as u32;
-        if observations.is_empty() {
-            diagnostics.stage = MotionStage::NoMatches;
-            return EvaluatedMotion::rejected(direct_similarity < 0.6, 0.0, diagnostics);
-        }
-
-        let scoring_perf = crate::perf::Scope::new(crate::perf::Stage::CandidateScoring);
         let candidates = candidate_offsets(&observations, self.axis, maximum_shift);
-        if candidates.is_empty() {
-            diagnostics.stage = MotionStage::NoCandidates;
+        let scoring_perf = crate::perf::Scope::new(crate::perf::Stage::CandidateScoring);
+        let registration = if maximum_shift > 0 {
+            search
+                .get_or_insert_with(|| {
+                    RegistrationSearch::new(
+                        motion_reference,
+                        previous_raw,
+                        incoming,
+                        self.axis,
+                        maximum_shift,
+                        self.options.min_confidence,
+                    )
+                })
+                .register(&candidates)
+        } else {
+            Registration::Unavailable
+        };
+        if let Registration::Ambiguous(aliases) = registration {
+            diagnostics.stage = MotionStage::LowConfidence;
+            diagnostics.ambiguous_offsets = aliases;
+            return EvaluatedMotion::rejected(false, 0.0, diagnostics);
+        }
+        if observations.is_empty() && matches!(registration, Registration::Unavailable) {
             return EvaluatedMotion::rejected(direct_similarity < 0.6, 0.0, diagnostics);
         }
-
         let score = |offset| {
             let compensated = if offset == 0 {
                 None
@@ -1332,6 +1354,30 @@ impl VerticalMotionEstimator {
         });
 
         scoring_perf.finish();
+        if let Registration::Verified {
+            offset,
+            confidence,
+            error,
+            blocks,
+        } = registration
+        {
+            let index = scored.iter().position(|c| c.offset == offset);
+            let mut verified = index.map_or_else(|| score(offset), |i| scored[i].clone());
+            if let Some(i) = index {
+                scored.remove(i);
+            }
+            verified.overlap_blocks = Some(blocks);
+            verified.precise_alignment_error = Some(error);
+            scored.insert(0, verified);
+            diagnostics.stage = MotionStage::Selected;
+            diagnostics.selected_offset = Some(offset);
+            diagnostics.candidates = scored;
+            return EvaluatedMotion {
+                estimate: MotionEstimate::motion(offset, confidence, diagnostics),
+                scene_cut: false,
+                margin: confidence,
+            };
+        }
         let strongest_mode = scored[0].offset;
         if strongest_mode != 0 {
             let _perf = crate::perf::Scope::new(crate::perf::Stage::Refinement);
@@ -1343,30 +1389,12 @@ impl VerticalMotionEstimator {
                 maximum_shift,
                 &observations,
             );
-            let mut refined = if let Some(index) = scored
+            let mut candidate = scored
                 .iter()
-                .position(|candidate| candidate.offset == refined_offset)
-            {
-                scored.remove(index)
-            } else {
-                let compensated = SimilarityMap::between(
-                    reference_gray,
-                    incoming_gray,
-                    self.layout,
-                    self.axis,
-                    refined_offset,
-                );
-                score_candidate(
-                    refined_offset,
-                    self.axis,
-                    &observations,
-                    direct,
-                    zero_alignment,
-                    &compensated,
-                )
-            };
-            refined.precise_alignment_error = Some(precise_error);
-            scored.insert(0, refined);
+                .position(|c| c.offset == refined_offset)
+                .map_or_else(|| score(refined_offset), |i| scored.remove(i));
+            candidate.precise_alignment_error = Some(precise_error);
+            scored.insert(0, candidate);
         }
 
         let best_score = scored[0].score;
@@ -1399,10 +1427,7 @@ impl VerticalMotionEstimator {
             };
         }
 
-        let accepted = best.raw_inliers >= MIN_INLIER_MATCHES
-            && best.inlier_tiles >= MIN_INLIER_TILES
-            && best.residual_gain >= MIN_RESIDUAL_GAIN
-            && confidence >= self.options.min_confidence;
+        let accepted = has_motion_support(best) && confidence >= self.options.min_confidence;
         if accepted {
             let selected_offset = best.offset;
             diagnostics.stage = MotionStage::Selected;
@@ -1736,6 +1761,7 @@ mod tests {
                 spatial_coverage: 1.0,
                 alignment_error: 0.0,
                 precise_alignment_error: Some(1.0),
+                overlap_blocks: None,
                 residual_gain: 1.0,
                 score: 1.0,
             });

@@ -1568,6 +1568,7 @@ mod tests {
             mutual_matches: 0,
             direct_similarity: 0.0,
             selected_offset: None,
+            ambiguous_offsets: Vec::new(),
             candidates: Vec::new(),
         };
         assert!(matches!(
