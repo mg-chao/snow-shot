@@ -1,11 +1,13 @@
 #include "snow_shot/presentation/screenshotclipboardservice.h"
 #include "snow_shot/presentation/screenshotclipboardcontent.h"
 #include "snow_shot/presentation/screenshotimageconversionclipboard.h"
+#include "pinned_animation_fixtures.h"
 
 #include <QApplication>
 #include <QBuffer>
 #include <QClipboard>
 #include <QEventLoop>
+#include <QFile>
 #include <QMimeData>
 #include <QTimer>
 #include <QColorSpace>
@@ -143,6 +145,89 @@ void readForeignPngBeforePublication() {
     require(content && hasSamePixels(content->image, imageFixture()) &&
                 content->image.colorSpace() == QColorSpace(QColorSpace::SRgb),
             "a fresh PNG reader must preserve pixels, transparency, and color space");
+}
+
+void finderFileIconDoesNotMaskGif() {
+    const auto gif = pinned_animation_fixtures::images().constFirst();
+    QTemporaryDir directory;
+    require(directory.isValid(), "GIF clipboard fixture needs temporary storage");
+    const QString path = directory.filePath(QStringLiteral("Finder GIF 雪.gif"));
+    QFile file(path);
+    require(file.open(QIODevice::WriteOnly) && file.write(gif.bytes) == gif.bytes.size(),
+            "write the animated GIF fixture");
+    file.close();
+
+    QImage icon(128, 128, QImage::Format_RGB32);
+    icon.fill(Qt::blue);
+    const auto iconImage = icon.toCGImage();
+    auto* iconData = [NSMutableData data];
+    const auto encoder = CGImageDestinationCreateWithData(
+        reinterpret_cast<CFMutableDataRef>(iconData), CFSTR("com.apple.icns"), 1, nullptr);
+    require(encoder && iconImage, "create an ICNS file icon fixture");
+    CGImageDestinationAddImage(encoder, iconImage, nullptr);
+    const bool iconEncoded = CGImageDestinationFinalize(encoder);
+    CFRelease(encoder);
+    CGImageRelease(iconImage);
+    require(iconEncoded, "encode the ICNS file icon fixture");
+
+    const auto publishFile = [&](NSData* bitmap, NSPasteboardType type) {
+        NSPasteboardItem* item = [[[NSPasteboardItem alloc] init] autorelease];
+        require([item setString:QUrl::fromLocalFile(path).toString(QUrl::FullyEncoded).toNSString()
+                        forType:NSPasteboardTypeFileURL] &&
+                    [item setData:iconData forType:@"com.apple.icns"] &&
+                    (!bitmap || [item setData:bitmap forType:type]),
+                "write the file URL and image representations");
+        NSPasteboard* board = NSPasteboard.generalPasteboard;
+        [board clearContents];
+        require([board writeObjects:@[ item ]], "publish a file copy");
+    };
+    publishFile(nil, nil);
+
+    auto* clipboard = QApplication::clipboard();
+    const auto* mime = clipboard->mimeData();
+    require(mime->hasImage() && clipboard->image().size() == icon.size(),
+            "Cocoa must expose the synthesized file icon as a Qt clipboard image");
+    require(!ScreenshotClipboardContentReader::snapshotImage(clipboard, 1.0),
+            "the image-only reader must not capture a file icon");
+    require(ScreenshotClipboardContentReader::filePathsForImport(mime) == QStringList{path},
+            "clipboard pinning must route Finder copies through file import");
+    const auto direct = ScreenshotClipboardContentReader::readMimeData(mime, 1.0);
+    require(direct && direct->animationSource && direct->originalContent.localFilePath == path,
+            "a direct MIME read must also import the GIF file");
+    auto snapshot = ScreenshotClipboardContentReader::snapshot(clipboard, 1.0);
+    require(snapshot && snapshot->localImage && snapshot->detachedImage.isNull(),
+            "the clipboard reader must retain the GIF file without capturing its icon");
+    auto content = ScreenshotClipboardContentReader::decode(std::move(*snapshot));
+    require(content && content->image.size() == QSize(2, 2) &&
+                content->image.pixelColor(0, 0) == Qt::red && content->animationSource &&
+                content->animationSource->encoded == gif.bytes &&
+                content->originalContent.localFilePath == path,
+            "Finder GIF pinning must keep the actual pixels, file path, and animation");
+
+    const auto source = imageFixture();
+    const auto sourceImage = source.toCGImage();
+    NSBitmapImageRep* representation =
+        [[[NSBitmapImageRep alloc] initWithCGImage:sourceImage] autorelease];
+    CGImageRelease(sourceImage);
+    NSData* tiff = representation.TIFFRepresentation;
+    require(tiff.length > 0, "encode an explicitly copied TIFF bitmap");
+    publishFile(tiff, NSPasteboardTypeTIFF);
+    require(ScreenshotClipboardContentReader::filePathsForImport(clipboard->mimeData()).isEmpty(),
+            "an explicitly copied bitmap must take priority over a file URL and icon");
+    auto mixed = ScreenshotClipboardContentReader::snapshot(clipboard, 1.0);
+    require(mixed && mixed->encodedImages.isEmpty() && hasSamePixels(mixed->detachedImage, source),
+            "the clipboard reader must retain the explicitly copied bitmap");
+
+    const auto png = ScreenshotClipboardService::prepareImage(source).pngBytes();
+    publishFile(png.toNSData(), NSPasteboardTypePNG);
+    require(ScreenshotClipboardContentReader::filePathsForImport(clipboard->mimeData()).isEmpty(),
+            "an explicitly copied PNG must take priority over a file URL and icon");
+    mixed = ScreenshotClipboardContentReader::snapshot(clipboard, 1.0);
+    require(mixed && mixed->encodedImages.size() == 1 && mixed->detachedImage.isNull(),
+            "the clipboard reader must retain an explicitly copied PNG without the icon");
+    content = ScreenshotClipboardContentReader::decode(std::move(*mixed));
+    require(content && hasSamePixels(content->image, source),
+            "the explicitly copied PNG must retain its original pixels");
 }
 
 void snapshotSkipsDerivedBitmapAndRetainsForeignFallback() {
@@ -377,6 +462,7 @@ int main(int argc, char** argv) {
         }
         nativeHtmlFormatsRoundTrip();
         readForeignPngInFreshProcess();
+        finderFileIconDoesNotMaskGif();
         snapshotSkipsDerivedBitmapAndRetainsForeignFallback();
         publicationReleasesEncodedInputs();
         nativeMetadataAndNotifications();
