@@ -2226,6 +2226,41 @@ void sharedEncodingsCoverNativeAndConvertedImages() {
     completedEncodingCommandsReleaseNativePixels();
 }
 
+void encodersScanOpacityOnlyWhenNeeded() {
+    using snow::image::Format;
+    const QImage image = testImage();
+    int scans = 0;
+    auto rows = rowSourceFor(image, {});
+    rows.classifyAlpha = [&scans](const std::function<bool()>&) {
+        ++scans;
+        return ScreenshotImageAlphaContent::Opaque;
+    };
+    const auto encode = [&](Format format, const snow::image::EncodeOptions& options = {}) {
+        QBuffer buffer;
+        require(buffer.open(QIODevice::WriteOnly) &&
+                    snow_shot::image_codec::encodeToDevice(rows, &buffer, format, options),
+                "the row-backed encoding fixture must succeed");
+        return buffer.data();
+    };
+
+    const auto bmp = encode(Format::bmp);
+    require(scans == 0 && hasSamePixels(QImage::fromData(bmp, "BMP"), image),
+            "BMP must encode the original pixels without scanning for opacity");
+    encode(Format::tiff);
+    encode(Format::webp);
+    require(scans == 0, "TIFF and WebP must skip the opacity scan");
+
+    const auto png = QImage::fromData(encode(Format::png), "PNG");
+    require(scans == 1 && !png.hasAlphaChannel() && hasSamePixels(png, image),
+            "PNG must use verified opacity to omit alpha and preserve the pixels");
+
+    snow::image::EncodeOptions verified;
+    verified.verified_alpha_content = snow::image::AlphaContent::opaque;
+    const auto verifiedPng = QImage::fromData(encode(Format::png, verified), "PNG");
+    require(scans == 1 && !verifiedPng.hasAlphaChannel() && hasSamePixels(verifiedPng, image),
+            "PNG must reuse explicitly verified opacity without scanning");
+}
+
 void pdfPayloadReusePreservesDestinationMetadata() {
     QTemporaryDir directory;
     QObject receiver;
@@ -4485,6 +4520,7 @@ int main(int argc, char** argv) {
         auto& diagnostics = snow_shot::diagnostics::DiagnosticsService::instance();
         require(diagnostics.initialize(logging), "export diagnostics must initialize");
         if (application.arguments().contains(QStringLiteral("--file-encodings-only"))) {
+            encodersScanOpacityOnlyWhenNeeded();
             sharedEncodingsCoverNativeAndConvertedImages();
             fileEncodingsCoalesceAndNormalizeOptions();
             diagnostics.shutdown();
@@ -4646,6 +4682,7 @@ int main(int argc, char** argv) {
         }
         nonPngSaveReadsPixelsWithoutEncodingPng();
         stagedFilesPublishExclusivelyWithBoundedFallback();
+        encodersScanOpacityOnlyWhenNeeded();
         sharedEncodingsCoverNativeAndConvertedImages();
         fileEncodingsCoalesceAndNormalizeOptions();
         pdfPayloadReusePreservesDestinationMetadata();

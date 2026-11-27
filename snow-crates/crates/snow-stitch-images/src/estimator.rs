@@ -406,6 +406,48 @@ fn prune_reverse_candidates(forward: &mut [Option<DescriptorMatch>], incoming_co
     }
 }
 
+fn match_with_exact_lookup(
+    reference: &[BinaryFeature],
+    incoming: &[BinaryFeature],
+) -> Vec<Option<DescriptorMatch>> {
+    if incoming.len() < 32 || reference.len() < 32 {
+        return match_descriptors(reference, incoming);
+    }
+    // A zero-distance descriptor wins the ratio test exactly when it is unique.
+    // Keep all incoming rivals for the remaining queries' nearest-two search.
+    let mut exact = std::collections::HashMap::with_capacity(incoming.len());
+    for (i, feature) in incoming.iter().enumerate() {
+        exact
+            .entry(&feature.descriptor)
+            .and_modify(|index| *index = None)
+            .or_insert(Some(i));
+    }
+    let mut forward = vec![None; reference.len()];
+    let mut unresolved = Vec::with_capacity(reference.len());
+    let mut indices = Vec::with_capacity(reference.len());
+    for (i, feature) in reference.iter().enumerate() {
+        match exact.get(&feature.descriptor) {
+            Some(index) => {
+                forward[i] = index.map(|train_index| DescriptorMatch {
+                    train_index,
+                    distance: 0,
+                })
+            }
+            None => {
+                unresolved.push(*feature);
+                indices.push(i);
+            }
+        }
+    }
+    for (i, matched) in indices
+        .into_iter()
+        .zip(match_descriptors(&unresolved, incoming))
+    {
+        forward[i] = matched;
+    }
+    forward
+}
+
 fn mutual_observations_rust(
     reference: &[BinaryFeature],
     incoming: &[BinaryFeature],
@@ -415,7 +457,7 @@ fn mutual_observations_rust(
     if reference.len() < 2 || incoming.len() < 2 {
         return Vec::new();
     }
-    let mut forward = match_descriptors(reference, incoming);
+    let mut forward = match_with_exact_lookup(reference, incoming);
     prune_reverse_candidates(&mut forward, incoming.len());
     forward
         .into_par_iter()
@@ -431,13 +473,17 @@ fn mutual_observations_rust(
             }
             let reference_tile = layout.index(feature.x, feature.y)?;
             // References that did not choose this incoming feature can still rule it out.
-            if reference.iter().enumerate().any(|(index, other)| {
-                index != reference_index
-                    && !beats_lowe_ratio(
-                        matched.distance,
-                        hamming_distance(&incoming_feature.descriptor, &other.descriptor),
-                    )
-            }) {
+            // Identical references choose the same unique incoming descriptor and
+            // were already removed as ties by prune_reverse_candidates.
+            if matched.distance != 0
+                && reference.iter().enumerate().any(|(index, other)| {
+                    index != reference_index
+                        && !beats_lowe_ratio(
+                            matched.distance,
+                            hamming_distance(&incoming_feature.descriptor, &other.descriptor),
+                        )
+                })
+            {
                 return None;
             }
             Some(MatchObservation {
@@ -1860,6 +1906,28 @@ mod tests {
     }
 
     #[test]
+    fn exact_lookup_preserves_duplicates_unmatched_queries_and_ratio_ties() {
+        let feature = |i: u8| BinaryFeature {
+            x: f32::from(i),
+            y: 5.0,
+            descriptor: std::array::from_fn(|j| {
+                i.wrapping_mul(73).wrapping_add((j as u8).wrapping_mul(7))
+            }),
+        };
+        let mut train: Vec<_> = (0..67).map(feature).collect();
+        train[61] = train[3];
+        let mut queries = train.clone();
+        for q in queries.iter_mut().skip(10).step_by(2) {
+            q.descriptor[0] ^= 9;
+        }
+        queries[57] = feature(200);
+        assert_eq!(
+            match_with_exact_lookup(&queries, &train),
+            match_descriptors_portable(&queries, &train)
+        );
+    }
+
+    #[test]
     fn mutual_matches_agree_with_two_exhaustive_ratio_searches() {
         let features = (0..32)
             .map(|i| BinaryFeature {
@@ -1870,7 +1938,9 @@ mod tests {
             .collect::<Vec<_>>();
         let mut incoming = features.clone();
         for (i, feature) in incoming.iter_mut().enumerate() {
-            feature.descriptor[0] ^= 1;
+            if i % 2 == 1 {
+                feature.descriptor[0] ^= 1;
+            }
             if i % 3 == 0 {
                 feature.x += 5.0;
             }

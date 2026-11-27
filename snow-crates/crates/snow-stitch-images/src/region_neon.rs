@@ -175,6 +175,20 @@ pub(super) unsafe fn sobel(source: &[f32], width: usize, height: usize) -> Raste
                 gy = vaddq_f32(gy, bl);
                 gy = vaddq_f32(gy, vmulq_n_f32(bc, 2.0));
                 gy = vaddq_f32(gy, br);
+                // A flat axis makes hypot equal to the other magnitude. If either
+                // axis already reaches the 255 clamp, the result is also known.
+                let ax = vabsq_f32(gx);
+                let ay = vabsq_f32(gy);
+                let peak = vmaxq_f32(ax, ay);
+                let easy = vorrq_u32(
+                    vceqzq_f32(vminq_f32(ax, ay)),
+                    vcgeq_f32(peak, vdupq_n_f32(255.0)),
+                );
+                if vminvq_u32(easy) != 0 {
+                    vst1q_f32(row.as_mut_ptr().add(x), vminq_f32(peak, vdupq_n_f32(255.0)));
+                    x += 4;
+                    continue;
+                }
                 let mut xs = [0.0_f32; 4];
                 let mut ys = [0.0_f32; 4];
                 vst1q_f32(xs.as_mut_ptr(), gx);
@@ -196,6 +210,39 @@ pub(super) unsafe fn sobel(source: &[f32], width: usize, height: usize) -> Raste
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn neon_sobel_matches_hypot_on_flat_single_axis_and_saturated_regions() {
+        let (width, height) = (37_usize, 11_usize);
+        for pattern in 0..4 {
+            let source = (0..width * height)
+                .map(|i| {
+                    let x = i % width;
+                    let y = i / width;
+                    match pattern {
+                        0 => 73.0,
+                        1 => x as f32 * 0.3125,
+                        2 => y as f32 * 1.375,
+                        _ => {
+                            if (x / 3 + y / 2).is_multiple_of(2) {
+                                253.75
+                            } else {
+                                2.125
+                            }
+                        }
+                    }
+                })
+                .collect::<Vec<_>>();
+            let actual = unsafe { sobel(&source, width, height) };
+            let expected = sobel_magnitude_scalar(&source, width, height);
+            assert!(
+                actual
+                    .iter()
+                    .zip(expected.iter())
+                    .all(|(a, b)| a.to_bits() == b.to_bits())
+            );
+        }
+    }
+
     #[test]
     fn neon_temporal_kernels_execute_and_match_scalar_bits_for_borders_and_tails() {
         assert!(std::arch::is_aarch64_feature_detected!("neon"));

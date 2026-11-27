@@ -221,6 +221,22 @@ uint8_t bridgeAlphaContent(snow::image::AlphaContent value) noexcept {
     return SNOW_SHOT_IMAGE_CODEC_ALPHA_OPAQUE;
 }
 
+bool encoderUsesVerifiedAlpha(snow::image::Format format) noexcept {
+    using snow::image::Format;
+    switch (format) {
+    case Format::png:
+    case Format::ico: // ICO and CUR encode their entries as PNG.
+    case Format::cur:
+    case Format::jpeg:
+    case Format::heif:
+    case Format::avif:
+    case Format::jxl:
+        return true;
+    default:
+        return false;
+    }
+}
+
 SnowShotImageCodecEncodeOptions bridgeOptions(snow::image::Format format,
                                               const snow::image::EncodeOptions& options) noexcept {
     SnowShotImageCodecEncodeOptions result{};
@@ -485,7 +501,7 @@ bool encodeToDevice(const ScreenshotImageRowSource& source, QIODevice* device,
     bridgeSink.seekable = device->isSequential() ? 0 : 1;
 
     auto verifiedOptions = options;
-    if (!verifiedOptions.verified_alpha_content) {
+    if (!verifiedOptions.verified_alpha_content && encoderUsesVerifiedAlpha(format)) {
         switch (source.verifiedAlphaContent()) {
         case ScreenshotImageAlphaContent::Opaque:
             verifiedOptions.verified_alpha_content = snow::image::AlphaContent::opaque;
@@ -789,8 +805,9 @@ ScreenshotImageRowSource resizedRowSource(ScreenshotImageRowSource source, QSize
     if (source.classifyAlpha) {
         // Resampling can discard transparent samples or round their alpha to 255. Only a
         // proof of opacity survives without examining the resized pixels themselves.
-        result.classifyAlpha = [classify = source.classifyAlpha] {
-            return classify() == ScreenshotImageAlphaContent::Opaque
+        result.classifyAlpha = [classify =
+                                    source.classifyAlpha](const std::function<bool()>& cancel) {
+            return classify(cancel) == ScreenshotImageAlphaContent::Opaque
                        ? ScreenshotImageAlphaContent::Opaque
                        : ScreenshotImageAlphaContent::Unknown;
         };
@@ -830,7 +847,7 @@ ScreenshotImageRowSource srgbRowSource(const QImage& image) {
             ScreenshotImageAlphaContent content = ScreenshotImageAlphaContent::Unknown;
         };
         auto opacity = std::make_shared<Opacity>();
-        source.classifyAlpha = [image, opacity] {
+        source.classifyAlpha = [image, opacity](const std::function<bool()>&) {
             std::call_once(opacity->once,
                            [&] { opacity->content = detail::imageAlphaContent(image); });
             return opacity->content;

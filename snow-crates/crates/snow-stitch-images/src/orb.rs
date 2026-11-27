@@ -1445,6 +1445,64 @@ pub(crate) fn detect(
     }
 }
 
+/// Only rotated BRIEF samples need Gaussian values. Coalesce adjacent occupied
+/// blocks and include the three source pixels on each side of the convolution.
+fn blur_for_descriptors(image: &Image, points: &[(usize, usize)]) -> Image {
+    const BLOCK: usize = 48;
+    // ORB pattern coordinates lie in [-13, 13]. The farthest rotated
+    // coordinate rounds to at most 19, independently of orientation.
+    const RADIUS: usize = 19;
+    let columns = image.width.div_ceil(BLOCK);
+    let rows = image.height.div_ceil(BLOCK);
+    let mut occupied = vec![false; columns * rows];
+    for &(x, y) in points {
+        let left = x.saturating_sub(RADIUS) / BLOCK;
+        let right = (x + RADIUS).min(image.width - 1) / BLOCK;
+        let top = y.saturating_sub(RADIUS) / BLOCK;
+        let bottom = (y + RADIUS).min(image.height - 1) / BLOCK;
+        for row in top..=bottom {
+            occupied[row * columns + left..=row * columns + right].fill(true);
+        }
+    }
+    if occupied.iter().filter(|used| **used).count() * 4 >= occupied.len() * 3 {
+        return blur(image);
+    }
+    let mut pixels = RasterBuffer::zeroed(image.pixels.len());
+    pixels
+        .par_chunks_mut(BLOCK * image.width)
+        .enumerate()
+        .for_each(|(row, band)| {
+            let top = row * BLOCK;
+            let bottom = (top + BLOCK).min(image.height);
+            let used = &occupied[row * columns..(row + 1) * columns];
+            let mut cursor = 0;
+            while let Some(next) = used[cursor..].iter().position(|&value| value) {
+                let first = cursor + next;
+                cursor = first + used[first..].iter().take_while(|&&value| value).count();
+                let left = first * BLOCK;
+                let right = (cursor * BLOCK).min(image.width);
+                let x0 = left.saturating_sub(3);
+                let x1 = (right + 3).min(image.width);
+                let y0 = top.saturating_sub(3);
+                let y1 = (bottom + 3).min(image.height);
+                let stride = x1 - x0;
+                let mut patch = RasterBuffer::with_capacity(stride * (y1 - y0));
+                for y in y0..y1 {
+                    patch.extend_from_slice(
+                        &image.pixels[y * image.width + x0..y * image.width + x1],
+                    );
+                }
+                let blurred = blur(&Image::from_buffer(stride, y1 - y0, patch));
+                for (y, output) in band.chunks_exact_mut(image.width).enumerate() {
+                    let start = (top - y0 + y) * stride + left - x0;
+                    output[left..right]
+                        .copy_from_slice(&blurred.pixels[start..start + right - left]);
+                }
+            }
+        });
+    Image::from_buffer(image.width, image.height, pixels)
+}
+
 impl OrbDetection {
     pub(crate) fn keypoints(&self) -> &[Keypoint] {
         &self.keypoints
@@ -1452,9 +1510,13 @@ impl OrbDetection {
 
     pub(crate) fn compute(self, keypoints: impl IntoIterator<Item = Keypoint>) -> Vec<OrbFeature> {
         let keypoints = keypoints.into_iter().collect::<Vec<_>>();
-        let mut required = vec![false; self.levels.len()];
+        let mut required = vec![Vec::new(); self.levels.len()];
         for keypoint in &keypoints {
-            required[keypoint.octave] = true;
+            let scale = 1.0 / scale_for_level(keypoint.octave);
+            required[keypoint.octave].push((
+                cv_round(keypoint.x * scale) as usize,
+                cv_round(keypoint.y * scale) as usize,
+            ));
         }
         // Consuming the levels drops each unblurred source as soon as its output
         // is ready, instead of retaining both full pyramids during descriptors.
@@ -1462,7 +1524,10 @@ impl OrbDetection {
             .levels
             .into_par_iter()
             .enumerate()
-            .map(|(level, image)| required[level].then(|| blur(&image)))
+            .map(|(level, image)| {
+                (!required[level].is_empty())
+                    .then(|| blur_for_descriptors(&image, &required[level]))
+            })
             .collect::<Vec<_>>();
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         let use_avx2 = std::arch::is_x86_feature_detected!("avx2")
@@ -1504,6 +1569,22 @@ impl OrbDetection {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sparse_descriptor_blur_matches_full_blur_across_block_borders() {
+        let (width, height) = (503, 211);
+        let image = Image::new(width, height, random_pixels(width * height, 19));
+        let points = [(47, 48), (48, 47), (95, 96), (width - 17, height - 8)];
+        let actual = blur_for_descriptors(&image, &points);
+        let full = reference_blur(&image);
+        for (x, y) in points {
+            for row in y.saturating_sub(19)..=(y + 19).min(height - 1) {
+                let start = row * width + x.saturating_sub(19);
+                let end = row * width + (x + 20).min(width);
+                assert_eq!(actual.pixels[start..end], full.pixels[start..end]);
+            }
+        }
+    }
+
     #[test]
     fn large_grayscale_scores_and_blur_preserve_mapped_storage() {
         let mut source = RasterBuffer::zeroed(1024 * 1024 * 4);
