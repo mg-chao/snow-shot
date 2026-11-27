@@ -11,11 +11,9 @@ crate-type = ["staticlib", "rlib"]
 snow-memory = { path = "../snow-memory" }
 snow-core = { path = "../snow-core" }
 png = { workspace = true, optional = true }
+rayon.workspace = true
 snow-stitch-images = { path = "../snow-stitch-images", default-features = false }
 tempfile = { workspace = true, optional = true }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-rayon.workspace = true
 
 [features]
 default = ["png-export"]
