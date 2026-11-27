@@ -712,7 +712,11 @@ class ScreenshotPinnedWindow final : public QWidget {
     void setOpacityPercent(int percent);
     void schedulePersistence();
     void persistNow();
-    bool persistPendingFileBeforeClose();
+    [[nodiscard]] bool hasPendingPersistenceSource() const {
+        return m_replacementPersistenceWriter &&
+               m_persistenceSourceRevision != m_savedPersistenceSourceRevision;
+    }
+    bool persistPendingReplacementBeforeClose();
     ReplacementPersistenceResult
     writePersistenceRecord(const snow_shot::storage::PinnedWindowRecord& snapshot);
     void removePersistence();
@@ -1048,7 +1052,8 @@ class ScreenshotPinnedWindow final : public QWidget {
     std::unique_ptr<ScreenshotPinnedNativeGeometryController> m_nativeGeometryController;
     std::function<void(const snow_shot::storage::PinnedWindowRecord&)> m_persistenceWriter;
     ReplacementPersistenceWriter m_replacementPersistenceWriter;
-    bool m_persistenceSourceReplaced = false;
+    quint64 m_persistenceSourceRevision = 0;
+    quint64 m_savedPersistenceSourceRevision = 0;
     std::function<void(const QString&)> m_persistenceRemover;
     std::function<void(const snow_shot::storage::PinnedWindowRecord&)> m_persistenceCloser;
     std::function<bool(const snow_shot::storage::PinnedWindowRecord&)> m_persistenceHider;

@@ -1840,12 +1840,13 @@ void ScreenshotPinnedWindow::persistNow() {
         return;
     }
     const auto revision = m_automationRevision;
+    const bool replacingSource = hasPendingPersistenceSource();
     const auto snapshot = persistenceRecord();
     // This snapshot fulfills the deferred request. A reentrant writer may request
     // another save, so clear the flag before writing and preserve any newer timer.
     m_selectionPersistenceDirty = false;
     const auto result = writePersistenceRecord(snapshot);
-    if (snapshot.originalFileBytes.isEmpty())
+    if (!replacingSource)
         return;
     if (result == ReplacementPersistenceResult::Accepted && revision == m_automationRevision)
         m_persistenceTimer->stop();
@@ -1856,10 +1857,14 @@ void ScreenshotPinnedWindow::persistNow() {
 
 ScreenshotPinnedWindow::ReplacementPersistenceResult ScreenshotPinnedWindow::writePersistenceRecord(
     const snow_shot::storage::PinnedWindowRecord& snapshot) {
-    if (m_persistenceSourceReplaced && m_replacementPersistenceWriter) {
+    if (hasPendingPersistenceSource()) {
+        const auto revision = m_persistenceSourceRevision;
         const auto result = m_replacementPersistenceWriter(snapshot);
-        if (result == ReplacementPersistenceResult::Accepted)
-            acknowledgePersistedFile(snapshot);
+        if (result == ReplacementPersistenceResult::Accepted &&
+            revision == m_persistenceSourceRevision) {
+            m_originalClipboardContent.localFileBytes.clear();
+            m_savedPersistenceSourceRevision = revision;
+        }
         return result;
     }
     if (m_persistenceWriter)
@@ -1874,17 +1879,19 @@ void ScreenshotPinnedWindow::acknowledgePersistedFile(
         snapshot.image.cacheKey() == m_originalImage.cacheKey() &&
         snapshot.originalFileBytes == m_originalClipboardContent.localFileBytes) {
         m_originalClipboardContent.localFileBytes.clear();
-        m_persistenceSourceReplaced = false;
+        m_savedPersistenceSourceRevision = m_persistenceSourceRevision;
     }
 }
 
-bool ScreenshotPinnedWindow::persistPendingFileBeforeClose() {
-    if (m_originalClipboardContent.localFileBytes.isEmpty() || !m_persistenceEnabled ||
-        !m_replacementPersistenceWriter)
+bool ScreenshotPinnedWindow::persistPendingReplacementBeforeClose() {
+    if (!m_persistenceEnabled || !hasPendingPersistenceSource())
         return true;
-    if (!m_storageWritesSuspended &&
-        writePersistenceRecord(persistenceRecord()) != ReplacementPersistenceResult::Failed)
-        return true;
+    if (!m_storageWritesSuspended) {
+        const auto result = writePersistenceRecord(persistenceRecord());
+        if (result == ReplacementPersistenceResult::PendingCreation ||
+            (result == ReplacementPersistenceResult::Accepted && !hasPendingPersistenceSource()))
+            return true;
+    }
     showPersistenceFailure(isVisible() ? this : nullptr);
     return false;
 }
@@ -2537,7 +2544,7 @@ bool ScreenshotPinnedWindow::present(const Config& requestedConfig,
     sanitizeEditionRecognitionResults(m_recognitionResults);
     m_persistenceWriter = config.persistenceWriter;
     m_replacementPersistenceWriter = config.replacementPersistenceWriter;
-    m_persistenceSourceReplaced = false;
+    m_savedPersistenceSourceRevision = m_persistenceSourceRevision;
     m_persistenceRemover = config.persistenceRemover;
     m_persistenceCloser = config.persistenceCloser;
     m_persistenceHider = config.persistenceHider;
@@ -3081,8 +3088,7 @@ void ScreenshotPinnedWindow::closeEvent(QCloseEvent* event) {
             (m_persistenceWriter || m_replacementPersistenceWriter) && !m_persistenceId.isEmpty() &&
             (!m_originalImage.isNull() || !m_originalClipboardContent.isEmpty())) {
             m_closeStatePersisted = true;
-            if (writePersistenceRecord(snapshot) == ReplacementPersistenceResult::Failed &&
-                !snapshot.originalFileBytes.isEmpty())
+            if (writePersistenceRecord(snapshot) == ReplacementPersistenceResult::Failed)
                 showPersistenceFailure();
         }
     }
@@ -8021,7 +8027,7 @@ bool ScreenshotPinnedWindow::replaceContent(ScreenshotClipboardContent content,
     }
     m_imageSource = ScreenshotImageSource::fromImage(m_transformedImage, backgroundRect);
     m_borderAppearance.reset();
-    m_persistenceSourceReplaced = true;
+    ++m_persistenceSourceRevision;
     // The renderer revision invalidates the canvas's retained filter sources,
     // including replacements with identical geometry and unchanged annotations.
     m_screenshotRenderer->setImageSource(m_imageSource);
@@ -10374,7 +10380,7 @@ bool ScreenshotPinnedWindow::requestHide() {
         return false;
     if (m_closing)
         return false;
-    if (!persistPendingFileBeforeClose())
+    if (!persistPendingReplacementBeforeClose())
         return false;
     auto snapshot = persistenceRecord();
     snapshot.hidden = true;
@@ -10403,7 +10409,7 @@ void ScreenshotPinnedWindow::closeAfterConfirmation() {
     if (m_editController != nullptr && m_editController->editMode()) {
         setEditMode(false);
     }
-    if (!persistPendingFileBeforeClose())
+    if (!persistPendingReplacementBeforeClose())
         return;
     if (m_selectionController)
         m_selectionController->unregisterWindow(this);

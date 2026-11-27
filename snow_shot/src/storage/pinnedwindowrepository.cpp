@@ -1010,6 +1010,38 @@ bool validatePreviewPayloads(const QJsonObject& payloads, const QString& root, c
     return validFile(QStringLiteral("image"), true);
 }
 
+bool decodeOriginalFile(const QByteArray& encoded, PinnedWindowRecord& record, bool sourceOnly,
+                        const std::function<bool(qint64)>& allocationCheck,
+                        const std::function<bool()>& cancelled = {}, QSize targetSize = {},
+                        QSize* naturalSize = nullptr) {
+    // APNG may have a separate poster and an animation's first frame may cover
+    // only part of its canvas. Compose the first playback frame in both cases.
+    QString error;
+    const auto alreadyRetained = record.image.sizeInBytes();
+    const std::function<bool(qint64)> animationAdmission =
+        allocationCheck ? std::function<bool(qint64)>([&](qint64 bytes) {
+            return allocationCheck(alreadyRetained + bytes);
+        })
+                        : std::function<bool(qint64)>();
+    if (sourceOnly) {
+        record.image =
+            image_codec::decodeAnimationFirstFrame(encoded, &error, cancelled, animationAdmission);
+    } else if (auto animation = image_codec::decodeAnimationSource(encoded, &error, cancelled,
+                                                                   animationAdmission)) {
+        record.image = animation->firstFrame;
+        if (animation->isAnimated())
+            record.animationSource = std::move(animation);
+    }
+    if (!error.isEmpty())
+        return false;
+    if (record.image.isNull()) {
+        // The bytes determine the codec, including when the suffix is misleading.
+        record.image = decodeImageBytes(encoded, snow::image::Format::unknown, allocationCheck,
+                                        cancelled, sourceOnly, targetSize, naturalSize);
+    }
+    return !record.image.isNull() && record.image.sizeInBytes() <= kMaximumImageBytes;
+}
+
 bool loadPayloads(const QString& root, const QJsonObject& payloads, PinnedWindowRecord* record,
                   bool sourceOnly = false, const std::function<bool(qint64)>& allocationCheck = {},
                   const std::function<bool()>& cancelled = {}, QSize targetSize = {},
@@ -1084,11 +1116,6 @@ bool loadPayloads(const QString& root, const QJsonObject& payloads, PinnedWindow
         const QString imagePath = QDir(directory).filePath(fileName);
         record->originalFileName = fileName;
         record->originalFilePath = imagePath;
-        // Older file pins already retained the original GIF/WebP/APNG bytes.
-        // Their initial preview also needs composition: GIF may start with a
-        // partial patch and APNG may have a separate poster outside playback.
-        // Decode only that initial frame and retain playback metadata on full
-        // restore; management previews release the temporary source owner.
         if ((!sourceOnly || record->image.isNull()) && !record->animationSource) {
             QFile file(imagePath);
             const auto bytes = file.size();
@@ -1099,32 +1126,9 @@ bool loadPayloads(const QString& root, const QJsonObject& payloads, PinnedWindow
             const auto encoded = file.read(bytes + 1);
             if (encoded.size() != bytes || (cancelled && cancelled()))
                 return false;
-            QString error;
-            const auto alreadyRetained = record->image.sizeInBytes();
-            const std::function<bool(qint64)> animationAdmission =
-                allocationCheck ? std::function<bool(qint64)>([&](qint64 requested) {
-                    return allocationCheck(alreadyRetained + requested);
-                })
-                                : std::function<bool(qint64)>();
-            auto animationSource = sourceOnly ? std::shared_ptr<const ScreenshotAnimationSource>{}
-                                              : image_codec::decodeAnimationSource(
-                                                    encoded, &error, cancelled, animationAdmission);
-            if (sourceOnly)
-                record->image = image_codec::decodeAnimationFirstFrame(encoded, &error, cancelled,
-                                                                       animationAdmission);
-            if (!error.isEmpty())
+            if (!decodeOriginalFile(encoded, *record, sourceOnly, allocationCheck, cancelled,
+                                    targetSize, naturalSize))
                 return false;
-            if (animationSource) {
-                record->image = animationSource->firstFrame;
-                if (!sourceOnly && animationSource->isAnimated())
-                    record->animationSource = std::move(animationSource);
-            }
-            // Original files may have misleading suffixes. Inspect and decode the same bytes
-            // already read for animation detection, without reopening the source file.
-            if (record->image.isNull())
-                record->image =
-                    decodeImageBytes(encoded, snow::image::Format::unknown, allocationCheck,
-                                     cancelled, sourceOnly, targetSize, naturalSize);
         }
         if (record->image.isNull() || record->image.sizeInBytes() > kMaximumImageBytes)
             return false;
@@ -1958,9 +1962,7 @@ PinnedWindowRepository::loadRecord(const QString& id,
         if (stored.record.image.isNull() || stored.record.image.sizeInBytes() > kMaximumImageBytes)
             return std::nullopt;
     } else if (!stored.record.originalFileBytes.isEmpty()) {
-        stored.record.image = decodeImageBytes(
-            stored.record.originalFileBytes, snow::image::Format::unknown, imageBudget, {}, false);
-        if (stored.record.image.isNull() || stored.record.image.sizeInBytes() > kMaximumImageBytes)
+        if (!decodeOriginalFile(stored.record.originalFileBytes, stored.record, false, imageBudget))
             return std::nullopt;
         stored.record.originalFileBytes.clear();
     }
@@ -2070,10 +2072,8 @@ std::optional<PinnedWindowPreviewSource> PinnedWindowRepository::loadPreviewSour
         if (stored.record.image.isNull())
             return std::nullopt;
     } else if (!stored.record.originalFileBytes.isEmpty()) {
-        stored.record.image =
-            decodeImageBytes(stored.record.originalFileBytes, snow::image::Format::unknown,
-                             imageBudget, cancelled, true, targetSize, &naturalSize);
-        if (stored.record.image.isNull())
+        if (!decodeOriginalFile(stored.record.originalFileBytes, stored.record, true, imageBudget,
+                                cancelled, targetSize, &naturalSize))
             return std::nullopt;
     }
     if (cancelled && cancelled())

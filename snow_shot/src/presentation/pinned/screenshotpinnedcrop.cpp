@@ -544,7 +544,8 @@ bool ScreenshotPinnedWindow::commitPreparedCrop(
     m_cropRect.reset();
     clearTextAnnotations();
     ++m_contentReplacementGeneration;
-    m_persistenceSourceReplaced = true;
+    if (!isLiveWindow())
+        ++m_persistenceSourceRevision;
     m_originalClipboardContent = {};
     m_formattedTextDocument.reset();
     m_formattedPlainText.clear();

@@ -1174,8 +1174,8 @@ void unwrittenPreparedPinsReleaseDecodedPixels() {
             "recovery must persist the original prepared pixels");
 }
 
-void unwrittenFilePinsPreserveOriginalBytes(snow::image::Format format,
-                                            const QString& originalName) {
+void unwrittenFilePinsPreserveOriginalBytes(const QString& originalName, const QByteArray& encoded,
+                                            QImage image) {
     QTemporaryDir directory;
     require(directory.isValid(), "temporary storage directory is unavailable");
     storage::PinnedWindowRepository repository(directory.path(), true, 30000);
@@ -1184,20 +1184,12 @@ void unwrittenFilePinsPreserveOriginalBytes(snow::image::Format format,
     require(blocker.open(QIODevice::WriteOnly), "block the original file payload write");
     blocker.close();
 
-    QImage fixture(64, 64, QImage::Format_RGB32);
-    fixture.fill(Qt::green);
-    QByteArray encoded;
-    QBuffer buffer(&encoded);
-    require(buffer.open(QIODevice::WriteOnly) &&
-                snow_shot::image_codec::encodeToDevice(fixture, &buffer, format, {}),
-            "encode the original file pin fixture");
-    buffer.close();
     QFile original(directory.filePath(originalName));
     require(original.open(QIODevice::WriteOnly) && original.write(encoded) == encoded.size(),
             "write the original file pin fixture");
     original.close();
 
-    auto* decoded = new TrackedImageOwner{snow_shot::image_codec::decode(encoded, format, nullptr)};
+    auto* decoded = new TrackedImageOwner{std::move(image)};
     require(!decoded->image.isNull() && encoded.size() <= decoded->image.sizeInBytes(),
             "decode a compact static file pin fixture");
     const std::weak_ptr<int> pixels = decoded->lifetime;
@@ -1235,11 +1227,43 @@ void unwrittenFilePinsPreserveOriginalBytes(snow::image::Format format,
                 readBytes(committed->originalFilePath) == encoded &&
                 samePixels(committed->image, expected),
             "recovery commits the exact original bytes to the private pin directory");
+    const auto committedPreview = reopened.loadThumbnailSource(id, QSize(12, 12));
+    require(committedPreview && committedPreview->naturalSize == preview->naturalSize &&
+                samePixels(committedPreview->image, preview->image),
+            "the pending thumbnail must show the same pixels as the committed thumbnail");
 }
 
 void unwrittenFilePinsPreserveOriginalBytes() {
-    unwrittenFilePinsPreserveOriginalBytes(snow::image::Format::jpeg, QStringLiteral("original.jpg"));
-    unwrittenFilePinsPreserveOriginalBytes(snow::image::Format::gif, QStringLiteral("original.gif"));
+    QImage fixture(64, 64, QImage::Format_RGB32);
+    fixture.fill(Qt::green);
+    for (const auto format : {snow::image::Format::jpeg, snow::image::Format::gif}) {
+        QByteArray encoded;
+        QBuffer buffer(&encoded);
+        require(buffer.open(QIODevice::WriteOnly) &&
+                    snow_shot::image_codec::encodeToDevice(fixture, &buffer, format, {}),
+                "encode the original file pin fixture");
+        buffer.close();
+        const QString originalName = format == snow::image::Format::jpeg
+                                         ? QStringLiteral("original.jpg")
+                                         : QStringLiteral("original.gif");
+        unwrittenFilePinsPreserveOriginalBytes(
+            originalName, encoded, snow_shot::image_codec::decode(encoded, format, nullptr));
+    }
+
+    // A blue 64x64 poster is excluded from playback. The single playback frame
+    // has a red pixel at (8, 8) on an otherwise transparent canvas.
+    const auto apng = QByteArray::fromBase64(
+        "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAACGFjVEwAAAABAAAAALQt6aAAAACo"
+        "SURBVHic5c4hAQAADASh61/6FwMxgafafuMBjQc0HtB4QOMBjQc0HtB4QOMBjQc0HtB4QOMBjQc0"
+        "HtB4QOMBjQc0HtB4QOMBjQc0HtB4QOMBjQc0HtB4QOMBjQc0HtB4QOMBjQc0HtB4QOMBjQc0HtB4"
+        "QOMBjQc0HtB4QOMBjQc0HtB4QOMBjQc0HtB4QOMBjQc0HtB4QOMBjQc0HtB4QOMBjQc0HrAOYajh"
+        "0m1y8tcAAAAaZmNUTAAAAAAAAAABAAAAAQAAAAgAAAAIAAEACgAA01Of8gAAABFmZEFUAAAAAXic"
+        "Y/jPwPAfAAUAAf/m9La/AAAAAElFTkSuQmCC");
+    const auto source = snow_shot::image_codec::decodeAnimationSource(apng);
+    require(source && !source->isAnimated() && source->firstFrame.pixelColor(0, 0).alpha() == 0 &&
+                source->firstFrame.pixelColor(8, 8) == Qt::red,
+            "the single-frame APNG fixture composes its playback frame");
+    unwrittenFilePinsPreserveOriginalBytes(QStringLiteral("poster.png"), apng, source->firstFrame);
 }
 
 void failedWritesBoundThePendingPayloadBacklog() {

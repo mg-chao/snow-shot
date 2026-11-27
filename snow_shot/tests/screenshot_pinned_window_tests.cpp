@@ -23086,6 +23086,24 @@ void pinnedPersistenceBackpressure() {
     QPointer<ScreenshotPinnedWindow> window(groups.liveWindow(id));
     require(window && repository.flush().success, "commit before filling the queue");
 
+    ScreenshotClipboardContent clipboardPin;
+    clipboardPin.image = image;
+    clipboardPin.sourceIdentity.key = QStringLiteral("clipboard-replacement-fixture");
+    const auto clipboardIdentity = clipboardPin.sourceIdentity;
+    require(services.presentDecodedContentOnScreen(std::move(clipboardPin), screen, false,
+                                                   storage::PinnedWindowCreationSource::Other),
+            "present a pin for the clipboard replacement");
+    QPointer<ScreenshotPinnedWindow> clipboardWindow(services.findDuplicatePin(clipboardIdentity));
+    require(clipboardWindow, "find the clipboard replacement pin");
+    const auto clipboardId = clipboardWindow->persistenceId();
+    translation_tests::waitUntil(
+        [&] {
+            const auto entry = repository.summary(clipboardId);
+            return entry && !entry->pending;
+        },
+        "persist the clipboard replacement pin");
+    require(repository.flush().success, "commit the clipboard replacement fixture");
+
     auto seed = window->persistenceSnapshot();
     seed.id = QStringLiteral("00000000-0000-0000-0000-000000000001");
     const auto firstSeed = seed.id;
@@ -23124,6 +23142,22 @@ void pinnedPersistenceBackpressure() {
     require(rejected->isVisible() && !repository.summary(rejected->persistenceId()),
             "the unsaved pin remains usable after its reservation is retired");
 
+    QImage replacement = image.copy();
+    replacement.fill(Qt::cyan);
+    ScreenshotClipboardContent clipboardReplacement;
+    clipboardReplacement.image = replacement;
+    require(Access::replace(*clipboardWindow, std::move(clipboardReplacement)),
+            "install a clipboard image replacement");
+    translation_tests::waitUntil([&] { return !Access::persistencePending(*clipboardWindow); },
+                                 "attempt the deferred clipboard replacement save");
+    require(!clipboardWindow->requestHide() && clipboardWindow->isVisible(),
+            "a rejected clipboard replacement keeps the pin visible when hiding");
+    Access::confirmClose(*clipboardWindow);
+    const auto clipboardAfterRejectedClose = repository.summary(clipboardId);
+    require(clipboardWindow->isVisible() && clipboardAfterRejectedClose &&
+                !clipboardAfterRejectedClose->ignored,
+            "a rejected clipboard replacement also blocks closing");
+
     QTemporaryDir files;
     require(files.isValid(), "replacement file directory");
     QFile file(files.filePath(QStringLiteral("replacement.png")));
@@ -23143,6 +23177,15 @@ void pinnedPersistenceBackpressure() {
     require(repository.removeMany({firstSeed, seed.id}).success && blocker.remove() &&
                 repository.flush().success,
             "release the backlog");
+    require(clipboardWindow->requestHide(),
+            "hiding retries the clipboard replacement after the queue recovers");
+    const auto clipboardHidden = repository.summary(clipboardId);
+    require(clipboardHidden && clipboardHidden->hidden && repository.flush().success,
+            "persist the clipboard replacement and hidden state");
+    const auto restoredClipboard = repository.loadRecord(clipboardId);
+    require(restoredClipboard && restoredClipboard->image.size() == replacement.size() &&
+                restoredClipboard->image.pixelColor(0, 0) == Qt::cyan,
+            "hide preserves the recovered clipboard replacement pixels");
     window->checkpointStorage();
     require(window->persistenceSnapshot().originalFileBytes.isEmpty() && repository.flush().success,
             "release the window's bytes only after the repository accepts the replacement");

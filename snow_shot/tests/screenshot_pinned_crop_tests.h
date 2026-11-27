@@ -965,6 +965,9 @@ void liveConversion() {
             auto setup = live_pinned_tests::config(source);
             setup.initialShadowVisible = true;
             setup.persistenceWriter = [&](const auto& record) { persisted = record; };
+            setup.replacementPersistenceWriter = [](const auto&) {
+                return ScreenshotPinnedWindow::ReplacementPersistenceResult::Failed;
+            };
             live_pinned_tests::present(window, setup);
             require(Access::crop(window, {20, 10, 60, 40}), "live conversion crop fixture");
             if (cropState != 0)
