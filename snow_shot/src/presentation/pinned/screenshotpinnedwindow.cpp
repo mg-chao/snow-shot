@@ -133,6 +133,7 @@
 #include <QLineF>
 #include <QMouseEvent>
 #include <QMimeData>
+#include <QMessageBox>
 #include <QMoveEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -1815,8 +1816,8 @@ void ScreenshotPinnedWindow::schedulePersistence() {
     if (m_storageWritesSuspended)
         return;
     m_automationRevision = snow_shot::presentation::nextAutomationRevision();
-    if (!m_persistenceEnabled || m_persistenceWriter == nullptr || m_persistenceId.isEmpty() ||
-        !m_presented || m_closing || m_persistenceTimer == nullptr) {
+    if (!m_persistenceEnabled || (!m_persistenceWriter && !m_replacementPersistenceWriter) ||
+        m_persistenceId.isEmpty() || !m_presented || m_closing || m_persistenceTimer == nullptr) {
         return;
     }
     m_persistenceTimer->start();
@@ -1833,16 +1834,87 @@ void ScreenshotPinnedWindow::persistNow() {
     }
     if (m_storageWritesSuspended)
         return;
-    if (!m_persistenceEnabled || m_persistenceWriter == nullptr || m_persistenceId.isEmpty() ||
-        !m_presented || m_closing ||
+    if (!m_persistenceEnabled || (!m_persistenceWriter && !m_replacementPersistenceWriter) ||
+        m_persistenceId.isEmpty() || !m_presented || m_closing ||
         (m_originalImage.isNull() && m_originalClipboardContent.isEmpty())) {
         return;
     }
+    const auto revision = m_automationRevision;
     const auto snapshot = persistenceRecord();
     // This snapshot fulfills the deferred request. A reentrant writer may request
-    // another save, so clear the flag before handing the snapshot to it.
+    // another save, so clear the flag before writing and preserve any newer timer.
     m_selectionPersistenceDirty = false;
-    m_persistenceWriter(snapshot);
+    const auto result = writePersistenceRecord(snapshot);
+    if (snapshot.originalFileBytes.isEmpty())
+        return;
+    if (result == ReplacementPersistenceResult::Accepted && revision == m_automationRevision)
+        m_persistenceTimer->stop();
+    else if (result == ReplacementPersistenceResult::Failed &&
+             (m_destroying || !m_persistenceTimer->isActive()))
+        showPersistenceFailure(isVisible() && !m_destroying ? this : nullptr);
+}
+
+ScreenshotPinnedWindow::ReplacementPersistenceResult ScreenshotPinnedWindow::writePersistenceRecord(
+    const snow_shot::storage::PinnedWindowRecord& snapshot) {
+    if (m_persistenceSourceReplaced && m_replacementPersistenceWriter) {
+        const auto result = m_replacementPersistenceWriter(snapshot);
+        if (result == ReplacementPersistenceResult::Accepted)
+            acknowledgePersistedFile(snapshot);
+        return result;
+    }
+    if (m_persistenceWriter)
+        m_persistenceWriter(snapshot);
+    return ReplacementPersistenceResult::Accepted;
+}
+
+void ScreenshotPinnedWindow::acknowledgePersistedFile(
+    const snow_shot::storage::PinnedWindowRecord& snapshot) {
+    if (!snapshot.originalFileBytes.isEmpty() && snapshot.id == m_persistenceId &&
+        snapshot.originalFilePath == m_originalClipboardContent.localFilePath &&
+        snapshot.image.cacheKey() == m_originalImage.cacheKey() &&
+        snapshot.originalFileBytes == m_originalClipboardContent.localFileBytes) {
+        m_originalClipboardContent.localFileBytes.clear();
+        m_persistenceSourceReplaced = false;
+    }
+}
+
+bool ScreenshotPinnedWindow::persistPendingFileBeforeClose() {
+    if (m_originalClipboardContent.localFileBytes.isEmpty() || !m_persistenceEnabled ||
+        !m_replacementPersistenceWriter)
+        return true;
+    if (!m_storageWritesSuspended &&
+        writePersistenceRecord(persistenceRecord()) != ReplacementPersistenceResult::Failed)
+        return true;
+    showPersistenceFailure(isVisible() ? this : nullptr);
+    return false;
+}
+
+void ScreenshotPinnedWindow::initialPersistenceFailed() {
+    m_persistenceEnabled = false;
+    m_persistenceTimer->stop();
+    m_originalClipboardContent.localFileBytes.clear();
+    showPersistenceFailure(isVisible() ? this : nullptr);
+}
+
+void ScreenshotPinnedWindow::showPersistenceFailure(QWidget* owner) {
+    if (QCoreApplication::closingDown())
+        return;
+    adqt::widgets::AdMessage::Request message;
+    message.key = QStringLiteral("screenshot-pinned-persistence");
+    const QString content = tr("The pinned window could not be saved to history");
+    message.content = content;
+    if (adqt::widgets::AdMessageService::error(std::move(message), owner))
+        return;
+
+    // A pending creation can fail after its only window has already closed.
+    static QPointer<QMessageBox> notice;
+    if (!notice) {
+        notice = new QMessageBox(QMessageBox::Warning, QApplication::applicationDisplayName(),
+                                 content, QMessageBox::Ok);
+        notice->setAttribute(Qt::WA_DeleteOnClose);
+        notice->setWindowModality(Qt::NonModal);
+        notice->show();
+    }
 }
 
 void ScreenshotPinnedWindow::removePersistence() {
@@ -1878,6 +1950,7 @@ snow_shot::storage::PinnedWindowRecord ScreenshotPinnedWindow::persistenceRecord
     record.animationPlaying = m_animationPlaying;
     record.originalFilePath = m_originalClipboardContent.localFilePath;
     record.originalFileName = QFileInfo(record.originalFilePath).fileName();
+    record.originalFileBytes = m_originalClipboardContent.localFileBytes;
     record.originalHtml = m_originalClipboardContent.html;
     record.originalText = m_originalClipboardContent.text;
     record.textStyle = m_originalClipboardContent.textStyle;
@@ -2464,6 +2537,7 @@ bool ScreenshotPinnedWindow::present(const Config& requestedConfig,
     sanitizeEditionRecognitionResults(m_recognitionResults);
     m_persistenceWriter = config.persistenceWriter;
     m_replacementPersistenceWriter = config.replacementPersistenceWriter;
+    m_persistenceSourceReplaced = false;
     m_persistenceRemover = config.persistenceRemover;
     m_persistenceCloser = config.persistenceCloser;
     m_persistenceHider = config.persistenceHider;
@@ -3003,11 +3077,13 @@ void ScreenshotPinnedWindow::closeEvent(QCloseEvent* event) {
     if (!m_persistenceRemovalRequested && m_presented && m_persistenceTimer != nullptr &&
         !m_closeStatePersisted) {
         m_persistenceTimer->stop();
-        if (!m_storageWritesSuspended && m_persistenceEnabled && m_persistenceWriter &&
-            !m_persistenceId.isEmpty() &&
+        if (!m_storageWritesSuspended && m_persistenceEnabled &&
+            (m_persistenceWriter || m_replacementPersistenceWriter) && !m_persistenceId.isEmpty() &&
             (!m_originalImage.isNull() || !m_originalClipboardContent.isEmpty())) {
             m_closeStatePersisted = true;
-            m_persistenceWriter(snapshot);
+            if (writePersistenceRecord(snapshot) == ReplacementPersistenceResult::Failed &&
+                !snapshot.originalFileBytes.isEmpty())
+                showPersistenceFailure();
         }
     }
     shutdownClickThrough();
@@ -3517,7 +3593,7 @@ void ScreenshotPinnedWindow::updateAnimationSuspension() {
     }
     const bool hiddenAtTop =
         m_hideToTop && m_hideToTop->state() == ScreenshotPinnedHideToTopController::State::Hidden;
-    m_animationPlayback->setSuspended(m_closing || m_cropApplying ||
+    m_animationPlayback->setSuspended(m_closing || m_cropJob.isValid() ||
                                       !m_firstContentFramePublished || !isVisible() ||
                                       m_platform->isMinimized() || m_thumbnailMode || hiddenAtTop);
     m_animationPlayback->setRefreshRate(screen() ? screen()->refreshRate() : 60.0);
@@ -7472,6 +7548,7 @@ void ScreenshotPinnedWindow::saveRecognitionSnapshot(ScreenshotRecognitionFileSn
 #endif
 
 void ScreenshotPinnedWindow::cancelContentReplacement() {
+    cancelCropPreparation();
     m_exportTaskOwner.reset();
     cancelCloudUpload();
     ++m_contentReplacementGeneration;
@@ -7496,7 +7573,8 @@ bool ScreenshotPinnedWindow::blocksMemoryTrimming() const {
         (m_editController && m_editController->editMode()) || m_hiddenTextSelection ||
         m_systemSizingActive || m_windowDragActive || m_auxiliaryWindowInteractionActive ||
         m_selectionGeometryActive || m_interactionPlacement || m_pinchActive || m_fileDragActive ||
-        m_exportDragPreparing || (m_dragExport && m_dragExport->dragging()) ||
+        m_cropJob.isValid() || m_exportDragPreparing ||
+        (m_dragExport && m_dragExport->dragging()) ||
         (m_nativeGeometryController && m_nativeGeometryController->hasInteractiveTransaction()) ||
         m_geometryAnimating || m_attentionPending || m_printPending || m_quickSavePending ||
         m_recognitionSavePending || m_cloudUploadPreparing || m_cloudUploadJob)
@@ -7778,7 +7856,7 @@ bool ScreenshotPinnedWindow::replaceContent(ScreenshotClipboardContent content,
         return false;
     if (rejectedByLock)
         *rejectedByLock = false;
-    if (!content.isValid() || m_originalImage.isNull() || m_closing || m_cropApplying ||
+    if (!content.isValid() || m_originalImage.isNull() || m_closing || m_cropJob.isValid() ||
         animationTransformPending() || !m_firstContentFramePublished) {
         return false;
     }
@@ -7923,6 +8001,8 @@ bool ScreenshotPinnedWindow::replaceContent(ScreenshotClipboardContent content,
         m_formattedTextAvailable ? content.formattedTextDevicePixelRatio : 1.0;
     m_firstCreationTextDpi = m_formattedTextDevicePixelRatio;
     m_originalClipboardContent = std::move(content.originalContent);
+    if (!m_persistenceEnabled || !m_replacementPersistenceWriter)
+        m_originalClipboardContent.localFileBytes.clear();
     m_ocrSupported = !animatedImage() && screenshotOcrImageWithinPixelLimit(m_originalPixelSize);
     m_canvasSourceRect = sourceRect;
     m_backgroundCanvasRect = backgroundRect;
@@ -7941,9 +8021,7 @@ bool ScreenshotPinnedWindow::replaceContent(ScreenshotClipboardContent content,
     }
     m_imageSource = ScreenshotImageSource::fromImage(m_transformedImage, backgroundRect);
     m_borderAppearance.reset();
-    if (m_replacementPersistenceWriter) {
-        m_persistenceWriter = m_replacementPersistenceWriter;
-    }
+    m_persistenceSourceReplaced = true;
     // The renderer revision invalidates the canvas's retained filter sources,
     // including replacements with identical geometry and unchanged annotations.
     m_screenshotRenderer->setImageSource(m_imageSource);
@@ -7972,6 +8050,9 @@ bool ScreenshotPinnedWindow::replaceContent(ScreenshotClipboardContent content,
     scheduleDeferredPresentationSetup();
     refreshContextMenu();
     schedulePersistence();
+    if (!m_originalClipboardContent.localFileBytes.isEmpty() && m_persistenceTimer &&
+        m_persistenceTimer->isActive())
+        persistNow();
     return true;
 }
 
@@ -8541,7 +8622,7 @@ bool ScreenshotPinnedWindow::applyImageTransform(const QTransform& transform, in
     cancelCropInteraction();
     if (m_interactionCropRect)
         endControlledInteraction(true);
-    if (m_cropApplying)
+    if (m_cropJob.isValid())
         return false;
     if (isLiveWindow()) {
         if (!commitImageTransformGeometry(transform, quarterTurns))
@@ -10252,6 +10333,7 @@ void ScreenshotPinnedWindow::hideForClosing() {
     endWindowShake(true);
     const bool firstClose = !m_closing;
     m_closing = true;
+    cancelCropPreparation();
     if (m_scaleLabel)
         m_scaleLabel->dismiss();
     if (m_animationPlayback)
@@ -10292,6 +10374,8 @@ bool ScreenshotPinnedWindow::requestHide() {
         return false;
     if (m_closing)
         return false;
+    if (!persistPendingFileBeforeClose())
+        return false;
     auto snapshot = persistenceRecord();
     snapshot.hidden = true;
     if (m_persistenceHider && !m_persistenceHider(snapshot))
@@ -10319,6 +10403,8 @@ void ScreenshotPinnedWindow::closeAfterConfirmation() {
     if (m_editController != nullptr && m_editController->editMode()) {
         setEditMode(false);
     }
+    if (!persistPendingFileBeforeClose())
+        return;
     if (m_selectionController)
         m_selectionController->unregisterWindow(this);
     m_inactiveGroupClosing = false;
@@ -10764,7 +10850,7 @@ bool ScreenshotPinnedWindow::nativeTrackSizeConstraintsEnabled() const {
 
 bool ScreenshotPinnedWindow::interactiveResizingEnabled() const {
     return !m_lockedMode && !m_closing && !m_thumbnailMode && !m_geometryAnimating &&
-           !m_cropApplying;
+           !m_cropJob.isValid();
 }
 
 QPointF ScreenshotPinnedWindow::windowPositionForEvent(QObject* watched,

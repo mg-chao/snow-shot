@@ -591,7 +591,7 @@ readFileContent(const ScreenshotClipboardLocalImage& localImage, qreal devicePix
     if (!file.open(QIODevice::ReadOnly)) {
         return std::nullopt;
     }
-    const QByteArray encoded = file.read(before.size() + 1);
+    QByteArray encoded = file.read(before.size() + 1);
     file.close();
     const QFileInfo after(localImage.absolutePath);
     if (encoded.isEmpty() || encoded.size() != before.size() || after.size() != localImage.size ||
@@ -649,6 +649,11 @@ readFileContent(const ScreenshotClipboardLocalImage& localImage, qreal devicePix
             imageContent(snow_shot::image_codec::decodeFirstFrame(encoded, codecFormat), true);
         return cancellationRequested(cancelled) ? std::nullopt : std::move(result);
     }
+    const auto retainCompactFile = [&encoded](std::optional<ScreenshotClipboardContent> content) {
+        if (content && !content->animationSource && encoded.size() <= content->image.sizeInBytes())
+            content->originalContent.localFileBytes = std::move(encoded);
+        return content;
+    };
     auto animation = snow_shot::image_codec::decodeAnimationSource(encoded, &animationError,
                                                                    cancelled, animationAdmission);
     if (animation) {
@@ -657,11 +662,12 @@ readFileContent(const ScreenshotClipboardLocalImage& localImage, qreal devicePix
             content->preparedDisplayImage = animation->firstDisplayFrame;
             content->animationSource = std::move(animation);
         }
-        return content;
+        return retainCompactFile(std::move(content));
     }
     if (!animationError.isEmpty() || cancellationRequested(cancelled))
         return std::nullopt;
-    return imageContent(snow_shot::image_codec::decode(encoded, codecFormat, nullptr));
+    return retainCompactFile(
+        imageContent(snow_shot::image_codec::decode(encoded, codecFormat, nullptr)));
 }
 
 } // namespace

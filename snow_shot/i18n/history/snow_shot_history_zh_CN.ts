@@ -2350,6 +2350,10 @@ Files:
             <translation>无法启动已固定到屏幕的图像的保存</translation>
         </message>
         <message>
+            <source>The pinned window could not be saved to history</source>
+            <translation>无法将固定到屏幕窗口保存到历史记录</translation>
+        </message>
+        <message>
             <source>The window changed while preparing the image. Please try again</source>
             <translation>准备图像时窗口发生了变化，请重试</translation>
         </message>

@@ -43,6 +43,7 @@ constexpr int kMaximumGroups = PinnedWindowRepository::maximumGroupCount();
 constexpr qint64 kMaximumImageBytes = 256LL * 1024LL * 1024LL;
 constexpr qint64 kMaximumPayloadBytes = 32LL * 1024LL * 1024LL;
 constexpr qint64 kResidentPayloadWriteThreshold = 64LL * 1024LL * 1024LL;
+constexpr qint64 kMaximumPendingPayloadBytes = 256LL * 1024LL * 1024LL;
 constexpr auto kManifestName = "index.json";
 
 QString sourceKindToString(PinnedWindowSourceKind kind) {
@@ -369,10 +370,11 @@ QImage decodeImageBytes(const QByteArray& bytes, snow::image::Format format,
         return cancelled && cancelled() ? QImage{} : std::move(image);
     }
 #if defined(Q_OS_WIN) || defined(_WIN32)
-    return image_codec::decodeBgra(bytes, format);
-#else
-    return image_codec::decode(bytes, format, nullptr);
+    // Original file pins can use codecs such as GIF that only support RGBA output.
+    if (format == snow::image::Format::png)
+        return image_codec::decodeBgra(bytes, format);
 #endif
+    return image_codec::decode(bytes, format, nullptr);
 }
 
 QImage decodeImage(const QString& path, const std::function<bool(qint64)>& allocationCheck = {},
@@ -753,6 +755,7 @@ QJsonObject payloadsDescriptor(const StoredRecord& stored) {
 void clearResidentPayload(PinnedWindowRecord* record) {
     record->image = {};
     record->animationSource.reset();
+    record->originalFileBytes.clear();
     record->originalHtml.clear();
     record->originalText.clear();
     record->resultStyle.clear();
@@ -784,16 +787,25 @@ qint64 retainedAnimationBytes(const PinnedWindowRecord& record) {
 
 qint64 residentPayloadBytes(const StoredRecord& stored) {
     const auto& record = stored.record;
-    return record.image.sizeInBytes() + 2 * record.originalHtml.size() +
-           2 * record.originalText.size() + record.resultStyle.size() +
-           record.canvasSession.size() + record.recognitionResults.size() +
-           record.textAnnotations.size() + retainedAnimationBytes(record) +
+    return record.image.sizeInBytes() + record.originalFileBytes.size() +
+           2 * record.originalHtml.size() + 2 * record.originalText.size() +
+           record.resultStyle.size() + record.canvasSession.size() +
+           record.recognitionResults.size() + record.textAnnotations.size() +
+           retainedAnimationBytes(record) +
            (stored.preparedSource ? stored.preparedSource->bytes().size() : 0);
+}
+
+StorageResult pendingPayloadLimitReached() {
+    qCWarning(storageLog) << "Pinned-window pending payload limit reached";
+    return StorageResult::failure(QCoreApplication::translate(
+        "snow_shot::storage::ApplicationStorage",
+        "Storage is busy or unavailable. Try again when current operations finish"));
 }
 
 void clearResidentImmutableSource(PinnedWindowRecord* record) {
     record->image = {};
     record->animationSource.reset();
+    record->originalFileBytes.clear();
     record->originalHtml.clear();
     record->originalText.clear();
     record->resultStyle.clear();
@@ -857,8 +869,12 @@ bool writePayload(const QString& root, const StoredRecord& stored, const QString
                                      ? QFileInfo(record.originalFilePath).fileName()
                                      : record.originalFileName;
         const QString committedFileName = stored.payloads.value(QStringLiteral("image")).toString();
-        if (!record.originalFilePath.isEmpty() || !safeFileName(committedFileName) ||
-            !QFileInfo(QDir(directory).filePath(committedFileName)).isFile()) {
+        if (!record.originalFileBytes.isEmpty()) {
+            if (!safeFileName(fileName) ||
+                !writeBytes(QDir(directory).filePath(fileName), record.originalFileBytes))
+                return false;
+        } else if (!record.originalFilePath.isEmpty() || !safeFileName(committedFileName) ||
+                   !QFileInfo(QDir(directory).filePath(committedFileName)).isFile()) {
             if (!safeFileName(fileName) || !QFileInfo(record.originalFilePath).isFile()) {
                 return false;
             }
@@ -1550,6 +1566,16 @@ struct PinnedWindowRepository::Impl final {
     quint64 nextPayloadRevision = 1;
     quint64 nextPreviewSourceRevision = 1;
 
+    bool canRetainPayloadLocked(const StoredRecord& stored) const {
+        const auto existing = records.constFind(stored.record.id);
+        const qint64 previous = existing == records.cend() ? 0 : residentPayloadBytes(*existing);
+        const qint64 incoming = residentPayloadBytes(stored);
+        const qint64 other = pendingPayloadBytes - previous;
+        // Admit a single large record and always allow an update that reduces the backlog.
+        return incoming <= previous || other == 0 ||
+               incoming <= kMaximumPendingPayloadBytes - other;
+    }
+
     void insertRecordLocked(const QString& id, StoredRecord stored) {
         stacking.add(id, stored.record.groupId);
         if (stored.record.animationSource)
@@ -1926,6 +1952,18 @@ PinnedWindowRepository::loadRecord(const QString& id,
         !loadPayloads(impl->root, stored.payloads, &stored.record, false, imageBudget)) {
         return std::nullopt;
     }
+    if (stored.preparedSource) {
+        stored.record.image = decodeImageBytes(stored.preparedSource->bytes(),
+                                               snow::image::Format::png, imageBudget, {}, false);
+        if (stored.record.image.isNull() || stored.record.image.sizeInBytes() > kMaximumImageBytes)
+            return std::nullopt;
+    } else if (!stored.record.originalFileBytes.isEmpty()) {
+        stored.record.image = decodeImageBytes(
+            stored.record.originalFileBytes, snow::image::Format::unknown, imageBudget, {}, false);
+        if (stored.record.image.isNull() || stored.record.image.sizeInBytes() > kMaximumImageBytes)
+            return std::nullopt;
+        stored.record.originalFileBytes.clear();
+    }
     return std::move(stored.record);
 }
 
@@ -1973,6 +2011,7 @@ std::optional<PinnedWindowPreviewSource> PinnedWindowRepository::loadPreviewSour
         }
         const auto& source = found->record;
         stored.payloads = found->payloads;
+        stored.preparedSource = found->preparedSource;
         stored.record.id = source.id;
         stored.record.sourceKind = source.sourceKind;
         stored.record.firstCreationTextDpi = source.firstCreationTextDpi;
@@ -1985,6 +2024,7 @@ std::optional<PinnedWindowPreviewSource> PinnedWindowRepository::loadPreviewSour
             stored.record.originalText = source.originalText;
         } else {
             stored.record.image = source.image;
+            stored.record.originalFileBytes = source.originalFileBytes;
         }
     }
     impl->observe(PinnedWindowOperation::PayloadRead);
@@ -2021,6 +2061,20 @@ std::optional<PinnedWindowPreviewSource> PinnedWindowRepository::loadPreviewSour
         !loadPayloads(impl->root, stored.payloads, &stored.record, true, imageBudget, cancelled,
                       targetSize, &naturalSize)) {
         return std::nullopt;
+    }
+    if (stored.preparedSource) {
+        naturalSize = stored.preparedSource->pixelSize();
+        stored.record.image =
+            decodeImageBytes(stored.preparedSource->bytes(), snow::image::Format::png, imageBudget,
+                             cancelled, true, targetSize);
+        if (stored.record.image.isNull())
+            return std::nullopt;
+    } else if (!stored.record.originalFileBytes.isEmpty()) {
+        stored.record.image =
+            decodeImageBytes(stored.record.originalFileBytes, snow::image::Format::unknown,
+                             imageBudget, cancelled, true, targetSize, &naturalSize);
+        if (stored.record.image.isNull())
+            return std::nullopt;
     }
     if (cancelled && cancelled())
         return std::nullopt;
@@ -2583,12 +2637,12 @@ StorageResult PinnedWindowRepository::createImpl(PinnedWindowRecord record,
     if (record.id.isEmpty()) {
         record.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     }
-    if (!sourceImage.isValid() || !safeId(record.id) || !record.nativeGeometry.isValid() ||
-        record.nativeGeometry.isEmpty() || !record.canvasSourceRect.isValid() ||
-        record.canvasSourceRect.isEmpty() || !record.contentCanvasRect.isValid() ||
-        record.contentCanvasRect.isEmpty() || !record.surfaceCanvasRect.isValid() ||
-        record.surfaceCanvasRect.isEmpty() || !record.initialWindowSize.isValid() ||
-        record.initialWindowSize.isEmpty() ||
+    if (!sourceImage.isValid() || sourceImage.bytes().size() > kMaximumImageBytes ||
+        !safeId(record.id) || !record.nativeGeometry.isValid() || record.nativeGeometry.isEmpty() ||
+        !record.canvasSourceRect.isValid() || record.canvasSourceRect.isEmpty() ||
+        !record.contentCanvasRect.isValid() || record.contentCanvasRect.isEmpty() ||
+        !record.surfaceCanvasRect.isValid() || record.surfaceCanvasRect.isEmpty() ||
+        !record.initialWindowSize.isValid() || record.initialWindowSize.isEmpty() ||
         record.sourceKind != PinnedWindowSourceKind::ImageData || record.animationSource ||
         record.image.isNull() || record.image.size() != sourceImage.pixelSize()) {
         return StorageResult::failure(QStringLiteral("Pinned-window source is invalid"));
@@ -2615,15 +2669,21 @@ StorageResult PinnedWindowRepository::createImpl(PinnedWindowRecord record,
     if (m_impl->records.contains(record.id)) {
         return StorageResult::failure(QStringLiteral("Pinned-window record already exists"));
     }
-    const bool reservedCreation = m_impl->pendingCreations.contains(record.id);
-    m_impl->initializeLifecycleLocked(record);
+    // The prepared PNG owns the source until the writer can commit it. The live pin
+    // already owns the decoded image, so the repository can release its reference now.
+    record.image = {};
+    record.originalFileBytes.clear();
+    StoredRecord stored{std::move(record), 0, {}, signature, std::move(sourceImage)};
+    if (!m_impl->canRetainPayloadLocked(stored))
+        return pendingPayloadLimitReached();
+    const QString id = stored.record.id;
+    const bool reservedCreation = m_impl->pendingCreations.contains(id);
+    m_impl->initializeLifecycleLocked(stored.record);
     if (!std::any_of(m_impl->groups.cbegin(), m_impl->groups.cend(),
-                     [&record](const auto& group) { return group.id == record.groupId; })) {
-        record.groupId = QString::fromLatin1(kDefaultGroupId);
+                     [&stored](const auto& group) { return group.id == stored.record.groupId; })) {
+        stored.record.groupId = QString::fromLatin1(kDefaultGroupId);
     }
-    const quint64 payloadRevision = ++m_impl->nextPayloadRevision;
-    const QString id = record.id;
-    StoredRecord stored{std::move(record), payloadRevision, {}, signature, std::move(sourceImage)};
+    stored.payloadRevision = ++m_impl->nextPayloadRevision;
     stored.previewSourceRevision = ++m_impl->nextPreviewSourceRevision;
     m_impl->insertRecordLocked(id, std::move(stored));
     if (!reservedCreation)
@@ -2681,11 +2741,15 @@ StorageResult PinnedWindowRepository::createImpl(PinnedWindowRecord record,
         record.originalFileName.isEmpty()) {
         record.originalFileName = QFileInfo(record.originalFilePath).fileName();
     }
+    if (record.sourceKind != PinnedWindowSourceKind::ClipboardImageFile || record.animationSource)
+        record.originalFileBytes.clear();
     if ((record.sourceKind == PinnedWindowSourceKind::ClipboardImageFile &&
          (!safeFileName(record.originalFileName) ||
-          (!record.animationSource && !QFileInfo(record.originalFilePath).isFile()))) ||
+          (!record.animationSource && record.originalFileBytes.isEmpty() &&
+           !QFileInfo(record.originalFilePath).isFile()))) ||
         (record.textStyle && !record.textStyle->isValid()) ||
         !isValidPinnedTextFormat(record.textFormat) ||
+        record.originalFileBytes.size() > kMaximumImageBytes ||
         record.originalHtml.toUtf8().size() > kMaximumPayloadBytes ||
         record.originalText.toUtf8().size() > kMaximumPayloadBytes ||
         record.resultStyle.size() > kMaximumPayloadBytes ||
@@ -2706,15 +2770,19 @@ StorageResult PinnedWindowRepository::createImpl(PinnedWindowRecord record,
     if (m_impl->records.contains(record.id)) {
         return StorageResult::failure(QStringLiteral("Pinned-window record already exists"));
     }
-    const bool reservedCreation = m_impl->pendingCreations.contains(record.id);
-    m_impl->initializeLifecycleLocked(record);
+    if (!record.originalFileBytes.isEmpty())
+        record.image = {};
+    StoredRecord stored{std::move(record), 0, {}, signature, {}};
+    if (!m_impl->canRetainPayloadLocked(stored))
+        return pendingPayloadLimitReached();
+    const QString id = stored.record.id;
+    const bool reservedCreation = m_impl->pendingCreations.contains(id);
+    m_impl->initializeLifecycleLocked(stored.record);
     if (!std::any_of(m_impl->groups.cbegin(), m_impl->groups.cend(),
-                     [&record](const auto& group) { return group.id == record.groupId; })) {
-        record.groupId = QString::fromLatin1(kDefaultGroupId);
+                     [&stored](const auto& group) { return group.id == stored.record.groupId; })) {
+        stored.record.groupId = QString::fromLatin1(kDefaultGroupId);
     }
-    const quint64 payloadRevision = ++m_impl->nextPayloadRevision;
-    const QString id = record.id;
-    StoredRecord stored{std::move(record), payloadRevision, {}, signature, {}};
+    stored.payloadRevision = ++m_impl->nextPayloadRevision;
     stored.previewSourceRevision = ++m_impl->nextPreviewSourceRevision;
     m_impl->insertRecordLocked(id, std::move(stored));
     if (!reservedCreation)
@@ -2788,6 +2856,7 @@ StorageResult PinnedWindowRepository::updateState(PinnedWindowRecord record) {
     record.animationSource = existing->record.animationSource;
     record.originalFilePath = existing->record.originalFilePath;
     record.originalFileName = existing->record.originalFileName;
+    record.originalFileBytes = existing->record.originalFileBytes;
     record.originalHtml = existing->record.originalHtml;
     record.originalText = existing->record.originalText;
     record.textStyle = existing->record.textStyle;
@@ -2821,8 +2890,7 @@ StorageResult PinnedWindowRepository::updateState(PinnedWindowRecord record) {
         }
     }
     StoredRecord updated{std::move(record),
-                         statePayloadChanged ? ++m_impl->nextPayloadRevision
-                                             : existing->payloadRevision,
+                         existing->payloadRevision,
                          std::move(payloads),
                          {},
                          existing->preparedSource};
@@ -2835,11 +2903,15 @@ StorageResult PinnedWindowRepository::updateState(PinnedWindowRecord record) {
     if (!updated.payloads.isEmpty()) {
         clearResidentImmutableSource(&updated.record);
         if (!statePayloadChanged) {
-            updated.record.canvasSession.clear();
-            updated.record.recognitionResults.clear();
-            updated.record.textAnnotations.clear();
+            updated.record.canvasSession = existing->record.canvasSession;
+            updated.record.recognitionResults = existing->record.recognitionResults;
+            updated.record.textAnnotations = existing->record.textAnnotations;
         }
     }
+    if (!m_impl->canRetainPayloadLocked(updated))
+        return pendingPayloadLimitReached();
+    if (statePayloadChanged)
+        updated.payloadRevision = ++m_impl->nextPayloadRevision;
     const QString id = updated.record.id;
     m_impl->insertRecordLocked(id, std::move(updated));
     m_impl->markDirtyLocked();
@@ -2894,6 +2966,8 @@ StorageResult PinnedWindowRepository::upsertImpl(PinnedWindowRecord record, bool
         record.originalFileName.isEmpty()) {
         record.originalFileName = QFileInfo(record.originalFilePath).fileName();
     }
+    if (record.sourceKind != PinnedWindowSourceKind::ClipboardImageFile || record.animationSource)
+        record.originalFileBytes.clear();
     if (record.sourceKind == PinnedWindowSourceKind::ClipboardImageFile &&
         !safeFileName(record.originalFileName)) {
         return StorageResult::failure(QStringLiteral("Pinned-window source filename is invalid"));
@@ -2901,12 +2975,9 @@ StorageResult PinnedWindowRepository::upsertImpl(PinnedWindowRecord record, bool
     if (record.sourceKind == PinnedWindowSourceKind::ImageData && record.image.isNull()) {
         return StorageResult::failure(QStringLiteral("Pinned-window image is missing"));
     }
-    if (record.sourceKind == PinnedWindowSourceKind::ClipboardImageFile &&
-        !record.animationSource && !QFileInfo(record.originalFilePath).isFile()) {
-        return StorageResult::failure(QStringLiteral("Pinned-window source file is invalid"));
-    }
     if ((record.textStyle && !record.textStyle->isValid()) ||
         !isValidPinnedTextFormat(record.textFormat) ||
+        record.originalFileBytes.size() > kMaximumImageBytes ||
         record.originalHtml.toUtf8().size() > kMaximumPayloadBytes ||
         record.originalText.toUtf8().size() > kMaximumPayloadBytes ||
         record.resultStyle.size() > kMaximumPayloadBytes ||
@@ -2931,32 +3002,51 @@ StorageResult PinnedWindowRepository::upsertImpl(PinnedWindowRecord record, bool
     const bool groupChanged = !isNew && record.groupId != existing->record.groupId;
     const QString previousGroup = isNew ? QString() : existing->record.groupId;
     const bool reservedCreation = isNew && m_impl->pendingCreations.contains(record.id);
-    if (isNew) {
-        m_impl->initializeLifecycleLocked(record);
-    } else {
+    if (!isNew)
         preserveLifecycle(record, existing->record);
-    }
-    const bool payloadChanged = isNew || !samePayload(*existing, record, signature);
-    const quint64 previewSourceRevision = isNew || !samePreviewSource(*existing, record, signature)
-                                              ? ++m_impl->nextPreviewSourceRevision
-                                              : existing->previewSourceRevision;
-    const quint64 payloadRevision =
-        payloadChanged ? ++m_impl->nextPayloadRevision : existing->payloadRevision;
+    const bool payloadChanged = isNew || !samePayload(*existing, record, signature) ||
+                                (!record.originalFileBytes.isEmpty() &&
+                                 record.originalFileBytes != existing->record.originalFileBytes);
+    const bool previewChanged = isNew || !samePreviewSource(*existing, record, signature);
     const QString id = record.id;
+    StoredRecord stored{std::move(record), 0, {}, signature};
     if (!payloadChanged && !existing->payloads.isEmpty()) {
-        // The stored descriptor already describes this exact committed
-        // payload, so the update keeps the lazy form instead of holding a
-        // fresh resident copy until the writer runs.
-        StoredRecord stored{std::move(record), payloadRevision, existing->payloads, signature};
-        stored.previewSourceRevision = previewSourceRevision;
+        // Keep the current lazy source and any uncommitted state update.
+        stored.payloads = existing->payloads;
         stored.animationOwner = stored.record.animationSource;
-        clearResidentPayload(&stored.record);
-        m_impl->insertRecordLocked(id, std::move(stored));
-    } else {
-        StoredRecord stored{std::move(record), payloadRevision, {}, signature, {}};
-        stored.previewSourceRevision = previewSourceRevision;
-        m_impl->insertRecordLocked(id, std::move(stored));
+        clearResidentImmutableSource(&stored.record);
+        stored.record.canvasSession = existing->record.canvasSession;
+        stored.record.recognitionResults = existing->record.recognitionResults;
+        stored.record.textAnnotations = existing->record.textAnnotations;
+    } else if (!isNew && existing->preparedSource &&
+               stored.record.sourceKind == PinnedWindowSourceKind::ImageData &&
+               !stored.record.animationSource &&
+               signature.imageCacheKey == existing->signature.imageCacheKey &&
+               signature.imageSize == existing->signature.imageSize) {
+        stored.preparedSource = existing->preparedSource;
+        stored.record.image = {};
     }
+    if (stored.record.sourceKind == PinnedWindowSourceKind::ClipboardImageFile &&
+        !stored.record.animationSource && stored.payloads.isEmpty()) {
+        if (stored.record.originalFileBytes.isEmpty() && !isNew &&
+            stored.record.originalFilePath == existing->record.originalFilePath &&
+            signature.imageCacheKey == existing->signature.imageCacheKey) {
+            stored.record.originalFileBytes = existing->record.originalFileBytes;
+        }
+        if (!stored.record.originalFileBytes.isEmpty())
+            stored.record.image = {};
+        else if (!QFileInfo(stored.record.originalFilePath).isFile())
+            return StorageResult::failure(QStringLiteral("Pinned-window source file is invalid"));
+    }
+    if (!m_impl->canRetainPayloadLocked(stored))
+        return pendingPayloadLimitReached();
+    if (isNew)
+        m_impl->initializeLifecycleLocked(stored.record);
+    stored.payloadRevision =
+        payloadChanged ? ++m_impl->nextPayloadRevision : existing->payloadRevision;
+    stored.previewSourceRevision =
+        previewChanged ? ++m_impl->nextPreviewSourceRevision : existing->previewSourceRevision;
+    m_impl->insertRecordLocked(id, std::move(stored));
     if ((isNew && !reservedCreation) || groupChanged) {
         QSet<QString> affectedGroups{m_impl->records.constFind(id)->record.groupId};
         if (groupChanged)
@@ -3295,7 +3385,9 @@ StorageResult PinnedWindowRepository::enforcePolicy(QDateTime now) {
                 if (stored.preparedSource.has_value())
                     candidate.bytes += stored.preparedSource->bytes().size();
                 else if (stored.record.sourceKind == PinnedWindowSourceKind::ClipboardImageFile)
-                    candidate.bytes += QFileInfo(stored.record.originalFilePath).size();
+                    candidate.bytes += stored.record.originalFileBytes.isEmpty()
+                                           ? QFileInfo(stored.record.originalFilePath).size()
+                                           : stored.record.originalFileBytes.size();
                 else
                     candidate.bytes += stored.record.image.sizeInBytes();
             }

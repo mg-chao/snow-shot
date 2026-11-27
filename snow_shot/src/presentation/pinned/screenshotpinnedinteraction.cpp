@@ -297,7 +297,7 @@ bool ScreenshotPinnedWindow::beginControlledInteraction(const QPointF& desktopPo
         return false;
     }
     stopAttentionShake();
-    if (m_interactionPlacement || m_cropApplying || m_contentReplacementJob.isValid() ||
+    if (m_interactionPlacement || m_cropJob.isValid() || m_contentReplacementJob.isValid() ||
         m_cropSelectionOrigin || m_closing || m_geometryAnimating || !screen())
         return false;
     const auto placement = m_platform->placement();

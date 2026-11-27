@@ -2368,6 +2368,10 @@ Files:
             <translation>Не удалось начать сохранение закреплённого изображения</translation>
         </message>
         <message>
+            <source>The pinned window could not be saved to history</source>
+            <translation>Не удалось сохранить закреплённое окно в истории</translation>
+        </message>
+        <message>
             <source>The window changed while preparing the image. Please try again</source>
             <translation>Окно изменилось во время подготовки изображения. Повторите попытку</translation>
         </message>

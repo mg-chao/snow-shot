@@ -83,6 +83,8 @@ void applyPersistence(ScreenshotPinnedWindow::Config* config, const QString& id 
     config->persistenceCloser = [](const snow_shot::storage::PinnedWindowRecord& record) {
         auto& storage = snow_shot::storage::ApplicationStorage::instance();
         if (storage.isInitialized()) {
+            // For a pin still awaiting its initial save, the closing snapshot
+            // carries any pending file bytes to the creation coordinator.
             static_cast<void>(storage.pinnedWindows().updateState(record));
             if (storage.pinnedWindows().markClosedDeferred(record.id).success)
                 storage.requestPinnedWindowRetentionCleanup();
@@ -90,10 +92,15 @@ void applyPersistence(ScreenshotPinnedWindow::Config* config, const QString& id 
     };
     config->replacementPersistenceWriter =
         [](const snow_shot::storage::PinnedWindowRecord& record) {
+            using Result = ScreenshotPinnedWindow::ReplacementPersistenceResult;
             auto& storage = snow_shot::storage::ApplicationStorage::instance();
-            if (!storage.configurationDirectory().isEmpty()) {
-                static_cast<void>(storage.pinnedWindows().upsertExisting(record));
-            }
+            if (!storage.isInitialized())
+                return Result::Failed;
+            auto& repository = storage.pinnedWindows();
+            if (repository.upsertExisting(record).success)
+                return Result::Accepted;
+            const auto pending = repository.summary(record.id);
+            return pending && pending->pending ? Result::PendingCreation : Result::Failed;
         };
 }
 
@@ -261,7 +268,8 @@ class ScreenshotPendingPinCoordinator final : public QObject {
     void reserve(ScreenshotPinnedWindow* window, const QString& persistenceId,
                  const QString& groupId,
                  snow_shot::presentation::PinnedWindowGroupManager* groupManager,
-                 std::shared_ptr<ScreenshotExportArtifact> artifact = {}) {
+                 std::shared_ptr<ScreenshotExportArtifact> artifact = {},
+                 QByteArray fileBytes = {}) {
         if (window == nullptr || persistenceId.isEmpty()) {
             return;
         }
@@ -274,6 +282,7 @@ class ScreenshotPendingPinCoordinator final : public QObject {
         transaction.snapshot.groupId = groupId;
         transaction.groupManager = groupManager;
         transaction.artifact = std::move(artifact);
+        transaction.fileBytes = std::move(fileBytes);
         auto pending = m_transactions.insert(persistenceId, std::move(transaction));
         if (groupManager != nullptr) {
             groupManager->registerPendingPin(persistenceId, groupId);
@@ -409,6 +418,7 @@ class ScreenshotPendingPinCoordinator final : public QObject {
         QPointer<snow_shot::presentation::PinnedWindowGroupManager> groupManager;
         std::shared_ptr<ScreenshotExportArtifact> artifact;
         QImage image;
+        QByteArray fileBytes;
         QMetaObject::Connection groupDeletionConnection;
         QMetaObject::Connection closingConnection;
         QMetaObject::Connection destroyedConnection;
@@ -435,16 +445,38 @@ class ScreenshotPendingPinCoordinator final : public QObject {
         if (transaction.snapshot.id.isEmpty()) {
             return;
         }
+        if (transaction.snapshot.sourceKind ==
+                snow_shot::storage::PinnedWindowSourceKind::ClipboardImageFile &&
+            !transaction.snapshot.animationSource &&
+            transaction.snapshot.originalFileBytes.isEmpty()) {
+            transaction.snapshot.originalFileBytes = std::move(transaction.fileBytes);
+        }
         transaction.snapshot.updatedUtc = QDateTime::currentDateTimeUtc();
         auto& storage = snow_shot::storage::ApplicationStorage::instance();
         if (storage.isInitialized()) {
             const auto persisted = storage.pinnedWindows().createReserved(transaction.snapshot);
             if (!persisted.success) {
-                qWarning("Pinned source persistence failed: %s", qPrintable(persisted.error));
+                reportPersistenceFailure(transaction, persisted.error);
             } else {
+                if (transaction.window)
+                    transaction.window->acknowledgePersistedFile(transaction.snapshot);
                 restoreVisibleHiddenTransaction(transaction);
             }
         }
+    }
+
+    static void reportPersistenceFailure(const Transaction& transaction, const QString& error) {
+        qWarning("Pinned source persistence failed: %s", qPrintable(error));
+        auto& storage = snow_shot::storage::ApplicationStorage::instance();
+        // An explicit close can cancel the reservation when history is disabled.
+        if (transaction.intent == snow_shot::storage::PinnedWindowCloseIntent::Close &&
+            storage.isInitialized() && !storage.pinnedWindows().policy().enabled)
+            return;
+        auto* window = transaction.window.data();
+        if (window && window->persistenceId() == transaction.snapshot.id)
+            window->initialPersistenceFailed();
+        else
+            ScreenshotPinnedWindow::showPersistenceFailure();
     }
 
     void completePreparedSource(const QString& persistenceId,
@@ -472,7 +504,7 @@ class ScreenshotPendingPinCoordinator final : public QObject {
                 const auto persisted = storage.pinnedWindows().createReserved(
                     transaction->snapshot, std::move(result.image));
                 if (!persisted.success) {
-                    qWarning("Pinned source persistence failed: %s", qPrintable(persisted.error));
+                    reportPersistenceFailure(*transaction, persisted.error);
                 } else {
                     restoreVisibleHiddenTransaction(*transaction);
                 }
@@ -1114,8 +1146,9 @@ bool ScreenshotSelectionExportUiServices::presentPinnedImageOnCanvas(
         m_groupManager != nullptr ? m_groupManager->activeGroupId() : QStringLiteral("default");
     applyPersistence(&config, {}, true);
     configureVisibility(&config);
-    m_pendingPinCoordinator->reserve(pinnedWindow, config.persistenceId, config.groupId,
-                                     m_groupManager, artifact);
+    m_pendingPinCoordinator->reserve(
+        pinnedWindow, config.persistenceId, config.groupId, m_groupManager, artifact,
+        std::exchange(config.originalClipboardContent.localFileBytes, {}));
     if (pending) {
         ScreenshotImageLoader artifactLoader =
             [artifact](QObject* receiver, ScreenshotImageLoadCallback callback) mutable {

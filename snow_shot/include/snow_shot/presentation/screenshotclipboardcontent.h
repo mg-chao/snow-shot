@@ -40,6 +40,8 @@ struct ScreenshotClipboardOriginalContent final {
 
     snow_shot::storage::PinnedTextFormat textFormat =
         snow_shot::storage::PinnedTextFormat::PlainText;
+    // Compact static file data captured during import for handoff to persistence.
+    QByteArray localFileBytes{};
 
     [[nodiscard]] bool isEmpty() const {
         return html.isEmpty() && text.isEmpty() && localFilePath.isEmpty();

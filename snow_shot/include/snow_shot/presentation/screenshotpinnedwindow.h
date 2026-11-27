@@ -169,6 +169,9 @@ class ScreenshotPinnedWindow final : public QWidget {
         Action action = Action::Hide;
     };
     enum class PresentationPolicy { Activate, PreserveFocus };
+    enum class ReplacementPersistenceResult { Accepted, PendingCreation, Failed };
+    using ReplacementPersistenceWriter =
+        std::function<ReplacementPersistenceResult(const snow_shot::storage::PinnedWindowRecord&)>;
     struct Config {
         PresentationPolicy presentationPolicy = PresentationPolicy::Activate;
         QPointer<snow_shot::presentation::PinnedWindowStackingCoordinator> stackingCoordinator;
@@ -246,8 +249,7 @@ class ScreenshotPinnedWindow final : public QWidget {
         bool persistedRecognitionVisible = false;
         bool persistedTranslationVisible = false;
         std::function<void(const snow_shot::storage::PinnedWindowRecord&)> persistenceWriter;
-        std::function<void(const snow_shot::storage::PinnedWindowRecord&)>
-            replacementPersistenceWriter;
+        ReplacementPersistenceWriter replacementPersistenceWriter;
         std::function<void(const QString&)> persistenceRemover;
         std::function<void(const snow_shot::storage::PinnedWindowRecord&)> persistenceCloser;
         std::function<bool(const snow_shot::storage::PinnedWindowRecord&)> persistenceHider;
@@ -275,6 +277,9 @@ class ScreenshotPinnedWindow final : public QWidget {
     bool prewarm(QScreen* screen = nullptr);
     QRect currentNativeGeometry() const;
     [[nodiscard]] snow_shot::storage::PinnedWindowRecord persistenceSnapshot() const;
+    void acknowledgePersistedFile(const snow_shot::storage::PinnedWindowRecord& snapshot);
+    void initialPersistenceFailed();
+    static void showPersistenceFailure(QWidget* owner = nullptr);
     void requestRenderedImageSnapshot(
         std::function<void(ScreenshotPinnedImageSnapshot)> ready,
         ScreenshotPinnedRenderMode mode = ScreenshotPinnedRenderMode::WindowAppearance);
@@ -447,11 +452,13 @@ class ScreenshotPinnedWindow final : public QWidget {
     bool setCropCanvasRect(std::optional<QRectF> rect);
     void applyCrop();
     void cancelCrop();
+    void cancelCropPreparation();
     bool commitPreparedCrop(const QRect& pixels, QImage original, QImage transformed,
                             const QTransform& transform,
                             std::shared_ptr<const ScreenshotAnimationSource> animation,
                             bool bakedStyle);
-    bool m_cropApplying = false;
+    ScreenshotExportJobHandle m_cropJob;
+    quint64 m_cropPreparationGeneration = 0;
     [[nodiscard]] QRectF cropSelectionViewRect(const QWidget* target) const;
     void paintCropSelection(QPainter& painter, const QWidget* target) const;
     void updateCropPresentation();
@@ -705,6 +712,9 @@ class ScreenshotPinnedWindow final : public QWidget {
     void setOpacityPercent(int percent);
     void schedulePersistence();
     void persistNow();
+    bool persistPendingFileBeforeClose();
+    ReplacementPersistenceResult
+    writePersistenceRecord(const snow_shot::storage::PinnedWindowRecord& snapshot);
     void removePersistence();
     [[nodiscard]] snow_shot::storage::PinnedWindowRecord persistenceRecord() const;
     void restorePersistentState(const Config& config);
@@ -1037,8 +1047,8 @@ class ScreenshotPinnedWindow final : public QWidget {
     snow_shot::storage::PinnedWindowPlacement m_preThumbnailPlacement;
     std::unique_ptr<ScreenshotPinnedNativeGeometryController> m_nativeGeometryController;
     std::function<void(const snow_shot::storage::PinnedWindowRecord&)> m_persistenceWriter;
-    std::function<void(const snow_shot::storage::PinnedWindowRecord&)>
-        m_replacementPersistenceWriter;
+    ReplacementPersistenceWriter m_replacementPersistenceWriter;
+    bool m_persistenceSourceReplaced = false;
     std::function<void(const QString&)> m_persistenceRemover;
     std::function<void(const snow_shot::storage::PinnedWindowRecord&)> m_persistenceCloser;
     std::function<bool(const snow_shot::storage::PinnedWindowRecord&)> m_persistenceHider;
