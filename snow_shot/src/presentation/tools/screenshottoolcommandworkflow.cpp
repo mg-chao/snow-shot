@@ -39,90 +39,6 @@ void ScreenshotToolCommandWorkflow::setMoveTool() {
     m_context.actions.startSelectorRefresh();
 }
 
-void ScreenshotToolCommandWorkflow::setSelectTool() {
-    setCanvasTool(SnowCanvasTool::Select);
-}
-
-void ScreenshotToolCommandWorkflow::setSpeechBubbleTool() {
-    setCanvasTool(SnowCanvasTool::SpeechBubble);
-}
-
-void ScreenshotToolCommandWorkflow::setShapeTool() {
-    setCanvasTool(SnowCanvasTool::Shape);
-}
-
-void ScreenshotToolCommandWorkflow::setArrowTool() {
-    setCanvasTool(SnowCanvasTool::Arrow);
-}
-
-void ScreenshotToolCommandWorkflow::setLineTool() {
-    setCanvasTool(SnowCanvasTool::Line);
-}
-
-void ScreenshotToolCommandWorkflow::setDistanceTool() {
-    setCanvasTool(SnowCanvasTool::Distance);
-}
-
-void ScreenshotToolCommandWorkflow::setAngleTool() {
-    setCanvasTool(SnowCanvasTool::Angle);
-}
-
-void ScreenshotToolCommandWorkflow::setBracketTool() {
-    setCanvasTool(SnowCanvasTool::Bracket);
-}
-
-void ScreenshotToolCommandWorkflow::setBrushTool() {
-    setCanvasTool(SnowCanvasTool::FreeDraw);
-}
-
-void ScreenshotToolCommandWorkflow::setHighlightTool() {
-    setCanvasTool(SnowCanvasTool::RectangleHighlight);
-}
-
-void ScreenshotToolCommandWorkflow::setBrushHighlightTool() {
-    setCanvasTool(SnowCanvasTool::PenHighlight);
-}
-
-void ScreenshotToolCommandWorkflow::setEraserTool() {
-    setCanvasTool(SnowCanvasTool::Eraser);
-}
-
-void ScreenshotToolCommandWorkflow::setRectangleEraserTool() {
-    setCanvasTool(SnowCanvasTool::RectangleEraser);
-}
-
-void ScreenshotToolCommandWorkflow::setBrushEraserTool() {
-    setCanvasTool(SnowCanvasTool::BrushEraser);
-}
-
-void ScreenshotToolCommandWorkflow::setFilterTool() {
-    setRectangleFilterTool();
-}
-
-void ScreenshotToolCommandWorkflow::setMagnifierTool() {
-    setCanvasTool(SnowCanvasTool::Magnifier);
-}
-
-void ScreenshotToolCommandWorkflow::setSpotlightTool() {
-    setCanvasTool(SnowCanvasTool::Spotlight);
-}
-
-void ScreenshotToolCommandWorkflow::setRectangleFilterTool() {
-    setCanvasTool(SnowCanvasTool::RectangleFilter);
-}
-
-void ScreenshotToolCommandWorkflow::setAutoFilterTool() {
-    setCanvasTool(SnowCanvasTool::AutoFilter);
-}
-
-void ScreenshotToolCommandWorkflow::setBrushFilterTool() {
-    setCanvasTool(SnowCanvasTool::PenFilter);
-}
-
-void ScreenshotToolCommandWorkflow::setWatermarkTool() {
-    setCanvasTool(SnowCanvasTool::Watermark);
-}
-
 void ScreenshotToolCommandWorkflow::setWatermarkConfigFromToolbar(
     const SnowCanvasWatermarkConfig& config) {
     m_context.actions.setWatermarkConfig(config);
@@ -136,14 +52,6 @@ void ScreenshotToolCommandWorkflow::setSpotlightConfigFromToolbar(
 void ScreenshotToolCommandWorkflow::setFilterStyleFromToolbar(const SnowCanvasFilterStyle& style,
                                                               quint32 properties) {
     m_context.actions.setFilterStyle(style, properties);
-}
-
-void ScreenshotToolCommandWorkflow::setTextTool() {
-    setCanvasTool(SnowCanvasTool::Text);
-}
-
-void ScreenshotToolCommandWorkflow::setSequenceNumberTool() {
-    setCanvasTool(SnowCanvasTool::SerialNumber);
 }
 
 void ScreenshotToolCommandWorkflow::decrementSelectedSequenceNumbers() {

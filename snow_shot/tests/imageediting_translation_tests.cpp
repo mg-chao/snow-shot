@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "snow_shot/presentation/imageeditingcanvas.h"
 #include "snow_shot/presentation/imageeditingwindow.h"
-#include "snow_shot/presentation/screenshotclipboardcontent.h"
+#include "screenshot_clipboard_test_output.h"
 #include "snow_shot/presentation/screenshotocrpresentation.h"
 #include "snow_shot/presentation/screenshotpinnedtextpreparation.h"
 #include "snow_shot/presentation/screenshotpinnedwindow.h"
@@ -47,14 +47,6 @@ void awaitCondition(const std::function<bool()>& condition, const char* message)
         QThread::msleep(1);
     }
     require(condition(), message);
-}
-
-QImage copiedImage() {
-    auto snapshot = ScreenshotClipboardContentReader::snapshotImage(QApplication::clipboard(), 1.0);
-    if (!snapshot)
-        return {};
-    const auto content = ScreenshotClipboardContentReader::decode(std::move(*snapshot));
-    return content ? content->image : QImage{};
 }
 
 ScreenshotRecognitionResults recognitionFixture() {
@@ -147,7 +139,7 @@ void cropSessionCopyUsesAttachedController() {
             const int expected = copies + 1;
             action();
             awaitCondition([&] { return copies == expected; }, "the Copy action publishes once");
-            require(imageCopy ? !copiedImage().isNull()
+            require(imageCopy ? !readScreenshotClipboardOutput().image.isNull()
                               : QApplication::clipboard()->text() ==
                                     QStringLiteral("Edited A translation"),
                     "all unselected Copy routes follow A's translation policy");
@@ -252,7 +244,7 @@ void editCachedTranslation(const ImageEditingSource& source) {
     QObject::connect(&editor, &ImageEditingWindow::exportFinished, &editor,
                      [&](bool success) { copied = success; });
     editor.palette()->copyRequested();
-    awaitCondition([&] { return copied && !copiedImage().isNull(); },
+    awaitCondition([&] { return copied && !readScreenshotClipboardOutput().image.isNull(); },
                    "editor Copy publishes the translated document as an image");
     auto cursor = text->textCursor();
     cursor.setPosition(0);
@@ -356,10 +348,8 @@ void copyCachedTranslationOverlay(const ImageEditingSource& source) {
         const int expected = copies + 1;
         editor.palette()->copyRequested();
         awaitCondition([&] { return copies == expected; }, "translation image copy publishes");
-        auto snapshot = ScreenshotClipboardContentReader::snapshot(QApplication::clipboard(), 1.0);
-        const QImage image = copiedImage();
-        require(snapshot && snapshot->localImage.has_value() == withFile &&
-                    image.size() == source.image.size() &&
+        const auto [image, filePath] = readScreenshotClipboardOutput();
+        require(!filePath.isEmpty() == withFile && image.size() == source.image.size() &&
                     image.pixelColor(0, 0) == source.image.pixelColor(0, 0) &&
                     image != source.image,
                 "translation image copy preserves pixels and follows the file preference");

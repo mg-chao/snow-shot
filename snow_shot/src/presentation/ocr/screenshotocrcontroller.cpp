@@ -334,6 +334,11 @@ ScreenshotOcrController::ScreenshotOcrController(ScreenshotOcrControllerContext 
             },
             {},
             Qt::ApplicationModal,
+            [this](ScreenshotRecognitionCopy intent) {
+                if (intent == ScreenshotRecognitionCopy::Result)
+                    return copyRecognitionAndEndCapture(intent);
+                return copyRecognitionToClipboard(intent);
+            },
         },
         this);
     connect(m_session.get(), &ScreenshotRecognitionSessionController::textEditingChanged, this,
@@ -348,6 +353,10 @@ ScreenshotOcrController::ScreenshotOcrController(ScreenshotOcrControllerContext 
                 }
                 emit textResultChanged(available);
             });
+    // The replacement copy may still be updating the session when it retires the old one.
+    connect(
+        m_session.get(), &ScreenshotRecognitionSessionController::clipboardCopyRetired, this,
+        [this](quint64 publication) { finishExplicitCopy(publication); }, Qt::QueuedConnection);
     connect(m_session.get(), &ScreenshotRecognitionSessionController::textDraftChanged, this,
             &ScreenshotOcrController::textDraftChanged);
     connect(m_session.get(), &ScreenshotRecognitionSessionController::workflowStateChanged, this,
@@ -575,117 +584,62 @@ void ScreenshotOcrController::scheduleCopyRecognitionAndEndCapture() {
             if (activation != m_activationId || publication != m_explicitCopyPublication ||
                 !m_active || m_mode != Mode::Text || !hasTextResult())
                 return;
-            if (publication) {
-                const auto finish = [this, activation, publication](bool published) {
-                    if (activation != m_activationId || publication != m_explicitCopyPublication)
-                        return;
-                    m_explicitCopyPublication = 0;
-                    if (published) {
-                        m_context.cancelCapture();
-                    } else if (m_presentation && !editing()) {
-                        applyOcrBackgroundToOverlays(m_presentation);
-                        m_session->renderTextBackground();
-                    }
-                };
-                if (!m_session->copySourceTextToClipboard(publication, finish))
-                    finish(false);
-            } else if (!translating()) {
-                static_cast<void>(copyRecognitionToClipboard(true, /*copyFullTextResult=*/true));
-            }
+            if (publication || !translating())
+                static_cast<void>(copyRecognitionAndEndCapture(
+                    ScreenshotRecognitionCopy::SourceText, true, publication));
         });
 }
 
-bool ScreenshotOcrController::copyRecognitionToClipboard(bool endCapture, bool copyFullTextResult,
-                                                         std::function<void(QImage)> copyImage) {
-    if (!m_active || QApplication::clipboard() == nullptr) {
+void ScreenshotOcrController::finishExplicitCopy(quint64 publication) {
+    if (!publication || publication != m_explicitCopyPublication)
+        return;
+    m_explicitCopyPublication = 0;
+    if (m_presentation && !editing()) {
+        applyOcrBackgroundToOverlays(m_presentation);
+        m_session->renderTextBackground();
+    }
+}
+
+bool ScreenshotOcrController::copyRecognitionToClipboard(ScreenshotRecognitionCopy intent) {
+    return m_active && m_session->copyToClipboard(intent, m_presentation.get());
+}
+
+bool ScreenshotOcrController::copyRecognitionAndEndCapture(
+    ScreenshotRecognitionCopy intent, bool userInitiated,
+    ScreenshotClipboardService::PublicationId publication) {
+    const auto commit = m_context.commitCaptureCopy;
+    auto* clipboard = QApplication::clipboard();
+    if (!m_active || !clipboard || !commit)
         return false;
-    }
-    const auto smartPublication = ScreenshotClipboardService::reservePublication();
-    const QPointer<ScreenshotOcrController> smartGuard(this);
-    const auto smartActivation = m_activationId;
-    if (m_session->prepareSmartClipboard(
-            m_presentation.get(), copyFullTextResult,
-            [smartGuard, smartActivation, smartPublication, endCapture](auto mime) {
-                if (!smartGuard || !smartGuard->m_active ||
-                    smartActivation != smartGuard->m_activationId)
-                    return;
-                static_cast<void>(ScreenshotClipboardService::commitMimeData(
-                    QApplication::clipboard(), smartGuard, mime.release(), smartPublication,
-                    [smartGuard, smartActivation, endCapture](const auto& result) {
-                        if (!smartGuard || !smartGuard->m_active ||
-                            smartActivation != smartGuard->m_activationId)
-                            return;
-                        if (!result.succeeded())
-                            smartGuard->showStatus(result.errorString(), true);
-                        else if (endCapture && !result.superseded)
-                            smartGuard->m_context.cancelCapture();
-                    }));
-            }))
-        return true;
-#if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
-    if (m_session->mode() == ScreenshotRecognitionSessionController::Mode::Document) {
-        const auto request = m_session->documentCopyRequest();
-        const auto publication = ScreenshotClipboardService::reservePublication();
-        const QPointer<ScreenshotOcrController> guard(this);
-        const auto activation = m_activationId;
-        const auto current = [guard, activation] {
-            return guard && guard->m_active && activation == guard->m_activationId;
-        };
-        return request
-            .start(this,
-                   [current, guard, publication, endCapture](auto mime, const QString& error) {
-                       if (!current())
-                           return;
-                       if (!mime) {
-                           if (!error.isEmpty())
-                               guard->showStatus(error, true);
-                           return;
-                       }
-                       static_cast<void>(ScreenshotClipboardService::commitMimeData(
-                           QApplication::clipboard(), guard, mime.release(), publication,
-                           [current, guard, endCapture](ScreenshotClipboardCommitResult result) {
-                               if (!current())
-                                   return;
-                               if (!result.succeeded())
-                                   guard->showStatus(result.errorString(), true);
-                               else if (endCapture && !result.superseded)
-                                   guard->m_context.cancelCapture();
-                           }));
-                   })
-            .isValid();
-    }
-    static_cast<void>(ScreenshotClipboardService::reservePublication());
-#endif
-    if (m_session->tableModeActive()) {
-        if (m_recognitionWindow != nullptr) {
-            m_recognitionWindow->commitActiveTableEdit();
-        }
-    }
-    // Conversion toolbar Copy exports source; selection Copy is handled inside the preview.
-    const bool resolveTranslation = copyImage && m_session->translating();
-    const bool copied = !resolveTranslation && !copyFullTextResult &&
-                        !m_session->conversionModeActive() && m_recognitionWindow != nullptr &&
-                        m_recognitionWindow->copyVisibleContentToClipboard();
-    if (!copied) {
-        std::unique_ptr<QMimeData> mimeData =
-            m_session->recognitionClipboardMimeData(m_presentation.get(), copyFullTextResult);
-        if (mimeData == nullptr) {
-            if (m_session->translating())
-                showStatus(QCoreApplication::translate("ScreenshotRecognitionSessionController",
-                                                       "Unable to copy translation results"),
-                           true);
-            return false;
-        }
-        if (copyImage && mimeData->hasImage()) {
-            copyImage(qvariant_cast<QImage>(mimeData->imageData()));
-            return true;
-        }
-        QApplication::clipboard()->setMimeData(mimeData.release(), QClipboard::Clipboard);
-    }
-    if (endCapture) {
-        m_context.cancelCapture();
-    }
-    return true;
+    if (!publication)
+        publication = ScreenshotClipboardService::reservePublication(clipboard);
+
+    const QPointer<ScreenshotOcrController> self(this);
+    const auto active = [self, activation = m_activationId] {
+        return self && self->m_active && self->m_activationId == activation;
+    };
+    const auto failed = [self, active, publication](const QString& error) {
+        if (!active())
+            return;
+        if (ScreenshotClipboardService::publicationCurrent(publication))
+            self->showStatus(
+                error.isEmpty() ? self->m_session->clipboardUnavailableMessage() : error, true);
+        if (active())
+            self->finishExplicitCopy(publication);
+    };
+    const bool accepted = m_session->prepareClipboardCopyForExport(
+        intent, m_presentation.get(), publication,
+        [active, publication, userInitiated, commit, failed](auto mime, const QString& error) {
+            if (!active())
+                return;
+            if (mime && ScreenshotClipboardService::publicationCurrent(publication) &&
+                commit(std::move(mime), publication, userInitiated))
+                return;
+            failed(error);
+        });
+    if (!accepted)
+        failed({});
+    return accepted;
 }
 
 void ScreenshotOcrController::mergeTableSelection() {
@@ -1035,7 +989,12 @@ bool ScreenshotOcrController::ensureRecognitionWindow() {
     }
     auto* window = new ScreenshotRecognitionWindow(
         ScreenshotRecognitionWindowActions{
-            [this]() { m_context.cancelCapture(); },
+            [this] {
+                if (m_context.requestCancelViaShortcut)
+                    m_context.requestCancelViaShortcut();
+                else
+                    m_context.cancelCapture();
+            },
             [this](const QString& text) { setTextDraft(text); },
             [this](const ScreenshotTableCommandState& state) {
                 m_session->handleTableCommandState(state);
@@ -1065,7 +1024,6 @@ bool ScreenshotOcrController::ensureRecognitionWindow() {
                 updateRecognitionWindowGeometry();
             },
             []() {},
-            [this]() { m_context.cancelCapture(); },
         },
         nullptr, ScreenshotRecognitionWindow::PresentationMode::TopLevelWindow,
         m_context.shortcutManager);

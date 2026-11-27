@@ -27,32 +27,10 @@ class ScreenshotToolCommandWorkflow final {
     explicit ScreenshotToolCommandWorkflow(ScreenshotToolCommandWorkflowContext context);
 
     void setMoveTool();
-    void setSelectTool();
-    void setShapeTool();
-    void setSpeechBubbleTool();
-    void setArrowTool();
-    void setLineTool();
-    void setDistanceTool();
-    void setAngleTool();
-    void setBracketTool();
-    void setBrushTool();
-    void setHighlightTool();
-    void setBrushHighlightTool();
-    void setSpotlightTool();
-    void setMagnifierTool();
-    void setEraserTool();
-    void setRectangleEraserTool();
-    void setBrushEraserTool();
-    void setFilterTool();
-    void setRectangleFilterTool();
-    void setBrushFilterTool();
-    void setAutoFilterTool();
-    void setWatermarkTool();
+    void setCanvasTool(SnowCanvasTool tool);
     void setWatermarkConfigFromToolbar(const SnowCanvasWatermarkConfig& config);
     void setSpotlightConfigFromToolbar(const SnowCanvasSpotlightConfig& config);
     void setFilterStyleFromToolbar(const SnowCanvasFilterStyle& style, quint32 properties);
-    void setTextTool();
-    void setSequenceNumberTool();
 
     void decrementSelectedSequenceNumbers();
     void incrementSelectedSequenceNumbers();
@@ -67,7 +45,6 @@ class ScreenshotToolCommandWorkflow final {
     [[nodiscard]] bool stepStrokeWidth(int delta);
 
   private:
-    void setCanvasTool(SnowCanvasTool canvasTool);
 
     ScreenshotToolCommandWorkflowContext m_context;
 };

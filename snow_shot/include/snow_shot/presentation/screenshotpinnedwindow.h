@@ -1,6 +1,7 @@
 #ifndef SNOW_SHOT_PRESENTATION_SCREENSHOTPINNEDWINDOW_H
 #define SNOW_SHOT_PRESENTATION_SCREENSHOTPINNEDWINDOW_H
 
+#include "snow_shot/presentation/screenshotrecognitioncopy.h"
 #include "snow_shot/presentation/mouseoperationinput.h"
 #include "snow_shot/presentation/screenshotexporttasks.h"
 #include "snow_shot/app/editionfeatures.h"
@@ -300,9 +301,6 @@ class ScreenshotPinnedWindow final : public QWidget {
             snow_shot::storage::PinnedTransparentLayerMode::Checkerboard);
     }
     [[nodiscard]] QJsonObject automationState() const;
-#if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
-    [[nodiscard]] ScreenshotDocumentCopyRequest automationDocumentCopyRequest() const;
-#endif
     [[nodiscard]] bool blocksMemoryTrimming() const;
     [[nodiscard]] bool automationUpdate(const QJsonObject& properties, QString* error);
     [[nodiscard]] bool automationAction(const QString& action);
@@ -312,9 +310,10 @@ class ScreenshotPinnedWindow final : public QWidget {
     [[nodiscard]] std::shared_ptr<ScreenshotExportArtifact>
     automationArtifact(bool original = false, bool viewport = false);
     [[nodiscard]] std::unique_ptr<QMimeData> automationClipboardMimeData(bool original) const;
-    bool
-    prepareAutomationSmartClipboard(bool original,
-                                    std::function<void(std::unique_ptr<QMimeData>)> completion);
+    bool prepareAutomationClipboard(bool original,
+                                    ScreenshotClipboardService::PublicationId publication,
+                                    QObject* receiver,
+                                    std::function<void(std::unique_ptr<QMimeData>)> ready);
     [[nodiscard]] std::optional<ScreenshotRecognitionFileSnapshot> automationFileSnapshot() const;
     [[nodiscard]] ScreenshotRecognitionResults recognitionSnapshot() const;
     [[nodiscard]] static ScreenshotRecognitionResults
@@ -517,7 +516,8 @@ class ScreenshotPinnedWindow final : public QWidget {
         CloseAllWindows
     };
     [[nodiscard]] bool menuCommandAvailable(MenuCommand command) const;
-    void executeMenuCommand(MenuCommand command);
+    bool executeMenuCommand(MenuCommand command);
+    bool imageCommandAvailable(const QString& id) const;
     bool executeImageCommand(const QString& id);
     void confirmDestroy();
     void showCloseConfirmation(snow_shot::storage::PinnedWindowCloseIntent intent);
@@ -617,7 +617,9 @@ class ScreenshotPinnedWindow final : public QWidget {
     void handleTableSplitRequested();
     void handleTableResetRequested();
     QPointF canvasPositionForViewPosition(const QPointF& position) const;
-    void copyEditToolbarContent(bool closeAfter = false);
+    bool
+    copyEditToolbarContent(bool closeAfter = false,
+                           ScreenshotRecognitionCopy intent = ScreenshotRecognitionCopy::Result);
     void copyCurrentAndMaybeClose(bool closeAfter);
     bool scheduleCloseAfterPublication(ScreenshotClipboardService::PublicationId id);
     void publishCopyMime(std::unique_ptr<QMimeData> mime,
@@ -894,9 +896,6 @@ class ScreenshotPinnedWindow final : public QWidget {
     QPointer<ScreenshotCloudUploadJob> m_cloudUploadJob;
     bool m_cloudUploadPreparing = false;
     ScreenshotClipboardCommitHandle m_clipboardCommit;
-#if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
-    ScreenshotExportJobHandle m_documentCopyJob;
-#endif
     std::vector<MaterializationCallback> m_materializationCallbacks;
     PresentationCompletion m_presentationCompletion;
     ScreenshotImageLoader m_imageLoader;

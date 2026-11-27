@@ -46,27 +46,24 @@ class NoOpToolbarCommands final : public ScreenshotToolbarCommandSink {
     int lineToolRequests = 0;
 
     void setMoveTool() override {}
-    void setSelectTool() override {
-        ++selectToolRequests;
+    void setCanvasTool(SnowCanvasTool tool) override {
+        switch (tool) {
+        case SnowCanvasTool::Select:
+            ++selectToolRequests;
+            break;
+        case SnowCanvasTool::Arrow:
+            ++arrowToolRequests;
+            break;
+        case SnowCanvasTool::Line:
+            ++lineToolRequests;
+            break;
+        default:
+            break;
+        }
     }
-    void setShapeTool() override {}
-    void setArrowTool() override {
-        ++arrowToolRequests;
-    }
-    void setLineTool() override {
-        ++lineToolRequests;
-    }
-    void setBrushTool() override {}
-    void setHighlightTool() override {}
-    void setBrushHighlightTool() override {}
-    void setEraserTool() override {}
-    void setFilterTool() override {}
-    void setWatermarkTool() override {}
     void setWatermarkConfigFromToolbar(const SnowCanvasWatermarkConfig&) override {}
     void previewWatermarkFromToolbar(const SnowCanvasWatermarkConfig&) override {}
     void setFilterStyleFromToolbar(const SnowCanvasFilterStyle&, quint32) override {}
-    void setTextTool() override {}
-    void setSequenceNumberTool() override {}
     void setOcrTool() override {}
     void startScrollingScreenshot() override {}
     void pinSelectionToScreen() override {}

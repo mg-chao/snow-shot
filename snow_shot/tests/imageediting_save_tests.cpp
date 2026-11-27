@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "snow_shot/presentation/imageeditingcanvas.h"
 #include "snow_shot/presentation/imageeditingwindow.h"
-#include "snow_shot/presentation/screenshotclipboardcontent.h"
+#include "screenshot_clipboard_test_output.h"
 #include "snow_shot/presentation/screenshotimageconversioncontroller.h"
 #include "snow_shot/presentation/screenshotimagefileservice.h"
 #include "snowimageqtcodec.h"
 #include "snow_shot/presentation/screenshotocrpresentation.h"
 #include "snow_shot/presentation/screenshotrecognitionsessioncontroller.h"
+#include "snow_shot/presentation/screenshotrecognitionwindow.h"
 #include "snow_shot/presentation/screenshottoolpalette.h"
 #include "snow_shot/storage/settingsadapters.h"
 #include "widgets/button.h"
@@ -31,6 +32,7 @@
 #include <QPointer>
 #include <QScopeGuard>
 #include <QTemporaryDir>
+#include <QTextBrowser>
 #include <QTcpServer>
 #include <QThread>
 #include <QTimer>
@@ -258,18 +260,17 @@ void standardImageCopyFollowsFilePreferenceAndInvocationOrder() {
     const QImage expected = window.document()->image();
     awaitCondition([&] { return copies == 1; }, "the latest copy publishes");
     const auto verifyClipboard = [&](bool withFile) {
-        auto snapshot = ScreenshotClipboardContentReader::snapshot(QApplication::clipboard(), 1.0);
-        require(snapshot && snapshot->localImage.has_value() == withFile,
+        const auto [image, filePath] = readScreenshotClipboardOutput();
+        require(!filePath.isEmpty() == withFile,
                 "standard copy uses the file setting captured at invocation");
         if (withFile) {
-            const QImage file(snapshot->localImage->absolutePath);
+            const QImage file(filePath);
             require(file.size() == expected.size() &&
                         file.pixelColor(2, 2) == expected.pixelColor(2, 2),
                     "the attached file contains the copied image");
         }
-        const auto decoded = ScreenshotClipboardContentReader::decode(std::move(*snapshot));
-        require(decoded && decoded->image.size() == expected.size() &&
-                    decoded->image.pixelColor(2, 2) == expected.pixelColor(2, 2),
+        require(image.size() == expected.size() &&
+                    image.pixelColor(2, 2) == expected.pixelColor(2, 2),
                 "clipboard image matches the newer document state");
     };
     verifyClipboard(false);
@@ -645,6 +646,22 @@ void conversionExportMarksActiveModel(ConversionFormat format, bool copy,
     require(settings.setVisionModel(secondModel), "select the later identical conversion");
     activateConversion(window, format);
     require(window.dirty(), "a new model result needs its own successful export");
+    if (copy) {
+        auto* view = window.canvas()->window()->findChild<ScreenshotRecognitionWindow*>();
+        auto* browser = view ? view->findChild<QTextBrowser*>() : nullptr;
+        require(browser, "the conversion preview exposes its selectable text");
+        auto cursor = browser->textCursor();
+        cursor.movePosition(QTextCursor::Start);
+        cursor.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
+        browser->setTextCursor(cursor);
+        require(cursor.hasSelection() && view->copyVisibleContentToClipboard(),
+                "copy the selected preview text");
+        awaitCondition([&] { return QApplication::clipboard()->text() == cursor.selectedText(); },
+                       "the preview publishes the selection");
+        require(window.dirty(), "copying a preview selection preserves unsaved document changes");
+        cursor.clearSelection();
+        browser->setTextCursor(cursor);
+    }
     int exports = 0;
     bool succeeded = false;
     QObject::connect(&window, &ImageEditingWindow::exportFinished, &window, [&](bool success) {

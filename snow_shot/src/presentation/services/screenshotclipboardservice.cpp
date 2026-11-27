@@ -114,6 +114,7 @@ struct ClipboardObservation {
     quint64 qtRevision = 0;
     quint64 baseline = 0;
     Id request = 0;
+    bool cancelled = false;
 
     quint64 revision() const {
         return native ? screenshotClipboardRevision() : qtRevision;
@@ -128,10 +129,11 @@ struct ClipboardObservation {
                                  [this] { ++qtRevision; });
         }
         request = id;
+        cancelled = false;
         baseline = revision();
     }
     bool changed(Id id) const {
-        return id == request && revision() != baseline;
+        return id == request && (cancelled || revision() != baseline);
     }
     void didPublish(Id id, quint64 publishedRevision) {
         if (id == request)
@@ -703,6 +705,12 @@ ScreenshotClipboardService::reservePublication(QClipboard* clipboard) {
     const auto id = reservePublication();
     clipboardObservation().begin(clipboard, id);
     return id;
+}
+
+void ScreenshotClipboardService::cancelPublication(PublicationId id) {
+    auto& observation = clipboardObservation();
+    if (id && id == observation.request)
+        observation.cancelled = true;
 }
 
 bool ScreenshotClipboardService::publicationCurrent(PublicationId id) {

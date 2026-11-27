@@ -572,19 +572,17 @@ struct ImageEditingWindow::Impl {
                 binding.priority =
                     drawing ? WindowShortcutManager::StandardPriority::DrawingShortcut
                             : WindowShortcutManager::StandardPriority::ScreenshotShortcut;
-                binding.canActivate = [this, id = it.key()](const auto& context) {
+                binding.canActivate = [this, id = it.key(), drawing](const auto& context) {
                     if (document.image().isNull() || loading || cropBusy || closing ||
                         (colorSampling && colorSampling->active()) ||
                         WindowShortcutManager::focusAcceptsTextInput(context.focusWidget) ||
                         canvas->hasActiveTextEditing())
                         return false;
-                    if (id == QStringLiteral("text_recognition_copy"))
-                        return palette->canActivateScreenshotShortcut(
-                            QStringLiteral("text_recognition"));
-                    if (id != snow_shot::shortcuts::kCycleAnnotationToolOptions)
-                        return true;
-                    return !WindowShortcutManager::inputTargetsPopup(context) &&
-                           palette->canActivateDrawingShortcut(id);
+                    if (id == snow_shot::shortcuts::kCycleAnnotationToolOptions &&
+                        WindowShortcutManager::inputTargetsPopup(context))
+                        return false;
+                    return drawing ? palette->canActivateDrawingShortcut(id)
+                                   : palette->canActivateScreenshotShortcut(id);
                 };
                 binding.activate = [this, id = it.key(), drawing](const auto&) {
                     if (id == QStringLiteral("text_recognition_copy")) {
@@ -1005,7 +1003,8 @@ struct ImageEditingWindow::Impl {
             return {};
         return target->contentCheckpoints().value(target->activeContentKey());
     }
-    bool exportContent(ExportOperation operation);
+    bool exportContent(ExportOperation operation,
+                       ScreenshotRecognitionCopy intent = ScreenshotRecognitionCopy::Result);
     void translateConfirmation() {
         confirmation->setWindowTitle(ImageEditingWindow::tr("Discard changes?"));
         confirmation->setText(ImageEditingWindow::tr("This editing window has unsaved changes"));
@@ -1077,8 +1076,6 @@ ScreenshotRecognitionWindow* ImageEditingWindow::Impl::ensureRecognitionView() {
     if (!recognitionView) {
         ScreenshotRecognitionWindowActions actions;
         actions.handleCancel = [this] { drawing(ImageEditingCanvas::Mode::Pan); };
-        actions.handleCopy = [this] { exportContent(ExportOperation::Copy); };
-        actions.copyOcrResult = [this] { return exportContent(ExportOperation::Copy); };
         actions.handleTextEdited = [this](const QString& text) {
             if (session && session->ownsContentAttachment())
                 session->setTextDraft(text);
@@ -1141,6 +1138,9 @@ Session* ImageEditingWindow::Impl::ensureSession() {
     const auto owner = std::make_shared<QPointer<Session>>();
     actions.isCurrentSession = [this, owner] { return *owner && session == *owner; };
     actions.ensureContent = [this] { return ensureRecognitionView(); };
+    actions.requestCopy = [this](ScreenshotRecognitionCopy intent) {
+        return exportContent(ExportOperation::Copy, intent);
+    };
     actions.applyOcrPresentation = [this](auto presentation) {
         canvas->setRecognitionBackground();
         recognitionView->setOcrPresentation(std::move(presentation));
@@ -1409,7 +1409,8 @@ void ImageEditingWindow::Impl::bindRecognition() {
     palette->setOriginalImageToggleEnabled(false);
 }
 
-bool ImageEditingWindow::Impl::exportContent(ExportOperation operation) {
+bool ImageEditingWindow::Impl::exportContent(ExportOperation operation,
+                                             ScreenshotRecognitionCopy intent) {
     if (loading || cropBusy || !exporter.canStart(operation) || closing ||
         document.image().isNull())
         return false;
@@ -1483,8 +1484,8 @@ bool ImageEditingWindow::Impl::exportContent(ExportOperation operation) {
             if (!lifetime || closing ||
                 !ScreenshotClipboardService::publicationCurrent(copyOptions.publication))
                 return false;
-            exporter.startCopy(std::move(content), copyOptions, surface->window(), std::move(done));
-            return true;
+            return exporter.startCopy(std::move(content), copyOptions, surface->window(),
+                                      std::move(done));
         };
         if (!recognition) {
             QString error;
@@ -1494,46 +1495,39 @@ bool ImageEditingWindow::Impl::exportContent(ExportOperation operation) {
             finish({}, false, false, error);
             return false;
         }
-        const auto checkpoint = recognitionCheckpoint(recognition);
-#if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
-        if (recognition->mode() == Session::Mode::Document) {
-            auto request = recognition->documentCopyRequest();
-            if (request.document)
-                return publish(std::move(request), completion(checkpoint, true));
-            finish({}, true, false,
-                   ImageEditingWindow::tr("No recognition result is available to export"));
-            return false;
-        }
-#endif
+        // Copying a preview can publish just one selection of a larger editable result.
+        auto checkpoint = std::make_shared<QByteArray>(intent == ScreenshotRecognitionCopy::Result
+                                                           ? recognitionCheckpoint(recognition)
+                                                           : QByteArray{});
         const bool ocrOverlay =
             recognition->mode() == Session::Mode::Text && !recognition->editing();
         const auto draft = ocrOverlay ? recognition->textDraft() : QString{};
-        if (recognition->prepareSmartClipboard(
-                nullptr, false,
-                [this, lifetime, recognition, publish, completion, checkpoint, draft](auto mime) {
-                    if (!lifetime || !recognition || recognition != session ||
-                        !recognition->ownsContentAttachment())
-                        return;
-                    const auto saved = mime->text() == draft ? checkpoint : QByteArray{};
-                    publish(std::move(mime), completion(saved, true));
-                }))
-            return true;
-        auto mime = recognition->recognitionClipboardMimeData();
-        if (!lifetime || !recognition || recognition != session)
-            return false;
-        if (!mime) {
-            finish({}, true, false,
-                   ImageEditingWindow::tr("No recognition result is available to export"));
-            return false;
-        }
-        if (mime->hasImage()) {
-            auto image = qvariant_cast<QImage>(mime->imageData());
-            return publish(ScreenshotExportSource::fromImage(std::move(image)),
-                           completion({}, true));
-        }
-        const auto saved =
-            ocrOverlay && (!mime->hasText() || mime->text() != draft) ? QByteArray{} : checkpoint;
-        return publish(std::move(mime), completion(saved, true));
+        ImageEditingExportController::PrepareCopy prepare =
+            [recognition, intent, publication = copyOptions.publication, ocrOverlay, draft,
+             checkpoint](QObject* request, ImageEditingExportController::CopyPrepared ready) {
+                if (!recognition || !recognition->ownsContentAttachment())
+                    return false;
+                // Retiring an attachment may happen inside tool activation. Finish the export
+                // after the transition, and let request destruction disconnect queued callbacks.
+                QObject::connect(
+                    recognition, &Session::clipboardCopyRetired, request,
+                    [ready, publication](quint64 retired) {
+                        if (retired == publication)
+                            ready({}, {});
+                    },
+                    Qt::QueuedConnection);
+                return recognition->prepareClipboardCopy(
+                    intent, nullptr, publication,
+                    [ready = std::move(ready), ocrOverlay, draft, checkpoint](auto mime,
+                                                                              QString error) {
+                        if (mime && (mime->hasImage() || (ocrOverlay && mime->text() != draft)))
+                            checkpoint->clear();
+                        ready(std::move(mime), std::move(error));
+                    });
+            };
+        return publish(std::move(prepare), [finish, checkpoint](bool success, QString error) {
+            finish(*checkpoint, true, success, std::move(error));
+        });
     }
 
     ImageEditingExportController::Content content;

@@ -150,9 +150,15 @@ void ScreenshotImageConversionView::render() {
     m_browser->horizontalScrollBar()->setValue(horizontal);
 }
 
+std::unique_ptr<QMimeData> ScreenshotImageConversionView::clipboardMimeData() const {
+    return snow_shot::presentation::imageConversionClipboardMimeData(m_format, m_source,
+                                                                     m_browser->textCursor());
+}
+
 bool ScreenshotImageConversionView::copyToClipboard() const {
-    auto mimeData = snow_shot::presentation::imageConversionClipboardMimeData(
-        m_format, m_source, m_browser->textCursor());
+    if (const auto request = m_requestCopy)
+        return request();
+    auto mimeData = clipboardMimeData();
     if (mimeData == nullptr) {
         return false;
     }

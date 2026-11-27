@@ -22,6 +22,7 @@
 
 #include <QApplication>
 #include <QClipboard>
+#include <QMimeData>
 #include <QMouseEvent>
 #include <QScopeGuard>
 #include <QTemporaryDir>
@@ -65,21 +66,10 @@ class ToolbarCommands final : public ScreenshotToolbarCommandSink,
                               public ScreenshotSelectionToolbarCommandSink {
   public:
     void setMoveTool() override {}
-    void setSelectTool() override {}
-    void setShapeTool() override {}
-    void setArrowTool() override {}
-    void setLineTool() override {}
-    void setBrushTool() override {}
-    void setHighlightTool() override {}
-    void setBrushHighlightTool() override {}
-    void setEraserTool() override {}
-    void setFilterTool() override {}
-    void setWatermarkTool() override {}
+    void setCanvasTool(SnowCanvasTool) override {}
     void setWatermarkConfigFromToolbar(const SnowCanvasWatermarkConfig&) override {}
     void previewWatermarkFromToolbar(const SnowCanvasWatermarkConfig&) override {}
     void setFilterStyleFromToolbar(const SnowCanvasFilterStyle&, quint32) override {}
-    void setTextTool() override {}
-    void setSequenceNumberTool() override {}
     void setOcrTool() override {}
     void startScrollingScreenshot() override {}
     void pinSelectionToScreen() override {}
@@ -206,12 +196,22 @@ void copyAfterRecognitionOwnsCompletion() {
             int ended = 0;
             int automaticActions = 0;
             ScreenshotOcrController* activeController = nullptr;
-            ScreenshotOcrController controller({capture, interaction, selection, displays, geometry,
-                                                coordinator, recognition, nullptr, nullptr, [] {},
-                                                [&] {
-                                                    ++ended;
-                                                    activeController->invalidateSession();
-                                                }});
+            ScreenshotClipboardCommitScope clipboardScope;
+            ScreenshotOcrControllerContext context{capture,  interaction, selection,  displays,
+                                                   geometry, coordinator, recognition};
+            bool published = false;
+            context.commitCaptureCopy = [&](std::unique_ptr<QMimeData> mime, auto id, bool) {
+                require(QApplication::clipboard()->text() == QStringLiteral("Previous clipboard"),
+                        "the capture detaches before clipboard publication");
+                ++ended;
+                activeController->invalidateSession();
+                const auto handle = clipboardScope.commitMimeData(
+                    QApplication::clipboard(), activeController, mime.release(),
+                    [&](const auto& result) { published = result.published(); }, id);
+                require(handle.isValid(), "the handed-off clipboard copy can be queued");
+                return true;
+            };
+            ScreenshotOcrController controller(std::move(context));
             activeController = &controller;
             QObject::connect(&controller, &ScreenshotOcrController::textResultChanged, &controller,
                              [&](bool available) {
@@ -251,15 +251,15 @@ void copyAfterRecognitionOwnsCompletion() {
                     controller.invalidateSession();
             }
             QCoreApplication::processEvents();
+            QCoreApplication::processEvents();
             const bool copied = scenario == Scenario::Fresh || scenario == Scenario::Cached ||
                                 scenario == Scenario::InFlight || scenario == Scenario::Empty;
-            require(ended == (copied ? 1 : 0) &&
+            require(ended == (copied ? 1 : 0) && published == copied &&
                         QApplication::clipboard()->text() ==
                             (scenario == Scenario::Empty ? QString()
                              : copied                    ? QStringLiteral("Recognized text")
                                                          : QStringLiteral("Previous clipboard")),
-                    "only successful active copy recognition may replace the clipboard and end "
-                    "capture");
+                    "only the prepared active recognition may detach and publish");
             require(scenario == Scenario::Superseded ? automaticActions > 0 : automaticActions == 0,
                     "explicit copy recognition must supersede the configurable follow-up");
             controller.invalidateSession();
@@ -288,9 +288,11 @@ void copyAfterRecognitionOwnsCompletion() {
                 const snow_shot::storage::ScreenshotTranslationSettings settings;
                 require(settings.setCopyTranslationResultsAsImage(true), "enable image copying");
                 const int previousEnded = ended;
-                require(!controller.copyRecognitionToClipboard(true) && ended == previousEnded &&
-                            QApplication::clipboard()->text() == QStringLiteral("Next capture"),
-                        "failed translation image generation retains the clipboard and capture");
+                require(
+                    !controller.copyRecognitionAndEndCapture(ScreenshotRecognitionCopy::Result) &&
+                        ended == previousEnded &&
+                        QApplication::clipboard()->text() == QStringLiteral("Next capture"),
+                    "failed translation image generation retains the clipboard and capture");
                 require(settings.setCopyTranslationResultsAsImage(false), "restore copy default");
             }
         }

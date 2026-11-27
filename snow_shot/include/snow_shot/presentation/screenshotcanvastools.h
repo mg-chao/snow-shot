@@ -11,10 +11,12 @@ struct ScreenshotCanvasToolDescriptor {
     SnowCanvasTool canvasTool;
     ScreenshotActiveTool activeTool;
     ScreenshotToolPalette::Tool paletteTool;
+    QLatin1StringView shortcut;
 };
-#define SNOW_SHOT_CANVAS_TOOL(signal, appTool, canvasTool)                                         \
+#define SNOW_SHOT_CANVAS_TOOL(signal, appTool, canvasTool, shortcut, automation)                   \
     ScreenshotCanvasToolDescriptor{SnowCanvasTool::canvasTool, ScreenshotActiveTool::appTool,      \
-                                   ScreenshotToolPalette::Tool::appTool},
+                                   ScreenshotToolPalette::Tool::appTool,                           \
+                                   QLatin1StringView(shortcut)},
 inline constexpr std::array screenshotCanvasTools{
 
 #include "snow_shot/presentation/screenshotcanvastools.inc"
@@ -25,7 +27,7 @@ struct ScreenshotCanvasToolRequest {
     void (ScreenshotToolPalette::*requested)();
     SnowCanvasTool canvasTool;
 };
-#define SNOW_SHOT_CANVAS_TOOL(signal, appTool, canvasTool)                                         \
+#define SNOW_SHOT_CANVAS_TOOL(signal, appTool, canvasTool, shortcut, automation)                   \
     ScreenshotCanvasToolRequest{&ScreenshotToolPalette::signal, SnowCanvasTool::canvasTool},
 inline constexpr std::array screenshotCanvasToolRequests{
 

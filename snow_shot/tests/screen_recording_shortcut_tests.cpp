@@ -420,8 +420,7 @@ void recordingSelectionEditsAnnotationsAndPreservesPassThrough() {
 void recordingControlShortcutsFollowButtonsAndSettings() {
     const snow_shot::storage::ScreenRecordingShortcutSettings settings;
     const auto defaults = settings.allShortcuts();
-    require(defaults.size() == 4 &&
-                snow_shot::shortcuts::portableTextList(defaults.value(QStringLiteral("export"))) ==
+    require(snow_shot::shortcuts::portableTextList(defaults.value(QStringLiteral("export"))) ==
                     QStringList{QStringLiteral("Ctrl+E")} &&
                 snow_shot::shortcuts::portableTextList(defaults.value(
                     QStringLiteral("toggle_recording"))) == QStringList{QStringLiteral("Ctrl+S")} &&

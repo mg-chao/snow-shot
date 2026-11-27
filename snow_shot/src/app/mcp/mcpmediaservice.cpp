@@ -759,94 +759,48 @@ void McpMediaService::request(const ScreenshotMcpRequest& r,
             return;
         }
         const bool original = p.value(QStringLiteral("original")).toBool();
-        if (output == QStringLiteral("copy")) {
-#if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
-            if (!original) {
-                const auto request = window->automationDocumentCopyRequest();
-                if (request.document) {
-                    const auto publication = ScreenshotClipboardService::reservePublication();
-                    auto publicationHandle = std::make_shared<ScreenshotClipboardCommitHandle>();
-                    auto job =
-                        request.start(this, [this, owner = r.connectionId, publication,
-                                             publicationHandle, reply](auto mime, const QString&) {
-                            if (!mime) {
-                                reply({}, QStringLiteral("clipboard_failed"));
-                                return;
-                            }
-                            *publicationHandle = m_impl->clipboardScope(owner).commitMimeData(
-                                QApplication::clipboard(), this, mime.release(),
-                                [reply](const auto& result) {
-                                    reply({{QStringLiteral("copied"), result.succeeded()}},
-                                          result.succeeded() ? QString()
-                                                             : QStringLiteral("clipboard_failed"));
-                                },
-                                publication);
-                            if (!publicationHandle->isValid())
-                                reply({}, QStringLiteral("clipboard_failed"));
-                        });
-                    if (!job.isValid()) {
-                        reply({}, QStringLiteral("queue_full"));
-                        return;
-                    }
-                    s.cancellations.insert(QString::number(r.connectionId) + u':' + r.requestId,
-                                           [job, publicationHandle, reply] {
-                                               job.cancel();
-                                               publicationHandle->cancel();
-                                               reply({}, QStringLiteral("cancelled"));
-                                           });
+        const auto publication =
+            output == QStringLiteral("copy")
+                ? ScreenshotClipboardService::reservePublication(QApplication::clipboard())
+                : 0;
+        if (publication) {
+            const QPointer<QObject> request(new QObject(this));
+            const QString key = QString::number(r.connectionId) + u':' + r.requestId;
+            const auto finishCopy = [request, reply](bool published) {
+                if (request)
+                    request->deleteLater();
+                reply({{QStringLiteral("copied"), published}},
+                      published ? QString{} : QStringLiteral("clipboard_failed"));
+            };
+            s.cancellations.insert(key, [request, publication, reply] {
+                ScreenshotClipboardService::cancelPublication(publication);
+                if (request)
+                    request->deleteLater();
+                reply({}, QStringLiteral("cancelled"));
+            });
+            const auto publish = [guard, request, currentRequest, finishCopy, publication,
+                                  connection = r.connectionId](auto mime) {
+                if (!request || !currentRequest())
+                    return;
+                if (!mime || !ScreenshotClipboardService::publicationCurrent(publication)) {
+                    finishCopy(false);
                     return;
                 }
-            }
-#endif
-            const auto publication = ScreenshotClipboardService::reservePublication();
-            const auto cancelled = std::make_shared<bool>(false);
-            const auto publicationHandle = std::make_shared<ScreenshotClipboardCommitHandle>();
-            const QPointer<McpMediaService> lifetime(this);
-            if (window->prepareAutomationSmartClipboard(
-                    original, [lifetime, owner = r.connectionId, publication, cancelled,
-                               publicationHandle, reply](auto mime) {
-                        if (!lifetime || *cancelled)
-                            return;
-                        *publicationHandle = lifetime->m_impl->clipboardScope(owner).commitMimeData(
-                            QApplication::clipboard(), lifetime, mime.release(),
-                            [reply](const auto& result) {
-                                reply({{QStringLiteral("copied"), result.succeeded()}},
-                                      result.succeeded() ? QString()
-                                                         : QStringLiteral("clipboard_failed"));
-                            },
+                auto handle =
+                    guard->m_impl->clipboardScope(connection)
+                        .commitMimeData(
+                            QApplication::clipboard(), request, mime.release(),
+                            [finishCopy](const auto& result) { finishCopy(result.published()); },
                             publication);
-                        if (!publicationHandle->isValid())
-                            reply({}, QStringLiteral("clipboard_failed"));
-                    })) {
-                s.cancellations.insert(QString::number(r.connectionId) + u':' + r.requestId,
-                                       [cancelled, publicationHandle, reply] {
-                                           *cancelled = true;
-                                           publicationHandle->cancel();
-                                           reply({}, QStringLiteral("cancelled"));
-                                       });
+                if (!handle.isValid())
+                    finishCopy(false);
+            };
+            if (window->prepareAutomationClipboard(original, publication, request, publish))
                 return;
-            }
-            if (auto mime = window->automationClipboardMimeData(original)) {
-                auto commit =
-                    s.clipboardScope(r.connectionId)
-                        .commitMimeData(QApplication::clipboard(), this, mime.release(),
-                                        [reply](ScreenshotClipboardCommitResult result) {
-                                            reply({{QStringLiteral("copied"), result.succeeded()}},
-                                                  result.succeeded()
-                                                      ? QString()
-                                                      : QStringLiteral("clipboard_failed"));
-                                        });
-                if (!commit.isValid()) {
-                    reply({}, QStringLiteral("clipboard_failed"));
-                    return;
-                }
-                s.cancellations.insert(QString::number(r.connectionId) + u':' + r.requestId,
-                                       [commit, reply] {
-                                           commit.cancel();
-                                           reply({}, QStringLiteral("cancelled"));
-                                       });
+            delete request.data();
+            if (!currentRequest())
                 return;
-            }
+            s.cancellations.remove(key);
         }
 #if SNOW_SHOT_ENABLE_IMAGE_CONVERSION || SNOW_SHOT_ENABLE_LATEX_RECOGNITION ||                     \
     SNOW_SHOT_ENABLE_QR_RECOGNITION || SNOW_SHOT_ENABLE_TABLE_RECOGNITION
@@ -919,9 +873,9 @@ void McpMediaService::request(const ScreenshotMcpRequest& r,
         };
         if (output == QStringLiteral("copy")) {
             if (!artifact->requestClipboard(
-                    this,
-                    [guard, currentRequest, complete, artifact, reply, requestId = r.requestId,
-                     connection = r.connectionId](ScreenshotExportClipboardResult result) {
+                    this, [guard, currentRequest, complete, artifact, reply,
+                           requestId = r.requestId, connection = r.connectionId,
+                           publication](ScreenshotExportClipboardResult result) {
                         if (!currentRequest())
                             return;
                         if (!result.succeeded()) {
@@ -930,14 +884,15 @@ void McpMediaService::request(const ScreenshotMcpRequest& r,
                         }
                         auto commit =
                             guard->m_impl->clipboardScope(connection)
-                                .commit(QApplication::clipboard(), guard, std::move(result.payload),
-                                        [complete](ScreenshotClipboardCommitResult committed) {
-                                            complete(
-                                                {{QStringLiteral("copied"), committed.succeeded()}},
-                                                committed.succeeded()
-                                                    ? QString()
-                                                    : QStringLiteral("clipboard_failed"));
-                                        });
+                                .commit(
+                                    QApplication::clipboard(), guard, std::move(result.payload),
+                                    [complete](ScreenshotClipboardCommitResult committed) {
+                                        const bool copied = committed.published();
+                                        complete({{QStringLiteral("copied"), copied}},
+                                                 copied ? QString{}
+                                                        : QStringLiteral("clipboard_failed"));
+                                    },
+                                    publication);
                         if (!commit.isValid())
                             complete({}, QStringLiteral("clipboard_failed"));
                         else {

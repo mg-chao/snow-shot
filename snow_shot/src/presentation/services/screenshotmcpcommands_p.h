@@ -180,7 +180,7 @@ void ScreenshotController::mcpCommand(const QString& method, const QJsonObject& 
                 completion({}, QStringLiteral("busy"));
                 return;
             }
-            s.startScrollingScreenshot();
+            s.invoke(&ScreenshotToolbarCommandSink::startScrollingScreenshot);
             if (!s.m_scrollingCaptureController || !s.m_scrollingCaptureController->active()) {
                 completion({}, QStringLiteral("capture_unavailable"));
                 return;
@@ -240,29 +240,28 @@ void ScreenshotController::mcpCommand(const QString& method, const QJsonObject& 
             }
         }
     } else if (method == QStringLiteral("snow_shot_screenshot_recapture")) {
-        if (!s.canRecapture()) {
+        if (!s.invoke(&ScreenshotToolbarCommandSink::requestRecapture)) {
             completion({}, QStringLiteral("action_unavailable"));
             return;
         }
-        s.requestRecapture();
     } else if (method == QStringLiteral("snow_shot_screenshot_recognize")) {
         const auto kind = params.value(QStringLiteral("kind")).toString();
-        if (kind == QStringLiteral("text"))
-            s.setOcrTool();
-        else if (kind == QStringLiteral("table"))
-            s.setTableTool();
-        else if (kind == QStringLiteral("qr"))
-            s.setQrTool();
-        else if (kind == QStringLiteral("latex"))
-            s.setLatexTool();
-        else if (kind == QStringLiteral("document"))
-            s.setDocumentTool();
-        else if (kind == QStringLiteral("markdown"))
-            s.setMarkdownTool();
-        else if (kind == QStringLiteral("html"))
-            s.setHtmlTool();
-        else {
+        using Sink = ScreenshotToolbarCommandSink;
+        static const QHash<QString, Sink::Action> actions{
+            {QStringLiteral("text"), &Sink::setOcrTool},
+            {QStringLiteral("table"), &Sink::setTableTool},
+            {QStringLiteral("qr"), &Sink::setQrTool},
+            {QStringLiteral("latex"), &Sink::setLatexTool},
+            {QStringLiteral("document"), &Sink::setDocumentTool},
+            {QStringLiteral("markdown"), &Sink::setMarkdownTool},
+            {QStringLiteral("html"), &Sink::setHtmlTool}};
+        const auto command = actions.constFind(kind);
+        if (command == actions.cend()) {
             fail();
+            return;
+        }
+        if (!s.invoke(*command)) {
+            completion({}, QStringLiteral("action_unavailable"));
             return;
         }
     } else if (method == QStringLiteral("snow_shot_screenshot_translate")) {
@@ -286,7 +285,7 @@ void ScreenshotController::mcpCommand(const QString& method, const QJsonObject& 
                 return;
             }
         s.m_mcpOperationError.clear();
-        s.setAutoFilterTool();
+        s.setCanvasTool(SnowCanvasTool::AutoFilter);
         if (!s.m_autoFilterController) {
             completion({}, QStringLiteral("unavailable"));
             return;
