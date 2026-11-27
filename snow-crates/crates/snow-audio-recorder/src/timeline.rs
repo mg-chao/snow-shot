@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::time::{Duration, Instant};
 
 use snow_core::timestamp::{StreamTimestamp, TickFormat, TimestampAnchor};
@@ -61,43 +60,57 @@ pub fn admit_active_pcm(
 
 /// Correct clock drift in an uninterrupted, unclipped PCM packet by at most one frame.
 /// A missing observation preserves sample continuity without treating delivery time as drift.
-pub fn correct_pcm_clock(
-    samples: &[i16],
+/// The caller's scratch buffer is used only when a correction is needed.
+pub fn correct_pcm_clock<'a>(
+    samples: &'a [i16],
     format: AudioFormat,
     expected: u64,
     observed: Option<u64>,
-) -> Cow<'_, [i16]> {
+    scratch: &'a mut Vec<i16>,
+) -> &'a [i16] {
     const DRIFT_TOLERANCE_MS: u64 = 5;
     let tolerance = u64::from(format.sample_rate) * DRIFT_TOLERANCE_MS / 1_000;
     let Some(observed) = observed.filter(|observed| observed.abs_diff(expected) > tolerance) else {
-        return Cow::Borrowed(samples);
+        return samples;
     };
     let channels = usize::from(format.channels);
     if channels == 0 || !samples.len().is_multiple_of(channels) || samples.len() / channels < 3 {
-        return Cow::Borrowed(samples);
+        return samples;
     }
 
-    // Interpolate independently in each channel and preserve the endpoints.
     let last_input = samples.len() / channels - 1;
-    let last_output = if observed > expected {
+    let expand = observed > expected;
+    let last_output = if expand {
         last_input + 1
     } else {
         last_input - 1
     };
     let denominator = last_output as i64;
-    let mut output = Vec::with_capacity((last_output + 1) * channels);
-    for frame in 0..=last_output {
-        let position = frame as u128 * last_input as u128;
-        let first = (position / last_output as u128) as usize;
-        let next = (first + 1).min(last_input);
-        let fraction = (position % last_output as u128) as i64;
+    scratch.clear();
+    scratch.reserve((last_output + 1) * channels);
+    scratch.extend_from_slice(&samples[..channels]);
+
+    // A one-frame expansion interpolates from the preceding frame to this one
+    // with decreasing weight. Contraction uses this frame and the next one
+    // with increasing weight. The endpoints are copied exactly.
+    let first_offset = usize::from(expand);
+    let (mut fraction, fraction_step) = if expand {
+        (denominator - 1, -1)
+    } else {
+        (1, 1)
+    };
+    for output_frame in 1..last_output {
+        let first = (output_frame - first_offset) * channels;
+        let second = first + channels;
         for channel in 0..channels {
-            let a = i64::from(samples[first * channels + channel]);
-            let b = i64::from(samples[next * channels + channel]);
-            output.push(((a * (denominator - fraction) + b * fraction) / denominator) as i16);
+            let a = i64::from(samples[first + channel]);
+            let b = i64::from(samples[second + channel]);
+            scratch.push(((a * (denominator - fraction) + b * fraction) / denominator) as i16);
         }
+        fraction += fraction_step;
     }
-    Cow::Owned(output)
+    scratch.extend_from_slice(&samples[last_input * channels..]);
+    scratch
 }
 
 /// Stream-relative packet time range.
@@ -280,17 +293,52 @@ mod tests {
     fn clock_correction_interpolates_each_channel_and_preserves_endpoints() {
         let format = AudioFormat::new(48_000, 2);
         let samples = [-1000, 900, 0, 100, 1000, -700, 2000, -1500];
-        let expanded = correct_pcm_clock(&samples, format, 1_000, Some(1_241));
+        let mut scratch = Vec::new();
+        let expanded = correct_pcm_clock(&samples, format, 1_000, Some(1_241), &mut scratch);
         assert_eq!(
-            expanded.as_ref(),
+            expanded,
             &[-1000, 900, -250, 300, 500, -300, 1250, -900, 2000, -1500]
         );
-        let compressed = correct_pcm_clock(&samples, format, 1_000, Some(759));
-        assert_eq!(compressed.as_ref(), &[-1000, 900, 500, -300, 2000, -1500]);
-        assert!(matches!(
-            correct_pcm_clock(&samples, format, 1_000, Some(1_240)),
-            Cow::Borrowed(_)
-        ));
+        let scratch_ptr = scratch.as_ptr();
+        let compressed = correct_pcm_clock(&samples, format, 1_000, Some(759), &mut scratch);
+        assert_eq!(compressed, &[-1000, 900, 500, -300, 2000, -1500]);
+        assert_eq!(compressed.as_ptr(), scratch_ptr);
+
+        let unchanged = correct_pcm_clock(&samples, format, 1_000, Some(1_240), &mut scratch);
+        assert_eq!(unchanged.as_ptr(), samples.as_ptr());
+    }
+
+    #[test]
+    fn clock_correction_matches_general_interpolation_sample_for_sample() {
+        let mut scratch = Vec::new();
+        for frames in [3, 4, 7, 480, 960] {
+            for channels in [1, 2, 6] {
+                let format = AudioFormat::new(48_000, channels as u16);
+                let samples: Vec<i16> = (0..frames * channels)
+                    .map(|sample| (sample as u16).wrapping_mul(13_577) as i16)
+                    .collect();
+                for (observed, output_frames) in [(1_241, frames + 1), (759, frames - 1)] {
+                    let output =
+                        correct_pcm_clock(&samples, format, 1_000, Some(observed), &mut scratch);
+                    assert_eq!(output.len(), output_frames * channels);
+                    let denominator = output_frames - 1;
+                    for (frame, actual) in output.chunks_exact(channels).enumerate() {
+                        let position = frame * (frames - 1);
+                        let left = position / denominator;
+                        let right = (left + 1).min(frames - 1);
+                        let fraction = position % denominator;
+                        for (channel, &sample) in actual.iter().enumerate() {
+                            let a = i64::from(samples[left * channels + channel]);
+                            let b = i64::from(samples[right * channels + channel]);
+                            let expected = (a * (denominator - fraction) as i64
+                                + b * fraction as i64)
+                                / denominator as i64;
+                            assert_eq!(sample, expected as i16);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[test]

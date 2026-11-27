@@ -2307,6 +2307,7 @@ pub(crate) struct LiveAudioMixer {
     next_system_frame: Option<u64>,
     next_microphone_frame: Option<u64>,
     active_spans: Vec<snow_audio_recorder::timeline::ActivePcmSpan>,
+    corrected_samples: Vec<i16>,
 }
 
 impl LiveAudioMixer {
@@ -2322,6 +2323,7 @@ impl LiveAudioMixer {
             next_system_frame: None,
             next_microphone_frame: None,
             active_spans: Vec::new(),
+            corrected_samples: Vec::new(),
         }
     }
 
@@ -2369,7 +2371,8 @@ impl LiveAudioMixer {
             AudioSourceKind::System => self.next_system_frame,
             AudioSourceKind::Microphone => self.next_microphone_frame,
         };
-        let active_elapsed = clock.active_elapsed_duration(now);
+        let maximum_slot = self.maximum_audio_slot(clock.active_elapsed_duration(now));
+        let mut scratch = std::mem::take(&mut self.corrected_samples);
         let mut end_frame = None;
         for index in 0..self.active_spans.len() {
             let span = self.active_spans[index];
@@ -2380,7 +2383,7 @@ impl LiveAudioMixer {
             let next = next_frame.filter(|&expected| {
                 uncut
                     && !packet.metadata.discontinuity
-                    && self.keep_audio_alignment(expected, observed, trusted, active_elapsed)
+                    && self.keep_audio_alignment(expected, observed, trusted, maximum_slot)
             });
             let start_frame = next.unwrap_or(observed);
             let channels = usize::from(AUDIO_CHANNELS);
@@ -2392,11 +2395,13 @@ impl LiveAudioMixer {
                 packet.format,
                 start_frame,
                 observation,
+                &mut scratch,
             );
             let frames = (samples.len() / channels) as u32;
-            self.insert_samples(packet.source, start_frame, frames, &samples, active_elapsed);
+            self.insert_samples(packet.source, start_frame, frames, samples, maximum_slot);
             end_frame = Some(start_frame.saturating_add(u64::from(frames)));
         }
+        self.corrected_samples = scratch;
         let alignment = if uncut { end_frame } else { None };
         match packet.source {
             AudioSourceKind::System => self.next_system_frame = alignment,
@@ -2409,9 +2414,9 @@ impl LiveAudioMixer {
         expected: u64,
         observed: u64,
         trusted: bool,
-        active_elapsed: Duration,
+        maximum_slot: u64,
     ) -> bool {
-        let writable = self.next_slot..=self.maximum_audio_slot(active_elapsed);
+        let writable = self.next_slot..=maximum_slot;
         let expected_slot = expected / self.slot_frames;
         let observed_slot = observed / self.slot_frames;
         // Recover even without a source timestamp if the running position no longer
@@ -2437,10 +2442,9 @@ impl LiveAudioMixer {
         start_frame: u64,
         frames: u32,
         data: &[i16],
-        active_elapsed: Duration,
+        maximum_slot: u64,
     ) {
         let channels = usize::from(AUDIO_CHANNELS);
-        let maximum_slot = self.maximum_audio_slot(active_elapsed);
         for source_frame in 0..u64::from(frames) {
             let timeline_frame = start_frame.saturating_add(source_frame);
             let slot_index = timeline_frame / self.slot_frames;
@@ -5078,20 +5082,20 @@ mod tests {
         // Exercise the same routing sink used by the encoder with exact PCM assertions.
         for mixed in [false, true] {
             let mut mixer = LiveAudioMixer::new(true, true);
-            let elapsed = Duration::from_millis(1010);
+            let maximum_slot = mixer.maximum_audio_slot(Duration::from_millis(1010));
             mixer.insert_samples(
                 AudioSourceKind::System,
                 0,
                 48_480,
                 &vec![1000; 48_480 * 2],
-                elapsed,
+                maximum_slot,
             );
             mixer.insert_samples(
                 AudioSourceKind::Microphone,
                 24_000,
                 24_480,
                 &vec![2000; 24_480 * 2],
-                elapsed,
+                maximum_slot,
             );
             let mut tracks: BTreeMap<String, Vec<i16>> = BTreeMap::new();
             let mut timestamps: BTreeMap<String, Vec<u64>> = BTreeMap::new();
@@ -5161,7 +5165,7 @@ mod tests {
             0,
             48_480,
             &vec![1000; 48_480 * 2],
-            Duration::from_millis(1010),
+            mixer.maximum_audio_slot(Duration::from_millis(1010)),
         );
         mixer
             .emit_ready(Duration::from_millis(1001), true, &mut encoder)
@@ -5179,9 +5183,9 @@ mod tests {
     fn live_audio_mixer_accepts_delayed_start_but_never_rewrites_emitted_audio() {
         let mut mixer = LiveAudioMixer::new(true, false);
         let samples = vec![1000; 960];
-        let elapsed = Duration::from_millis(500);
+        let maximum_slot = mixer.maximum_audio_slot(Duration::from_millis(500));
         // A source can initialize after the worker starts, including at final drain.
-        mixer.insert_samples(AudioSourceKind::System, 23_520, 480, &samples, elapsed);
+        mixer.insert_samples(AudioSourceKind::System, 23_520, 480, &samples, maximum_slot);
         assert_eq!(mixer.dropped_frames, 0);
         assert_eq!(
             mix_audio_slot(mixer.slots.remove(&49).unwrap(), 960),
@@ -5189,12 +5193,12 @@ mod tests {
         );
 
         mixer.next_slot = 50;
-        mixer.insert_samples(AudioSourceKind::System, 23_520, 480, &samples, elapsed);
+        mixer.insert_samples(AudioSourceKind::System, 23_520, 480, &samples, maximum_slot);
         assert!(mixer.slots.is_empty());
         assert_eq!(mixer.dropped_frames, 480);
 
         // A stalled consumer must not allow genuinely future timestamps either.
-        mixer.insert_samples(AudioSourceKind::System, 48_000, 480, &samples, elapsed);
+        mixer.insert_samples(AudioSourceKind::System, 48_000, 480, &samples, maximum_slot);
         assert!(mixer.slots.is_empty());
         assert_eq!(mixer.dropped_frames, 960);
     }
@@ -5489,26 +5493,15 @@ mod tests {
     #[test]
     fn live_audio_mixer_saturates_sources_and_bounds_future_slots() {
         let mut mixer = LiveAudioMixer::new(true, true);
+        let maximum_slot = mixer.maximum_audio_slot(Duration::ZERO);
         let samples = vec![24_000i16; 480 * 2];
-        mixer.insert_samples(AudioSourceKind::System, 0, 480, &samples, Duration::ZERO);
-        mixer.insert_samples(
-            AudioSourceKind::Microphone,
-            0,
-            480,
-            &samples,
-            Duration::ZERO,
-        );
+        mixer.insert_samples(AudioSourceKind::System, 0, 480, &samples, maximum_slot);
+        mixer.insert_samples(AudioSourceKind::Microphone, 0, 480, &samples, maximum_slot);
         let slot = mixer.slots.remove(&0).unwrap();
         let mixed = mix_audio_slot(slot, 480 * 2);
         assert!(mixed.iter().all(|sample| *sample == i16::MAX));
 
-        mixer.insert_samples(
-            AudioSourceKind::System,
-            48_000,
-            480,
-            &samples,
-            Duration::ZERO,
-        );
+        mixer.insert_samples(AudioSourceKind::System, 48_000, 480, &samples, maximum_slot);
         assert!(mixer.slots.is_empty());
         assert_eq!(mixer.dropped_frames, 480);
     }

@@ -457,6 +457,7 @@ struct RecordedTrackWriter {
     silence_chunk: Vec<u8>,
     discontinuities: Vec<TimelineDiscontinuity>,
     active_spans: Vec<ActivePcmSpan>,
+    corrected_samples: Vec<i16>,
 }
 
 impl RecordedTrackWriter {
@@ -485,6 +486,7 @@ impl RecordedTrackWriter {
             silence_chunk,
             discontinuities: Vec::new(),
             active_spans: Vec::with_capacity(2),
+            corrected_samples: Vec::new(),
         })
     }
 
@@ -533,13 +535,17 @@ impl RecordedTrackWriter {
             let end = (span.source_start_frame + span.frames) as usize * channels;
             let observation = (continuous && !packet.metadata.capture_time_estimated)
                 .then_some(span.timeline_start_frame);
+            let mut scratch = std::mem::take(&mut self.corrected_samples);
             let samples = correct_pcm_clock(
                 &packet.as_i16_slice()[first..end],
                 self.format,
                 target,
                 observation,
+                &mut scratch,
             );
-            self.append_i16_samples(&samples)?;
+            let result = self.append_i16_samples(samples);
+            self.corrected_samples = scratch;
+            result?;
         }
         // Inactive/clipped packets form an alignment boundary even when the
         // underlying stream's Paused/Resumed event arrives later.
