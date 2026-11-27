@@ -767,7 +767,7 @@ mod windows_coordination {
     }
 
     fn relaunch(root: &Path, arguments: Option<&[String]>) -> Result<()> {
-        let default_arguments = ["--show-main-window".to_owned()];
+        let default_arguments = ["--autostart".to_owned()];
         let arguments = arguments.unwrap_or(&default_arguments);
         let executable = root.join(crate::edition::APP_PATH);
         crate::protocol::validate_relaunch_commandline(arguments, &executable.to_string_lossy())?;

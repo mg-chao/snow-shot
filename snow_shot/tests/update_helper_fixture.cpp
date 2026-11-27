@@ -60,7 +60,7 @@ int wmain(int argc, wchar_t** argv) {
     wchar_t telemetry[32768]{};
     const DWORD telemetryLength =
         GetEnvironmentVariableW(L"SNOW_SHOT_HELPER_CANARY_RESULTS", telemetry, 32768);
-    if (argc == 2 && std::wstring(argv[1]) == L"--show-main-window") {
+    if (argc == 2 && std::wstring(argv[1]) == L"--autostart") {
         wchar_t executable[32768]{};
         GetModuleFileNameW(nullptr, executable, 32768);
         std::wstring root(executable);
