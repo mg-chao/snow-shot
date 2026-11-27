@@ -18,6 +18,10 @@
 #include <QThread>
 #include <QTimer>
 
+#if defined(Q_OS_WIN) && defined(_MSC_VER)
+#include <concrt.h>
+#endif
+
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -31,7 +35,7 @@
 namespace {
 constexpr qint64 kMaximumDetectorPixels = 1920LL * 1080LL;
 constexpr int kMaximumDetectorEdge = 2560;
-constexpr int kAutomaticIdleGraceMilliseconds = 1'000;
+constexpr int kSessionIdleGraceMilliseconds = 1'000;
 
 QString recognitionFailedMessage() {
     return QCoreApplication::translate("ScreenshotOcrController", "Barcode recognition failed");
@@ -220,17 +224,53 @@ ScreenshotQrRecognitionResult recognizeImage(QImage source, const std::atomic_bo
     return {{}, recognitionFailedMessage(), {}};
 }
 
+#if defined(Q_OS_WIN) && defined(_MSC_VER)
+class QrTaskScheduler final {
+  public:
+    QrTaskScheduler() {
+        try {
+            // OpenCV uses the current Concurrency Runtime scheduler on MSVC. Limit its
+            // parallelism on this worker instead of changing OpenCV's process-wide settings.
+            Concurrency::SchedulerPolicy policy;
+            policy.SetConcurrencyLimits(1, 4);
+            Concurrency::CurrentScheduler::Create(policy);
+            m_attached = true;
+        } catch (const std::exception& error) {
+            qWarning() << "Could not configure the QR worker scheduler:" << error.what();
+        }
+    }
+
+    ~QrTaskScheduler() {
+        if (m_attached)
+            Concurrency::CurrentScheduler::Detach();
+    }
+
+    Q_DISABLE_COPY_MOVE(QrTaskScheduler)
+
+  private:
+    bool m_attached = false;
+};
+#endif
+
 class QrWorker final : public QObject {
   public:
     explicit QrWorker(QString modelsDirectory) : m_modelsDirectory(std::move(modelsDirectory)) {}
 
     ScreenshotQrRecognitionResult recognize(QImage image, const std::atomic_bool& cancellation,
                                             ScreenshotQrRecognitionMode mode) {
+#if defined(Q_OS_WIN) && defined(_MSC_VER)
+        // Construct and detach the scheduler on this worker's thread.
+        if (!m_scheduler)
+            m_scheduler.emplace();
+#endif
         return recognizeImage(std::move(image), cancellation, m_modelsDirectory, m_decoders, mode);
     }
 
   private:
     const QString m_modelsDirectory;
+#if defined(Q_OS_WIN) && defined(_MSC_VER)
+    std::optional<QrTaskScheduler> m_scheduler;
+#endif
     std::optional<BarcodeDecoders> m_decoders;
 };
 } // namespace
@@ -253,10 +293,11 @@ class ScreenshotQrRecognitionService::Impl final {
     }
 
     RequestToken enqueue(RequestToken token, QImage image, QObject* receiver, Completion completion,
-                         ScreenshotQrRecognitionMode mode) {
+                         ScreenshotQrRecognitionMode mode, bool sessionBound) {
         auto request = std::make_shared<Request>();
         request->token = token;
         request->mode = mode;
+        request->sessionBound = sessionBound;
         request->image = std::move(image);
         request->receiver = receiver;
         request->completion = std::move(completion);
@@ -273,7 +314,7 @@ class ScreenshotQrRecognitionService::Impl final {
             return 0;
         }
         if (mode == ScreenshotQrRecognitionMode::QrOnly)
-            m_automaticSessionEnded = false;
+            m_automaticSessionActive = true;
         m_requests.insert(token, request);
         m_queue.push_back(request);
         startNext();
@@ -286,7 +327,7 @@ class ScreenshotQrRecognitionService::Impl final {
             return;
         }
         const RequestHandle job = request.value();
-        job->cancellation->store(true, std::memory_order_release);
+        job->cancellation.store(true, std::memory_order_release);
         m_requests.erase(request);
         QObject::disconnect(job->receiverDestroyed);
         if (job != m_runningRequest) {
@@ -299,11 +340,16 @@ class ScreenshotQrRecognitionService::Impl final {
     }
 
     void endAutomaticRecognitionSession() {
-        if (m_automaticSessionEnded)
-            return;
-        m_automaticSessionEnded = true;
-        if (!m_usedExplicitly && m_idleTimer.remainingTime() > kAutomaticIdleGraceMilliseconds)
-            startIdleTimer();
+        m_automaticSessionActive = false;
+        shortenIdleTimeout();
+    }
+
+    void endRecognitionSession(QObject* session) {
+        const auto connection = m_sessions.take(session);
+        if (connection) {
+            QObject::disconnect(connection);
+            shortenIdleTimeout();
+        }
     }
 
   private:
@@ -315,11 +361,12 @@ class ScreenshotQrRecognitionService::Impl final {
             snow_shot::runtime::RuntimeActivityTracker::shared().acquire();
         RequestToken token = 0;
         ScreenshotQrRecognitionMode mode = ScreenshotQrRecognitionMode::QrAndBarcode;
+        bool sessionBound = false;
         QImage image;
         QPointer<QObject> receiver;
         Completion completion;
         QMetaObject::Connection receiverDestroyed;
-        std::shared_ptr<std::atomic_bool> cancellation = std::make_shared<std::atomic_bool>(false);
+        std::atomic_bool cancellation = false;
         ScreenshotQrRecognitionResult result;
     };
     using RequestHandle = std::shared_ptr<Request>;
@@ -333,14 +380,14 @@ class ScreenshotQrRecognitionService::Impl final {
             request = std::move(m_queue.front());
             m_queue.pop_front();
             if (m_requests.contains(request->token) &&
-                !request->cancellation->load(std::memory_order_acquire)) {
+                !request->cancellation.load(std::memory_order_acquire)) {
                 break;
             }
             request.reset();
         }
         if (request == nullptr) {
             if (m_workerThread != nullptr)
-                startIdleTimer();
+                m_idleTimer.start(idleTimeout());
             return;
         }
 
@@ -354,16 +401,19 @@ class ScreenshotQrRecognitionService::Impl final {
             snow_shot::platform::configureApplicationQoSThread(m_workerThread);
             m_workerThread->start();
         }
-        if (request->mode == ScreenshotQrRecognitionMode::QrAndBarcode)
-            m_usedExplicitly = true;
+        if (request->sessionBound)
+            trackSession(request->receiver.data());
+        else if (request->mode == ScreenshotQrRecognitionMode::QrAndBarcode)
+            m_usedWithoutSession = true;
         m_runningRequest = request;
         QMetaObject::invokeMethod(
             m_worker,
             [this, owner = m_owner, worker = m_worker, request] {
-                if (!request->cancellation->load(std::memory_order_acquire)) {
+                if (!request->cancellation.load(std::memory_order_acquire)) {
                     request->result = worker->recognize(std::move(request->image),
-                                                        *request->cancellation, request->mode);
+                                                        request->cancellation, request->mode);
                 }
+                request->image = {};
                 // shutdown() joins the worker before the owner can be destroyed. Completion
                 // touches service state only on the owner's thread and is discarded on teardown.
                 QMetaObject::invokeMethod(
@@ -389,8 +439,8 @@ class ScreenshotQrRecognitionService::Impl final {
         }
         m_requests.erase(found);
         QObject::disconnect(request->receiverDestroyed);
-        if (request->cancellation->load(std::memory_order_acquire) ||
-            request->receiver == nullptr || !request->completion) {
+        if (request->cancellation.load(std::memory_order_acquire) || request->receiver == nullptr ||
+            !request->completion) {
             return;
         }
         QPointer<QObject> receiver = request->receiver;
@@ -407,7 +457,7 @@ class ScreenshotQrRecognitionService::Impl final {
         }
         m_stopping = true;
         for (auto request = m_requests.begin(); request != m_requests.end(); ++request) {
-            request.value()->cancellation->store(true, std::memory_order_release);
+            request.value()->cancellation.store(true, std::memory_order_release);
             QObject::disconnect(request.value()->receiverDestroyed);
         }
         m_requests.clear();
@@ -418,7 +468,11 @@ class ScreenshotQrRecognitionService::Impl final {
 
     void stopWorker() {
         m_idleTimer.stop();
-        m_usedExplicitly = false;
+        m_automaticSessionActive = false;
+        m_usedWithoutSession = false;
+        for (const auto& connection : std::as_const(m_sessions))
+            QObject::disconnect(connection);
+        m_sessions.clear();
         QThread* const thread = m_workerThread;
         m_workerThread = nullptr;
         m_worker = nullptr;
@@ -429,27 +483,39 @@ class ScreenshotQrRecognitionService::Impl final {
         }
     }
 
-    void startIdleTimer() {
-        // Keep the decoder warm for consecutive captures and for pending manual requests.
-        // Nothing can retire the worker until the serialized queue has finished.
-        const int timeout =
-            m_automaticSessionEnded && !m_usedExplicitly
-                ? std::min(m_idleTimeoutMilliseconds, kAutomaticIdleGraceMilliseconds)
-                : m_idleTimeoutMilliseconds;
-        m_idleTimer.start(timeout);
+    void trackSession(QObject* session) {
+        if (session != nullptr && !m_sessions.contains(session)) {
+            m_sessions.insert(
+                session, QObject::connect(session, &QObject::destroyed, m_owner,
+                                          [this, session] { endRecognitionSession(session); }));
+        }
+    }
+
+    int idleTimeout() const {
+        const bool keepWarm =
+            m_automaticSessionActive || m_usedWithoutSession || !m_sessions.isEmpty();
+        return keepWarm ? m_idleTimeoutMilliseconds
+                        : std::min(m_idleTimeoutMilliseconds, kSessionIdleGraceMilliseconds);
+    }
+
+    void shortenIdleTimeout() {
+        const int timeout = idleTimeout();
+        if (m_idleTimer.remainingTime() > timeout)
+            m_idleTimer.start(timeout);
     }
 
     ScreenshotQrRecognitionService* m_owner = nullptr;
     QString m_modelsDirectory;
     const int m_idleTimeoutMilliseconds;
     QHash<RequestToken, RequestHandle> m_requests;
+    QHash<QObject*, QMetaObject::Connection> m_sessions;
     std::deque<RequestHandle> m_queue;
     QThread* m_workerThread = nullptr;
     QrWorker* m_worker = nullptr;
     QTimer m_idleTimer;
     RequestHandle m_runningRequest;
-    bool m_automaticSessionEnded = false;
-    bool m_usedExplicitly = false;
+    bool m_automaticSessionActive = false;
+    bool m_usedWithoutSession = false;
     bool m_stopping = false;
 };
 
@@ -464,19 +530,37 @@ ScreenshotQrRecognitionService::~ScreenshotQrRecognitionService() = default;
 ScreenshotQrRecognitionPort::RequestToken
 ScreenshotQrRecognitionService::recognize(QImage image, QObject* receiver, Completion completion,
                                           ScreenshotQrRecognitionMode mode) {
+    return enqueue(std::move(image), receiver, std::move(completion), mode, false);
+}
+
+ScreenshotQrRecognitionPort::RequestToken
+ScreenshotQrRecognitionService::recognizeForSession(QImage image, QObject* session,
+                                                    Completion completion) {
+    return enqueue(std::move(image), session, std::move(completion),
+                   ScreenshotQrRecognitionMode::QrAndBarcode, true);
+}
+
+ScreenshotQrRecognitionPort::RequestToken
+ScreenshotQrRecognitionService::enqueue(QImage image, QObject* receiver, Completion completion,
+                                        ScreenshotQrRecognitionMode mode, bool sessionBound) {
     if (image.isNull() || receiver == nullptr || !completion || m_impl == nullptr) {
         return 0;
     }
     do {
         ++m_nextToken;
     } while (m_nextToken == 0);
-    return m_impl->enqueue(m_nextToken, std::move(image), receiver, std::move(completion), mode);
+    return m_impl->enqueue(m_nextToken, std::move(image), receiver, std::move(completion), mode,
+                           sessionBound);
 }
 
 void ScreenshotQrRecognitionService::cancel(RequestToken token) {
     if (m_impl != nullptr && token != 0) {
         m_impl->cancel(token);
     }
+}
+
+void ScreenshotQrRecognitionService::endRecognitionSession(QObject* session) {
+    m_impl->endRecognitionSession(session);
 }
 
 void ScreenshotQrRecognitionService::endAutomaticRecognitionSession() {

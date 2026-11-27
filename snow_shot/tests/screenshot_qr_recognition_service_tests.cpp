@@ -392,6 +392,46 @@ void endingAutomaticRecognitionPreservesExplicitWarmWorker() {
             "the same worker still services consecutive manual requests");
 }
 
+void closingLastRecognitionSessionReclaimsWorker() {
+    ScreenshotQrRecognitionService service;
+    auto first = std::make_unique<QObject>();
+    auto second = std::make_unique<QObject>();
+    QEventLoop loop;
+    QTimer timeout;
+    timeout.setSingleShot(true);
+    QObject::connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+
+    int completions = 0;
+    const auto complete = [&](ScreenshotQrRecognitionResult result) {
+        require(result.error.isEmpty() &&
+                    result.contents == QStringList{QString::fromLatin1(kPayload)},
+                "session-scoped QR recognition still decodes the fixture");
+        if (++completions == 2)
+            loop.quit();
+    };
+    const QImage image = qrFixture();
+    require(service.recognizeForSession(image, first.get(), complete) != 0 &&
+                service.recognizeForSession(image, second.get(), complete) != 0,
+            "both sessions share the serialized QR worker");
+    const QPointer<QThread> worker(service.findChild<QThread*>());
+    timeout.start(10'000);
+    loop.exec();
+    require(completions == 2 && worker && worker == service.findChild<QThread*>(),
+            "the original worker services both sessions");
+
+    const auto* idleTimer = service.findChild<QTimer*>();
+    require(idleTimer && idleTimer->isActive(), "the shared QR worker is waiting for reuse");
+    const int warmInterval = idleTimer->interval();
+    first.reset();
+    require(idleTimer->interval() == warmInterval,
+            "closing one session leaves the worker warm for the other session");
+    service.endRecognitionSession(second.get());
+    require(idleTimer->interval() < warmInterval,
+            "closing the last session schedules early release of the worker");
+    waitForWorkerRelease(service);
+    require(!worker, "the last session releases its decoder worker");
+}
+
 void destroyingReceiverCancelsQueuedCompletion() {
     ScreenshotQrRecognitionService service(nullptr, {}, 20);
     bool completed = false;
@@ -435,6 +475,7 @@ int main(int argc, char** argv) {
     cachedDecodersAreIsolatedAndExpireWhenIdle();
     endingAutomaticRecognitionReclaimsWorkerAfterQueuedRequests();
     endingAutomaticRecognitionPreservesExplicitWarmWorker();
+    closingLastRecognitionSessionReclaimsWorker();
     destroyingReceiverCancelsQueuedCompletion();
     destroyingServiceCancelsPendingRequests();
     return 0;

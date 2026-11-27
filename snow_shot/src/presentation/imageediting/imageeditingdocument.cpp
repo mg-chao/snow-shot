@@ -180,8 +180,9 @@ ImageEditingDocument::prepareCrop(const QImage& image, CropAxis axis, int first,
     crop.result = removeStrip(image, crop, cancelled);
     if (crop.result.isNull())
         return crop;
-    crop.removed = image.copy(rows ? QRect(0, crop.start, image.width(), crop.length)
-                                   : QRect(crop.start, 0, crop.length, image.height()));
+    crop.removed =
+        snowCanvasCopyImage(image, rows ? QRect(0, crop.start, image.width(), crop.length)
+                                        : QRect(crop.start, 0, crop.length, image.height()));
     if (crop.removed.isNull() || (cancelled && cancelled())) {
         crop.result = {};
         crop.removed = {};

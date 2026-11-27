@@ -4606,7 +4606,7 @@ void ScreenshotRecognitionSessionController::startQrRecognition() {
     if (!showRecognitionMessage())
         return;
     const auto callbackCompleted = std::make_shared<bool>(false);
-    const auto token = m_qrRecognition->recognize(
+    const auto token = m_qrRecognition->recognizeForSession(
         m_target.image, this,
         [this, generation, key, callbackCompleted](ScreenshotQrRecognitionResult result) {
             *callbackCompleted = true;
@@ -5569,8 +5569,10 @@ void ScreenshotRecognitionSessionController::cancelOutstandingRequests() {
         m_recognition->cancel(m_textRenderRequestToken);
     }
 #if SNOW_SHOT_ENABLE_QR_RECOGNITION
-    if (m_qrRecognition != nullptr && m_qrRequestToken != 0) {
-        m_qrRecognition->cancel(m_qrRequestToken);
+    if (m_qrRecognition != nullptr) {
+        m_qrRecognition->endRecognitionSession(this);
+        if (m_qrRequestToken != 0)
+            m_qrRecognition->cancel(m_qrRequestToken);
     }
 #endif
 #if SNOW_SHOT_ENABLE_TABLE_RECOGNITION

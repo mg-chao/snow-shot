@@ -11,6 +11,7 @@
 
 #include <functional>
 #include <memory>
+#include <utility>
 
 struct ScreenshotQrDetection {
     QString text;
@@ -36,7 +37,13 @@ class ScreenshotQrRecognitionPort : public QObject {
     virtual RequestToken
     recognize(QImage image, QObject* receiver, Completion completion,
               ScreenshotQrRecognitionMode mode = ScreenshotQrRecognitionMode::QrAndBarcode) = 0;
+    // Repeated requests can use warm decoders while the recognition session is alive.
+    virtual RequestToken recognizeForSession(QImage image, QObject* session,
+                                             Completion completion) {
+        return recognize(std::move(image), session, std::move(completion));
+    }
     virtual void cancel(RequestToken token) = 0;
+    virtual void endRecognitionSession(QObject*) {}
     virtual void endAutomaticRecognitionSession() {}
 };
 
@@ -46,8 +53,8 @@ class ScreenshotQrRecognitionService final : public ScreenshotQrRecognitionPort 
 
   public:
     // Consecutive requests share one serialized worker and its decoder sessions. The worker
-    // releases its models after a bounded idle grace period. A worker used only for automatic
-    // QR-only recognition expires sooner when the capture ends.
+    // releases its models after a bounded idle grace period. A worker without a remaining
+    // session or an unscoped request expires sooner.
     // An empty modelsDirectory resolves to <application dir>/assets/qrcode at runtime; tests
     // inject a custom directory to exercise non-ASCII installation paths.
     explicit ScreenshotQrRecognitionService(QObject* parent = nullptr,
@@ -58,10 +65,16 @@ class ScreenshotQrRecognitionService final : public ScreenshotQrRecognitionPort 
     RequestToken recognize(
         QImage image, QObject* receiver, Completion completion,
         ScreenshotQrRecognitionMode mode = ScreenshotQrRecognitionMode::QrAndBarcode) override;
+    RequestToken recognizeForSession(QImage image, QObject* session,
+                                     Completion completion) override;
     void cancel(RequestToken token) override;
+    void endRecognitionSession(QObject* session) override;
     void endAutomaticRecognitionSession() override;
 
   private:
+    RequestToken enqueue(QImage image, QObject* receiver, Completion completion,
+                         ScreenshotQrRecognitionMode mode, bool sessionBound);
+
     class Impl;
     std::unique_ptr<Impl> m_impl;
     RequestToken m_nextToken = 0;
