@@ -59,7 +59,6 @@
 #include <QRgba64>
 #include <QScrollBar>
 #include <QScopedValueRollback>
-#include <QSet>
 #include <QSignalBlocker>
 #include <QTimer>
 #include <QUrl>
@@ -370,6 +369,11 @@ class ImageStitchingColorPresetButton final : public AdButton {
     QColor m_color;
 };
 
+const ImageStitchingItem* itemById(const ImageStitchingDocument& document, quint64 id) {
+    const int index = document.indexOf(id);
+    return index < 0 ? nullptr : &document.items()[index];
+}
+
 class ImageStitchingThumbnail final : public QWidget {
   public:
     ImageStitchingThumbnail(ImageStitchingDocument* document, quint64 id, QWidget* parent)
@@ -405,11 +409,7 @@ class ImageStitchingThumbnail final : public QWidget {
     void setItem(const ImageStitchingItem& item, int ordinal, bool force = false) {
         if (!force && m_revision == item.revision && m_ordinal == ordinal && m_label == item.label)
             return;
-        if (m_revision != item.revision || m_preview.isNull()) {
-            m_revision = item.revision;
-            m_preview = item.preview;
-            m_transform = item.transform;
-        }
+        m_revision = item.revision;
         m_label = item.label;
         m_ordinal = ordinal;
         retranslate();
@@ -435,14 +435,14 @@ class ImageStitchingThumbnail final : public QWidget {
         painter.drawRoundedRect(outer, theme.borderRadiusSM, theme.borderRadiusSM);
         const QRectF imageArea = outer.adjusted(5, 5, -5, -20);
         painter.fillRect(imageArea, canvasCheckerboard(theme));
-        if (!m_preview.isNull()) {
-            const auto size = m_transform.mapRect(QRectF(QPointF{}, m_preview.size()))
+        if (const auto* item = itemById(*m_document, m_id)) {
+            const auto size = item->transform.mapRect(QRectF(QPointF{}, item->preview.size()))
                                   .size()
                                   .scaled(imageArea.size(), Qt::KeepAspectRatio);
             const QRectF target(imageArea.center() - QPointF(size.width() / 2, size.height() / 2),
                                 size);
             painter.setRenderHint(QPainter::SmoothPixmapTransform);
-            drawTransformedPreview(painter, target, m_preview, m_transform);
+            drawTransformedPreview(painter, target, item->preview, item->transform);
         }
         painter.setPen(theme.colorTextSecondary);
         painter.drawText(QRect(5, height() - 20, width() - 10, 17), Qt::AlignCenter,
@@ -484,14 +484,17 @@ class ImageStitchingThumbnail final : public QWidget {
             (event->position() - *m_press).manhattanLength() < QApplication::startDragDistance())
             return;
         m_press.reset();
+        const auto* item = itemById(*m_document, m_id);
+        if (!item)
+            return;
         auto* drag = new QDrag(this);
         auto* mime = new QMimeData;
         mime->setData(QString::fromLatin1(kDragType),
                       QByteArray::number(reinterpret_cast<quintptr>(m_document)) + ':' +
                           QByteArray::number(m_id));
         drag->setMimeData(mime);
-        drag->setPixmap(QPixmap::fromImage(m_preview).scaled(80, 64, Qt::KeepAspectRatio,
-                                                             Qt::SmoothTransformation));
+        drag->setPixmap(QPixmap::fromImage(item->preview)
+                            .scaled(80, 64, Qt::KeepAspectRatio, Qt::SmoothTransformation));
         drag->exec(Qt::MoveAction);
     }
     void keyPressEvent(QKeyEvent* event) override {
@@ -534,8 +537,6 @@ class ImageStitchingThumbnail final : public QWidget {
     ImageStitchingDocument* m_document;
     quint64 m_id;
     quint64 m_revision = std::numeric_limits<quint64>::max();
-    QImage m_preview;
-    QTransform m_transform;
     QString m_label;
     std::optional<QPointF> m_press;
     int m_ordinal = 1;
@@ -556,15 +557,12 @@ struct ImageStitchingPreviewCanvas::Impl {
         std::shared_ptr<void> reservation;
     };
     ImageStitchingPreviewCanvas* owner;
-    ImageStitchingDocument* document;
+    QPointer<ImageStitchingDocument> document;
     ImageStitchingLayout layout;
     ImageStitchingSettings cachedSettings;
     bool initialized = false;
     QVector<quint64> order;
     QHash<quint64, qsizetype> indexById;
-    QHash<quint64, QImage> previews;
-    QHash<quint64, QTransform> previewTransforms;
-    QHash<quint64, quint64> revisions;
     QHash<quint64, Detail> details;
     struct DetailJob {
         ScreenshotExportJobHandle handle;
@@ -573,11 +571,12 @@ struct ImageStitchingPreviewCanvas::Impl {
     };
     QHash<quint64, DetailJob> detailJobs;
     QHash<quint64, qint64> pendingDetailBytes;
-    qint64 basePreviewBytes = 0;
     qint64 detailCacheBytes = 0;
     qint64 pendingPreviewBytes = 0;
     std::shared_ptr<std::atomic<qint64>> workingBytes = std::make_shared<std::atomic<qint64>>(0);
     QTimer* detailTimer = nullptr;
+    bool detailsVisible = false;
+    bool restoreDetailsOnShow = false;
     quint64 nextDetailTicket = 0;
     quint64 detailClock = 0;
     qreal zoom = 1;
@@ -698,8 +697,22 @@ struct ImageStitchingPreviewCanvas::Impl {
             job.handle.cancel();
         detailJobs.clear();
     }
+    void releaseDetails() {
+        detailTimer->stop();
+        cancelDetails();
+        details.clear();
+        detailCacheBytes = 0;
+        previewStatisticsChanged();
+    }
+    void scheduleDetails() {
+        if (!detailsVisible || !rendering)
+            return;
+        // Geometry changes may debounce interaction, but must not postpone a queued restoration.
+        if (!restoreDetailsOnShow || !detailTimer->isActive())
+            detailTimer->start(restoreDetailsOnShow ? 0 : 70);
+    }
     qint64 previewBytes() const {
-        return basePreviewBytes + detailCacheBytes + pendingPreviewBytes;
+        return (document ? document->previewBytes() : 0) + detailCacheBytes + pendingPreviewBytes;
     }
     void previewStatisticsChanged() {
         owner->setProperty("detailPreviewBytes", previewBytes());
@@ -715,8 +728,9 @@ struct ImageStitchingPreviewCanvas::Impl {
             item.height() * detail.transformedPixels.height() / detail.fullSize.height()};
     }
     void requestDetails() {
-        if (!rendering || document->outputType() == ImageStitchingOutputType::PdfDocument ||
-            !layout.isValid())
+        restoreDetailsOnShow = false;
+        if (!detailsVisible || !rendering || !document ||
+            document->outputType() == ImageStitchingOutputType::PdfDocument || !layout.isValid())
             return;
         for (qsizetype index = 0; index < document->items().size(); ++index) {
             const auto& item = document->items()[index];
@@ -858,8 +872,10 @@ struct ImageStitchingPreviewCanvas::Impl {
                     const bool accepted = current != detailJobs.cend() && current->ticket == ticket;
                     if (accepted)
                         detailJobs.remove(id);
-                    if (accepted && result.succeeded() &&
-                        revisions.value(id) == prepared->revision && !prepared->image.isNull()) {
+                    const auto* currentItem =
+                        accepted && document ? itemById(*document, id) : nullptr;
+                    if (result.succeeded() && currentItem &&
+                        currentItem->revision == prepared->revision && !prepared->image.isNull()) {
                         prepared->used = ++detailClock;
                         if (const auto cachedDetail = details.constFind(id);
                             cachedDetail != details.cend())
@@ -870,7 +886,7 @@ struct ImageStitchingPreviewCanvas::Impl {
                     }
                     previewStatisticsChanged();
                     if (!accepted || result.succeeded())
-                        detailTimer->start();
+                        scheduleDetails();
                 });
             if (job.isValid()) {
                 detailJobs.insert(item.id, {job, ticket, item.revision});
@@ -962,8 +978,11 @@ struct ImageStitchingPreviewCanvas::Impl {
         const auto bounds = viewportRect(id);
         if (!bounds.intersects(owner->rect()))
             return;
+        const auto* item = itemById(*document, id);
+        if (!item)
+            return;
         const auto detail = details.constFind(id);
-        if (detail != details.cend() && detail->revision == revisions.value(id)) {
+        if (detail != details.cend() && detail->revision == item->revision) {
             const auto tileBounds = detailViewport(*detail, bounds);
             QPainterPath imageArea;
             imageArea.addRect(bounds);
@@ -971,13 +990,11 @@ struct ImageStitchingPreviewCanvas::Impl {
             tileArea.addRect(tileBounds);
             painter.save();
             painter.setClipPath(imageArea.subtracted(tileArea), Qt::IntersectClip);
-            drawTransformedPreview(painter, bounds, previews.value(id),
-                                   previewTransforms.value(id));
+            drawTransformedPreview(painter, bounds, item->preview, item->transform);
             painter.restore();
             painter.drawImage(tileBounds, detail->image);
         } else {
-            drawTransformedPreview(painter, bounds, previews.value(id),
-                                   previewTransforms.value(id));
+            drawTransformedPreview(painter, bounds, item->preview, item->transform);
         }
     }
     void geometryChanged(bool showZoomReadout = false) {
@@ -1024,13 +1041,14 @@ struct ImageStitchingPreviewCanvas::Impl {
         }
         zoomReadout->setScale(zoom, showZoomReadout);
         owner->update();
-        detailTimer->start();
+        scheduleDetails();
     }
     void refresh() {
         cancelGesture();
         if (!rendering || document->outputType() == ImageStitchingOutputType::PdfDocument) {
             detailTimer->stop();
             cancelDetails();
+            previewStatisticsChanged();
             return;
         }
         const bool firstRefresh = !initialized;
@@ -1058,18 +1076,8 @@ struct ImageStitchingPreviewCanvas::Impl {
         layout = nextLayout;
         QVector<quint64> nextOrder;
         nextOrder.reserve(document->items().size());
-        QSet<quint64> retained;
-        basePreviewBytes = 0;
-        for (const auto& item : document->items()) {
+        for (const auto& item : document->items())
             nextOrder.push_back(item.id);
-            retained.insert(item.id);
-            basePreviewBytes += item.preview.sizeInBytes();
-            if (!revisions.contains(item.id) || revisions.value(item.id) != item.revision) {
-                previews.insert(item.id, item.preview);
-                previewTransforms.insert(item.id, item.transform);
-                revisions.insert(item.id, item.revision);
-            }
-        }
         const bool orderChanged = nextOrder != order;
         if (orderChanged) {
             order = std::move(nextOrder);
@@ -1077,24 +1085,17 @@ struct ImageStitchingPreviewCanvas::Impl {
             for (qsizetype index = 0; index < order.size(); ++index)
                 indexById.insert(order[index], index);
         }
-        for (auto it = previews.begin(); it != previews.end();) {
-            if (!retained.contains(it.key())) {
-                revisions.remove(it.key());
-                previewTransforms.remove(it.key());
-                it = previews.erase(it);
-            } else {
-                ++it;
-            }
-        }
         for (auto it = details.begin(); it != details.end();) {
-            if (!retained.contains(it.key()) || revisions.value(it.key()) != it->revision) {
+            const auto* item = itemById(*document, it.key());
+            if (!item || item->revision != it->revision) {
                 detailCacheBytes -= it->image.sizeInBytes();
                 it = details.erase(it);
             } else
                 ++it;
         }
         for (auto it = detailJobs.begin(); it != detailJobs.end();) {
-            if (!retained.contains(it.key()) || revisions.value(it.key()) != it->revision) {
+            const auto* item = itemById(*document, it.key());
+            if (!item || item->revision != it->revision) {
                 it->handle.cancel();
                 it = detailJobs.erase(it);
             } else {
@@ -1124,7 +1125,7 @@ struct ImageStitchingPreviewCanvas::Impl {
         else {
             previewStatisticsChanged();
             owner->update();
-            detailTimer->start();
+            scheduleDetails();
         }
     }
 };
@@ -1142,8 +1143,8 @@ ImageStitchingPreviewCanvas::ImageStitchingPreviewCanvas(ImageStitchingDocument*
     setMouseTracking(true);
     setAcceptDrops(true);
     d.detailTimer = new QTimer(this);
+    d.detailTimer->setObjectName(QStringLiteral("collageDetailTimer"));
     d.detailTimer->setSingleShot(true);
-    d.detailTimer->setInterval(70);
     connect(d.detailTimer, &QTimer::timeout, this, [this] { m_impl->requestDetails(); });
     d.toolbar = new CanvasActionToolbar(this);
     d.toolbar->setObjectName(QStringLiteral("collageImageToolbar"));
@@ -1274,11 +1275,8 @@ void ImageStitchingPreviewCanvas::setRenderingEnabled(bool enabled) {
     d.rendering = enabled;
     d.cancelGesture();
     if (!enabled) {
-        d.detailTimer->stop();
-        d.cancelDetails();
-        d.details.clear();
-        d.detailCacheBytes = 0;
-        d.previewStatisticsChanged();
+        d.restoreDetailsOnShow = false;
+        d.releaseDetails();
     } else {
         d.refresh();
     }
@@ -1309,7 +1307,7 @@ void ImageStitchingPreviewCanvas::paintEvent(QPaintEvent* event) {
     const auto theme = adqt::theme::ThemeManager::instance().resolveTheme(this);
     QPainter painter(this);
     painter.fillRect(rect(), canvasCheckerboard(theme));
-    if (d.document->items().isEmpty()) {
+    if (!d.document || d.document->items().isEmpty()) {
         return;
     }
     if (!d.layout.isValid()) {
@@ -1359,18 +1357,22 @@ void ImageStitchingPreviewCanvas::resizeEvent(QResizeEvent*) {
     m_impl->geometryChanged();
 }
 void ImageStitchingPreviewCanvas::hideEvent(QHideEvent* event) {
-    // Hiding also occurs while the owning window destroys its document.
-    // Retire transient UI work without reading model state here.
-    m_impl->cancelGesture();
-    m_impl->zoomReadout->dismiss();
-    m_impl->detailTimer->stop();
-    m_impl->cancelDetails();
+    auto& d = *m_impl;
+    // Native minimization sends a hide event while QWidget::isVisible() stays true.
+    d.detailsVisible = false;
+    d.cancelGesture();
+    d.zoomReadout->dismiss();
+    d.restoreDetailsOnShow =
+        d.restoreDetailsOnShow || !d.details.isEmpty() || !d.detailJobs.isEmpty();
+    d.releaseDetails();
     QWidget::hideEvent(event);
 }
 void ImageStitchingPreviewCanvas::showEvent(QShowEvent* event) {
     QWidget::showEvent(event);
-    m_impl->refresh();
-    m_impl->geometryChanged();
+    auto& d = *m_impl;
+    d.detailsVisible = true;
+    d.refresh();
+    d.geometryChanged();
 }
 void ImageStitchingPreviewCanvas::mousePressEvent(QMouseEvent* event) {
     auto& d = *m_impl;
@@ -1798,6 +1800,20 @@ struct ImageStitchingEditorWidget::Impl {
         total->setText(text("Total: %1 pages")
                            .arg(imageStitchingPdfPageCount(document->items().size(), settings)));
     }
+    bool pruneThumbnails() {
+        const auto count = thumbnailById.size();
+        for (auto it = thumbnailById.begin(); it != thumbnailById.end();) {
+            if (document->indexOf(it.key()) >= 0) {
+                ++it;
+                continue;
+            }
+            thumbnailLayout->removeWidget(it.value());
+            it.value()->hide();
+            it.value()->deleteLater();
+            it = thumbnailById.erase(it);
+        }
+        return count != thumbnailById.size();
+    }
     void refresh(bool force = false) {
         syncing = true;
         const bool pdf = document->outputType() == ImageStitchingOutputType::PdfDocument;
@@ -1818,6 +1834,8 @@ struct ImageStitchingEditorWidget::Impl {
         if (pdf) {
             canvas->hide();
             thumbnailRow->hide();
+            if (pruneThumbnails())
+                thumbnails->adjustSize();
             emptyState->hide();
             dropHint->hide();
             refreshPdfDescription();
@@ -1865,22 +1883,8 @@ struct ImageStitchingEditorWidget::Impl {
         cachedSettings = nextSettings;
         initialized = true;
         syncing = false;
-        QSet<quint64> retained;
-        for (const auto& item : document->items())
-            retained.insert(item.id);
-        bool thumbnailsChanged = false;
         const bool countChanged = thumbnailById.size() != document->items().size();
-        for (auto it = thumbnailById.begin(); it != thumbnailById.end();) {
-            if (!retained.contains(it.key())) {
-                thumbnailLayout->removeWidget(it.value());
-                it.value()->hide();
-                it.value()->deleteLater();
-                it = thumbnailById.erase(it);
-                thumbnailsChanged = true;
-            } else {
-                ++it;
-            }
-        }
+        bool thumbnailsChanged = pruneThumbnails();
         QHash<QWidget*, int> thumbnailPositions;
         for (int index = 0; index < thumbnailLayout->count(); ++index)
             thumbnailPositions.insert(thumbnailLayout->itemAt(index)->widget(), index);

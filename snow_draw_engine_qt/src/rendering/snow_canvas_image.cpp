@@ -296,6 +296,12 @@ void transformPixels(const QImage& source, QImage& result, const QTransform& mat
     }
 }
 
+QRgb loadPremultipliedPixel(const uchar* source) {
+    QRgb pixel;
+    std::memcpy(&pixel, source, sizeof(pixel));
+    return qPremultiply(pixel);
+}
+
 template <bool SwapChannels>
 void premultiplyRows(const uchar* source, uchar* destination, qsizetype sourceStride,
                      qsizetype destinationStride, int width, int first, int last) {
@@ -305,9 +311,7 @@ void premultiplyRows(const uchar* source, uchar* destination, qsizetype sourceSt
         const uchar* input = source + qsizetype(y) * sourceStride;
         uchar* output = destination + qsizetype(y) * destinationStride;
         for (int x = 0; x < width; ++x) {
-            QRgb pixel;
-            std::memcpy(&pixel, input + qsizetype(x) * 4, 4);
-            pixel = qPremultiply(pixel);
+            QRgb pixel = loadPremultipliedPixel(input + qsizetype(x) * 4);
             if constexpr (SwapChannels)
                 pixel = (pixel & 0xff00ff00u) | ((pixel & 0xffu) << 16) | ((pixel >> 16) & 0xffu);
             std::memcpy(output + qsizetype(x) * 4, &pixel, 4);
@@ -342,6 +346,272 @@ QImage premultiplyImage(const QImage& source, QImage::Format format) {
     copyMetadata(source, result);
     return result;
 }
+
+#if Q_BYTE_ORDER == Q_LITTLE_ENDIAN
+QImage scaleThumbnailByStrips(const QImage& source, const QSize& size) {
+    // An integral vertical ratio gives each output row the same source footprint
+    // and lets each strip start at the original area's sampling phase.
+    const int sourceRowsPerOutput = source.height() / size.height();
+    const qsizetype rowBytes = qsizetype(source.width()) * 4;
+    const qsizetype bytesPerOutputRow = rowBytes * sourceRowsPerOutput;
+    constexpr qsizetype kMaximumStripBytes = snow::memory::kMappedPixelBufferMinimum;
+    if (bytesPerOutputRow > kMaximumStripBytes)
+        return {};
+
+    // Keep multirow strips small enough for Qt to scale within the current task.
+    constexpr qsizetype kPreferredStripBytes = 256 * 1024;
+    const int rowsPerStrip =
+        static_cast<int>(std::max(qsizetype{1}, kPreferredStripBytes / bytesPerOutputRow));
+    const int strips = 1 + (size.height() - 1) / rowsPerStrip;
+    if (strips < 2)
+        return {};
+
+    constexpr int kMaximumTasks = 8;
+    constexpr auto kPremultiplied = QImage::Format_ARGB32_Premultiplied;
+    const int tasks = std::min(strips, kMaximumTasks);
+    const int rowsPerScratch = rowsPerStrip * sourceRowsPerOutput;
+    const int minimumMappedRows = static_cast<int>((kMaximumStripBytes + rowBytes - 1) / rowBytes);
+    QImage scratch = snowCanvasAllocateImage(
+        {source.width(), std::max(tasks * rowsPerScratch, minimumMappedRows)}, kPremultiplied);
+    QImage result(size, kPremultiplied);
+    if (scratch.isNull() || result.isNull())
+        return {};
+
+    const auto* input = source.constBits();
+    const qsizetype inputStride = source.bytesPerLine();
+    auto* buffers = scratch.bits();
+    auto* output = result.bits();
+    const qsizetype outputStride = result.bytesPerLine();
+    const bool swap = source.format() == QImage::Format_RGBA8888;
+    std::atomic<bool> failed{false};
+    processChunks(tasks, qsizetype(source.width()) * source.height(), [&](qsizetype task) {
+        auto* buffer = buffers + task * rowsPerScratch * rowBytes;
+        const int firstStrip = static_cast<int>(strips * task / tasks);
+        const int endStrip = static_cast<int>(strips * (task + 1) / tasks);
+        try {
+            for (int strip = firstStrip; strip < endStrip; ++strip) {
+                if (failed.load(std::memory_order_relaxed))
+                    return;
+                const int first = strip * rowsPerStrip;
+                const int count = std::min(rowsPerStrip, size.height() - first);
+                const int sourceRows = count * sourceRowsPerOutput;
+                const auto* start = input + qsizetype(first) * sourceRowsPerOutput * inputStride;
+                if (swap)
+                    premultiplyRows<true>(start, buffer, inputStride, rowBytes, source.width(), 0,
+                                          sourceRows);
+                else
+                    premultiplyRows<false>(start, buffer, inputStride, rowBytes, source.width(), 0,
+                                           sourceRows);
+                const QImage view(static_cast<const uchar*>(buffer), source.width(), sourceRows,
+                                  rowBytes, kPremultiplied);
+                const auto scaled = view.scaled(size.width(), count, Qt::IgnoreAspectRatio,
+                                                Qt::SmoothTransformation);
+                if (scaled.isNull()) {
+                    failed.store(true, std::memory_order_relaxed);
+                    return;
+                }
+                std::memcpy(output + qsizetype(first) * outputStride, scaled.constBits(),
+                            static_cast<std::size_t>(count * outputStride));
+            }
+        } catch (const std::bad_alloc&) {
+            failed.store(true, std::memory_order_relaxed);
+        }
+    });
+    if (failed.load(std::memory_order_relaxed))
+        return {};
+    copyMetadata(source, result);
+    return result.convertToFormat(source.format());
+}
+#endif
+
+#if Q_BYTE_ORDER == Q_LITTLE_ENDIAN && (defined(Q_PROCESSOR_ARM_64) || defined(Q_PROCESSOR_X86_64))
+constexpr int kMaximumThumbnailExtent = 512;
+constexpr quint32 kAreaWeight = 1u << 14;
+constexpr qint64 kAreaPhase = 1 << 16;
+
+struct ThumbnailSpan {
+    int first;
+    int count;
+    quint32 firstWeight;
+    quint32 lastWeight;
+};
+
+struct ThumbnailAxis {
+    quint32 weight;
+    std::array<ThumbnailSpan, kMaximumThumbnailExtent> spans;
+};
+
+bool thumbnailAxis(int input, int output, ThumbnailAxis& axis) {
+    // Qt's 8-bit area filter uses a 16-bit source phase and 14-bit weights.
+    // The last pixel takes the remainder so each span has the same total weight.
+    axis.weight = static_cast<quint32>((qint64(output) * kAreaWeight + input - 1) / input);
+    const qint64 step = (qint64(input) * kAreaPhase) / output;
+    for (std::size_t i = 0; i < static_cast<std::size_t>(output); ++i) {
+        const qint64 phase = static_cast<qint64>(i) * step;
+        const int first = static_cast<int>(phase / kAreaPhase);
+        const quint32 firstWeight =
+            static_cast<quint32>((kAreaPhase - phase % kAreaPhase) * axis.weight / kAreaPhase);
+        const quint32 interior = (kAreaWeight - firstWeight - 1) / axis.weight;
+        const int count = static_cast<int>(interior) + 2;
+        if (count > input - first)
+            return false;
+        axis.spans[i] = {first, count, firstWeight,
+                         kAreaWeight - firstWeight - interior * axis.weight};
+    }
+    return true;
+}
+
+// Channels stay in source byte order for both straight-alpha formats.
+using ThumbnailChannels = std::array<quint32, 4>;
+
+ThumbnailChannels thumbnailChannels(const uchar* pixel) {
+    const QRgb value = loadPremultipliedPixel(pixel);
+    return {value & 0xffu, (value >> 8) & 0xffu, (value >> 16) & 0xffu, value >> 24};
+}
+
+#if defined(Q_PROCESSOR_ARM_64)
+constexpr int kMinimumHorizontalReduction = 8;
+
+uint8x8_t premultiplyThumbnailChannels(uint8x8_t color, uint8x8_t alpha) {
+    const auto product = vmull_u8(color, alpha);
+    return vrshrn_n_u16(vaddq_u16(product, vshrq_n_u16(product, 8)), 8);
+}
+
+uint32x4_t addThumbnailPixels8(uint32x4_t sum, const uchar* pixels, uint8x8_t mask) {
+    const auto channels = vld4_u8(pixels);
+    const auto alpha = vand_u8(channels.val[3], mask);
+    const std::array<std::uint16_t, 4> totals{
+        vaddlv_u8(premultiplyThumbnailChannels(channels.val[0], alpha)),
+        vaddlv_u8(premultiplyThumbnailChannels(channels.val[1], alpha)),
+        vaddlv_u8(premultiplyThumbnailChannels(channels.val[2], alpha)), vaddlv_u8(alpha)};
+    return vaddw_u16(sum, vld1_u16(totals.data()));
+}
+
+ThumbnailChannels sumThumbnailPixels(const uchar* start, int count) {
+    auto total = vdupq_n_u32(0);
+    int i = 0;
+    for (; i <= count - 8; i += 8)
+        total = addThumbnailPixels8(total, start + i * 4, vdup_n_u8(255));
+    if (i < count) {
+        // Anchor the last load inside the span and suppress pixels already summed.
+        const auto tail = std::numeric_limits<std::uint64_t>::max() << ((i + 8 - count) * 8);
+        total = addThumbnailPixels8(total, start + (count - 8) * 4,
+                                    vreinterpret_u8_u64(vdup_n_u64(tail)));
+    }
+    ThumbnailChannels channels;
+    vst1q_u32(channels.data(), total);
+    return channels;
+}
+#else
+constexpr int kMinimumHorizontalReduction = 4;
+
+__m128i premultiplyThumbnailPair(__m128i channels) {
+    const auto replicateAlpha = _MM_SHUFFLE(3, 3, 3, 3);
+    const auto alpha =
+        _mm_shufflehi_epi16(_mm_shufflelo_epi16(channels, replicateAlpha), replicateAlpha);
+    // Multiplying alpha by 255 makes the rounded quotient retain that channel.
+    channels = _mm_or_si128(channels, _mm_setr_epi16(0, 0, 0, 255, 0, 0, 0, 255));
+    const auto product = _mm_mullo_epi16(channels, alpha);
+    return _mm_srli_epi16(
+        _mm_add_epi16(_mm_add_epi16(product, _mm_srli_epi16(product, 8)), _mm_set1_epi16(128)), 8);
+}
+
+ThumbnailChannels sumThumbnailPixels(const uchar* start, int count) {
+    const auto zero = _mm_setzero_si128();
+    auto wide = zero;
+    // Widen before summing more than 256 pixels into the unsigned 16-bit lanes.
+    while (count >= 4) {
+        const int pixels = std::min(count / 4, 64) * 4;
+        auto totals = zero;
+        for (int i = 0; i < pixels; i += 4) {
+            __m128i bytes;
+            std::memcpy(&bytes, start + i * 4, sizeof(bytes));
+            const auto low = premultiplyThumbnailPair(_mm_unpacklo_epi8(bytes, zero));
+            const auto high = premultiplyThumbnailPair(_mm_unpackhi_epi8(bytes, zero));
+            totals = _mm_add_epi16(totals, _mm_add_epi16(low, high));
+        }
+        const auto reduced = _mm_add_epi16(totals, _mm_srli_si128(totals, 8));
+        wide = _mm_add_epi32(wide, _mm_unpacklo_epi16(reduced, zero));
+        start += pixels * 4;
+        count -= pixels;
+    }
+    ThumbnailChannels sum;
+    std::memcpy(sum.data(), &wide, sizeof(wide));
+    for (int i = 0; i < count; ++i) {
+        const auto pixel = thumbnailChannels(start + i * 4);
+        for (std::size_t c = 0; c < sum.size(); ++c)
+            sum[c] += pixel[c];
+    }
+    return sum;
+}
+#endif
+
+void accumulateThumbnailSpan(ThumbnailChannels& output, const uchar* row, const ThumbnailSpan& span,
+                             quint32 horizontalWeight, quint32 verticalWeight) {
+    const auto* start = row + qsizetype(span.first) * 4;
+    const auto total = sumThumbnailPixels(start, span.count);
+    const auto first = thumbnailChannels(start);
+    const auto last = thumbnailChannels(start + (span.count - 1) * 4);
+    for (std::size_t c = 0; c < output.size(); ++c) {
+        const auto weighted = total[c] * horizontalWeight -
+                              first[c] * (horizontalWeight - span.firstWeight) -
+                              last[c] * (horizontalWeight - span.lastWeight);
+        // Qt truncates four horizontal bits before applying the vertical weight.
+        output[c] += (weighted >> 4) * verticalWeight;
+    }
+}
+
+QImage scaleThumbnailByArea(const QImage& source, const QSize& size) {
+    // A full vector of source pixels per output column amortizes endpoint handling.
+    if (size.width() > kMaximumThumbnailExtent || size.height() > kMaximumThumbnailExtent ||
+        size.height() >= source.height() ||
+        qint64(size.width()) * kMinimumHorizontalReduction > source.width())
+        return {};
+
+    ThumbnailAxis horizontal;
+    ThumbnailAxis vertical;
+    if (!thumbnailAxis(source.width(), size.width(), horizontal) ||
+        !thumbnailAxis(source.height(), size.height(), vertical))
+        return {};
+
+    // Filtering all four channels alike lets RGBA stay in byte order instead of
+    // swapping red and blue to ARGB and back. Convert only the small result.
+    const auto format = source.format() == QImage::Format_RGBA8888
+                            ? QImage::Format_RGBA8888_Premultiplied
+                            : QImage::Format_ARGB32_Premultiplied;
+    QImage result(size, format);
+    if (result.isNull())
+        return {};
+    const auto* input = source.constBits();
+    auto* output = result.bits();
+    const auto inputStride = source.bytesPerLine();
+    const auto outputStride = result.bytesPerLine();
+    const auto width = static_cast<std::size_t>(size.width());
+    processChunks(size.height(), qsizetype(source.width()) * source.height(), [&](qsizetype y) {
+        // Accumulate one output row at a time so no full premultiplied raster
+        // has to be allocated or written.
+        std::array<ThumbnailChannels, kMaximumThumbnailExtent> sums;
+        std::fill_n(sums.begin(), width, ThumbnailChannels{});
+        const auto& span = vertical.spans[static_cast<std::size_t>(y)];
+        for (int i = 0; i < span.count; ++i) {
+            const auto weight = i == 0 ? span.firstWeight
+                                       : (i == span.count - 1 ? span.lastWeight : vertical.weight);
+            if (weight == 0)
+                continue;
+            const auto* row = input + (qsizetype(span.first) + i) * inputStride;
+            for (std::size_t x = 0; x < width; ++x)
+                accumulateThumbnailSpan(sums[x], row, horizontal.spans[x], horizontal.weight,
+                                        weight);
+        }
+        auto* dst = output + y * outputStride;
+        for (std::size_t x = 0; x < width; ++x)
+            for (std::size_t c = 0; c < sums[x].size(); ++c)
+                dst[x * 4 + c] = static_cast<uchar>(sums[x][c] >> 24);
+    });
+    copyMetadata(source, result);
+    return result.convertToFormat(source.format());
+}
+#endif
 
 template <bool RgbaBytes>
 void expandRgba64Rows(const uchar* source, uchar* destination, qsizetype sourceStride,
@@ -606,36 +876,68 @@ QImage snowCanvasCopyImage(const QImage& image, const QRect& rect) {
     if (copy.isNull())
         return {};
     copyMetadata(image, copy);
-    const QRect available = requested.intersected(image.rect());
-    const int destinationX = available.left() - requested.left();
-    const int destinationY = available.top() - requested.top();
-    const int depth = image.depth();
-    if (available != requested || depth % 8 != 0)
-        copy.fill(0);
-    uchar* destination = copy.bits();
-    const uchar* source = image.constBits();
     const qsizetype destinationStride = copy.bytesPerLine();
     const qsizetype sourceStride = image.bytesPerLine();
     if (requested == image.rect() && destinationStride == sourceStride) {
-        std::memcpy(destination, source, static_cast<std::size_t>(copy.sizeInBytes()));
+        std::memcpy(copy.bits(), image.constBits(), static_cast<std::size_t>(copy.sizeInBytes()));
         return copy;
     }
-    for (int row = 0; row < available.height(); ++row) {
-        if (depth % 8 == 0) {
-            const qsizetype bytesPerPixel = depth / 8;
-            std::memcpy(destination + qsizetype(destinationY + row) * destinationStride +
-                            destinationX * bytesPerPixel,
-                        source + qsizetype(available.top() + row) * sourceStride +
-                            available.left() * bytesPerPixel,
-                        static_cast<std::size_t>(available.width() * bytesPerPixel));
-        } else {
-            // Packed monochrome crops can begin at any bit; using the public
-            // pixel API preserves both MSB/LSB ordering without a second raster.
-            for (int column = 0; column < available.width(); ++column)
-                copy.setPixel(destinationX + column, destinationY + row,
-                              static_cast<uint>(image.pixelIndex(available.left() + column,
-                                                                 available.top() + row)));
+    const QRect available = requested.intersected(image.rect());
+    if (available.isEmpty()) {
+        copy.fill(0);
+        return copy;
+    }
+    const int destinationX = available.left() - requested.left();
+    const int destinationY = available.top() - requested.top();
+    const int depth = image.depth();
+    const bool byteAligned =
+        depth % 8 == 0 || ((available.left() | destinationX | available.width()) & 7) == 0;
+    if (available != requested || !byteAligned)
+        copy.fill(0);
+    const uchar* source = image.constScanLine(available.top());
+    uchar* destination = copy.scanLine(destinationY);
+    if (!byteAligned) {
+        // A packed crop can start on different bit boundaries in each image.
+        // The destination bits are zero, so only copy set source bits.
+        const int bitOrder = image.format() == QImage::Format_Mono ? 7 : 0;
+        for (int row = 0; row < available.height(); ++row) {
+            const uchar* input = source + qsizetype(row) * sourceStride;
+            uchar* output = destination + qsizetype(row) * destinationStride;
+            for (int column = 0; column < available.width(); ++column) {
+                const int x = available.left() + column;
+                const int target = destinationX + column;
+                if (input[x / 8] & (1u << ((x & 7) ^ bitOrder)))
+                    output[target / 8] |= static_cast<uchar>(1u << ((target & 7) ^ bitOrder));
+            }
         }
+        return copy;
+    }
+
+    source += qsizetype(available.left()) * depth / 8;
+    destination += qsizetype(destinationX) * depth / 8;
+    const qsizetype rowBytes = qsizetype(available.width()) * depth / 8;
+    const qsizetype height = available.height();
+    const auto copyRows = [=](qsizetype first, qsizetype last) {
+        if (rowBytes == sourceStride && rowBytes == destinationStride) {
+            std::memcpy(destination + first * destinationStride, source + first * sourceStride,
+                        static_cast<std::size_t>((last - first) * rowBytes));
+            return;
+        }
+        for (auto row = first; row < last; ++row)
+            std::memcpy(destination + row * destinationStride, source + row * sourceStride,
+                        static_cast<std::size_t>(rowBytes));
+    };
+    constexpr qsizetype kChunkBytes = 1024 * 1024;
+    if (available == requested && copy.sizeInBytes() >= 2 * kChunkBytes) {
+        // Spread first writes to freshly mapped pages across available workers.
+        const auto rowsPerChunk = std::max(qsizetype{1}, kChunkBytes / rowBytes);
+        processChunks(1 + (height - 1) / rowsPerChunk, height * available.width(),
+                      [=](qsizetype chunk) {
+                          const auto first = chunk * rowsPerChunk;
+                          copyRows(first, std::min(height, first + rowsPerChunk));
+                      });
+    } else {
+        copyRows(0, height);
     }
     return copy;
 }
@@ -897,12 +1199,38 @@ QImage snowCanvasTransformImage(const QImage& image, const QTransform& transform
 
 QImage snowCanvasScaleImage(const QImage& image, const QSize& size, Qt::AspectRatioMode aspectRatio,
                             Qt::TransformationMode mode) {
-    if (image.isNull())
+    if (image.isNull() || size.isEmpty())
         return {};
-    const QSize outputSize = image.size().scaled(size, aspectRatio);
+    const QSize outputSize = image.size().scaled(size, aspectRatio).expandedTo(QSize(1, 1));
     if (outputSize == image.size())
         return image;
-    QImage result = image.scaled(size, aspectRatio, mode);
+    const auto format = image.format();
+    const bool straightAlpha = format == QImage::Format_ARGB32 || format == QImage::Format_RGBA8888;
+    const bool areaDownscale = qint64(outputSize.width()) * 2 < image.width() ||
+                               qint64(outputSize.height()) * 2 < image.height();
+    if (mode == Qt::SmoothTransformation && straightAlpha && areaDownscale &&
+        largeRaster(image.size(), format) && !largeRaster(outputSize, format)) {
+#if Q_BYTE_ORDER == Q_LITTLE_ENDIAN && (defined(Q_PROCESSOR_ARM_64) || defined(Q_PROCESSOR_X86_64))
+        if (auto thumbnail = scaleThumbnailByArea(image, outputSize); !thumbnail.isNull())
+            return thumbnail;
+#endif
+#if Q_BYTE_ORDER == Q_LITTLE_ENDIAN
+        if (image.height() % outputSize.height() == 0) {
+            QImage thumbnail = scaleThumbnailByStrips(image, outputSize);
+            if (!thumbnail.isNull())
+                return thumbnail;
+        }
+#endif
+        // Qt's area scaler converts straight alpha to this format before filtering.
+        // Put that large intermediate in managed pages and keep Qt's sampling and output format.
+        const auto premultiplied =
+            snowCanvasConvertImage(image, QImage::Format_ARGB32_Premultiplied);
+        if (premultiplied.isNull())
+            return {};
+        return premultiplied.scaled(outputSize, Qt::IgnoreAspectRatio, mode)
+            .convertToFormat(format);
+    }
+    QImage result = image.scaled(outputSize, Qt::IgnoreAspectRatio, mode);
     return result.sizeInBytes() < qsizetype(snow::memory::kMappedPixelBufferMinimum)
                ? result
                : snowCanvasCopyImage(result);

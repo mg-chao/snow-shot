@@ -224,14 +224,16 @@ QImage apply(const Options& options, const QImage& source) {
 #endif
         return source.transformed(transform, mode);
     }
-    if (operation == "scale_half_smooth") {
-        const QSize target(options.width / 2, options.height / 2);
+    if (operation == "scale_half_smooth" || operation == "scale_thumbnail_smooth") {
+        const bool thumbnail = operation == "scale_thumbnail_smooth";
+        const QSize target =
+            thumbnail ? QSize(256, 256) : QSize(options.width / 2, options.height / 2);
+        const auto aspect = thumbnail ? Qt::KeepAspectRatio : Qt::IgnoreAspectRatio;
 #if !defined(SNOW_MEMORY_BENCHMARK_BASELINE)
         if (managed)
-            return snowCanvasScaleImage(source, target, Qt::IgnoreAspectRatio,
-                                        Qt::SmoothTransformation);
+            return snowCanvasScaleImage(source, target, aspect, Qt::SmoothTransformation);
 #endif
-        return source.scaled(target, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        return source.scaled(target, aspect, Qt::SmoothTransformation);
     }
     throw std::runtime_error("unknown scenario: " + operation);
 }

@@ -28,6 +28,7 @@
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPointer>
 #include <QRgba64>
 #include <QDir>
 #include <QFileInfo>
@@ -2081,6 +2082,50 @@ void customGridDimensionChangesFitToCanvas() {
             "custom dimension edits must publish their persistence fields");
 }
 
+void switchingToPdfReleasesRemovedStaticPreviews() {
+    const qint64 baseline = imageStitchingResourceUsage().reservedBytes;
+    ImageStitchingDocument document;
+    const QSize size(64, 48);
+    auto source = captureImageStitchingImage(size, [&] { return image(size); });
+    require(!source.isNull(), "allocate a preview with a tracked pixel owner");
+    const auto* pixels = source.constBits();
+    require(document.append(std::move(source), QStringLiteral("static image")) &&
+                document.items().front().preview.constBits() == pixels,
+            "the static preview shares its document image pixels");
+    const auto firstId = document.items().front().id;
+    const auto secondId = document.append(image(size), QStringLiteral("second image"));
+    ImageStitchingEditorWidget editor(&document);
+    editor.resize(1000, 650);
+    editor.show();
+    pump();
+    const auto thumbnail = [&](quint64 id) {
+        return editor.findChild<QWidget*>(QStringLiteral("collageThumbnail_%1").arg(id));
+    };
+    const QPointer<QWidget> first(thumbnail(firstId));
+    const QPointer<QWidget> second(thumbnail(secondId));
+    require(first && second, "both static thumbnails exist before switching views");
+
+    document.setOutputType(ImageStitchingOutputType::PdfDocument);
+    require(document.remove(firstId), "remove a page while the static view is hidden");
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    require(!first && second && thumbnail(secondId) == second &&
+                editor.canvas()->property("detailPreviewBytes").toLongLong() ==
+                    document.items().front().preview.sizeInBytes(),
+            "PDF removal retires only the obsolete thumbnail and updates preview accounting");
+    document.clear();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    require(!second && editor.canvas()->property("detailPreviewBytes").toLongLong() == 0,
+            "clearing the PDF releases all static thumbnail widgets and preview bytes");
+    QElapsedTimer timer;
+    timer.start();
+    while (imageStitchingResourceUsage().reservedBytes != baseline && timer.elapsed() < 1000) {
+        pump();
+        QThread::msleep(2);
+    }
+    require(imageStitchingResourceUsage().reservedBytes == baseline,
+            "the hidden canvas and thumbnails release removed image pixels in PDF mode");
+}
+
 void detailTilesRemainBoundedAndOriginalsUnchanged() {
     ImageStitchingDocument document;
     const auto source = image({3840, 2160}, QColor(20, 40, 60, 110));
@@ -2089,6 +2134,11 @@ void detailTilesRemainBoundedAndOriginalsUnchanged() {
     ImageStitchingEditorWidget editor(&document);
     editor.resize(1200, 800);
     editor.show();
+    const auto* detailTimer =
+        editor.canvas()->findChild<QTimer*>(QStringLiteral("collageDetailTimer"));
+    require(detailTimer && detailTimer->isActive() && detailTimer->interval() > 0,
+            "the initial detail request must use the interaction debounce");
+    const int debounceMs = detailTimer->interval();
     pump();
     wheel(editor.canvas(), {300, 250}, 240);
     QElapsedTimer timer;
@@ -2115,8 +2165,36 @@ void detailTilesRemainBoundedAndOriginalsUnchanged() {
     require(source.cacheKey() == key && document.items()[0].image.cacheKey() == key,
             "preview interactions must preserve original raster storage");
     const auto before = editor.canvas()->zoom();
+    editor.hide();
+    require(!detailTimer->isActive() && editor.canvas()->property("detailTileCount").toInt() == 0 &&
+                document.items()[0].image.cacheKey() == key,
+            "hiding the preview releases high-resolution tiles and retains the document source");
+    editor.show();
+    require(detailTimer->isActive() && detailTimer->interval() == 0,
+            "showing a preview that released tiles must queue immediate restoration");
+    editor.showMinimized();
+    require(!detailTimer->isActive() && editor.canvas()->property("detailTileCount").toInt() == 0,
+            "minimizing must cancel queued restoration");
+    editor.canvas()->setEditingEnabled(false);
+    editor.canvas()->setEditingEnabled(true);
+    require(!detailTimer->isActive(), "geometry updates must not schedule detail while minimized");
+    editor.showNormal();
+    editor.canvas()->setEditingEnabled(false);
+    editor.canvas()->setEditingEnabled(true);
+    require(detailTimer->isActive() && detailTimer->interval() == 0,
+            "a rapid re-show and geometry updates must retain immediate restoration");
+    timer.restart();
+    while (editor.canvas()->property("detailTileCount").toInt() == 0 && timer.elapsed() < 10000) {
+        pump();
+        QThread::msleep(5);
+    }
+    require(editor.canvas()->property("detailTileCount").toInt() > 0 &&
+                qFuzzyCompare(editor.canvas()->zoom(), before),
+            "a reshown preview regenerates detail at the preserved zoom");
     document.rotate(document.items()[0].id, true);
     require(qFuzzyCompare(editor.canvas()->zoom(), before), "rotation must preserve preview zoom");
+    require(detailTimer->isActive() && detailTimer->interval() == debounceMs,
+            "ordinary detail requests must resume the interaction debounce after restoration");
 }
 
 void backgroundEditsPreservePendingNumericInput() {
@@ -2422,6 +2500,12 @@ void cancelledDetailsRetainPreviewAccountingUntilRetirement() {
     }
     require(editor.canvas()->property("detailPendingCount").toInt() == 1,
             "detail retirement fixture must hold one queued preview");
+    editor.hide();
+    editor.show();
+    const auto* timerOnShow =
+        editor.canvas()->findChild<QTimer*>(QStringLiteral("collageDetailTimer"));
+    require(timerOnShow && timerOnShow->isActive() && timerOnShow->interval() == 0,
+            "showing a canvas with interrupted in-flight detail schedules immediate restoration");
     document.clear();
     require(editor.canvas()->property("detailPendingCount").toInt() == 1 &&
                 editor.canvas()->property("detailPreviewBytes").toLongLong() > 0,
@@ -2755,6 +2839,7 @@ int main(int argc, char** argv) {
             std::cout << "Collage fit control tests passed\n";
             return 0;
         }
+        switchingToPdfReleasesRemovedStaticPreviews();
         freeCanvasGestures();
         selectionOutlineMatchesPdfHandles();
         centeredStaticResizeMoveAndCancellation();

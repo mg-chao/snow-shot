@@ -254,6 +254,20 @@ void rasterOperationsPreservePixelsAndReleasePages() {
                 source.scaled(QSize(913, 711), Qt::IgnoreAspectRatio, Qt::SmoothTransformation),
             "managed scaling must retain Qt resampling pixels");
     checkRelease(scaled);
+
+    for (const auto format : {QImage::Format_RGBA8888, QImage::Format_ARGB32}) {
+        const auto input = source.convertToFormat(format);
+        const QSize bounds(131, 117);
+        const auto thumbnail =
+            snowCanvasScaleImage(input, bounds, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        require(thumbnail == input.scaled(bounds, Qt::KeepAspectRatio, Qt::SmoothTransformation) &&
+                    thumbnail.format() == format && thumbnail.colorSpace() == input.colorSpace() &&
+                    thumbnail.devicePixelRatio() == input.devicePixelRatio() &&
+                    thumbnail.dotsPerMeterX() == input.dotsPerMeterX() &&
+                    thumbnail.text(QStringLiteral("fixture")) ==
+                        input.text(QStringLiteral("fixture")),
+                "managed thumbnail staging preserves Qt straight-alpha pixels and metadata");
+    }
     QImage wide = snowCanvasAllocateImage(QSize(70001, 5), QImage::Format_RGBA8888);
     wide.fill(QColor(103, 79, 211, 121));
     QImage wideConverted = snowCanvasConvertImage(wide, QImage::Format_ARGB32_Premultiplied);
@@ -584,6 +598,65 @@ QImage nativeColorResult(const QImage& source, QImage::Format format,
     return expected;
 }
 
+void largePackedCropsMatchQt() {
+    for (const auto format : {QImage::Format_Mono, QImage::Format_MonoLSB}) {
+        QImage source = snowCanvasAllocateImage({8303, 1067}, format);
+        require(!source.isNull(), "packed crop fixture must allocate");
+        source.setColor(0, qRgb(22, 47, 62));
+        source.setColor(1, qRgba(120, 243, 25, 97));
+        for (int row = 0; row < source.height(); ++row) {
+            auto* pixels = source.scanLine(row);
+            for (qsizetype byte = 0; byte < source.bytesPerLine(); ++byte)
+                pixels[byte] = static_cast<uchar>(byte * 47 + row * 13);
+        }
+        for (const QRect& crop : {QRect(8, 5, 8192, 1040), QRect(3, 5, 8189, 1040)}) {
+            auto actual = snowCanvasCopyImage(source, crop);
+            require(actual.colorTable() == source.colorTable(), "crop must retain the palette");
+            requireEquivalent(std::move(actual), source.copy(crop),
+                              "aligned and unaligned packed crops must match Qt");
+        }
+    }
+}
+
+void smoothThumbnailsMatchQtAcrossSampleBoundaries() {
+    const QImage fixture = alphaFixture({1020, 765});
+    const auto verify = [](const QImage& source, const QSize& bounds, Qt::AspectRatioMode mode) {
+        requireEquivalent(snowCanvasScaleImage(source, bounds, mode, Qt::SmoothTransformation),
+                          source.scaled(bounds, mode, Qt::SmoothTransformation),
+                          "smooth thumbnails must preserve Qt's sampling phase and metadata");
+    };
+    for (const auto format : {QImage::Format_ARGB32, QImage::Format_RGBA8888}) {
+        const QImage source = fixture.convertToFormat(format);
+        for (const QSize bounds : {QSize(0, 68), QSize(68, 0), QSize(-1, 68)})
+            verify(source, bounds, Qt::KeepAspectRatioByExpanding);
+        verify(source, {68, 68}, Qt::KeepAspectRatio);
+        verify(source, {197, 52}, Qt::IgnoreAspectRatio);
+        verify(source, {127, 91}, Qt::IgnoreAspectRatio);
+        verify(source, {3, 1}, Qt::IgnoreAspectRatio);
+        verify(source, {197, 512}, Qt::IgnoreAspectRatio);
+        verify(source, {1141, 51}, Qt::IgnoreAspectRatio);
+
+        const qsizetype stride = source.bytesPerLine() + 16;
+        auto storage =
+            snow::memory::allocatePixelBuffer(static_cast<std::size_t>(stride * source.height()));
+        require(storage != nullptr, "padded thumbnail source must allocate");
+        for (int row = 0; row < source.height(); ++row)
+            std::memcpy(storage.get() + row * stride, source.constScanLine(row),
+                        static_cast<std::size_t>(source.bytesPerLine()));
+        QImage padded(static_cast<const uchar*>(storage.get()), source.width(), source.height(),
+                      stride, format);
+        padded.setColorSpace(source.colorSpace());
+        verify(padded, {197, 51}, Qt::IgnoreAspectRatio);
+        verify(padded, {197, 52}, Qt::IgnoreAspectRatio);
+        verify(padded, {127, 91}, Qt::IgnoreAspectRatio);
+        require(padded.constBits() == storage.get() && padded == source,
+                "thumbnail scaling must leave padded, read-only source pixels intact");
+    }
+    verify(alphaFixture({64, 32768}), {256, 256}, Qt::KeepAspectRatio);
+    verify(alphaFixture({32768, 64}), {256, 256}, Qt::KeepAspectRatio);
+    verify(alphaFixture({4099, 128}), {79, 128}, Qt::IgnoreAspectRatio);
+}
+
 void formatsAndAlphaBoundariesMatchQt() {
     const QImage smallFixture = alphaFixture(QSize(257, 129));
     const std::array formats{QImage::Format_Mono,
@@ -823,11 +896,29 @@ void chunkBoundariesAndConcurrencyMatchQt() {
                               source.transformed(transform, mode),
                               "noncanonical transforms must retain Qt resampling and metadata");
 
+    const QImage cropSource = alphaFixture({2049, 1290});
+    const QRect crop(7, 9, 1901, 1105);
+    const auto expectedCrop = cropSource.copy(crop);
+    const QRect band(0, 72, cropSource.width(), 1111);
+    requireEquivalent(snowCanvasCopyImage(cropSource, crop), expectedCrop,
+                      "large striped crops must preserve pixels and metadata");
+    requireEquivalent(snowCanvasCopyImage(cropSource, band), cropSource.copy(band),
+                      "contiguous cropped bands must match Qt");
+    const QSize thumbnailSize(237, 151);
+    const auto expectedThumbnail =
+        cropSource.scaled(thumbnailSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+
     QThreadPool* pool = QThreadPool::globalInstance();
     const int maximumThreads = pool->maxThreadCount();
     pool->setMaxThreadCount(1);
     QSemaphore complete;
     pool->start([&] {
+        requireEquivalent(snowCanvasCopyImage(cropSource, crop), expectedCrop,
+                          "cropping inside a saturated pool must complete correctly");
+        requireEquivalent(snowCanvasScaleImage(cropSource, thumbnailSize, Qt::IgnoreAspectRatio,
+                                               Qt::SmoothTransformation),
+                          expectedThumbnail,
+                          "thumbnail scaling inside a saturated pool must complete correctly");
         requireEquivalent(snowCanvasConvertImage(source, QImage::Format_RGBA64),
                           source.convertToFormat(QImage::Format_RGBA64),
                           "direct RGBA64 expansion on a saturated pool must complete correctly");
@@ -837,7 +928,7 @@ void chunkBoundariesAndConcurrencyMatchQt() {
                           "conversion on a saturated worker pool must complete correctly");
         complete.release();
     });
-    require(complete.tryAcquire(1, 10000), "saturated worker conversion must not deadlock");
+    require(complete.tryAcquire(1, 10000), "saturated worker operations must not deadlock");
     pool->waitForDone();
     pool->setMaxThreadCount(maximumThreads);
 }
@@ -854,6 +945,8 @@ int main() {
     colorConvertedPremultipliedRowsKeepStraightAlpha();
     borrowedRgbaRowsMatchQt();
     borrowedRgbaRowsRejectInvalidBoundsAndAliasing();
+    largePackedCropsMatchQt();
+    smoothThumbnailsMatchQtAcrossSampleBoundaries();
     formatsAndAlphaBoundariesMatchQt();
     directRgba64ExpansionMatchesQt();
     arbitraryRotationsMatchQt();
