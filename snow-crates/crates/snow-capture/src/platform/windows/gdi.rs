@@ -346,31 +346,27 @@ fn scan_dirty_row_flags_parallel(
 ) -> usize {
     let src_addr = src_base as usize;
     let history_addr = history_base as usize;
-    let mut dirty_rows = 0usize;
-    convert::with_conversion_pool(GDI_PARALLEL_ROW_SCAN_MAX_WORKERS, || {
-        use rayon::prelude::*;
-        dirty_rows = flags
-            .par_iter_mut()
-            .enumerate()
-            .map(|(row, flag)| {
-                let src_row = (src_addr + row * src_stride) as *const u8;
-                let history_row = (history_addr + row * history_stride) as *mut u8;
-                let changed = unsafe { !compare_row(src_row, history_row.cast_const(), row_bytes) };
-                *flag = if changed { 1u8 } else { 0u8 };
-                if !changed {
-                    return 0usize;
-                }
+    let scan = |(row, flag): (usize, &mut u8)| {
+        let src_row = (src_addr + row * src_stride) as *const u8;
+        let history_row = (history_addr + row * history_stride) as *mut u8;
+        let changed = unsafe { !compare_row(src_row, history_row.cast_const(), row_bytes) };
+        *flag = if changed { 1u8 } else { 0u8 };
+        if !changed {
+            return 0usize;
+        }
 
-                if copy_changed_rows_to_history {
-                    unsafe {
-                        std::ptr::copy_nonoverlapping(src_row, history_row, row_bytes);
-                    }
-                }
-                1usize
-            })
-            .sum::<usize>();
-    });
-    dirty_rows
+        if copy_changed_rows_to_history {
+            unsafe {
+                std::ptr::copy_nonoverlapping(src_row, history_row, row_bytes);
+            }
+        }
+        1usize
+    };
+    convert::try_install_conversion_pool(GDI_PARALLEL_ROW_SCAN_MAX_WORKERS, || {
+        use rayon::prelude::*;
+        flags.par_iter_mut().enumerate().map(scan).sum()
+    })
+    .unwrap_or_else(|| flags.iter_mut().enumerate().map(scan).sum())
 }
 
 fn scan_dirty_row_spans_parallel(
@@ -389,36 +385,17 @@ fn scan_dirty_row_spans_parallel(
     debug_assert!(width <= u32::MAX as usize);
     let src_addr = src_base as usize;
     let history_addr = history_base as usize;
-    let mut totals = (0usize, 0usize);
-    convert::with_conversion_pool(GDI_PARALLEL_ROW_SCAN_MAX_WORKERS, || {
-        use rayon::prelude::*;
-        totals = spans
-            .par_iter_mut()
-            .enumerate()
-            .map(|(row, span)| {
-                let src_row = (src_addr + row * src_stride) as *const u8;
-                let history_row = (history_addr + row * history_stride) as *mut u8;
+    let scan = |(row, span): (usize, &mut DirtyRowSpan)| {
+        let src_row = (src_addr + row * src_stride) as *const u8;
+        let history_row = (history_addr + row * history_stride) as *mut u8;
 
-                let dirty_span = match scan_mode {
-                    ParallelSpanScanMode::CompareThenDiff => {
-                        let changed =
-                            unsafe { !compare_row(src_row, history_row.cast_const(), row_bytes) };
-                        if !changed {
-                            None
-                        } else {
-                            unsafe {
-                                row_diff_span_pixels_with_kernel(
-                                    row_diff_bounds,
-                                    src_row,
-                                    history_row.cast_const(),
-                                    row_bytes,
-                                    width,
-                                )
-                            }
-                            .or(Some((0usize, width)))
-                        }
-                    }
-                    ParallelSpanScanMode::SingleScanDiff => unsafe {
+        let dirty_span = match scan_mode {
+            ParallelSpanScanMode::CompareThenDiff => {
+                let changed = unsafe { !compare_row(src_row, history_row.cast_const(), row_bytes) };
+                if !changed {
+                    None
+                } else {
+                    unsafe {
                         row_diff_span_pixels_with_kernel(
                             row_diff_bounds,
                             src_row,
@@ -426,43 +403,60 @@ fn scan_dirty_row_spans_parallel(
                             row_bytes,
                             width,
                         )
-                    },
-                };
-
-                let Some((start_col, end_col)) = dirty_span else {
-                    *span = DirtyRowSpan::default();
-                    return (0usize, 0usize);
-                };
-
-                let span_width = end_col.saturating_sub(start_col);
-                *span = DirtyRowSpan {
-                    start_col: start_col as u32,
-                    width: span_width as u32,
-                };
-
-                if copy_changed_rows_to_history {
-                    let span_start_bytes = start_col * BGRA_BYTES_PER_PIXEL;
-                    let copy_bytes = span_width * BGRA_BYTES_PER_PIXEL;
-                    if copy_bytes > 0 {
-                        unsafe {
-                            std::ptr::copy_nonoverlapping(
-                                src_row.add(span_start_bytes),
-                                history_row.add(span_start_bytes),
-                                copy_bytes,
-                            );
-                        }
                     }
+                    .or(Some((0usize, width)))
                 }
+            }
+            ParallelSpanScanMode::SingleScanDiff => unsafe {
+                row_diff_span_pixels_with_kernel(
+                    row_diff_bounds,
+                    src_row,
+                    history_row.cast_const(),
+                    row_bytes,
+                    width,
+                )
+            },
+        };
 
-                (1usize, span_width)
-            })
-            .reduce(
-                || (0usize, 0usize),
-                |lhs, rhs| (lhs.0.saturating_add(rhs.0), lhs.1.saturating_add(rhs.1)),
-            );
-    });
+        let Some((start_col, end_col)) = dirty_span else {
+            *span = DirtyRowSpan::default();
+            return (0usize, 0usize);
+        };
 
-    totals
+        let span_width = end_col.saturating_sub(start_col);
+        *span = DirtyRowSpan {
+            start_col: start_col as u32,
+            width: span_width as u32,
+        };
+
+        if copy_changed_rows_to_history {
+            let span_start_bytes = start_col * BGRA_BYTES_PER_PIXEL;
+            let copy_bytes = span_width * BGRA_BYTES_PER_PIXEL;
+            if copy_bytes > 0 {
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        src_row.add(span_start_bytes),
+                        history_row.add(span_start_bytes),
+                        copy_bytes,
+                    );
+                }
+            }
+        }
+
+        (1usize, span_width)
+    };
+    let combine = |lhs: (usize, usize), rhs: (usize, usize)| {
+        (lhs.0.saturating_add(rhs.0), lhs.1.saturating_add(rhs.1))
+    };
+    convert::try_install_conversion_pool(GDI_PARALLEL_ROW_SCAN_MAX_WORKERS, || {
+        use rayon::prelude::*;
+        spans
+            .par_iter_mut()
+            .enumerate()
+            .map(scan)
+            .reduce(|| (0, 0), combine)
+    })
+    .unwrap_or_else(|| spans.iter_mut().enumerate().map(scan).fold((0, 0), combine))
 }
 
 #[cfg(any(not(target_arch = "aarch64"), test))]

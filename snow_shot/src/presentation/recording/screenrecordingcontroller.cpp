@@ -1408,6 +1408,7 @@ struct ScreenRecordingController::Impl {
         // Earlier retained sources remain on disk; earlier exports cease being
         // eligible for this recording's Copy action.
         retainedSourcePath.clear();
+        renderFailurePolicy = RecordingRenderJob::FailurePolicy::AwaitDecision;
         sessionExportContext = {};
         finalizedOutputPath.clear();
         finalizedDurationMilliseconds = 0;
@@ -2039,6 +2040,7 @@ struct ScreenRecordingController::Impl {
                 finishExport(outcome == RecordingRenderJob::Outcome::Succeeded, error,
                              renderedDuration, false);
             };
+            renderJob->setFailurePolicy(renderFailurePolicy);
             renderJob->start();
             return;
         }
@@ -2259,6 +2261,15 @@ struct ScreenRecordingController::Impl {
     }
 
     void close() {
+        if (!sessionEnding && automationOwned) {
+            renderFailurePolicy = RecordingRenderJob::FailurePolicy::KeepSource;
+            if (renderJob)
+                renderJob->setFailurePolicy(renderFailurePolicy);
+        }
+        finishAndClose();
+    }
+
+    void finishAndClose() {
         if (sessionEnding)
             return;
         // Snapshot the preference for an in-flight start while its UI still
@@ -2312,6 +2323,9 @@ struct ScreenRecordingController::Impl {
         // Disconnect before hiding: hide/focus events can emit canvas and geometry signals.
         retiring->preview->setEligible(false);
         retiring->preview->stopAndClear();
+        // Startup owns the borrowed FFI handle until creation returns. The native
+        // session then owns its own source, so this window no longer needs a lease.
+        webcam.reset();
         retiring->connections.reset();
         retiring->colorSampler.reset();
         retiring->shortcuts.reset();
@@ -3029,6 +3043,8 @@ struct ScreenRecordingController::Impl {
     QString finalizedOutputPath;
     qint64 finalizedDurationMilliseconds = 0;
     bool automationOwned = false;
+    RecordingRenderJob::FailurePolicy renderFailurePolicy =
+        RecordingRenderJob::FailurePolicy::AwaitDecision;
     bool automationCommand = false;
     quint64 automationRevision = snow_shot::presentation::nextAutomationRevision();
     bool automationNextStart = false;
@@ -3610,7 +3626,10 @@ bool ScreenRecordingController::controlAutomation(const QString& action, const Q
             ok = s.renderJob->release(false);
         else if (action == QStringLiteral("discard"))
             ok = s.renderJob->release(true);
-        else if (action == QStringLiteral("close") || action == QStringLiteral("cancel")) {
+        else if (action == QStringLiteral("close")) {
+            s.close();
+            return true;
+        } else if (action == QStringLiteral("cancel")) {
             s.destroyUi();
             return true;
         } else
@@ -3618,8 +3637,12 @@ bool ScreenRecordingController::controlAutomation(const QString& action, const Q
         return ok || fail("invalid_state");
     }
     s.automationError.clear();
-    if (action == QStringLiteral("cancel") || action == QStringLiteral("close")) {
+    if (action == QStringLiteral("close")) {
         s.close();
+        return true;
+    }
+    if (action == QStringLiteral("cancel")) {
+        s.finishAndClose();
         return true;
     }
     if (s.trimRequested) {
