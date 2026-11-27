@@ -1050,8 +1050,12 @@ void preparedSourceIsWrittenOnceAndStateUpdatesPreserveIt() {
 
     record.nativeGeometry.moveTo(31, 47);
     record.canvasSession = QByteArrayLiteral("canvas-2");
-    require(repository.updateState(record).success,
-            "failed to update pinned metadata and session state");
+    require(repository.updateState(record).success && repository.updateState(record).success &&
+                repository.upsertExisting(record).success,
+            "queue identical updates while the session is pending");
+    const auto pending = repository.loadRecord(id);
+    require(pending && pending->canvasSession == record.canvasSession,
+            "identical updates must keep the pending session until it reaches disk");
     require(repository.flush().success, "failed to flush the pinned state update");
     require(readBytes(sourcePath) == *sharedBytes,
             "a pinned state update rewrote the immutable source image");
@@ -1126,6 +1130,176 @@ void committedPayloadsAreServedFromDisk() {
                 reloaded->canvasSession == record.canvasSession &&
                 reloaded->originalHtml == record.originalHtml,
             "the committed lazy record did not survive a repository restart");
+}
+
+void unwrittenPreparedPinsReleaseDecodedPixels() {
+    QTemporaryDir directory;
+    require(directory.isValid(), "temporary storage directory is unavailable");
+    storage::PinnedWindowRepository repository(directory.path(), true, 30000);
+    const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const QString blockedPins =
+        QDir(directory.path()).filePath(QStringLiteral("pinned_windows_v2/pins"));
+    QFile blocker(blockedPins);
+    require(blocker.open(QIODevice::WriteOnly), "block the prepared source write");
+    blocker.close();
+
+    std::weak_ptr<int> pixels;
+    auto record = recordWithId(id, trackedImage(&pixels, 9));
+    const auto expected = patternedImage(record.image.size(), 9);
+    auto prepared = storage::PreparedPngImage::fromBytes(expected.size(), pngBytes(expected, 8));
+    repository.reserveCreation(id);
+    require(prepared && repository.createReserved(std::move(record), *prepared).success &&
+                repository.markClosedDeferred(id).success && !repository.flush().success &&
+                pixels.expired(),
+            "a closed pin should retain only encoded source bytes during a write failure");
+
+    const auto loaded = repository.loadRecord(id);
+    require(loaded && loaded->ignored && samePixels(loaded->image, expected),
+            "reopen a closed prepared source before storage recovers");
+    bool rejectedDecode = false;
+    require(!repository.loadRecord(id,
+                                   [&](qint64 bytes) {
+                                       rejectedDecode = bytes >= 2 * expected.sizeInBytes();
+                                       return !rejectedDecode;
+                                   }) &&
+                rejectedDecode,
+            "pending encoded images must respect decoded memory admission");
+    const auto preview = repository.loadThumbnailSource(id, QSize(12, 12));
+    require(preview && !preview->image.isNull() && preview->naturalSize == expected.size() &&
+                preview->image.width() <= 12 && preview->image.height() <= 12,
+            "pending encoded images must support bounded thumbnails");
+
+    require(blocker.remove() && repository.flush().success &&
+                samePixels(repository.loadRecord(id)->image, expected),
+            "recovery must persist the original prepared pixels");
+}
+
+void unwrittenFilePinsPreserveOriginalBytes(const QString& originalName, const QByteArray& encoded,
+                                            QImage image) {
+    QTemporaryDir directory;
+    require(directory.isValid(), "temporary storage directory is unavailable");
+    storage::PinnedWindowRepository repository(directory.path(), true, 30000);
+    const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    QFile blocker(directory.filePath(QStringLiteral("pinned_windows_v2/pins")));
+    require(blocker.open(QIODevice::WriteOnly), "block the original file payload write");
+    blocker.close();
+
+    QFile original(directory.filePath(originalName));
+    require(original.open(QIODevice::WriteOnly) && original.write(encoded) == encoded.size(),
+            "write the original file pin fixture");
+    original.close();
+
+    auto* decoded = new TrackedImageOwner{std::move(image)};
+    require(!decoded->image.isNull() && encoded.size() <= decoded->image.sizeInBytes(),
+            "decode a compact static file pin fixture");
+    const std::weak_ptr<int> pixels = decoded->lifetime;
+    const auto expected = decoded->image.copy();
+    auto record = recordWithId(
+        id, QImage(
+                decoded->image.bits(), decoded->image.width(), decoded->image.height(),
+                decoded->image.bytesPerLine(), decoded->image.format(),
+                [](void* data) { delete static_cast<TrackedImageOwner*>(data); }, decoded));
+    record.sourceKind = storage::PinnedWindowSourceKind::ClipboardImageFile;
+    record.originalFilePath = original.fileName();
+    record.originalFileName = originalName;
+    record.originalFileBytes = encoded;
+    repository.reserveCreation(id);
+    require(repository.createReserved(std::move(record)).success && original.remove() &&
+                repository.markClosedDeferred(id).success && !repository.flush().success &&
+                pixels.expired(),
+            "the closed file pin retains original bytes without retaining the decoded raster");
+
+    const auto loaded = repository.loadRecord(id);
+    require(loaded && loaded->ignored && loaded->originalFileBytes.isEmpty() &&
+                samePixels(loaded->image, expected),
+            "a closed file pin can be loaded before storage recovers");
+    const auto preview = repository.loadThumbnailSource(id, QSize(12, 12));
+    require(preview && !preview->image.isNull() && preview->naturalSize == expected.size() &&
+                preview->image.width() <= 12 && preview->image.height() <= 12,
+            "the pending original bytes support bounded thumbnails");
+
+    require(blocker.remove() && repository.flush().success,
+            "write the retained original file after storage recovers");
+    storage::PinnedWindowRepository reopened(directory.path());
+    const auto committed = reopened.loadRecord(id);
+    require(committed && committed->ignored && committed->originalFileBytes.isEmpty() &&
+                committed->originalFilePath != original.fileName() &&
+                readBytes(committed->originalFilePath) == encoded &&
+                samePixels(committed->image, expected),
+            "recovery commits the exact original bytes to the private pin directory");
+    const auto committedPreview = reopened.loadThumbnailSource(id, QSize(12, 12));
+    require(committedPreview && committedPreview->naturalSize == preview->naturalSize &&
+                samePixels(committedPreview->image, preview->image),
+            "the pending thumbnail must show the same pixels as the committed thumbnail");
+}
+
+void unwrittenFilePinsPreserveOriginalBytes() {
+    QImage fixture(64, 64, QImage::Format_RGB32);
+    fixture.fill(Qt::green);
+    for (const auto format : {snow::image::Format::jpeg, snow::image::Format::gif}) {
+        QByteArray encoded;
+        QBuffer buffer(&encoded);
+        require(buffer.open(QIODevice::WriteOnly) &&
+                    snow_shot::image_codec::encodeToDevice(fixture, &buffer, format, {}),
+                "encode the original file pin fixture");
+        buffer.close();
+        const QString originalName = format == snow::image::Format::jpeg
+                                         ? QStringLiteral("original.jpg")
+                                         : QStringLiteral("original.gif");
+        unwrittenFilePinsPreserveOriginalBytes(
+            originalName, encoded, snow_shot::image_codec::decode(encoded, format, nullptr));
+    }
+
+    // A blue 64x64 poster is excluded from playback. The single playback frame
+    // has a red pixel at (8, 8) on an otherwise transparent canvas.
+    const auto apng = QByteArray::fromBase64(
+        "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAACGFjVEwAAAABAAAAALQt6aAAAACo"
+        "SURBVHic5c4hAQAADASh61/6FwMxgafafuMBjQc0HtB4QOMBjQc0HtB4QOMBjQc0HtB4QOMBjQc0"
+        "HtB4QOMBjQc0HtB4QOMBjQc0HtB4QOMBjQc0HtB4QOMBjQc0HtB4QOMBjQc0HtB4QOMBjQc0HtB4"
+        "QOMBjQc0HtB4QOMBjQc0HtB4QOMBjQc0HtB4QOMBjQc0HtB4QOMBjQc0HtB4QOMBjQc0HrAOYajh"
+        "0m1y8tcAAAAaZmNUTAAAAAAAAAABAAAAAQAAAAgAAAAIAAEACgAA01Of8gAAABFmZEFUAAAAAXic"
+        "Y/jPwPAfAAUAAf/m9La/AAAAAElFTkSuQmCC");
+    const auto source = snow_shot::image_codec::decodeAnimationSource(apng);
+    require(source && !source->isAnimated() && source->firstFrame.pixelColor(0, 0).alpha() == 0 &&
+                source->firstFrame.pixelColor(8, 8) == Qt::red,
+            "the single-frame APNG fixture composes its playback frame");
+    unwrittenFilePinsPreserveOriginalBytes(QStringLiteral("poster.png"), apng, source->firstFrame);
+}
+
+void failedWritesBoundThePendingPayloadBacklog() {
+    QTemporaryDir directory;
+    require(directory.isValid(), "temporary storage directory is unavailable");
+    storage::PinnedWindowRepository repository(directory.path(), true, 30000);
+    QFile blocker(QDir(directory.path()).filePath(QStringLiteral("pinned_windows_v2/pins")));
+    require(blocker.open(QIODevice::WriteOnly), "block pending payload writes");
+    blocker.close();
+
+    // Sharing the buffer keeps the fixture small while exercising accounting across records.
+    const QByteArray payload(24 * 1024 * 1024, 'x');
+    auto record = recordWithId(QUuid::createUuid().toString(QUuid::WithoutBraces),
+                               patternedImage(QSize(33, 17), 11));
+    record.canvasSession = payload;
+    record.recognitionResults = payload;
+    record.resultStyle = payload;
+    record.textAnnotations = payload;
+    const auto first = record.id;
+    require(repository.upsert(record).success && repository.markClosedDeferred(first).success &&
+                !repository.flush().success,
+            "keep the first closed record pending after a write error");
+    record.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const auto second = record.id;
+    require(repository.upsert(record).success, "admit a second record within the byte budget");
+    record.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const auto third = record.id;
+    repository.reserveCreation(third);
+    require(!repository.upsert(record).success && repository.summaries().size() == 2 &&
+                repository.pendingSummaries().size() == 1,
+            "a rejected write must leave the records and reservation intact");
+    require(repository.remove(first).success && repository.upsert(record).success &&
+                repository.pendingSummaries().isEmpty(),
+            "releasing a pending record makes room for the reserved write");
+    require(repository.removeMany({second, third}).success && blocker.remove(),
+            "remove the test backlog before shutdown");
 }
 
 void manifestFailuresReleaseWrittenPayloadsAndRetryMetadata() {
@@ -3344,6 +3518,9 @@ int main(int argc, char* argv[]) {
     }
     if (application.arguments().contains(QStringLiteral("--memory-activity-only"))) {
         committedPayloadsAreServedFromDisk();
+        unwrittenPreparedPinsReleaseDecodedPixels();
+        unwrittenFilePinsPreserveOriginalBytes();
+        failedWritesBoundThePendingPayloadBacklog();
         require(snow_shot::runtime::RuntimeActivityTracker::shared().snapshot().activeCount == 0,
                 "idle pinned repositories must not retain runtime activity");
         return 0;
@@ -3410,6 +3587,9 @@ int main(int argc, char* argv[]) {
     animationSourceIdentityIncludesEncodedBytes();
     animationStateUpdatesDoNotInspectOrRetainImmutableSources();
     committedPayloadsAreServedFromDisk();
+    unwrittenPreparedPinsReleaseDecodedPixels();
+    unwrittenFilePinsPreserveOriginalBytes();
+    failedWritesBoundThePendingPayloadBacklog();
     manifestFailuresReleaseWrittenPayloadsAndRetryMetadata();
     partialPayloadFailuresDemoteOnlyCompleteRevisions();
     failedManifestSourceReplacementsKeepCurrentPayloadDescriptors();

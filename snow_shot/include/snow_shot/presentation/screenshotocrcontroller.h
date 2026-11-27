@@ -1,6 +1,8 @@
 #ifndef SNOW_SHOT_PRESENTATION_SCREENSHOTOCRCONTROLLER_H
 #define SNOW_SHOT_PRESENTATION_SCREENSHOTOCRCONTROLLER_H
 
+#include "snow_shot/presentation/screenshotrecognitioncopy.h"
+#include "snow_shot/presentation/screenshotclipboardservice.h"
 #include "snow_shot/presentation/screenshotinteractionstate.h"
 #include "snow_shot/presentation/screenshotselectiongeometry.h"
 #include "snow_shot/presentation/screenshotmessageservice.h"
@@ -63,6 +65,10 @@ struct ScreenshotOcrControllerContext {
     snow_shot::presentation::WindowShortcutManager* shortcutManager = nullptr;
     // Empty keeps text backgrounds enabled for interactive recognition.
     std::function<bool()> shouldRenderTextBackground{};
+    std::function<bool()> requestCancelViaShortcut{};
+    // Accept the prepared payload and finish the capture before publishing it.
+    std::function<bool(std::unique_ptr<QMimeData>, ScreenshotClipboardService::PublicationId, bool)>
+        commitCaptureCopy{};
 };
 
 class ScreenshotOcrController final : public QObject {
@@ -97,9 +103,10 @@ class ScreenshotOcrController final : public QObject {
     [[nodiscard]] bool tableModeActive() const;
     [[nodiscard]] bool qrModeActive() const;
     [[nodiscard]] bool latexModeActive() const;
-    [[nodiscard]] bool copyRecognitionToClipboard(bool endCapture = true,
-                                                  bool copyFullTextResult = false,
-                                                  std::function<void(QImage)> copyImage = {});
+    [[nodiscard]] bool copyRecognitionToClipboard(ScreenshotRecognitionCopy intent);
+    [[nodiscard]] bool
+    copyRecognitionAndEndCapture(ScreenshotRecognitionCopy intent, bool userInitiated = true,
+                                 ScreenshotClipboardService::PublicationId publication = 0);
     void scheduleCopyRecognitionAndEndCapture();
     void mergeTableSelection();
     void splitTableSelection();
@@ -154,6 +161,7 @@ class ScreenshotOcrController final : public QObject {
         bool selectionBorderVisible = true;
     };
     void activateMode(Mode mode, bool textTranslation = false, bool copyAndEndCapture = false);
+    void finishExplicitCopy(quint64 publication);
     void handleQrLinkActivated(const QUrl& url);
     void updateOverlays() const;
     void

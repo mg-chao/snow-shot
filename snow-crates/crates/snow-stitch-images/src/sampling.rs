@@ -4,6 +4,10 @@ use std::ops::Range;
 
 use crate::{Frame, Geometry, StitchAxis, orb, orb::Image};
 
+#[cfg(target_arch = "aarch64")]
+#[path = "sampling_neon.rs"]
+mod neon;
+
 const FULL_RESOLUTION_EXTENT: u32 = 512;
 const ROWS_PER_CHUNK: usize = 16;
 
@@ -29,6 +33,8 @@ pub(crate) struct SamplingPlan {
     target: u32,
     bins: Vec<AreaBin>,
     weights: Vec<u64>,
+    #[cfg(target_arch = "aarch64")]
+    blocks: Vec<neon::AreaBlock>,
 }
 
 impl SamplingPlan {
@@ -44,6 +50,8 @@ impl SamplingPlan {
             target: source,
             bins: Vec::new(),
             weights: Vec::new(),
+            #[cfg(target_arch = "aarch64")]
+            blocks: Vec::new(),
         }
     }
 
@@ -79,6 +87,12 @@ impl SamplingPlan {
             axis,
             source,
             target,
+            #[cfg(target_arch = "aarch64")]
+            blocks: if axis == StitchAxis::Vertical {
+                neon::plan(source, &bins, &weights)
+            } else {
+                Vec::new()
+            },
             bins,
             weights,
         }
@@ -138,12 +152,35 @@ impl SamplingPlan {
                                     orb::grayscale_chunk(source_row, gray, channels);
                                     gray.as_slice()
                                 };
-                                for (value, bin) in row.iter_mut().zip(&self.bins) {
-                                    let sum: u64 = self.weights[bin.weights.clone()]
-                                        .iter()
-                                        .zip(&values[bin.first..])
-                                        .map(|(weight, pixel)| weight * u64::from(*pixel))
-                                        .sum();
+                                #[cfg(target_arch = "aarch64")]
+                                let processed = unsafe {
+                                    neon::sample_row(&self.blocks, self.source, values, row)
+                                };
+                                #[cfg(not(target_arch = "aarch64"))]
+                                let processed = 0;
+                                for (value, bin) in
+                                    row[processed..].iter_mut().zip(&self.bins[processed..])
+                                {
+                                    let weights = &self.weights[bin.weights.clone()];
+                                    let samples = &values[bin.first..bin.first + weights.len()];
+                                    // Shallow reductions on normal desktop widths commonly
+                                    // straddle three or four source pixels.
+                                    let sum = match (weights, samples) {
+                                        ([a, b, c], &[p, q, r]) => {
+                                            a * u64::from(p) + b * u64::from(q) + c * u64::from(r)
+                                        }
+                                        ([a, b, c, d], &[p, q, r, s]) => {
+                                            a * u64::from(p)
+                                                + b * u64::from(q)
+                                                + c * u64::from(r)
+                                                + d * u64::from(s)
+                                        }
+                                        _ => weights
+                                            .iter()
+                                            .zip(samples)
+                                            .map(|(weight, pixel)| weight * u64::from(*pixel))
+                                            .sum(),
+                                    };
                                     *value = self.round_average(sum);
                                 }
                             }
@@ -391,7 +428,9 @@ mod tests {
     #[test]
     fn fused_grayscale_sampling_matches_two_pass_for_formats_axes_bins_and_chunk_boundaries() {
         for axis in [StitchAxis::Vertical, StitchAxis::Horizontal] {
-            for cross in [127, 512, 513, 514, 1024, 1537, 3840] {
+            // At width 4613 the first five-tap bin is partway across the row.
+            // Width 8193 exercises the all-scalar fallback on ARM64.
+            for cross in [127, 512, 513, 514, 1024, 1537, 3840, 4613, 8193] {
                 for primary in [1, 7, 8, 9, 15, 16, 17, 31, 32, 33, 65] {
                     let (width, height) = match axis {
                         StitchAxis::Vertical => (cross, primary),

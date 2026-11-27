@@ -107,7 +107,7 @@ struct ImageEditingExportController::Impl {
         auto handle = ScreenshotClipboardService::publishMimeData(
             QApplication::clipboard(), request, std::move(mime), publication,
             [this, request](auto result) {
-                finish(request, result.succeeded() && !result.superseded, result.errorString());
+                finish(request, result.published(), result.errorString());
             });
         if (!lifetime || !current(request))
             return;
@@ -135,8 +135,7 @@ struct ImageEditingExportController::Impl {
             request->clipboard = ScreenshotClipboardService::commit(
                 QApplication::clipboard(), request, std::move(result.payload), publication,
                 [this, request](auto committed) {
-                    finish(request, committed.succeeded() && !committed.superseded,
-                           committed.errorString());
+                    finish(request, committed.published(), committed.errorString());
                 });
             if (!request->clipboard.isValid())
                 startFailed(request);
@@ -486,34 +485,39 @@ void ImageEditingExportController::start(Operation operation, Content content, Q
     d.startFailed(request);
 #endif
 }
-void ImageEditingExportController::startCopy(CopyContent content, CopyOptions options,
+bool ImageEditingExportController::startCopy(CopyContent content, CopyOptions options,
                                              QWidget* owner, Completion completion) {
     auto& d = *m_impl;
-    if (!owner || d.copy || !ScreenshotClipboardService::publicationCurrent(options.publication))
-        return;
+    if (!owner || !canStart(Operation::Copy) || d.copy ||
+        !ScreenshotClipboardService::publicationCurrent(options.publication))
+        return false;
     const QPointer<Request> request(d.begin(Operation::Copy, owner, std::move(completion)));
     if (auto* source = std::get_if<ScreenshotExportSource>(&content)) {
         d.copyImage(request, std::move(*source), options);
-        return;
+        return true;
     }
-    if (auto* mime = std::get_if<std::unique_ptr<QMimeData>>(&content)) {
-        d.publishCopy(request, std::move(*mime), options.publication);
-        return;
-    }
-#if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
-    request->job = std::get<ScreenshotDocumentCopyRequest>(content).start(
-        request, [this, request, publication = options.publication](auto mime, QString error) {
-            if (!m_impl->current(request))
-                return;
-            if (!mime) {
-                m_impl->finish(request, false, std::move(error));
-                return;
-            }
-            m_impl->publishCopy(request, std::move(mime), publication);
-        });
-    if (!request->job.isValid())
-        d.startFailed(request);
-#endif
+    const QPointer<ImageEditingExportController> self(this);
+    auto prepared = [self, request, options](auto mime, QString error) {
+        if (!self || !self->m_impl->current(request))
+            return;
+        auto& impl = *self->m_impl;
+        if (!mime || !ScreenshotClipboardService::publicationCurrent(options.publication)) {
+            impl.finish(request, false, std::move(error));
+        } else if (mime->hasImage()) {
+            impl.copyImage(
+                request,
+                ScreenshotExportSource::fromImage(qvariant_cast<QImage>(mime->imageData())),
+                options);
+        } else {
+            impl.publishCopy(request, std::move(mime), options.publication);
+        }
+    };
+    const bool accepted = std::get<PrepareCopy>(content)(request, std::move(prepared));
+    if (!accepted && self && d.current(request))
+        d.finish(request, false,
+                 QCoreApplication::translate("snow_shot::presentation::ImageEditingWindow",
+                                             "No recognition result is available to export"));
+    return accepted;
 }
 void ImageEditingExportController::cancelCopy() {
     Impl::cancelRequest(m_impl->copy);

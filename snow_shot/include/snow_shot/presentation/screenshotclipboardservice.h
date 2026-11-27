@@ -88,6 +88,10 @@ struct ScreenshotClipboardCommitResult final {
     [[nodiscard]] bool succeeded() const {
         return failure == ScreenshotClipboardCommitFailure::None;
     }
+    // User-visible completion (closing a capture or marking an edit exported) needs a real write.
+    [[nodiscard]] bool published() const {
+        return succeeded() && !superseded;
+    }
     [[nodiscard]] QString errorString() const;
 };
 
@@ -122,6 +126,8 @@ class ScreenshotClipboardService final {
     // On the GUI thread, also protect delayed work against writes by other clipboard users.
     [[nodiscard]] static PublicationId reservePublication(QClipboard* clipboard);
     [[nodiscard]] static bool publicationCurrent(PublicationId id);
+    // On the GUI thread, retire a reservation made with reservePublication(clipboard).
+    static void cancelPublication(PublicationId id);
     // Order a clipboard follow-up at action time. It takes precedence over older requests
     // only once it attempts to publish, so an unsuccessful primary action has no effect.
     [[nodiscard]] static PublicationId deferPublication() {

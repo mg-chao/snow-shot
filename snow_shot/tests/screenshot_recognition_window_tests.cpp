@@ -1410,7 +1410,7 @@ void ocrDoubleClickCopiesOnlyTheClickedBlock() {
             host.show();
             int copyCommands = 0;
             ScreenshotRecognitionWindowActions actions;
-            actions.handleCopy = [&]() { ++copyCommands; };
+            actions.resultCopied = [&]() { ++copyCommands; };
             ScreenshotRecognitionWindow window(std::move(actions), &host, mode);
             const QRect canvasSelection(120, 80, 640, 400);
             require(window.present({QGuiApplication::primaryScreen(), &host, host.rect(),
@@ -1792,7 +1792,7 @@ void recognitionWindowUsesOrdinaryQtWindowBehavior(bool nativeSurfaceOnly = fals
     int textEditedCalls = 0;
     ScreenshotRecognitionWindowActions actions;
     actions.handleCancel = [&recognitionCancelCalls]() { ++recognitionCancelCalls; };
-    actions.handleCopy = [&recognitionCopyCalls]() { ++recognitionCopyCalls; };
+    actions.resultCopied = [&recognitionCopyCalls]() { ++recognitionCopyCalls; };
     actions.handleTextEdited = [&textEditedCalls](const QString&) { ++textEditedCalls; };
     int tableStateChanges = 0;
     ScreenshotTableCommandState latestTableState;
@@ -2817,7 +2817,7 @@ void qrContentsUseStrictRichTextLinksAndPreserveOrder() {
     int recognitionCopyCalls = 0;
     ScreenshotRecognitionWindowActions actions;
     actions.handleCancel = [&recognitionCancelCalls]() { ++recognitionCancelCalls; };
-    actions.handleCopy = [&recognitionCopyCalls]() { ++recognitionCopyCalls; };
+    actions.resultCopied = [&recognitionCopyCalls]() { ++recognitionCopyCalls; };
     actions.handleLinkActivated = [&activatedLinks](const QUrl& url) {
         activatedLinks.push_back(url);
     };
@@ -2954,7 +2954,7 @@ void emptyOcrResultCopiesEmptyText() {
 
     int recognitionCopyCalls = 0;
     ScreenshotRecognitionWindowActions actions;
-    actions.handleCopy = [&recognitionCopyCalls]() { ++recognitionCopyCalls; };
+    actions.resultCopied = [&recognitionCopyCalls]() { ++recognitionCopyCalls; };
     ScreenshotRecognitionWindow window(std::move(actions));
     require(window.present(ScreenshotRecognitionWindow::Config{
                 screen,
@@ -3357,7 +3357,7 @@ void translationCopyProviderHandlesKeyboardAndContextMenu() {
     QTextDocument document;
     document.setPlainText(QStringLiteral("Full translated result\n").repeated(50));
     ScreenshotRecognitionWindowActions actions;
-    actions.handleCopy = [&] { ++completed; };
+    actions.resultCopied = [&] { ++completed; };
     ScreenshotRecognitionWindow window(std::move(actions));
     auto* screen = QGuiApplication::primaryScreen();
     require(screen &&
@@ -3422,7 +3422,7 @@ void recognitionContextMenusUseAntDesignAndCopyLocally() {
 
     int copyCommandCalls = 0;
     ScreenshotRecognitionWindowActions actions;
-    actions.handleCopy = [&copyCommandCalls]() { ++copyCommandCalls; };
+    actions.resultCopied = [&copyCommandCalls]() { ++copyCommandCalls; };
     ScreenshotRecognitionWindow window(std::move(actions));
     window.setOcrCopyDefaultsEnabled(false);
     require(window.present(

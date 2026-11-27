@@ -1,3 +1,4 @@
+#include "snow_shot/presentation/screenshotcanvastools.h"
 #include "snow_shot/presentation/screenshottoolbarwindow.h"
 
 #include "../tools/screenshottoolbarperfinstrumentation.h"
@@ -153,9 +154,9 @@ void ScreenshotToolbarWindow::initializePalette() {
     synchronizeCursorState();
 
     connect(toolPalette, &ScreenshotToolPalette::undoRequested, this,
-            [this]() { m_commands.undoCanvasEdit(); });
+            [this]() { m_commands.invoke(&ScreenshotToolbarCommandSink::undoCanvasEdit); });
     connect(toolPalette, &ScreenshotToolPalette::redoRequested, this,
-            [this]() { m_commands.redoCanvasEdit(); });
+            [this]() { m_commands.invoke(&ScreenshotToolbarCommandSink::redoCanvasEdit); });
     connectToolCommands(*toolPalette);
     connectActionCommands(*toolPalette);
     connectStyleCommands(*toolPalette);
@@ -182,7 +183,7 @@ void ScreenshotToolbarWindow::initializePalette() {
     connect(toolPalette, &ScreenshotToolPalette::subtractScreenshotRegionRequested, this,
             [this]() { m_commands.subtractScreenshotRegion(); });
     connect(toolPalette, &ScreenshotToolPalette::recaptureRequested, this,
-            [this]() { m_commands.requestRecapture(); });
+            [this]() { m_commands.invoke(&ScreenshotToolbarCommandSink::requestRecapture); });
     connect(
         toolPalette, &ScreenshotToolPalette::selectionDisplayUnitChanged, this,
         [this](ScreenshotSelectionDisplayUnit unit) { m_commands.setSelectionDisplayUnit(unit); });
@@ -200,92 +201,65 @@ void ScreenshotToolbarWindow::initializePalette() {
 }
 
 void ScreenshotToolbarWindow::connectToolCommands(ScreenshotToolPalette& toolPalette) {
+    snow_shot::presentation::bindScreenshotCanvasToolRequests(
+        toolPalette, *this, [this](SnowCanvasTool tool) {
+            m_commands.setCanvasTool(tool);
+            setActiveToolAndReposition(*snow_shot::presentation::paletteToolForCanvasTool(tool));
+        });
+    connect(&toolPalette, &ScreenshotToolPalette::filterRequested, this, [this] {
+        m_commands.setCanvasTool(SnowCanvasTool::RectangleFilter);
+        setActiveToolAndReposition(ScreenshotToolPalette::Tool::Filter);
+    });
     connect(&toolPalette, &ScreenshotToolPalette::moveRequested, this, [this]() {
-        m_commands.setMoveTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::Move);
-    });
-    connect(&toolPalette, &ScreenshotToolPalette::selectRequested, this, [this]() {
-        m_commands.setSelectTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::Select);
-    });
-    connect(&toolPalette, &ScreenshotToolPalette::speechBubbleRequested, this, [this]() {
-        m_commands.setSpeechBubbleTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::SpeechBubble);
-    });
-    connect(&toolPalette, &ScreenshotToolPalette::shapeRequested, this, [this]() {
-        m_commands.setShapeTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::Shape);
-    });
-    connect(&toolPalette, &ScreenshotToolPalette::distanceToolRequested, this, [this]() {
-        m_commands.setDistanceTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::Distance);
-    });
-    connect(&toolPalette, &ScreenshotToolPalette::angleToolRequested, this, [this]() {
-        m_commands.setAngleTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::Angle);
-    });
-    connect(&toolPalette, &ScreenshotToolPalette::bracketToolRequested, this, [this]() {
-        m_commands.setBracketTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::Bracket);
-    });
-    connect(&toolPalette, &ScreenshotToolPalette::arrowRequested, this, [this]() {
-        m_commands.setArrowTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::Arrow);
-    });
-    connect(&toolPalette, &ScreenshotToolPalette::textRequested, this, [this]() {
-        m_commands.setTextTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::Text);
-    });
-    connect(&toolPalette, &ScreenshotToolPalette::sequenceNumberRequested, this, [this]() {
-        m_commands.setSequenceNumberTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::SequenceNumber);
+        if (m_commands.invoke(&ScreenshotToolbarCommandSink::setMoveTool))
+            setActiveToolAndReposition(ScreenshotToolPalette::Tool::Move);
     });
     connect(&toolPalette, &ScreenshotToolPalette::ocrRequested, this, [this]() {
-        m_commands.setOcrTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::Ocr);
+        if (m_commands.invoke(&ScreenshotToolbarCommandSink::setOcrTool))
+            setActiveToolAndReposition(ScreenshotToolPalette::Tool::Ocr);
     });
 #if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
     connect(&toolPalette, &ScreenshotToolPalette::textTranslationRequested, this, [this]() {
-        m_commands.setTextTranslationTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::TextTranslation);
+        if (m_commands.invoke(&ScreenshotToolbarCommandSink::setTextTranslationTool))
+            setActiveToolAndReposition(ScreenshotToolPalette::Tool::TextTranslation);
     });
 #endif
 #if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
     connect(&toolPalette, &ScreenshotToolPalette::documentRequested, this, [this]() {
-        m_commands.setDocumentTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::Document);
+        if (m_commands.invoke(&ScreenshotToolbarCommandSink::setDocumentTool))
+            setActiveToolAndReposition(ScreenshotToolPalette::Tool::Document);
     });
     connect(&toolPalette, &ScreenshotToolPalette::openDocumentFileRequested, this,
             [this]() { m_commands.openDocumentFile(); });
 #endif
 #if SNOW_SHOT_ENABLE_TABLE_RECOGNITION
     connect(&toolPalette, &ScreenshotToolPalette::tableRequested, this, [this]() {
-        m_commands.setTableTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::Table);
+        if (m_commands.invoke(&ScreenshotToolbarCommandSink::setTableTool))
+            setActiveToolAndReposition(ScreenshotToolPalette::Tool::Table);
     });
 #endif
 #if SNOW_SHOT_ENABLE_LATEX_RECOGNITION
     connect(&toolPalette, &ScreenshotToolPalette::latexRequested, this, [this]() {
-        m_commands.setLatexTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::Latex);
+        if (m_commands.invoke(&ScreenshotToolbarCommandSink::setLatexTool))
+            setActiveToolAndReposition(ScreenshotToolPalette::Tool::Latex);
     });
 #endif
 #if SNOW_SHOT_ENABLE_IMAGE_CONVERSION
     connect(&toolPalette, &ScreenshotToolPalette::markdownRequested, this, [this]() {
-        m_commands.setMarkdownTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::Markdown);
+        if (m_commands.invoke(&ScreenshotToolbarCommandSink::setMarkdownTool))
+            setActiveToolAndReposition(ScreenshotToolPalette::Tool::Markdown);
     });
 #endif
 #if SNOW_SHOT_ENABLE_IMAGE_CONVERSION
     connect(&toolPalette, &ScreenshotToolPalette::htmlRequested, this, [this]() {
-        m_commands.setHtmlTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::Html);
+        if (m_commands.invoke(&ScreenshotToolbarCommandSink::setHtmlTool))
+            setActiveToolAndReposition(ScreenshotToolPalette::Tool::Html);
     });
 #endif
 #if SNOW_SHOT_ENABLE_QR_RECOGNITION
     connect(&toolPalette, &ScreenshotToolPalette::qrRequested, this, [this]() {
-        m_commands.setQrTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::Qr);
+        if (m_commands.invoke(&ScreenshotToolbarCommandSink::setQrTool))
+            setActiveToolAndReposition(ScreenshotToolPalette::Tool::Qr);
     });
 #endif
     connect(&toolPalette, &ScreenshotToolPalette::showOriginalImageRequested, this,
@@ -346,25 +320,27 @@ void ScreenshotToolbarWindow::synchronizeJumpToTranslationPageSetting() {
 
 void ScreenshotToolbarWindow::connectActionCommands(ScreenshotToolPalette& toolPalette) {
     connect(&toolPalette, &ScreenshotToolPalette::screenRecordRequested, this,
-            [this]() { m_commands.startScreenRecording(); });
+            [this]() { m_commands.invoke(&ScreenshotToolbarCommandSink::startScreenRecording); });
     connect(&toolPalette, &ScreenshotToolPalette::pinRequested, this,
-            [this]() { m_commands.pinSelectionToScreen(); });
-    connect(&toolPalette, &ScreenshotToolPalette::pinWindowRequested, this,
-            [this]() { m_commands.pinWindowSelectionToScreen(); });
+            [this]() { m_commands.invoke(&ScreenshotToolbarCommandSink::pinSelectionToScreen); });
+    connect(&toolPalette, &ScreenshotToolPalette::pinWindowRequested, this, [this]() {
+        m_commands.invoke(&ScreenshotToolbarCommandSink::pinWindowSelectionToScreen);
+    });
     connect(&toolPalette, &ScreenshotToolPalette::quickSaveRequested, this,
-            [this]() { m_commands.quickSaveSelection(); });
+            [this]() { m_commands.invoke(&ScreenshotToolbarCommandSink::quickSaveSelection); });
     connect(&toolPalette, &ScreenshotToolPalette::airDropRequested, this,
-            [this]() { m_commands.airDropSelection(); });
+            [this]() { m_commands.invoke(&ScreenshotToolbarCommandSink::airDropSelection); });
     connect(&toolPalette, &ScreenshotToolPalette::printRequested, this,
-            [this]() { m_commands.printSelection(); });
+            [this]() { m_commands.invoke(&ScreenshotToolbarCommandSink::printSelection); });
     connect(&toolPalette, &ScreenshotToolPalette::cloudUploadRequested, this,
-            [this] { m_commands.uploadSelectionToCloud(); });
+            [this] { m_commands.invoke(&ScreenshotToolbarCommandSink::uploadSelectionToCloud); });
     connect(&toolPalette, &ScreenshotToolPalette::saveRequested, this,
-            [this]() { m_commands.saveSelectionToFile(); });
+            [this]() { m_commands.invoke(&ScreenshotToolbarCommandSink::saveSelectionToFile); });
     connect(&toolPalette, &ScreenshotToolPalette::cancelRequested, this,
-            [this]() { m_commands.cancelCapture(); });
-    connect(&toolPalette, &ScreenshotToolPalette::copyRequested, this,
-            [this]() { m_commands.copySelectionToClipboard(); });
+            [this]() { m_commands.invoke(&ScreenshotToolbarCommandSink::cancelCapture); });
+    connect(&toolPalette, &ScreenshotToolPalette::copyRequested, this, [this]() {
+        m_commands.invoke(&ScreenshotToolbarCommandSink::copySelectionToClipboard);
+    });
 }
 
 void ScreenshotToolbarWindow::connectStyleCommands(ScreenshotToolPalette& toolPalette) {
@@ -425,65 +401,9 @@ void ScreenshotToolbarWindow::connectStyleCommands(ScreenshotToolPalette& toolPa
     connect(&toolPalette, &ScreenshotToolPalette::resetCanvasRequested, this,
             [this]() { m_commands.deleteAllElements(); });
 
-    connect(&toolPalette, &ScreenshotToolPalette::lineRequested, this, [this]() {
-        m_commands.setLineTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::Line);
-    });
-    connect(&toolPalette, &ScreenshotToolPalette::brushRequested, this, [this]() {
-        m_commands.setBrushTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::Brush);
-    });
-    connect(&toolPalette, &ScreenshotToolPalette::highlightRequested, this, [this]() {
-        m_commands.setHighlightTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::RectangleHighlight);
-    });
-    connect(&toolPalette, &ScreenshotToolPalette::brushHighlightRequested, this, [this]() {
-        m_commands.setBrushHighlightTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::BrushHighlight);
-    });
-    connect(&toolPalette, &ScreenshotToolPalette::rectangleEraserRequested, this, [this]() {
-        m_commands.setRectangleEraserTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::RectangleEraser);
-    });
-    connect(&toolPalette, &ScreenshotToolPalette::brushEraserRequested, this, [this]() {
-        m_commands.setBrushEraserTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::BrushEraser);
-    });
-    connect(&toolPalette, &ScreenshotToolPalette::eraserRequested, this, [this]() {
-        m_commands.setEraserTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::Eraser);
-    });
-    connect(&toolPalette, &ScreenshotToolPalette::filterRequested, this, [this]() {
-        m_commands.setFilterTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::Filter);
-    });
-    connect(&toolPalette, &ScreenshotToolPalette::magnifierRequested, this, [this]() {
-        m_commands.setMagnifierTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::Magnifier);
-    });
-    connect(&toolPalette, &ScreenshotToolPalette::spotlightRequested, this, [this]() {
-        m_commands.setSpotlightTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::Spotlight);
-    });
-    connect(&toolPalette, &ScreenshotToolPalette::rectangleFilterRequested, this, [this]() {
-        m_commands.setRectangleFilterTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::RectangleFilter);
-    });
-    connect(&toolPalette, &ScreenshotToolPalette::autoFilterRequested, this, [this]() {
-        m_commands.setAutoFilterTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::AutoFilter);
-    });
     connect(&toolPalette, &ScreenshotToolPalette::autoFilterCategoryRequested, this,
             [this](const QString& category) { m_commands.fillAutoFilterCategory(category); });
-    connect(&toolPalette, &ScreenshotToolPalette::brushFilterRequested, this, [this]() {
-        m_commands.setBrushFilterTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::BrushFilter);
-    });
 
-    connect(&toolPalette, &ScreenshotToolPalette::watermarkRequested, this, [this]() {
-        m_commands.setWatermarkTool();
-        setActiveToolAndReposition(ScreenshotToolPalette::Tool::Watermark);
-    });
 
     connect(&toolPalette, &ScreenshotToolPalette::watermarkPreviewChanged, this,
             [this](const SnowCanvasWatermarkConfig& config) {
@@ -530,8 +450,9 @@ void ScreenshotToolbarWindow::connectScrollingScreenshotCommands(
                 }
                 m_commands.setScrollingScreenshotAutoScrollIntervalMs(milliseconds);
             });
-    connect(&toolPalette, &ScreenshotToolPalette::scrollingScreenshotRequested, this,
-            [this]() { m_commands.startScrollingScreenshot(); });
+    connect(&toolPalette, &ScreenshotToolPalette::scrollingScreenshotRequested, this, [this]() {
+        m_commands.invoke(&ScreenshotToolbarCommandSink::startScrollingScreenshot);
+    });
     connect(&toolPalette, &ScreenshotToolPalette::scrollingCaptureSettingsChanged, this,
             [this]() { m_commands.restartScrollingScreenshot(); });
     connect(&toolPalette, &ScreenshotToolPalette::scrollingImageSplittingRequested, this,

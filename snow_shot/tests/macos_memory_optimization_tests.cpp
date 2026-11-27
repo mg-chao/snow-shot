@@ -1,11 +1,15 @@
 #include "snow_shot/runtime/memoryoptimizationcontroller.h"
 
 #include <QCoreApplication>
+#include <QGuiApplication>
+#include <QWindow>
+#include <qpa/qwindowsysteminterface.h>
 
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
+#include <string_view>
 
 namespace {
 namespace runtime = snow_shot::runtime;
@@ -91,9 +95,52 @@ void copiedOptionsRetainBackendAndRepeatedLifetimesAreSafe() {
         QCoreApplication::processEvents();
     }
 }
+
+void foregroundWindowRequiresAVisibleSurface() {
+    const auto setApplicationState = [](Qt::ApplicationState state) {
+        QWindowSystemInterface::handleApplicationStateChanged(state);
+        QCoreApplication::processEvents();
+        require(QGuiApplication::applicationState() == state, "apply fixture activation state");
+    };
+    QWindow spare;
+    spare.create();
+    QWindow tooltip;
+    tooltip.setFlags(Qt::ToolTip);
+    tooltip.show();
+    setApplicationState(Qt::ApplicationActive);
+    require(!runtime::currentProcessOwnsForegroundWindow(),
+            "an active app with only a hidden spare and a tooltip permits reclamation");
+
+    QWindow pin;
+    pin.setFlags(Qt::Tool | Qt::WindowStaysOnTopHint);
+    pin.show();
+    setApplicationState(Qt::ApplicationActive);
+    require(runtime::currentProcessOwnsForegroundWindow(), "a visible foreground pin blocks trim");
+
+    setApplicationState(Qt::ApplicationInactive);
+    require(!runtime::currentProcessOwnsForegroundWindow(),
+            "an inactive app has no foreground pin");
+
+    pin.showMinimized();
+    setApplicationState(Qt::ApplicationActive);
+    require(pin.visibility() == QWindow::Minimized, "minimize the visible fixture pin");
+    require(!runtime::currentProcessOwnsForegroundWindow(), "a minimized pin permits reclamation");
+
+    pin.showNormal();
+    pin.close();
+    tooltip.close();
+    setApplicationState(Qt::ApplicationActive);
+    require(!runtime::currentProcessOwnsForegroundWindow(),
+            "closing the last visible pin permits reclamation while the app stays active");
+}
 } // namespace
 
 int main(int argc, char** argv) {
+    if (argc > 1 && std::string_view(argv[1]) == "--foreground-window-guard") {
+        QGuiApplication application(argc, argv);
+        foregroundWindowRequiresAVisibleSurface();
+        return 0;
+    }
     QCoreApplication application(argc, argv);
     require(runtime::currentProcessOwnsForegroundWindow(),
             "missing GUI state conservatively blocks automatic reclamation");

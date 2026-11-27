@@ -410,7 +410,10 @@ class ScreenshotPinnedWindowTestAccess {
         window.applyCrop();
     }
     static bool cropApplying(const ScreenshotPinnedWindow& window) {
-        return window.m_cropApplying;
+        return window.m_cropJob.isValid();
+    }
+    static void finishLiveConversion(ScreenshotPinnedWindow& window, QImage snapshot) {
+        window.finishLiveConversion(std::move(snapshot));
     }
     static void cropActive(ScreenshotPinnedWindow& window, bool active) {
         window.m_windowActive = active;
@@ -423,11 +426,11 @@ class ScreenshotPinnedWindowTestAccess {
         window.applyCrop();
         QElapsedTimer deadline;
         deadline.start();
-        while (window.m_cropApplying && deadline.elapsed() < 10000) {
+        while (cropApplying(window) && deadline.elapsed() < 10000) {
             QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
             QThread::msleep(1);
         }
-        if (window.m_cropApplying)
+        if (cropApplying(window))
             throw std::runtime_error("crop preparation did not complete");
     }
     static QRectF visibleCrop(const ScreenshotPinnedWindow& window) {
@@ -823,6 +826,9 @@ class ScreenshotPinnedWindowTestAccess {
     static bool replace(ScreenshotPinnedWindow& window, ScreenshotClipboardContent content,
                         bool* rejectedByLock = nullptr) {
         return window.replaceContent(std::move(content), rejectedByLock);
+    }
+    static void confirmClose(ScreenshotPinnedWindow& window) {
+        window.closeAfterConfirmation();
     }
     static bool checkerboardEnabled(const ScreenshotPinnedWindow& window) {
         return window.m_screenshotRenderer->pinnedCheckerboardEnabled();
@@ -20921,10 +20927,22 @@ void pinnedContentReplacement() {
             "reopened pin must use new bytes and retained annotations");
     int stateWrites = 0;
     int replacementWrites = 0;
-    auto managedConfig = config;
-    managedConfig.persistenceWriter = [&](const auto&) { ++stateWrites; };
-    managedConfig.replacementPersistenceWriter = [&](const auto&) { ++replacementWrites; };
+    int savedOpacity = 0;
+    bool changeOpacityOnWrite = false;
+    using PersistenceResult = ScreenshotPinnedWindow::ReplacementPersistenceResult;
+    auto replacementResult = PersistenceResult::Accepted;
     ScreenshotPinnedWindow managedWindow;
+    auto managedConfig = config;
+    managedConfig.persistenceWriter = [&](const auto& record) {
+        ++stateWrites;
+        savedOpacity = record.opacityPercent;
+    };
+    managedConfig.replacementPersistenceWriter = [&](const auto&) {
+        ++replacementWrites;
+        if (changeOpacityOnWrite)
+            Access::setGeneralOpacity(managedWindow, 75);
+        return replacementResult;
+    };
     Access::prepareReplacement(managedWindow, managedConfig);
     Access::saveReplacement(managedWindow);
     require(stateWrites == 1 && replacementWrites == 0,
@@ -20934,6 +20952,36 @@ void pinnedContentReplacement() {
     Access::saveReplacement(managedWindow);
     require(stateWrites == 1 && replacementWrites == 1,
             "restored source replacement must switch to a payload-capable writer");
+
+    QFile managedFile(firstPath);
+    require(managedFile.open(QIODevice::ReadOnly), "read the original replacement bytes");
+    auto managedFileContent = contentFor(original);
+    managedFileContent.originalContent.localFilePath = firstPath;
+    managedFileContent.originalContent.localFileBytes = managedFile.readAll();
+    require(!managedFileContent.originalContent.localFileBytes.isEmpty() &&
+                Access::replace(managedWindow, managedFileContent) && replacementWrites == 2 &&
+                !Access::persistencePending(managedWindow),
+            "an accepted immediate file save must consume the deferred save");
+
+    replacementResult = PersistenceResult::Failed;
+    require(Access::replace(managedWindow, managedFileContent) && replacementWrites == 3 &&
+                Access::persistencePending(managedWindow),
+            "a rejected immediate file save must keep the deferred retry");
+    replacementResult = PersistenceResult::Accepted;
+    translation_tests::waitUntil([&] { return !Access::persistencePending(managedWindow); },
+                                 "retry the rejected immediate file save");
+    require(replacementWrites == 4 &&
+                managedWindow.persistenceSnapshot().originalFileBytes.isEmpty(),
+            "the deferred retry must deliver the file bytes to the replacement writer");
+
+    changeOpacityOnWrite = true;
+    require(Access::replace(managedWindow, managedFileContent) && replacementWrites == 5 &&
+                Access::persistencePending(managedWindow),
+            "an immediate file save must preserve a save requested by its writer");
+    managedWindow.checkpointStorage();
+    require(stateWrites == 2 && savedOpacity == 75,
+            "the later state save must include the opacity change");
+
     Access::loadFiles(window, {firstPath});
     window.close();
     waitForUi(50);
@@ -23016,6 +23064,140 @@ void pinnedLargePixelsReleaseOnClose() {
     }
 }
 
+void pinnedPersistenceBackpressure() {
+    IsolatedPinnedStorage isolated;
+    using namespace snow_shot;
+    using Access = ScreenshotPinnedWindowTestAccess;
+    auto& application = storage::ApplicationStorage::instance();
+    auto& repository = application.pinnedWindows();
+    presentation::PinnedWindowGroupManager groups(&repository);
+    ScreenshotSelectionExportUiServices services(nullptr, nullptr, nullptr, {}, {}, &groups);
+    QScreen* screen = QGuiApplication::primaryScreen();
+    require(screen, "pin persistence needs a screen");
+
+    QImage image(160, 120, QImage::Format_RGB32);
+    image.fill(Qt::green);
+    const QRect geometry = physicalPinGeometry(*screen, {50, 50}, image.size());
+    require(services.presentPinnedImage(image, screen, geometry, image.size()),
+            "present the existing pin");
+    translation_tests::waitUntil([&] { return repository.summaries().size() == 1; },
+                                 "persist the existing pin");
+    const auto id = repository.summaries().front().id;
+    QPointer<ScreenshotPinnedWindow> window(groups.liveWindow(id));
+    require(window && repository.flush().success, "commit before filling the queue");
+
+    ScreenshotClipboardContent clipboardPin;
+    clipboardPin.image = image;
+    clipboardPin.sourceIdentity.key = QStringLiteral("clipboard-replacement-fixture");
+    const auto clipboardIdentity = clipboardPin.sourceIdentity;
+    require(services.presentDecodedContentOnScreen(std::move(clipboardPin), screen, false,
+                                                   storage::PinnedWindowCreationSource::Other),
+            "present a pin for the clipboard replacement");
+    QPointer<ScreenshotPinnedWindow> clipboardWindow(services.findDuplicatePin(clipboardIdentity));
+    require(clipboardWindow, "find the clipboard replacement pin");
+    const auto clipboardId = clipboardWindow->persistenceId();
+    translation_tests::waitUntil(
+        [&] {
+            const auto entry = repository.summary(clipboardId);
+            return entry && !entry->pending;
+        },
+        "persist the clipboard replacement pin");
+    require(repository.flush().success, "commit the clipboard replacement fixture");
+
+    auto seed = window->persistenceSnapshot();
+    seed.id = QStringLiteral("00000000-0000-0000-0000-000000000001");
+    const auto firstSeed = seed.id;
+    QFile blocker(QDir(application.configurationDirectory())
+                      .filePath(QStringLiteral("pinned_windows_v2/pins/") + firstSeed));
+    require(blocker.open(QIODevice::WriteOnly), "block the backlog from reaching disk");
+    blocker.close();
+    seed.image = QImage(1, 1, QImage::Format_RGB32);
+    seed.image.fill(Qt::black);
+    constexpr auto blobSize = 32 * 1024 * 1024;
+    const QByteArray payload(blobSize, 'x');
+    seed.resultStyle = payload;
+    seed.recognitionResults = payload;
+    seed.textAnnotations = payload;
+    seed.canvasSession = QByteArray::fromRawData(payload.constData(), blobSize - 4);
+    require(repository.upsert(seed).success, "queue the first half of the byte budget");
+    seed.id = QStringLiteral("00000000-0000-0000-0000-000000000002");
+    require(repository.upsert(seed).success && !repository.flush().success,
+            "fill the byte budget without committing either payload");
+
+    ScreenshotClipboardContent incoming;
+    incoming.image = image;
+    incoming.sourceIdentity.key = QStringLiteral("rejected-persistence-fixture");
+    const auto identity = incoming.sourceIdentity;
+    require(services.presentDecodedContentOnScreen(std::move(incoming), screen, false,
+                                                   storage::PinnedWindowCreationSource::Other),
+            "present a pin while storage is full");
+    QPointer<ScreenshotPinnedWindow> rejected(services.findDuplicatePin(identity));
+    require(rejected, "find the newly presented pin");
+    translation_tests::waitUntil(
+        [&] {
+            const auto* messages = adqt::widgets::AdMessageService::instance(rejected);
+            return messages && messages->count() == 1;
+        },
+        "report that the new pin could not be saved to history");
+    require(rejected->isVisible() && !repository.summary(rejected->persistenceId()),
+            "the unsaved pin remains usable after its reservation is retired");
+
+    QImage replacement = image.copy();
+    replacement.fill(Qt::cyan);
+    ScreenshotClipboardContent clipboardReplacement;
+    clipboardReplacement.image = replacement;
+    require(Access::replace(*clipboardWindow, std::move(clipboardReplacement)),
+            "install a clipboard image replacement");
+    translation_tests::waitUntil([&] { return !Access::persistencePending(*clipboardWindow); },
+                                 "attempt the deferred clipboard replacement save");
+    require(!clipboardWindow->requestHide() && clipboardWindow->isVisible(),
+            "a rejected clipboard replacement keeps the pin visible when hiding");
+    Access::confirmClose(*clipboardWindow);
+    const auto clipboardAfterRejectedClose = repository.summary(clipboardId);
+    require(clipboardWindow->isVisible() && clipboardAfterRejectedClose &&
+                !clipboardAfterRejectedClose->ignored,
+            "a rejected clipboard replacement also blocks closing");
+
+    QTemporaryDir files;
+    require(files.isValid(), "replacement file directory");
+    QFile file(files.filePath(QStringLiteral("replacement.png")));
+    image.fill(Qt::magenta);
+    require(image.save(file.fileName()), "write a compact replacement file");
+    Access::loadFiles(*window, {file.fileName()});
+    translation_tests::waitUntil([&] { return !Access::replacementPending(*window); },
+                                 "finish decoding the replacement file");
+    const auto encoded = window->persistenceSnapshot().originalFileBytes;
+    require(!encoded.isEmpty() && file.remove() && !window->requestHide() && window->isVisible(),
+            "retain the replacement bytes and keep the pin open when saving fails");
+    Access::confirmClose(*window);
+    const auto afterRejectedClose = repository.summary(id);
+    require(window->isVisible() && afterRejectedClose && !afterRejectedClose->ignored,
+            "a rejected replacement cannot close the pin with its previous source");
+
+    require(repository.removeMany({firstSeed, seed.id}).success && blocker.remove() &&
+                repository.flush().success,
+            "release the backlog");
+    require(clipboardWindow->requestHide(),
+            "hiding retries the clipboard replacement after the queue recovers");
+    const auto clipboardHidden = repository.summary(clipboardId);
+    require(clipboardHidden && clipboardHidden->hidden && repository.flush().success,
+            "persist the clipboard replacement and hidden state");
+    const auto restoredClipboard = repository.loadRecord(clipboardId);
+    require(restoredClipboard && restoredClipboard->image.size() == replacement.size() &&
+                restoredClipboard->image.pixelColor(0, 0) == Qt::cyan,
+            "hide preserves the recovered clipboard replacement pixels");
+    window->checkpointStorage();
+    require(window->persistenceSnapshot().originalFileBytes.isEmpty() && repository.flush().success,
+            "release the window's bytes only after the repository accepts the replacement");
+    const auto restored = repository.loadRecord(id);
+    require(restored && restored->image.convertToFormat(image.format()) == image,
+            "restore the replacement pixels");
+    QFile committed(restored->originalFilePath);
+    require(committed.open(QIODevice::ReadOnly) && committed.readAll() == encoded,
+            "persist the exact imported bytes after the external file disappears");
+    require(window->requestHide() && rejected->close(), "retire the test windows");
+}
+
 void pinnedHiddenWindowsPersistAndRestore() {
     IsolatedPinnedStorage isolated;
     using namespace snow_shot;
@@ -23115,10 +23297,12 @@ void pinnedHiddenWindowsPersistAndRestore() {
 
 void pinnedPoolPrewarmWaitsForPresentationResume() {
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
-    const auto existing = topLevelPinnedWindows();
+    QList<QPointer<ScreenshotPinnedWindow>> existing;
+    for (auto* window : topLevelPinnedWindows())
+        existing.append(window);
     const auto addedWindows = [&] {
         auto windows = topLevelPinnedWindows();
-        windows.removeIf([&](auto* window) { return existing.contains(window); });
+        windows.removeIf([&](auto* window) { return existing.contains(QPointer(window)); });
         return windows;
     };
     QScreen* screen = QGuiApplication::primaryScreen();
@@ -29868,6 +30052,7 @@ int main(int argc, char* argv[]) {
         }
         if (app.arguments().contains(QStringLiteral("--content-replacement-only"))) {
             pinnedContentReplacement();
+            pinnedPersistenceBackpressure();
             return 0;
         }
         if (app.arguments().contains(QStringLiteral("--clipboard-paste-only"))) {

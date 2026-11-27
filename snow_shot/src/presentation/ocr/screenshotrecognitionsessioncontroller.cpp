@@ -1259,10 +1259,8 @@ void ScreenshotRecognitionSessionController::cancelModelRecognition(Mode mode) {
         ++m_documentGeneration;
         if (auto cancellation = std::exchange(m_documentCancellation, {}))
             cancellation->store(true, std::memory_order_relaxed);
-        m_documentCopyJob.cancel();
-        m_documentCopyJob = {};
-        m_documentClipboardCommit.cancel();
-        m_documentClipboardCommit = {};
+        if (m_mode == Mode::Document)
+            cancelClipboardCopy();
         if (m_documentRequestToken && m_tableRecognition)
             m_tableRecognition->cancel(m_documentRequestToken);
         m_documentRequestToken = 0;
@@ -1535,60 +1533,193 @@ void ScreenshotRecognitionSessionController::prefetchText() {
 
 bool ScreenshotRecognitionSessionController::copySourceTextToClipboard(
     ScreenshotClipboardService::PublicationId publication, std::function<void(bool)> finished) {
-    const auto entry = m_textCache.constFind(m_target.key);
-    if (!hasTarget() || entry == m_textCache.cend() || !QApplication::clipboard())
-        return false;
-    if (!publication)
-        publication = ScreenshotClipboardService::reservePublication(QApplication::clipboard());
-    if (!ScreenshotClipboardService::publicationCurrent(publication))
-        return false;
+    return copyToClipboard(ScreenshotRecognitionCopy::SourceText, nullptr, std::move(finished),
+                           publication);
+}
 
-    const auto publish = [this, publication, transition = m_transitionGeneration,
-                          finished = std::move(finished)](const QString& text) {
-        if (transition != m_transitionGeneration)
-            return;
-        if (!ScreenshotClipboardService::publicationCurrent(publication)) {
-            if (finished)
-                finished(false);
-            return;
-        }
-        auto mime = std::make_unique<QMimeData>();
-        mime->setText(text);
-        const QPointer<ScreenshotRecognitionSessionController> guard(this);
-        auto handle = ScreenshotClipboardService::publishMimeData(
-            QApplication::clipboard(), this, std::move(mime), publication,
-            [this, transition, finished](const ScreenshotClipboardCommitResult& result) {
-                if (transition != m_transitionGeneration)
-                    return;
-                if (!result.succeeded() && !result.superseded &&
-                    !showStatus(result.errorString(), true))
-                    return;
-                if (finished && transition == m_transitionGeneration)
-                    finished(result.succeeded() && !result.superseded);
-            });
-        if (guard && transition == m_transitionGeneration &&
-            !ScreenshotClipboardService::publicationSuperseded(publication))
-            m_sourceCopyCommit = std::move(handle);
-        else
-            handle.cancel();
+void ScreenshotRecognitionSessionController::cancelClipboardCopy() {
+    const auto retired = std::exchange(m_copyPublication, 0);
+    ScreenshotClipboardService::cancelPublication(retired);
+    m_clipboardCommit.cancel();
+    m_clipboardCommit = {};
+#if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
+    m_documentCopyJob.cancel();
+    m_documentCopyJob = {};
+#endif
+    if (retired)
+        emit clipboardCopyRetired(retired);
+}
+
+bool ScreenshotRecognitionSessionController::prepareClipboardCopy(
+    ScreenshotRecognitionCopy intent, const ScreenshotOcrPresentation* displayed,
+    ScreenshotClipboardService::PublicationId publication, CopyPrepared prepared) {
+    if (!prepared || !ScreenshotClipboardService::publicationCurrent(publication) ||
+        (m_attachmentToken && !ownsContentAttachment()))
+        return false;
+    const QPointer<ScreenshotRecognitionSessionController> self(this);
+    const auto transition = m_transitionGeneration;
+    if (m_copyPublication && m_copyPublication != publication) {
+        cancelClipboardCopy();
+        if (!self || transition != m_transitionGeneration ||
+            !ScreenshotClipboardService::publicationCurrent(publication) ||
+            (m_attachmentToken && !ownsContentAttachment()))
+            return false;
+    }
+    m_copyPublication = publication;
+    const auto current = [self, publication, transition] {
+        return self && self->m_copyPublication == publication &&
+               transition == self->m_transitionGeneration &&
+               (!self->m_attachmentToken || self->ownsContentAttachment());
     };
-    if (entry->formatted) {
-        publish(entry->editingSession->originalText());
-    } else {
+    const auto deliver = [current, prepared = std::move(prepared)](auto mime, QString error = {}) {
+        if (current())
+            prepared(std::move(mime), std::move(error));
+    };
+    if (intent == ScreenshotRecognitionCopy::SourceText) {
+        const auto entry = m_textCache.constFind(m_target.key);
+        if (!hasTarget() || entry == m_textCache.cend())
+            return false;
+        const auto deliverText = [deliver](QString text) {
+            auto mime = std::make_unique<QMimeData>();
+            mime->setText(std::move(text));
+            deliver(std::move(mime));
+        };
         const snow_shot::storage::TextRecognitionSettings settings;
-        const QString formatting = settings.defaultFormatting();
-        const QString punctuation = settings.defaultPunctuation();
-        if (formatting == QStringLiteral("smart")) {
-            prepareParagraphs(m_target.key, [publish, punctuation](const auto& grouped) {
-                publish(snow_shot::presentation::applyOcrTextTransforms(
+        const auto formatting = settings.defaultFormatting();
+        const auto punctuation = settings.defaultPunctuation();
+        if (entry->formatted) {
+            deliverText(entry->editingSession->originalText());
+        } else if (formatting == QStringLiteral("smart")) {
+            prepareParagraphs(m_target.key, [deliverText, punctuation](const auto& grouped) {
+                deliverText(snow_shot::presentation::applyOcrTextTransforms(
                     *grouped, QStringLiteral("keep"), punctuation));
             });
         } else {
-            publish(snow_shot::presentation::applyOcrTextTransforms(
+            deliverText(snow_shot::presentation::applyOcrTextTransforms(
                 entry->editingSession->originalText(), formatting, punctuation));
         }
+        return true;
     }
+    if (!m_active || !canPublishUi())
+        return false;
+#if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
+    if (m_mode == Mode::Document) {
+        auto request = documentCopyRequest();
+        if (!request.document)
+            return false;
+        if (intent == ScreenshotRecognitionCopy::Preview && content()) {
+            request.asFile = false;
+            request.selectionHtml = content()->documentSelectionHtml();
+        }
+        m_documentCopyJob = request.start(this, deliver);
+        return m_documentCopyJob.isValid();
+    }
+#endif
+    if (tableModeActive() && content())
+        content()->commitActiveTableEdit();
+    if (!current())
+        return false;
+    if (prepareSmartClipboard(displayed, false, [self, current, deliver](auto mime) {
+            if (!current())
+                return;
+            // A cached paragraph result can arrive inside tool activation. Unwind that
+            // call before publication can close the window or invalidate its recognition cache.
+            QTimer::singleShot(
+                0, self, [deliver, mime = std::move(mime)]() mutable { deliver(std::move(mime)); });
+        }))
+        return true;
+    auto mime = intent == ScreenshotRecognitionCopy::Preview && !translating() && content()
+                    ? content()->previewClipboardMimeData()
+                    : recognitionClipboardMimeData(displayed);
+    if (!current())
+        return false;
+    if (!mime)
+        return false;
+    deliver(std::move(mime));
     return true;
+}
+
+bool ScreenshotRecognitionSessionController::prepareClipboardCopyForExport(
+    ScreenshotRecognitionCopy intent, const ScreenshotOcrPresentation* displayed,
+    ScreenshotClipboardService::PublicationId publication, CopyPrepared prepared) {
+    if (!prepared)
+        return false;
+    const QPointer<ScreenshotRecognitionSessionController> self(this);
+    const auto release = [self, publication] {
+        if (self && self->m_copyPublication == publication)
+            self->m_copyPublication = 0;
+    };
+    const bool accepted =
+        prepareClipboardCopy(intent, displayed, publication,
+                             [release, prepared = std::move(prepared)](auto mime, QString error) {
+                                 release();
+                                 prepared(std::move(mime), std::move(error));
+                             });
+    if (!accepted)
+        release();
+    return accepted;
+}
+
+bool ScreenshotRecognitionSessionController::copyToClipboard(
+    ScreenshotRecognitionCopy intent, const ScreenshotOcrPresentation* displayed,
+    std::function<void(bool)> finished, ScreenshotClipboardService::PublicationId publication) {
+    auto* clipboard = QApplication::clipboard();
+    if (!clipboard)
+        return false;
+    if (!publication)
+        publication = ScreenshotClipboardService::reservePublication(clipboard);
+    if (!ScreenshotClipboardService::publicationCurrent(publication))
+        return false;
+    const QPointer<ScreenshotRecognitionSessionController> self(this);
+    const auto done = [self, publication, finished = std::move(finished)](bool success) {
+        if (self && self->m_copyPublication == publication) {
+            self->m_copyPublication = 0;
+            if (finished)
+                finished(success);
+        }
+    };
+    const bool accepted = prepareClipboardCopy(
+        intent, displayed, publication, [self, publication, done](auto mime, QString error) {
+            if (!ScreenshotClipboardService::publicationCurrent(publication)) {
+                done(false);
+                return;
+            }
+            if (!mime) {
+                self->notifyStatusMessage(error, true);
+                done(false);
+                return;
+            }
+            auto handle = ScreenshotClipboardService::publishMimeData(
+                QApplication::clipboard(), self, std::move(mime), publication,
+                [self, publication, done](const ScreenshotClipboardCommitResult& result) {
+                    if (!self || self->m_copyPublication != publication)
+                        return;
+                    if (!result.succeeded() && !result.superseded)
+                        self->notifyStatusMessage(result.errorString(), true);
+                    done(result.published());
+                });
+            if (!handle.isValid()) {
+                done(false);
+                return;
+            }
+            if (self && self->m_copyPublication == publication)
+                self->m_clipboardCommit = std::move(handle);
+            else
+                handle.cancel();
+        });
+    if (!accepted && self && self->m_copyPublication == publication) {
+        self->m_copyPublication = 0;
+        if (intent != ScreenshotRecognitionCopy::SourceText)
+            self->notifyStatusMessage(self->clipboardUnavailableMessage(), true);
+    }
+    return accepted;
+}
+
+QString ScreenshotRecognitionSessionController::clipboardUnavailableMessage() const {
+    return translating()
+               ? tr("Unable to copy translation results")
+               : QCoreApplication::translate("ScreenshotController",
+                                             "No recognition result is available to copy");
 }
 
 void ScreenshotRecognitionSessionController::copyPendingSourceText() {
@@ -1606,7 +1737,7 @@ void ScreenshotRecognitionSessionController::activate(
          (!m_textCache.contains(m_target.key) &&
           (!m_recognition || !screenshotOcrImageWithinPixelLimit(m_target.image.size())))))
         return;
-    m_sourceCopyCommit.cancel();
+    cancelClipboardCopy();
     m_pendingSourceCopy = copySourceOnReady;
     if (copySourceOnReady && m_active && m_mode == Mode::Text && !editing() && !translating() &&
         !showOriginalImage() && ownsContentAttachment() &&
@@ -1851,7 +1982,7 @@ void ScreenshotRecognitionSessionController::activate(
 
 void ScreenshotRecognitionSessionController::deactivate() {
     m_pendingSourceCopy = 0;
-    m_sourceCopyCommit.cancel();
+    cancelClipboardCopy();
     const QPointer<ScreenshotRecognitionSessionController> lifetime(this);
     const auto transition = ++m_transitionGeneration;
     if (content() && m_active && m_mode == Mode::Table)
@@ -3529,34 +3660,6 @@ ScreenshotDocumentCopyRequest ScreenshotRecognitionSessionController::documentCo
     return {std::move(document), content() ? content()->documentSelectionHtml() : QString{}};
 }
 
-bool ScreenshotRecognitionSessionController::copyDocumentPreview(QString selection) {
-    if (!m_active || m_mode != Mode::Document || !ownsContentAttachment())
-        return false;
-    auto document = cachedDocument(m_target.key);
-    if (!document)
-        return false;
-    m_documentCopyJob.cancel();
-    m_documentClipboardCommit.cancel();
-    const auto attachment = m_attachmentToken;
-    const auto generation = m_documentGeneration;
-    const auto publication = ScreenshotClipboardService::reservePublication();
-    m_documentCopyPublication = publication;
-    m_documentCopyJob =
-        ScreenshotDocumentCopyRequest{std::move(document), std::move(selection)}.start(
-            this, [this, attachment, generation, publication](auto mime, const QString& error) {
-                if (m_documentCopyPublication != publication || m_attachmentToken != attachment ||
-                    m_documentGeneration != generation || !ownsContentAttachment())
-                    return;
-                m_documentCopyJob = {};
-                if (!mime) {
-                    static_cast<void>(showStatus(error, true));
-                    return;
-                }
-                m_documentClipboardCommit = ScreenshotClipboardService::commitMimeData(
-                    QApplication::clipboard(), this, mime.release(), publication, [](auto) {});
-            });
-    return m_documentCopyJob.isValid();
-}
 #endif
 
 std::unique_ptr<QMimeData> ScreenshotRecognitionSessionController::recognitionClipboardMimeData(
@@ -4884,7 +4987,7 @@ bool ScreenshotRecognitionSessionController::canPublishUi() const {
 
 void ScreenshotRecognitionSessionController::retireContentAttachment() {
     m_pendingSourceCopy = 0;
-    m_sourceCopyCommit.cancel();
+    cancelClipboardCopy();
     ++m_transitionGeneration;
     m_uiPublicationEnabled = false;
     QObject::disconnect(m_recognitionRetryConnection);
@@ -4917,43 +5020,30 @@ void ScreenshotRecognitionSessionController::attachContent() {
         QObject::disconnect(m_conversionRetryConnection);
         const QPointer<ScreenshotRecognitionSessionController> session(this);
         const QPointer<ScreenshotRecognitionWindow> view = m_content;
-        m_attachmentToken = view->attachSession(
+        const auto token = view->attachSession(
             this,
             {[session] { return session && session->active() && session->translating(); },
-             [session]() -> std::unique_ptr<QMimeData> {
-                 if (!session || !session->active() || !session->ownsContentAttachment())
-                     return {};
-                 auto mime = session->recognitionClipboardMimeData();
-                 if (!mime && session)
-                     session->showStatus(tr("Unable to copy translation results"), true);
-                 return mime;
-             },
-             [session](QString selection) {
-#if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
-                 return session && session->copyDocumentPreview(std::move(selection));
-#else
-                 Q_UNUSED(session)
-                 Q_UNUSED(selection)
-                 return false;
-#endif
-             },
-             [session](const ScreenshotOcrPresentation* displayed) {
-                 if (!session || !session->active() || !session->ownsContentAttachment())
+             {},
+             [session](ScreenshotRecognitionCopy intent, const ScreenshotOcrPresentation* displayed,
+                       std::function<void()> onCopied) {
+                 if (!session || !session->ownsContentAttachment())
                      return false;
-                 const auto publication = ScreenshotClipboardService::reservePublication();
-                 return session->prepareSmartClipboard(
-                     displayed, false, [session, publication](auto mime) {
-                         if (!session || !session->active() || !session->ownsContentAttachment())
-                             return;
-                         static_cast<void>(ScreenshotClipboardService::commitMimeData(
-                             QApplication::clipboard(), session, mime.release(), publication,
-                             [session](const auto& result) {
-                                 if (session && !result.succeeded())
-                                     session->showStatus(result.errorString(), true);
-                             }));
-                     });
+                 if (const auto request = session->m_actions.requestCopy)
+                     return request(intent);
+                 return session->copyToClipboard(intent, displayed,
+                                                 [onCopied = std::move(onCopied)](bool success) {
+                                                     if (success && onCopied)
+                                                         onCopied();
+                                                 });
+             },
+             [session] {
+                 if (session)
+                     session->cancelClipboardCopy();
              }});
-        const auto token = m_attachmentToken;
+        if (!session || !view || generation != session->m_transitionGeneration ||
+            !view->ownsAttachment(session, token))
+            return;
+        m_attachmentToken = token;
         m_recognitionRetryConnection =
             connect(view, &ScreenshotRecognitionWindow::recognitionRetryRequested, this,
                     [session, view, token] {
@@ -5435,6 +5525,13 @@ bool ScreenshotRecognitionSessionController::hideRecognitionMessage() const {
     return true;
 }
 
+bool ScreenshotRecognitionSessionController::notifyStatusMessage(const QString& message,
+                                                                 bool error) const {
+    if (message.isEmpty() || !m_actions.showStatus)
+        return true;
+    return notifyCurrentHostCallback(m_actions.showStatus, message, error);
+}
+
 bool ScreenshotRecognitionSessionController::showStatus(QString message, bool error) const {
     if (m_destroying)
         return true;
@@ -5442,15 +5539,12 @@ bool ScreenshotRecognitionSessionController::showStatus(QString message, bool er
         m_workflowError = message;
     if (!notify(&ScreenshotRecognitionSessionController::workflowStateChanged))
         return false;
-    if (!message.isEmpty() && m_actions.showStatus) {
-        return notifyCurrentHostCallback(m_actions.showStatus, message, error);
-    }
-    return true;
+    return notifyStatusMessage(message, error);
 }
 
 void ScreenshotRecognitionSessionController::cancelOutstandingRequests() {
     m_pendingSourceCopy = 0;
-    m_sourceCopyCommit.cancel();
+    cancelClipboardCopy();
     cancelParagraphPreparations();
     if (!cancelTranslationRequests())
         return;

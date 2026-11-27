@@ -221,24 +221,13 @@ class NoOpToolbarCommands final : public ScreenshotToolbarCommandSink {
     }
 
     void setMoveTool() override {}
-    void setSelectTool() override {}
+    void setCanvasTool(SnowCanvasTool) override {}
     void deleteAllElements() override {
         ++deleteAllElementsCount;
     }
-    void setShapeTool() override {}
-    void setArrowTool() override {}
-    void setLineTool() override {}
-    void setBrushTool() override {}
-    void setHighlightTool() override {}
-    void setBrushHighlightTool() override {}
-    void setEraserTool() override {}
-    void setFilterTool() override {}
-    void setWatermarkTool() override {}
     void setWatermarkConfigFromToolbar(const SnowCanvasWatermarkConfig&) override {}
     void previewWatermarkFromToolbar(const SnowCanvasWatermarkConfig&) override {}
     void setFilterStyleFromToolbar(const SnowCanvasFilterStyle&, quint32) override {}
-    void setTextTool() override {}
-    void setSequenceNumberTool() override {}
     void setOcrTool() override {}
     void openSpreadsheetFile() override {
         ++openSpreadsheetCount;

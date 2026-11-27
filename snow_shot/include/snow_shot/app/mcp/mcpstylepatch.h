@@ -1,5 +1,6 @@
 #ifndef SNOW_SHOT_APP_MCP_MCPSTYLEPATCH_H
 #define SNOW_SHOT_APP_MCP_MCPSTYLEPATCH_H
+#include "snow_shot/presentation/screenshotcanvastoolmapping.h"
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QHash>
@@ -51,29 +52,12 @@ inline QJsonObject mcpDistanceAnnotationsWithPixelScale(QJsonObject payload, con
 }
 
 inline const QHash<QString, SnowCanvasTool>& mcpCanvasTools() {
-    static const QHash<QString, SnowCanvasTool> tools{
-        {QStringLiteral("select"), SnowCanvasTool::Select},
-        {QStringLiteral("rectangle"), SnowCanvasTool::Shape},
-        {QStringLiteral("speech_bubble"), SnowCanvasTool::SpeechBubble},
-        {QStringLiteral("arrow"), SnowCanvasTool::Arrow},
-        {QStringLiteral("distance"), SnowCanvasTool::Distance},
-        {QStringLiteral("angle"), SnowCanvasTool::Angle},
-        {QStringLiteral("bracket"), SnowCanvasTool::Bracket},
-        {QStringLiteral("magnifier"), SnowCanvasTool::Magnifier},
-        {QStringLiteral("line"), SnowCanvasTool::Line},
-        {QStringLiteral("freehand"), SnowCanvasTool::FreeDraw},
-        {QStringLiteral("rectangle_highlight"), SnowCanvasTool::RectangleHighlight},
-        {QStringLiteral("pen_highlight"), SnowCanvasTool::PenHighlight},
-        {QStringLiteral("eraser"), SnowCanvasTool::Eraser},
-        {QStringLiteral("rectangle_eraser"), SnowCanvasTool::RectangleEraser},
-        {QStringLiteral("brush_eraser"), SnowCanvasTool::BrushEraser},
-        {QStringLiteral("rectangle_filter"), SnowCanvasTool::RectangleFilter},
-        {QStringLiteral("pen_filter"), SnowCanvasTool::PenFilter},
-        {QStringLiteral("text"), SnowCanvasTool::Text},
-        {QStringLiteral("serial_number"), SnowCanvasTool::SerialNumber},
-        {QStringLiteral("watermark"), SnowCanvasTool::Watermark},
-        {QStringLiteral("spotlight"), SnowCanvasTool::Spotlight},
-        {QStringLiteral("auto_filter"), SnowCanvasTool::AutoFilter}};
+    static const auto tools = [] {
+        QHash<QString, SnowCanvasTool> result;
+        for (const auto& tool : snow_shot::presentation::screenshotCanvasActiveTools)
+            result.insert(tool.automationId, tool.canvasTool);
+        return result;
+    }();
     return tools;
 }
 template <class Commands, class Canvas>

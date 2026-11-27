@@ -8,8 +8,8 @@
 #include <QRectF>
 #include <QString>
 #include "snow_shot/presentation/globalmousetypes.h"
-#include "snow_shot/presentation/screenshotpinnedimagesnapshot.h"
-#include "snow_shot/presentation/imagesplitwindow.h"
+Q_MOC_INCLUDE("snow_shot/presentation/screenshotpinnedimagesnapshot.h")
+Q_MOC_INCLUDE("snow_shot/presentation/imagesplitwindow.h")
 
 #include <memory>
 #include <functional>
@@ -21,6 +21,7 @@ namespace snow_shot::presentation {
 class PinnedWindowGroupManager;
 enum class GlobalShortcutAction;
 struct AppPermissionSnapshot;
+struct ImageSplitSource;
 } // namespace snow_shot::presentation
 class ScreenshotOcrRecognitionService;
 class ScreenshotQrRecognitionPort;
@@ -29,6 +30,8 @@ class ScreenshotExportArtifact;
 class ScreenshotPrintService;
 class ScreenshotAirDropService;
 class ScreenRecordingController;
+class ScreenshotExportSource;
+struct ScreenshotPinnedImageSnapshot;
 struct ScreenshotClipboardContent;
 struct ScreenshotClipboardContentSnapshot;
 struct ScreenshotHistoryEntry;

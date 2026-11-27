@@ -1,6 +1,7 @@
 #ifndef SNOW_SHOT_PRESENTATION_SCREENSHOTPINNEDWINDOW_H
 #define SNOW_SHOT_PRESENTATION_SCREENSHOTPINNEDWINDOW_H
 
+#include "snow_shot/presentation/screenshotrecognitioncopy.h"
 #include "snow_shot/presentation/mouseoperationinput.h"
 #include "snow_shot/presentation/screenshotexporttasks.h"
 #include "snow_shot/app/editionfeatures.h"
@@ -169,6 +170,9 @@ class ScreenshotPinnedWindow final : public QWidget {
         Action action = Action::Hide;
     };
     enum class PresentationPolicy { Activate, PreserveFocus };
+    enum class ReplacementPersistenceResult { Accepted, PendingCreation, Failed };
+    using ReplacementPersistenceWriter =
+        std::function<ReplacementPersistenceResult(const snow_shot::storage::PinnedWindowRecord&)>;
     struct Config {
         PresentationPolicy presentationPolicy = PresentationPolicy::Activate;
         QPointer<snow_shot::presentation::PinnedWindowStackingCoordinator> stackingCoordinator;
@@ -246,8 +250,7 @@ class ScreenshotPinnedWindow final : public QWidget {
         bool persistedRecognitionVisible = false;
         bool persistedTranslationVisible = false;
         std::function<void(const snow_shot::storage::PinnedWindowRecord&)> persistenceWriter;
-        std::function<void(const snow_shot::storage::PinnedWindowRecord&)>
-            replacementPersistenceWriter;
+        ReplacementPersistenceWriter replacementPersistenceWriter;
         std::function<void(const QString&)> persistenceRemover;
         std::function<void(const snow_shot::storage::PinnedWindowRecord&)> persistenceCloser;
         std::function<bool(const snow_shot::storage::PinnedWindowRecord&)> persistenceHider;
@@ -275,6 +278,9 @@ class ScreenshotPinnedWindow final : public QWidget {
     bool prewarm(QScreen* screen = nullptr);
     QRect currentNativeGeometry() const;
     [[nodiscard]] snow_shot::storage::PinnedWindowRecord persistenceSnapshot() const;
+    void acknowledgePersistedFile(const snow_shot::storage::PinnedWindowRecord& snapshot);
+    void initialPersistenceFailed();
+    static void showPersistenceFailure(QWidget* owner = nullptr);
     void requestRenderedImageSnapshot(
         std::function<void(ScreenshotPinnedImageSnapshot)> ready,
         ScreenshotPinnedRenderMode mode = ScreenshotPinnedRenderMode::WindowAppearance);
@@ -295,9 +301,6 @@ class ScreenshotPinnedWindow final : public QWidget {
             snow_shot::storage::PinnedTransparentLayerMode::Checkerboard);
     }
     [[nodiscard]] QJsonObject automationState() const;
-#if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
-    [[nodiscard]] ScreenshotDocumentCopyRequest automationDocumentCopyRequest() const;
-#endif
     [[nodiscard]] bool blocksMemoryTrimming() const;
     [[nodiscard]] bool automationUpdate(const QJsonObject& properties, QString* error);
     [[nodiscard]] bool automationAction(const QString& action);
@@ -307,9 +310,10 @@ class ScreenshotPinnedWindow final : public QWidget {
     [[nodiscard]] std::shared_ptr<ScreenshotExportArtifact>
     automationArtifact(bool original = false, bool viewport = false);
     [[nodiscard]] std::unique_ptr<QMimeData> automationClipboardMimeData(bool original) const;
-    bool
-    prepareAutomationSmartClipboard(bool original,
-                                    std::function<void(std::unique_ptr<QMimeData>)> completion);
+    bool prepareAutomationClipboard(bool original,
+                                    ScreenshotClipboardService::PublicationId publication,
+                                    QObject* receiver,
+                                    std::function<void(std::unique_ptr<QMimeData>)> ready);
     [[nodiscard]] std::optional<ScreenshotRecognitionFileSnapshot> automationFileSnapshot() const;
     [[nodiscard]] ScreenshotRecognitionResults recognitionSnapshot() const;
     [[nodiscard]] static ScreenshotRecognitionResults
@@ -447,11 +451,13 @@ class ScreenshotPinnedWindow final : public QWidget {
     bool setCropCanvasRect(std::optional<QRectF> rect);
     void applyCrop();
     void cancelCrop();
+    void cancelCropPreparation();
     bool commitPreparedCrop(const QRect& pixels, QImage original, QImage transformed,
                             const QTransform& transform,
                             std::shared_ptr<const ScreenshotAnimationSource> animation,
                             bool bakedStyle);
-    bool m_cropApplying = false;
+    ScreenshotExportJobHandle m_cropJob;
+    quint64 m_cropPreparationGeneration = 0;
     [[nodiscard]] QRectF cropSelectionViewRect(const QWidget* target) const;
     void paintCropSelection(QPainter& painter, const QWidget* target) const;
     void updateCropPresentation();
@@ -510,7 +516,8 @@ class ScreenshotPinnedWindow final : public QWidget {
         CloseAllWindows
     };
     [[nodiscard]] bool menuCommandAvailable(MenuCommand command) const;
-    void executeMenuCommand(MenuCommand command);
+    bool executeMenuCommand(MenuCommand command);
+    bool imageCommandAvailable(const QString& id) const;
     bool executeImageCommand(const QString& id);
     void confirmDestroy();
     void showCloseConfirmation(snow_shot::storage::PinnedWindowCloseIntent intent);
@@ -610,7 +617,9 @@ class ScreenshotPinnedWindow final : public QWidget {
     void handleTableSplitRequested();
     void handleTableResetRequested();
     QPointF canvasPositionForViewPosition(const QPointF& position) const;
-    void copyEditToolbarContent(bool closeAfter = false);
+    bool
+    copyEditToolbarContent(bool closeAfter = false,
+                           ScreenshotRecognitionCopy intent = ScreenshotRecognitionCopy::Result);
     void copyCurrentAndMaybeClose(bool closeAfter);
     bool scheduleCloseAfterPublication(ScreenshotClipboardService::PublicationId id);
     void publishCopyMime(std::unique_ptr<QMimeData> mime,
@@ -705,6 +714,13 @@ class ScreenshotPinnedWindow final : public QWidget {
     void setOpacityPercent(int percent);
     void schedulePersistence();
     void persistNow();
+    [[nodiscard]] bool hasPendingPersistenceSource() const {
+        return m_replacementPersistenceWriter &&
+               m_persistenceSourceRevision != m_savedPersistenceSourceRevision;
+    }
+    bool persistPendingReplacementBeforeClose();
+    ReplacementPersistenceResult
+    writePersistenceRecord(const snow_shot::storage::PinnedWindowRecord& snapshot);
     void removePersistence();
     [[nodiscard]] snow_shot::storage::PinnedWindowRecord persistenceRecord() const;
     void restorePersistentState(const Config& config);
@@ -880,9 +896,6 @@ class ScreenshotPinnedWindow final : public QWidget {
     QPointer<ScreenshotCloudUploadJob> m_cloudUploadJob;
     bool m_cloudUploadPreparing = false;
     ScreenshotClipboardCommitHandle m_clipboardCommit;
-#if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
-    ScreenshotExportJobHandle m_documentCopyJob;
-#endif
     std::vector<MaterializationCallback> m_materializationCallbacks;
     PresentationCompletion m_presentationCompletion;
     ScreenshotImageLoader m_imageLoader;
@@ -1037,8 +1050,9 @@ class ScreenshotPinnedWindow final : public QWidget {
     snow_shot::storage::PinnedWindowPlacement m_preThumbnailPlacement;
     std::unique_ptr<ScreenshotPinnedNativeGeometryController> m_nativeGeometryController;
     std::function<void(const snow_shot::storage::PinnedWindowRecord&)> m_persistenceWriter;
-    std::function<void(const snow_shot::storage::PinnedWindowRecord&)>
-        m_replacementPersistenceWriter;
+    ReplacementPersistenceWriter m_replacementPersistenceWriter;
+    quint64 m_persistenceSourceRevision = 0;
+    quint64 m_savedPersistenceSourceRevision = 0;
     std::function<void(const QString&)> m_persistenceRemover;
     std::function<void(const snow_shot::storage::PinnedWindowRecord&)> m_persistenceCloser;
     std::function<bool(const snow_shot::storage::PinnedWindowRecord&)> m_persistenceHider;

@@ -18,6 +18,14 @@
 #include <cstdlib>
 #include <iostream>
 
+#ifdef Q_OS_WIN
+#include <QDeadlineTimer>
+#include <QSemaphore>
+#include <QThread>
+#include <qt_windows.h>
+#include <thread>
+#endif
+
 namespace {
 void require(bool condition, const char* message) {
     if (!condition) {
@@ -195,6 +203,66 @@ void failedCommitsFinishHandles() {
     require(completed, "invalid payload completion timed out");
 }
 
+#ifdef Q_OS_WIN
+void busyClipboardCommitsRetryWithinTheirBudget() {
+    for (bool unlockAfterFirstAttempt : {true, false}) {
+        QSemaphore ready;
+        QSemaphore release;
+        bool locked = false;
+        std::thread locker([&] {
+            QDeadlineTimer deadline(2000);
+            while (!(locked = OpenClipboard(nullptr) != FALSE) && !deadline.hasExpired())
+                QThread::msleep(1);
+            ready.release();
+            release.acquire();
+            if (locked)
+                CloseClipboard();
+        });
+        ready.acquire();
+        require(locked, "the fixture can lock the native clipboard");
+
+        QImage image(4, 4, QImage::Format_ARGB32);
+        image.fill(Qt::red);
+        auto* clipboard = QApplication::clipboard();
+        QEventLoop loop;
+        ScreenshotClipboardCommitScope scope;
+        ScreenshotClipboardCommitResult result;
+        int completions = 0;
+        const auto handle = scope.commit(
+            clipboard, &loop, ScreenshotClipboardService::prepareImage(image),
+            [&](ScreenshotClipboardCommitResult completed) {
+                result = completed;
+                ++completions;
+                loop.quit();
+            },
+            ScreenshotClipboardService::reservePublication(clipboard));
+        if (unlockAfterFirstAttempt) {
+            QTimer::singleShot(0, &loop, [&] {
+                require(!handle.isFinished() && completions == 0 && scope.pendingCount() == 1,
+                        "a busy attempt keeps the payload without notifying the receiver");
+                release.release();
+                locker.join();
+            });
+        }
+        QTimer::singleShot(2000, &loop, &QEventLoop::quit);
+        loop.exec();
+        if (locker.joinable()) {
+            release.release();
+            locker.join();
+        }
+        require(handle.isFinished() && completions == 1 && scope.pendingCount() == 0,
+                "the retry budget ends with exactly one completion");
+        if (unlockAfterFirstAttempt)
+            require(result.published() && result.attempts == 2,
+                    "the retained payload publishes as soon as the lock clears");
+        else
+            require(result.failure == ScreenshotClipboardCommitFailure::Busy &&
+                        result.attempts > 1 && result.attempts <= 5,
+                    "a persistent lock exhausts the bounded retry budget");
+    }
+}
+#endif
+
 void scopedCommitsReleaseTrackingAndCallbacksOnEveryOutcome() {
     ScreenshotClipboardCommitScope scope;
     QObject receiver;
@@ -336,6 +404,40 @@ void scopeDestructionCancelsWithoutAffectingOtherScopes() {
     require(completed && live.isFinished() && abandoned.isFinished() && input.isNull() && !called,
             "destroyed scopes must release input ownership and suppress pending callbacks");
     QApplication::clipboard()->clear();
+}
+
+void retiringAnObservedCopyDoesNotCancelALaterFollowUp() {
+    auto* clipboard = QApplication::clipboard();
+    const QString sentinel = QStringLiteral("previous clipboard");
+    clipboard->setText(sentinel);
+    const auto observed = ScreenshotClipboardService::reservePublication(clipboard);
+    const auto followUp = ScreenshotClipboardService::deferPublication();
+    QEventLoop loop;
+    auto* stale = new QMimeData;
+    stale->setText(QStringLiteral("retired result"));
+    bool retired = false;
+    const auto pending = ScreenshotClipboardService::commitMimeData(
+        clipboard, &loop, stale, observed, [&](ScreenshotClipboardCommitResult result) {
+            retired = result.superseded;
+            loop.quit();
+        });
+    ScreenshotClipboardService::cancelPublication(observed);
+    QTimer::singleShot(2000, &loop, &QEventLoop::quit);
+    loop.exec();
+    require(pending.isFinished() && retired && clipboard->text() == sentinel,
+            "retiring the owner suppresses its queued write");
+    auto next = std::make_unique<QMimeData>();
+    next->setText(QStringLiteral("later follow-up"));
+    bool published = false;
+    const auto handle = ScreenshotClipboardService::publishMimeData(
+        clipboard, &loop, std::move(next), followUp, [&](ScreenshotClipboardCommitResult result) {
+            published = result.succeeded();
+            loop.quit();
+        });
+    if (!handle.isFinished())
+        loop.exec();
+    require(published && clipboard->text() == QStringLiteral("later follow-up"),
+            "retirement preserves the order and eligibility of a later follow-up");
 }
 
 void completionCanCancelOtherCommitsAndStartANewBatch() {
@@ -515,10 +617,14 @@ int main(int argc, char** argv) {
     clipboardFilesOutlivePublications();
     clipboardFilesSurviveReplacementAndApplicationExit();
     failedCommitsFinishHandles();
+#ifdef Q_OS_WIN
+    busyClipboardCommitsRetryWithinTheirBudget();
+#endif
     scopedCommitsReleaseTrackingAndCallbacksOnEveryOutcome();
     scopedAbandonedAndRejectedCommitsReleaseOwnership();
     scopedCancellationRetiresOnlyTheCancelledBatch();
     scopeDestructionCancelsWithoutAffectingOtherScopes();
+    retiringAnObservedCopyDoesNotCancelALaterFollowUp();
     completionCanCancelOtherCommitsAndStartANewBatch();
 #ifndef Q_OS_WIN
     replacementDuringImagePublicationSupersedesCopy();

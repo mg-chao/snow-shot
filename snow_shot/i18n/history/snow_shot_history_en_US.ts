@@ -2359,6 +2359,10 @@ Files:
             <translation>The pinned image save could not be started</translation>
         </message>
         <message>
+            <source>The pinned window could not be saved to history</source>
+            <translation>The pinned window could not be saved to history</translation>
+        </message>
+        <message>
             <source>The window changed while preparing the image. Please try again</source>
             <translation>The window changed while preparing the image. Please try again</translation>
         </message>
