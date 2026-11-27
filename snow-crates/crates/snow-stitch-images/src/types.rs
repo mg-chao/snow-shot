@@ -89,6 +89,9 @@ pub struct CandidateDiagnostics {
     pub spatial_coverage: f32,
     pub alignment_error: f32,
     pub precise_alignment_error: Option<f32>,
+    /// Spatial tiles supporting the selected displacement in independent pixel verification.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overlap_blocks: Option<u32>,
     pub residual_gain: f32,
     pub score: f32,
 }
@@ -101,6 +104,9 @@ pub struct MotionDiagnostics {
     pub mutual_matches: u32,
     pub direct_similarity: f32,
     pub selected_offset: Option<i32>,
+    /// Competing displacements that the observed overlap could not distinguish.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ambiguous_offsets: Vec<i32>,
     pub candidates: Vec<CandidateDiagnostics>,
 }
 
@@ -113,6 +119,7 @@ impl MotionDiagnostics {
             mutual_matches: 0,
             direct_similarity: 0.0,
             selected_offset: None,
+            ambiguous_offsets: Vec::new(),
             candidates: Vec::new(),
         }
     }
