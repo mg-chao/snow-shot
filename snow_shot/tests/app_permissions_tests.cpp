@@ -49,6 +49,7 @@ class FakePermissions final : public AppPermissionBackend {
     AppPermissionSnapshot value;
     int queries = 0;
     int screenRecordingQueries = 0;
+    AppPermissions queriedPermissions;
     int requests = 0;
     int opens = 0;
     bool canOpen = true;
@@ -61,8 +62,9 @@ class FakePermissions final : public AppPermissionBackend {
         return value;
     }
     AppPermissionStatus queryPermission(AppPermission permission) override {
-        require(permission == P::ScreenRecording, "only screen recording uses scoped admission");
-        ++screenRecordingQueries;
+        queriedPermissions.push_back(permission);
+        if (permission == P::ScreenRecording)
+            ++screenRecordingQueries;
         return value.status(permission);
     }
     void request(P permission, std::function<void()> done) override {
@@ -285,6 +287,21 @@ void selectiveAdmissionAndFullRefresh() {
     flush();
     require(native->queries == 2 && fullRefreshes == 2,
             "admission consumes the queued full refresh");
+
+    const auto gesture =
+        requiredPermissions(settings::SettingsGlobalMouseAction::Screenshot, false);
+    native->value.statuses.fill(S::Granted);
+    native->queriedPermissions.clear();
+    require(service.allow(gesture) && native->queriedPermissions == gesture,
+            "gesture admission must query precisely the three required grants");
+    using Admission = AppPermissionService::Admission;
+    require(service.allow(gesture, {}, Admission::CheckedAtGesturePress) &&
+                native->queriedPermissions == gesture,
+            "one settings press checks its grants once");
+    native->value.statuses[2] = S::Denied;
+    service.refresh();
+    require(!service.allow(gesture, {}, Admission::CheckedAtGesturePress),
+            "a queued revocation must defeat a grant from the same press");
 }
 void freshSettingsActions() {
     auto fake = std::make_unique<FakePermissions>();

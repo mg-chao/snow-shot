@@ -178,6 +178,8 @@ struct ScreenshotPresentationServices::State {
     bool selectionEffectsDirty = false;
     bool geometryDirty = false;
     bool pointerDirty = false;
+    QPointer<QScreen> externalDragScreen;
+    bool externalDragPending = false;
     bool pointerKnown = false;
     bool inFrame = false;
 };
@@ -191,9 +193,10 @@ ScreenshotPresentationServices::ScreenshotPresentationServices(
         [this] { return nowNanoseconds(); },
         [this] {
             const qint64 now = nowNanoseconds();
-            if (!m_state->semanticDirty && !m_state->selectionDragDirty &&
-                !m_state->selectionEffectsDirty && !m_state->geometryDirty &&
-                !m_state->pointerDirty && m_state->colorPickerSource == ColorPickerSource::None &&
+            if (!m_state->externalDragPending && !m_state->semanticDirty &&
+                !m_state->selectionDragDirty && !m_state->selectionEffectsDirty &&
+                !m_state->geometryDirty && !m_state->pointerDirty &&
+                m_state->colorPickerSource == ColorPickerSource::None &&
                 !m_smartSelectionTransition.isRunning()) {
                 m_state->scheduler->cancelDeadline();
                 return;
@@ -348,6 +351,8 @@ void ScreenshotPresentationServices::resetPresentation() {
     m_state->geometryDirty = false;
     m_state->pointerDirty = false;
     m_state->pointerKnown = false;
+    m_state->externalDragPending = false;
+    m_state->externalDragScreen.clear();
     // Keep inFrame intact when a semantic subscriber ends the capture reentrantly.
 }
 
@@ -483,10 +488,18 @@ void ScreenshotPresentationServices::updatePointerPresentation(ScreenshotOverlay
     scheduleFrame();
 }
 
+void ScreenshotPresentationServices::requestExternalDragFrame(QScreen* screen) {
+    m_state->externalDragPending = true;
+    m_state->externalDragScreen = screen;
+    scheduleFrame();
+}
+
 void ScreenshotPresentationServices::scheduleFrame() {
     if (m_state->inFrame)
         return;
-    QScreen* screen = m_state->pointerOwner ? m_state->pointerOwner->screen() : nullptr;
+    QScreen* screen = m_state->externalDragScreen.data();
+    if (!screen && m_state->pointerOwner)
+        screen = m_state->pointerOwner->screen();
     if (!screen) {
         const auto* display = m_context.geometry.displayForCanvasRect(
             m_context.displaySession, m_state->toolbar.selectionCanvas);
@@ -583,13 +596,22 @@ void ScreenshotPresentationServices::flushPendingFrame() {
         resetPresentation();
         return;
     }
+    m_state->inFrame = true;
+    if (std::exchange(m_state->externalDragPending, false)) {
+        m_state->externalDragScreen.clear();
+        if (m_context.sampleExternalDrag)
+            m_context.sampleExternalDrag();
+        if (!m_state->initialized || m_state->sessionId != m_context.captureState.sessionId) {
+            m_state->inFrame = false;
+            return;
+        }
+    }
     if (m_state->selectionDragDirty || m_state->selectionEffectsDirty ||
         m_state->hints.captureMode != m_context.interaction.mode() ||
         m_state->dragMode != m_context.interaction.dragMode() ||
         m_state->lifecycle != presentationLifecycle(m_context)) {
         (void)prepareOverlayState();
     }
-    m_state->inFrame = true;
     const qint64 now = nowNanoseconds();
     const PresentationSnapshot snapshot{m_state->toolbar, m_state->visual, m_state->hints,
                                         m_state->lifecycle, m_state->dragMode};
@@ -648,8 +670,9 @@ void ScreenshotPresentationServices::flushPendingFrame() {
     m_state->frameClock.advancePast(nowNanoseconds());
     if (m_context.interaction.inactive()) {
         m_state->scheduler->stop();
-    } else if (m_state->semanticDirty || m_state->selectionDragDirty ||
-               m_state->selectionEffectsDirty || m_state->geometryDirty || m_state->pointerDirty ||
+    } else if (m_state->externalDragPending || m_state->semanticDirty ||
+               m_state->selectionDragDirty || m_state->selectionEffectsDirty ||
+               m_state->geometryDirty || m_state->pointerDirty ||
                m_state->colorPickerSource != ColorPickerSource::None ||
                m_smartSelectionTransition.isRunning()) {
         scheduleFrame();

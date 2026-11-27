@@ -1511,6 +1511,35 @@ void externalSelectionInitializationCommitsTheCompleteHiddenStateOnce() {
     }
 }
 
+void externalMovementIsSampledAndPresentedAtOneDeadline() {
+    Fixture fixture(QSize(1200, 800), false);
+    fixture.displays.startup->resumeLiveInput();
+    fixture.interaction.returnToSelectionMode(false);
+    ScreenshotOverlayInputHandler input(
+        {fixture.captureState, fixture.interaction, fixture.selection, fixture.intelligentSelection,
+         fixture.geometry, fixture.displays, pickerInputActions(fixture)});
+    input.setExternalDragActive(true);
+    input.beginExternalSelectionDrag({10, 10}, {20, 20});
+    int samples = 0;
+    QPointF latest(30, 30);
+    fixture.onSampleExternalDrag = [&] {
+        ++samples;
+        input.updateExternalSelectionDrag(latest);
+    };
+    fixture.services->requestExternalDragFrame(fixture.overlay.screen());
+    latest = {80, 60};
+    require(samples == 0, "motion should stay buffered until the presentation frame");
+    fixture.flushFrame();
+    require(samples == 1 && fixture.displayedSelection() == QRectF(10, 10, 71, 51),
+            "one frame must both sample the newest endpoint and display its geometry");
+    fixture.flushFrame();
+    require(samples == 1, "a stationary external pointer must not resample");
+    fixture.services->requestExternalDragFrame(fixture.overlay.screen());
+    fixture.services->resetPresentation();
+    fixture.flushFrame();
+    require(samples == 1, "a retired capture must discard its pending sample");
+}
+
 void batchedExternalSelectionPreservesPointerGeometryAndEmptyGestures() {
     struct Case {
         QPointF start;
@@ -2288,6 +2317,7 @@ int main(int argc, char* argv[]) {
     queuedPickerInputSurvivesSelectionConfirmation();
     queuedPickerHoverYieldsToSelectionDrag();
     externalSelectionInitializationCommitsTheCompleteHiddenStateOnce();
+    externalMovementIsSampledAndPresentedAtOneDeadline();
     batchedExternalSelectionPreservesPointerGeometryAndEmptyGestures();
     batchedExternalSelectionPreservesContinuedDraggingAndHeldShortcuts();
     batchedExternalSelectionConsumesSpaceHeldBeforeInitialization();

@@ -182,6 +182,8 @@ void ScreenshotCaptureWorker::capture(const ScreenshotCaptureRequest& request,
     }
     nativeRequest.cancellation_token = cancellationToken;
 
+    if (request.beforeAcquisition)
+        request.beforeAcquisition();
     SnowCaptureScreenshotResult* nativeResult = nullptr;
     {
         SNOW_SHOT_CAPTURE_PERF_SCOPE("capture.native_ffi");

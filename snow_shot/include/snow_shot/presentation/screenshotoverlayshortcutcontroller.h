@@ -26,6 +26,7 @@ class ScreenshotOverlayShortcutController final : public QObject {
     ~ScreenshotOverlayShortcutController() override;
 
     void reloadConfiguredShortcuts();
+    void reconcileExternalDragHolds(QWidget* canvas, Qt::KeyboardModifiers activationModifiers);
     // Mapped actions are consumed by default. Callers with a fallback can require activation.
     [[nodiscard]] bool
     handleGlobalScreenshotShortcut(snow_shot::presentation::GlobalShortcutAction action,

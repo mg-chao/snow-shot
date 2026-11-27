@@ -42,6 +42,7 @@ struct GlobalMouseDragEvent {
         settings::SettingsGlobalMouseAction::ScreenshotCopy;
     QPointF position;
     GlobalMouseCoordinateSpace coordinateSpace = GlobalMouseCoordinateSpace::PhysicalPixels;
+    bool fromSettingsButton = false;
 };
 
 struct GlobalMouseInputResult {

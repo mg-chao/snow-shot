@@ -9,6 +9,7 @@
 #include <QVector>
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <memory>
 
@@ -61,6 +62,7 @@ struct ScreenshotCaptureRequest {
     // Owned before worker dispatch; native snapshot data is immutable.
     std::shared_ptr<SnowCaptureCursorSnapshotImpl> cursorSnapshot;
     QVector<std::uint32_t> excludedWindowIds;
+    std::function<void()> beforeAcquisition = {};
 };
 
 struct ScreenshotDisplayPresentationState {

@@ -47,6 +47,23 @@ void setIfSupported(AXUIElementRef element, CFStringRef attribute, CFTypeRef val
         static_cast<void>(AXUIElementSetAttributeValue(element, attribute, value));
 }
 
+struct FocusDetails {
+    Element application;
+    Element window;
+    Element input;
+};
+
+bool isFrontmost(AXUIElementRef application) {
+    CFTypeRef value = nullptr;
+    if (AXUIElementCopyAttributeValue(application, kAXFrontmostAttribute, &value) !=
+        kAXErrorSuccess)
+        return false;
+    const bool frontmost = value && CFEqual(value, kCFBooleanTrue);
+    if (value)
+        CFRelease(value);
+    return frontmost;
+}
+
 class NativeFocusTarget final : public ScreenshotFocusTarget {
   public:
     NativeFocusTarget(NSRunningApplication* application, std::function<bool()> accessibilityTrusted)
@@ -55,21 +72,38 @@ class NativeFocusTarget final : public ScreenshotFocusTarget {
         if (application.processIdentifier == NSProcessInfo.processInfo.processIdentifier) {
             m_localWindow = [NSApp.keyWindow retain];
             m_localFocus = QApplication::focusWidget();
-            return;
         }
-        if (!m_accessibilityTrusted())
+    }
+
+    void captureDetails(bool asynchronous) override {
+        if (!isExternalApplication())
             return;
-        m_axApplication.reset(AXUIElementCreateApplication(application.processIdentifier));
-        AXUIElementSetMessagingTimeout(m_axApplication.get(), kAccessibilityTimeoutSeconds);
-        m_window = copyElement(m_axApplication.get(), kAXFocusedWindowAttribute);
-        m_input = copyElement(m_axApplication.get(), kAXFocusedUIElementAttribute);
-        if (m_input && m_window) {
-            const auto window = copyElement(m_input.get(), kAXWindowAttribute);
-            if (!window || !CFEqual(window.get(), m_window.get()))
-                m_input.reset();
-        } else {
-            m_input.reset();
-        }
+        const auto pid = m_application.processIdentifier;
+        m_details.capture(asynchronous, [pid, trusted = m_accessibilityTrusted, asynchronous] {
+            @autoreleasepool {
+                FocusDetails details;
+                if (!trusted())
+                    return details;
+                details.application.reset(AXUIElementCreateApplication(pid));
+                if (!details.application)
+                    return details;
+                AXUIElementSetMessagingTimeout(details.application.get(),
+                                               kAccessibilityTimeoutSeconds);
+                if (asynchronous && !isFrontmost(details.application.get()))
+                    return FocusDetails{};
+                details.window = copyElement(details.application.get(), kAXFocusedWindowAttribute);
+                details.input =
+                    copyElement(details.application.get(), kAXFocusedUIElementAttribute);
+                if (details.input) {
+                    const auto window = copyElement(details.input.get(), kAXWindowAttribute);
+                    if (!window || !details.window || !CFEqual(window.get(), details.window.get()))
+                        details.input.reset();
+                }
+                if (asynchronous && !isFrontmost(details.application.get()))
+                    return FocusDetails{};
+                return details;
+            }
+        });
     }
     ~NativeFocusTarget() override {
         [m_localWindow release];
@@ -105,21 +139,24 @@ class NativeFocusTarget final : public ScreenshotFocusTarget {
             return;
         }
 
+        // A quick release can beat AX. Restore the captured application immediately in that case.
+        auto details = m_details.takeReady();
         // Raising a retained AX identity fails safely if the original window closed.
         const bool raised =
-            m_accessibilityTrusted() && m_window &&
-            AXUIElementPerformAction(m_window.get(), kAXRaiseAction) == kAXErrorSuccess;
+            details.window && m_accessibilityTrusted() &&
+            AXUIElementPerformAction(details.window.get(), kAXRaiseAction) == kAXErrorSuccess;
         if (raised) {
-            setIfSupported(m_window.get(), kAXMainAttribute, kCFBooleanTrue);
-            setIfSupported(m_axApplication.get(), kAXFocusedWindowAttribute, m_window.get());
+            setIfSupported(details.window.get(), kAXMainAttribute, kCFBooleanTrue);
+            setIfSupported(details.application.get(), kAXFocusedWindowAttribute,
+                           details.window.get());
         }
         [NSApp yieldActivationToApplication:m_application];
         if (![m_application activateWithOptions:0])
             return;
-        if (raised && m_input) {
-            const auto window = copyElement(m_input.get(), kAXWindowAttribute);
-            if (window && CFEqual(window.get(), m_window.get()))
-                setIfSupported(m_input.get(), kAXFocusedAttribute, kCFBooleanTrue);
+        if (raised && details.input) {
+            const auto window = copyElement(details.input.get(), kAXWindowAttribute);
+            if (window && CFEqual(window.get(), details.window.get()))
+                setIfSupported(details.input.get(), kAXFocusedAttribute, kCFBooleanTrue);
         }
     }
 
@@ -128,9 +165,7 @@ class NativeFocusTarget final : public ScreenshotFocusTarget {
     NSWindow* m_localWindow = nil;
     QPointer<QWidget> m_localFocus;
     std::function<bool()> m_accessibilityTrusted;
-    Element m_axApplication;
-    Element m_window;
-    Element m_input;
+    ScreenshotFocusSnapshot<FocusDetails> m_details;
 };
 
 NSWindow* nativeWindow(QWidget* widget) {

@@ -2,6 +2,8 @@
 #include "snow_shot/platform/macos/screenshotsessionfocus.h"
 
 #include <QCoreApplication>
+#include <QSemaphore>
+#include <QThread>
 #include <cstdlib>
 #include <iostream>
 #include <vector>
@@ -16,10 +18,38 @@ void require(bool condition, const char* message) {
     }
 }
 
+void focusQueriesNeverHoldUpImmediateRestoration() {
+    QSemaphore entered;
+    QSemaphore resume;
+    QSemaphore done;
+    auto* gui = QThread::currentThread();
+    {
+        ScreenshotFocusSnapshot<int> target;
+        target.capture(true, [&] {
+            require(QThread::currentThread() != gui, "external AX lookup must run off the GUI");
+            entered.release();
+            require(resume.tryAcquire(1, 4000),
+                    "abandoning a pending focus target must not join it");
+            done.release();
+            return 12;
+        });
+        require(entered.tryAcquire(1, 3000) && !target.takeReady(),
+                "a fast release must be able to restore just the captured application");
+    }
+    ScreenshotFocusSnapshot<int> replacement;
+    replacement.capture(false, [] { return 31; });
+    resume.release();
+    require(done.tryAcquire(1, 3000) && replacement.takeReady() == 31,
+            "late AX results cannot change a later target");
+}
+
 struct Fixture {
     struct Target final : ScreenshotFocusTarget {
         explicit Target(Fixture& fixture) : f(fixture), identity(f.source) {
             ++f.live;
+        }
+        void captureDetails(bool asynchronous) override {
+            f.asynchronous = asynchronous;
         }
         ~Target() override {
             --f.live;
@@ -44,6 +74,7 @@ struct Fixture {
     int restored = 0;
     int restoredIdentity = 0;
     int live = 0;
+    bool asynchronous = false;
     ScreenshotSessionFocus focus{[this]() -> std::unique_ptr<ScreenshotFocusTarget> {
         ++captures;
         return targetAvailable ? std::make_unique<Target>(*this) : nullptr;
@@ -61,7 +92,9 @@ struct Fixture {
 
 void invocationIdentityAndSingleRestoration() {
     Fixture f;
-    f.focus.prepare();
+    f.focus.prepare(true);
+    require(f.asynchronous,
+            "gesture preparation defers detailed focus lookup for the captured target");
     f.source = 2; // Dismissing a popup can change the foreground window.
     f.focus.begin(true);
     f.focus.begin(true); // Recapture/restart must not sample the overlay.
@@ -377,6 +410,7 @@ void backgroundRejectedAndSilentStartsWhileRestoreQueued() {
 
 int main(int argc, char** argv) {
     QCoreApplication application(argc, argv);
+    focusQueriesNeverHoldUpImmediateRestoration();
     invocationIdentityAndSingleRestoration();
     rejectedSilentAndDiscardedSessions();
     switchingApplicationsAndClosingTargets();

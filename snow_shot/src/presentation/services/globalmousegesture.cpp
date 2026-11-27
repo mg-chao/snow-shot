@@ -41,6 +41,7 @@ GlobalMouseGesture::beginButtonDrag(settings::SettingsGlobalMouseAction action,
     const GlobalMouseConfiguration direct{{{action, {}, Qt::LeftButton}}, true};
     auto result = handle({GlobalMouseInput::Kind::Press, position, Qt::LeftButton}, direct);
     if (result.event) {
+        result.event->fromSettingsButton = true;
         // Qt already received the button press, so its release must also reach Qt.
         m_consumedButtons &= ~Qt::MouseButtons(Qt::LeftButton);
         result.consumed = false;

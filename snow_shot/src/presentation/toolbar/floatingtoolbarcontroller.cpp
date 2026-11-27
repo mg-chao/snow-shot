@@ -1095,18 +1095,25 @@ FloatingToolbarController::~FloatingToolbarController() {
 void FloatingToolbarController::refreshConfiguration() {
     m_impl->queueRefresh();
 }
+std::function<void()> FloatingToolbarController::beginCaptureActivity(const QString& source) {
+    m_impl->activities.insert(source);
+#ifdef Q_OS_WIN
+    const bool waitForHide =
+        m_impl->hideCapture && ((m_impl->iconWindow && m_impl->iconWindow->isVisible()) ||
+                                (m_impl->toolbarWindow && m_impl->toolbarWindow->isVisible()));
+#endif
+    m_impl->syncVisibility();
+#ifdef Q_OS_WIN
+    if (waitForHide)
+        return [] { static_cast<void>(DwmFlush()); };
+#endif
+    return {};
+}
+
 void FloatingToolbarController::setCaptureActive(const QString& source, bool active) {
     if (active) {
-        m_impl->activities.insert(source);
-        const bool wasVisible = (m_impl->iconWindow && m_impl->iconWindow->isVisible()) ||
-                                (m_impl->toolbarWindow && m_impl->toolbarWindow->isVisible());
-        m_impl->syncVisibility();
-#ifdef Q_OS_WIN
-        if (wasVisible && m_impl->hideCapture)
-            DwmFlush();
-#else
-        Q_UNUSED(wasVisible);
-#endif
+        if (auto wait = beginCaptureActivity(source))
+            wait();
     } else {
         if (!m_impl->activities.remove(source))
             return;

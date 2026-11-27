@@ -141,6 +141,7 @@ class NativeGlobalMouseBackend final : public GlobalMouseBackend {
             if (!result.event || !onEvent) {
                 return;
             }
+            beginActivationHold({});
             onEvent(*result.event);
             // A quick release may precede this queued request on the hook thread.
             if ((api.keyState(VK_LBUTTON) & 0x8000) == 0) {
@@ -272,6 +273,8 @@ class NativeGlobalMouseBackend final : public GlobalMouseBackend {
             static_cast<void>(maskActivationKey());
         }
         if (result.event && onEvent) {
+            if (result.event->kind == GlobalMouseDragEvent::Kind::Begin)
+                beginActivationHold(result.activationModifiers);
             onEvent(*result.event);
         }
         if (input.kind != GlobalMouseInput::Kind::Move) {
@@ -360,6 +363,8 @@ class NativeGlobalMouseBackend final : public GlobalMouseBackend {
                           static_cast<int>(key.vkCode)) != modifierKeys.cend()) {
                 // Low-level callbacks precede the asynchronous key-state update.
                 current->modifierDown[key.vkCode] = (key.flags & LLKHF_UP) == 0;
+                if (current->gesture.active() && (key.flags & LLKHF_UP) != 0)
+                    current->retainActivationHold(current->modifiers());
                 current->syncMouseHook();
             }
             if ((key.flags & LLKHF_INJECTED) == 0 &&

@@ -47,6 +47,9 @@ class ScreenshotControllerTestAccess {
     static ScreenshotIntelligentSelectionModel&
     intelligentSelection(ScreenshotController& controller);
     static ScreenshotOverlayWindow* presentSelection(ScreenshotController& controller);
+    static void prepareGlobalMouseSelection(ScreenshotController& controller,
+                                            ScreenshotController::CaptureAction action, quint64 id,
+                                            const QPointF& start);
     static void confirmCaptureSelection(ScreenshotController& controller,
                                         ScreenshotController::CaptureAction action);
     [[nodiscard]] static ScreenshotController::CaptureAction

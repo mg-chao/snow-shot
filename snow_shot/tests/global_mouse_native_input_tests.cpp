@@ -159,6 +159,23 @@ struct NativeInput {
 } // namespace
 
 void globalMouseNativeActivationKeyTests() {
+    {
+        NativeInput input;
+        input.configuration.bindings[0].modifiers = GlobalMouseModifier::Shift;
+        input.scenario = [&] {
+            input.key(VK_LSHIFT, false);
+            input.button(false);
+            require(input.backend->heldActivationModifiers().testFlag(GlobalMouseModifier::Shift),
+                    "a held activation chord must not become a screenshot hold on focus");
+            input.key(VK_LSHIFT, true);
+            input.key(VK_LSHIFT, false);
+            require(!input.backend->heldActivationModifiers(),
+                    "a new physical Shift press can constrain the gesture");
+            input.button(true);
+            input.key(VK_LSHIFT, true);
+        };
+        input.run();
+    }
     for (const DWORD windowsKey : {VK_LWIN, VK_RWIN}) {
         for (const DWORD altKey : {VK_LMENU, VK_RMENU}) {
             for (const int ending : {0, 1, 2}) {

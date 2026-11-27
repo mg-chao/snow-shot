@@ -6,8 +6,6 @@
 #include <QRectF>
 #include <QtGlobal>
 
-#include <optional>
-
 class ScreenshotGlobalMouseDrag final {
   public:
     using CoordinateSpace = snow_shot::presentation::GlobalMouseCoordinateSpace;
@@ -17,10 +15,6 @@ class ScreenshotGlobalMouseDrag final {
         return m_coordinateSpace;
     }
     bool update(quint64 id, const QPointF& position, bool released = false);
-    // Adopt the live cursor position once the capture is presented: reveal work
-    // delays paced drag deliveries, leaving the buffered end point behind the
-    // actual cursor. A buffered release keeps its exact position.
-    void refreshEndFromLivePosition(const std::optional<QPointF>& position);
     void reset();
     void setReady() {
         m_ready = true;

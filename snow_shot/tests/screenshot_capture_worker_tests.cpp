@@ -11,6 +11,7 @@
 #include <QSemaphore>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QThread>
 
 #include <array>
 #include <atomic>
@@ -424,9 +425,21 @@ void captureOwnsCursorBeforeDispatch(ScreenshotCapturePurpose purpose, bool canc
         request.requestId = 91;
         request.purpose = purpose;
         request.captureCursor = true;
+        QSemaphore fenceEntered;
+        QSemaphore finishFence;
+        const auto* guiThread = QThread::currentThread();
+        request.beforeAcquisition = [&] {
+            require(QThread::currentThread() != guiThread,
+                    "composition wait ran on the GUI thread");
+            fenceEntered.release();
+            finishFence.acquire();
+        };
         liveCursorPixel = 71;
         blockCapture = true;
         coordinator.captureAsync(request);
+        require(fenceEntered.tryAcquire(1, 3000) && !captureEntered.tryAcquire(),
+                "input must remain available while acquisition waits for hidden windows");
+        finishFence.release();
         require(cursorSnapshots == 1, "capture must own its cursor before returning to the UI");
         require(captureEntered.tryAcquire(1, 3000), "capture worker did not reach the barrier");
         require((capturedFlags & SNOW_CAPTURE_SCREENSHOT_REQUEST_INCLUDE_CURSOR) == 0,

@@ -77,7 +77,8 @@ class ScreenshotCaptureWorkflow final : private ScreenshotCaptureWorkerEventSink
     void startCapture(StartMode mode = StartMode::Normal,
                       ToolbarPreparation toolbarPreparation = ToolbarPreparation::Prewarm,
                       ToolbarVisibility toolbarVisibility = ToolbarVisibility::ShowAfterSelection,
-                      PresentationMode presentation = PresentationMode::Visible);
+                      PresentationMode presentation = PresentationMode::Visible,
+                      std::function<void()> beforeAcquisition = {});
     [[nodiscard]] bool startRecapture(const QVector<std::uint32_t>& excludedWindowIds = {});
     [[nodiscard]] bool recaptureInProgress() const;
     [[nodiscard]] bool suppressCaptureToolbar() const;
@@ -102,7 +103,7 @@ class ScreenshotCaptureWorkflow final : private ScreenshotCaptureWorkerEventSink
     void clearDisplays();
     void finishCaptureSession(bool deferExportCleanup = false);
     void cleanupActiveSessionForRestart();
-    void beginCapturePreparation(quint64 sessionId);
+    void beginCapturePreparation(quint64 sessionId, std::function<void()> beforeAcquisition);
     [[nodiscard]] bool beginCapturePresentation(quint64 sessionId);
     void prepareOverlayPresentation(quint64 sessionId);
     void finishCapturePreparation(const ScreenshotCaptureResult& result);

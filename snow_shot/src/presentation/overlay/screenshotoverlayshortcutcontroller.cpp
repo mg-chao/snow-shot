@@ -12,6 +12,7 @@
 #include "snow_shot/storage/configurationstore.h"
 #include "snow_shot/storage/settingsadapters.h"
 
+#include <QGuiApplication>
 #include <QKeyEvent>
 #include <QKeySequence>
 #include <QMap>
@@ -578,6 +579,16 @@ ScreenshotOverlayShortcutController::ScreenshotOverlayShortcutController(
                                     intelligentSelection, std::move(actions))) {}
 
 ScreenshotOverlayShortcutController::~ScreenshotOverlayShortcutController() = default;
+
+void ScreenshotOverlayShortcutController::reconcileExternalDragHolds(
+    QWidget* canvas, Qt::KeyboardModifiers activationModifiers) {
+    if (!m_impl->inputHandler.externalDragActive())
+        return;
+    const auto modifiers = QGuiApplication::queryKeyboardModifiers();
+    for (auto handle : std::as_const(m_impl->externalBindings))
+        m_impl->shortcutManager.reconcileHeldBinding(handle, canvas, modifiers,
+                                                     activationModifiers);
+}
 
 void ScreenshotOverlayShortcutController::reloadConfiguredShortcuts() {
     m_impl->reloadConfiguredShortcuts();

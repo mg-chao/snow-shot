@@ -52,6 +52,10 @@ GlobalMouseModifiers modifiersForFlags(CGEventFlags flags) {
 }
 } // namespace
 
+GlobalMouseModifiers MacGlobalMouseInput::maskedModifiers() const {
+    return modifiersForFlags(maskedFlags);
+}
+
 GlobalMouseInputResult MacGlobalMouseInput::handle(CGEventType type, CGEventRef event,
                                                    const GlobalMouseConfiguration& configuration) {
     if (!event)
