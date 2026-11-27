@@ -7,6 +7,7 @@
 #include "snow_shot/runtime/runtimeactivitytracker.h"
 
 #include <QApplication>
+#include <QBuffer>
 #include <QEventLoop>
 #include <QJsonArray>
 #include <QMouseEvent>
@@ -903,7 +904,10 @@ void acceptedSnapshotsSurviveTeardown() {
     for (const auto mode : {ScreenshotScrollingRecognitionMode::Vertical,
                             ScreenshotScrollingRecognitionMode::Horizontal}) {
         auto state = std::make_shared<ManualState>();
-        const QImage frame = fixture();
+        QImage frame = fixture();
+        // The smaller trim excludes this pixel. The larger one includes it
+        // in the final row batch, in both scrolling directions.
+        frame.setPixelColor(609, 609, QColor(20, 30, 40, 128));
         state->push(frame);
         QEventLoop loop;
         bool ready = false;
@@ -929,16 +933,68 @@ void acceptedSnapshotsSurviveTeardown() {
             require(
                 pipeline->requestSnapshot(
                     30, trimEnd, &loop,
-                    [&, checkCancellation, trimEnd](ScreenshotScrollingSnapshot snapshot) {
+                    [&, checkCancellation, trimEnd, index](ScreenshotScrollingSnapshot snapshot) {
                         const auto expected = mode == ScreenshotScrollingRecognitionMode::Horizontal
                                                   ? frame.copy(30, 0, trimEnd - 30, frame.height())
                                                   : frame.copy(0, 30, frame.width(), trimEnd - 30);
                         require(snapshotMatchesSrgbPixels(snapshot.materialize(), expected),
                                 "detached snapshot must retain its pixels");
+                        if (index < 2) {
+                            bool cancelScan = false;
+                            const auto rows = snapshot.rowSource([&] { return cancelScan; });
+                            const auto expectedAlpha = checkCancellation
+                                                           ? ScreenshotImageAlphaContent::NonOpaque
+                                                           : ScreenshotImageAlphaContent::Opaque;
+                            require(rows.verifiedAlphaContent() == expectedAlpha,
+                                    "snapshot opacity must describe only its retained pixels");
+                            QBuffer encoded;
+                            require(encoded.open(QIODevice::WriteOnly) &&
+                                        snow_shot::image_codec::encodeToDevice(
+                                            rows, &encoded, snow::image::Format::png, {}),
+                                    "snapshot rows must encode as a lossless PNG");
+                            const QImage png = QImage::fromData(encoded.data(), "PNG");
+                            require(png.hasAlphaChannel() == checkCancellation,
+                                    "only a fully opaque trim may omit PNG alpha");
+                            auto decoded = png.convertToFormat(QImage::Format_RGBA8888);
+                            decoded.setColorSpace(expected.colorSpace());
+                            require(decoded == expected, "trimmed PNG pixels must round trip");
+                            cancelScan = true;
+                            require(rows.verifiedAlphaContent() == expectedAlpha,
+                                    "immutable row sources must reuse their verified opacity");
+                            require(
+                                snapshot.rowSource([] { return true; }).verifiedAlphaContent() ==
+                                    ScreenshotImageAlphaContent::Unknown,
+                                "cancelled opacity scans must preserve unknown status");
+                            if (!checkCancellation) {
+                                const auto resized = snow_shot::image_codec::resizedRowSource(
+                                    snapshot.rowSource(), {64, 64});
+                                require(resized.isValid(), "the resized snapshot must be readable");
+                                auto cancelled = resized;
+                                cancelled.cancellationRequested = [] { return true; };
+                                require(cancelled.verifiedAlphaContent() ==
+                                            ScreenshotImageAlphaContent::Unknown,
+                                        "resize must forward the active export cancellation");
+                                require(resized.verifiedAlphaContent() == expectedAlpha,
+                                        "a cancelled resize scan must leave opacity retryable");
+                            }
+                        }
                         if (checkCancellation) {
                             require(snapshotMatchesSrgbPixels(
                                         snapshot.materialize([] { return false; }), expected),
                                     "cancellable materialization must preserve native pixels");
+                            int opacityChecks = 0;
+                            const auto original = snapshot.rowSource();
+                            auto interrupted = original;
+                            interrupted.cancellationRequested = [&] {
+                                return ++opacityChecks == 3;
+                            };
+                            require(interrupted.verifiedAlphaContent() ==
+                                            ScreenshotImageAlphaContent::Unknown &&
+                                        opacityChecks == 3,
+                                    "opacity scans must honor export cancellation between chunks");
+                            require(original.verifiedAlphaContent() ==
+                                        ScreenshotImageAlphaContent::NonOpaque,
+                                    "an interrupted scan must leave later exports able to retry");
                             int preCancelledChecks = 0;
                             require(snapshot.materialize([&] {
                                                 ++preCancelledChecks;

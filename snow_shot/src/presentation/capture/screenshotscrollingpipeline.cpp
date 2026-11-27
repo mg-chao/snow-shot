@@ -6,6 +6,7 @@
 #include "latestframemailbox.h"
 #include "../pinned/screenshotpintoperfinstrumentation.h"
 #include "snow_stitch_images.h"
+#include "../../image/snowimageopacity.h"
 
 #include <QLoggingCategory>
 #include <QMetaObject>
@@ -1225,6 +1226,40 @@ ScreenshotScrollingSnapshot::rowSource(std::function<bool()> cancellationRequest
                    static_cast<std::uint32_t>(firstRow), static_cast<std::uint32_t>(rowCount),
                    static_cast<std::size_t>(destinationStride), destination,
                    static_cast<std::size_t>(destinationSize)) != 0;
+    };
+    // The native capture lease is RGBA. Verify the actual selected pixels so
+    // encoders can omit an opaque channel, including for a trimmed snapshot.
+    using Alpha = ScreenshotImageAlphaContent;
+    const auto opacity = std::make_shared<std::atomic<Alpha>>(Alpha::Unknown);
+    source.classifyAlpha = [read = source.readRows, size = source.size,
+                            opacity](const std::function<bool()>& cancel) {
+        const auto cached = opacity->load(std::memory_order_relaxed);
+        if (cached != Alpha::Unknown)
+            return cached;
+        if (cancel && cancel())
+            return Alpha::Unknown;
+        const qsizetype stride = qsizetype(size.width()) * 4;
+        const auto batch =
+            int(std::min<qsizetype>(size.height(), std::max<qsizetype>(1, 1024 * 1024 / stride)));
+        QImage buffer(size.width(), batch, QImage::Format_RGBA8888);
+        if (buffer.isNull())
+            return Alpha::Unknown;
+        auto alpha = Alpha::Opaque;
+        for (int first = 0; first < size.height();) {
+            const int count = std::min(batch, size.height() - first);
+            if ((cancel && cancel()) || !read(first, count, stride, buffer.bits(), count * stride))
+                return Alpha::Unknown;
+            const QImage rows(buffer.constBits(), size.width(), count, stride,
+                              QImage::Format_RGBA8888);
+            alpha = snow_shot::image_codec::detail::imageAlphaContent(rows);
+            if (alpha != Alpha::Opaque)
+                break;
+            first += count;
+        }
+        // Publish only verified results so an interrupted scan can be retried by another export.
+        if (alpha != Alpha::Unknown)
+            opacity->store(alpha, std::memory_order_relaxed);
+        return alpha;
     };
     return source;
 }

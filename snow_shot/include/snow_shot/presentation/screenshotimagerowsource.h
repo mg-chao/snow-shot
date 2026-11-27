@@ -35,9 +35,9 @@ struct ScreenshotImageRowSource final {
     // that storage; producers that already preflight their own caches do not reserve twice.
     std::function<std::shared_ptr<void>(qint64 retainedBytes, qint64 scratchBytes, QString* error)>
         reserveResources;
-    // Optional cached classification of immutable pixels. Invoke on an export worker, not while
-    // snapshotting the source on the GUI thread. Unsupported layouts remain Unknown.
-    std::function<ScreenshotImageAlphaContent()> classifyAlpha;
+    // Optional cached classification of immutable pixels. Pass the current reader's cancellation
+    // predicate, including after wrapping or copying the source. Invoke on an export worker.
+    std::function<ScreenshotImageAlphaContent(const std::function<bool()>&)> classifyAlpha;
 
     [[nodiscard]] bool isValid() const {
         return size.isValid() && !size.isEmpty() && static_cast<bool>(readRows);
@@ -45,7 +45,7 @@ struct ScreenshotImageRowSource final {
 
     [[nodiscard]] ScreenshotImageAlphaContent verifiedAlphaContent() const {
         return isKnownOpaque   ? ScreenshotImageAlphaContent::Opaque
-               : classifyAlpha ? classifyAlpha()
+               : classifyAlpha ? classifyAlpha(cancellationRequested)
                                : ScreenshotImageAlphaContent::Unknown;
     }
 

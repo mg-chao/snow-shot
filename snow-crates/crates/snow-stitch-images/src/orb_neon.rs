@@ -245,6 +245,7 @@ pub(super) unsafe fn fast_scores(
     threshold: i16,
     border: u32,
 ) -> RasterBuffer {
+    let threshold_value = threshold as u8;
     let mut scores = RasterBuffer::zeroed(pixels.len());
     scores
         .par_chunks_mut(width as usize)
@@ -264,18 +265,21 @@ pub(super) unsafe fn fast_scores(
                     let center = vld1q_u8(source);
                     let threshold = vdupq_n_u8(threshold as u8);
                     let mut samples = [vdupq_n_u8(0); 16];
-                    let mut dark = vdupq_n_u8(0);
-                    let mut bright = dark;
-                    for index in [0, 4, 8, 12] {
-                        let (dx, dy) = CIRCLE[index];
-                        let sample =
-                            vld1q_u8(source.offset(dy as isize * w as isize + dx as isize));
-                        samples[index] = sample;
-                        dark = vsubq_u8(dark, vcgtq_u8(vqsubq_u8(center, sample), threshold));
-                        bright = vsubq_u8(bright, vcgtq_u8(vqsubq_u8(sample, center), threshold));
-                    }
-                    // Every nine-pixel arc contains at least two cardinal samples.
-                    if vmaxvq_u8(vmaxq_u8(dark, bright)) >= 2 {
+                    // A nine-point arc intersects both opposite cardinal pairs.
+                    // Min/max keeps the polarity of each pair while testing all lanes.
+                    let north = vld1q_u8(source.sub(3 * w));
+                    let south = vld1q_u8(source.add(3 * w));
+                    let west = vld1q_u8(source.sub(3));
+                    let east = vld1q_u8(source.add(3));
+                    let darkest = vmaxq_u8(vminq_u8(north, south), vminq_u8(west, east));
+                    let brightest = vminq_u8(vmaxq_u8(north, south), vmaxq_u8(west, east));
+                    let contrast =
+                        vmaxq_u8(vqsubq_u8(center, darkest), vqsubq_u8(brightest, center));
+                    if vmaxvq_u8(contrast) > threshold_value {
+                        samples[0] = south;
+                        samples[4] = east;
+                        samples[8] = north;
+                        samples[12] = west;
                         for index in [1, 2, 3, 5, 6, 7, 9, 10, 11, 13, 14, 15] {
                             let (dx, dy) = CIRCLE[index];
                             samples[index] =
@@ -501,6 +505,32 @@ mod tests {
             let mut gray = vec![0; expected.len()];
             unsafe { grayscale_chunk(&pixels, &mut gray, channels) };
             assert_eq!(gray, expected);
+        }
+    }
+
+    #[test]
+    fn cardinal_prefilter_preserves_every_nine_pixel_arc() {
+        let (width, height) = (40_u32, 25_u32);
+        let y = 12_i32;
+        for x in [18_i32, 19] {
+            // Adjacent lanes in different SIMD blocks.
+            for bright_or_dark in [192, 64] {
+                for start in 0..CIRCLE.len() {
+                    let mut pixels = vec![128_u8; (width * height) as usize];
+                    for i in 0..9 {
+                        let (dx, dy) = CIRCLE[(start + i) % CIRCLE.len()];
+                        pixels[((y + dy) * width as i32 + x + dx) as usize] = bright_or_dark;
+                    }
+                    for threshold in [20, 63, 64] {
+                        let scores = unsafe { fast_scores(width, height, &pixels, threshold, 3) };
+                        assert_eq!(
+                            scores[(y * width as i32 + x) as usize],
+                            if threshold < 64 { 63 } else { 0 },
+                            "arc {start}, sample {bright_or_dark}, threshold {threshold}"
+                        );
+                    }
+                }
+            }
         }
     }
 
