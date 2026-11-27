@@ -510,7 +510,8 @@ void ImageExportEditor::changed() {
         return;
     }
     m_preview->setBusy(true);
-    const bool cachedPng = options->format == Format::Png && options->size == m_state.sourceSize &&
+    const bool cachedPng = m_artifact && options->format == Format::Png &&
+                           options->size == m_state.sourceSize &&
                            m_artifact->cachedPng(options->compressionLevel).isValid();
     if (m_generation == 1 || cachedPng || (m_encoded && m_encoded->options == *options))
         startRender();
@@ -534,7 +535,7 @@ void ImageExportEditor::startRender() {
     const quint64 generation = m_generation;
     const auto options = *m_requestedOptions;
     m_renderGeneration = generation;
-    if (options.format == Format::Png && options.size == m_state.sourceSize) {
+    if (m_artifact && options.format == Format::Png && options.size == m_state.sourceSize) {
         auto cached = m_artifact->cachedPng(options.compressionLevel);
         if (cached.isValid() || !m_artifact->shouldCachePng(options.size)) {
             renderPrepared(generation, options, std::move(cached));

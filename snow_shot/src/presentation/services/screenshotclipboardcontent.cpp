@@ -56,6 +56,7 @@
 #endif
 
 #include <snow/image/format.h>
+#include <snow/memory/pixel_buffer.h>
 
 namespace {
 constexpr int kMaximumRichTextWidth = 1024;
@@ -587,24 +588,50 @@ readFileContent(const ScreenshotClipboardLocalImage& localImage, qreal devicePix
     }
 
     const QFileInfo before(localImage.absolutePath);
+    const qint64 fileBytes = before.size();
     const auto maximumEncodedBytes =
         firstFrameOnly ? snow_shot::image::maximumImageImportBytes : kMaximumEncodedImageBytes;
     if (!before.exists() || !before.isFile() || !before.isReadable() ||
-        before.size() != localImage.size ||
-        before.lastModified().toUTC() != localImage.lastModifiedUtc || before.size() <= 0 ||
-        before.size() > (textFile ? 1024 * 1024 : maximumEncodedBytes)) {
+        fileBytes != localImage.size ||
+        before.lastModified().toUTC() != localImage.lastModifiedUtc || fileBytes <= 0 ||
+        fileBytes >= std::numeric_limits<qsizetype>::max() ||
+        fileBytes > (textFile ? 1024 * 1024 : maximumEncodedBytes)) {
         return std::nullopt;
     }
-    if (allocate && !allocate(retained + before.size() + 1))
+    if (allocate && !allocate(retained + fileBytes + 1))
         return std::nullopt;
     QFile file(before.absoluteFilePath());
     if (!file.open(QIODevice::ReadOnly)) {
         return std::nullopt;
     }
-    QByteArray encoded = file.read(before.size() + 1);
+    snow::memory::PixelBuffer snapshot;
+    QByteArray encoded;
+    if (firstFrameOnly && fileBytes >= qint64(snow::memory::kMappedPixelBufferMinimum)) {
+        // Keep an immutable copy across all decoder passes, and return its pages when the
+        // first frame is ready. First-frame results never retain the encoded file.
+        snapshot = snow::memory::allocatePixelBuffer(static_cast<size_t>(fileBytes));
+        if (!snapshot)
+            return std::nullopt;
+        auto* data = reinterpret_cast<char*>(snapshot.get());
+        constexpr qint64 chunkBytes = 1024 * 1024;
+        for (qint64 offset = 0; offset < fileBytes;) {
+            if (cancellationRequested(cancelled))
+                return std::nullopt;
+            const qint64 count = file.read(data + offset, qMin(fileBytes - offset, chunkBytes));
+            if (count <= 0)
+                return std::nullopt;
+            offset += count;
+        }
+        char extra;
+        if (file.read(&extra, 1) != 0)
+            return std::nullopt;
+        encoded = QByteArray::fromRawData(data, static_cast<qsizetype>(fileBytes));
+    } else {
+        encoded = file.read(fileBytes + 1);
+    }
     file.close();
     const QFileInfo after(localImage.absolutePath);
-    if (encoded.isEmpty() || encoded.size() != before.size() || after.size() != localImage.size ||
+    if (encoded.isEmpty() || encoded.size() != fileBytes || after.size() != localImage.size ||
         after.lastModified().toUTC() != localImage.lastModifiedUtc ||
         cancellationRequested(cancelled)) {
         return std::nullopt;

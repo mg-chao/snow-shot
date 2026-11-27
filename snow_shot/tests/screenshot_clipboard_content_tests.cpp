@@ -464,6 +464,28 @@ void firstFrameFilesKeepCompositionProfilesAndRevisionChecks() {
     require(files.size() == 1 &&
                 ScreenshotClipboardContentReader::decodeImageFile(files.first()).isNull(),
             "first-frame-only decoding rejects malformed image files");
+
+    const auto largePath = directory.filePath(QStringLiteral("large-still.bmp"));
+    QImage pixels(1024, 1024, QImage::Format_RGB32);
+    const QColor color(28, 91, 187);
+    pixels.fill(color);
+    require(pixels.save(largePath, "BMP"), "write a multi-chunk image fixture");
+    const auto large = ScreenshotClipboardContentReader::snapshotLocalFiles({largePath});
+    require(large.size() == 1 && large.first().size > 2 * 1024 * 1024,
+            "the large fixture must span multiple reads");
+    int readPolls = 0;
+    int admissions = 0;
+    const auto interrupted = ScreenshotClipboardContentReader::decodeImageFile(
+        large.first(), [&] { return admissions > 0 && ++readPolls == 2; },
+        [&](qint64) {
+            ++admissions;
+            return true;
+        });
+    require(interrupted.isNull() && readPolls == 2 && admissions == 1,
+            "cancel a large import between reads before admitting the decoded raster");
+    const auto decoded = ScreenshotClipboardContentReader::decodeImageFile(large.first());
+    require(decoded.size() == pixels.size() && decoded.pixelColor(975, 975) == color,
+            "a multi-chunk import retains pixels after its encoded snapshot is released");
 }
 
 void animationReplacementPreparationIsAtomicAndWorkerSafe() {
