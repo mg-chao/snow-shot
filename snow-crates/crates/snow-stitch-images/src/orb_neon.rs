@@ -34,6 +34,14 @@ pub(super) unsafe fn grayscale_chunk(source: &[u8], output: &mut [u8], channels:
                 let pixels = vld4_u8(source.as_ptr().add(x * 4));
                 (pixels.0, pixels.1, pixels.2)
             };
+            // Equal RGB components round back to the original byte for every
+            // luminance. Document backgrounds and antialiased text often fill
+            // an entire vector with such pixels.
+            if vmaxv_u8(vorr_u8(veor_u8(r, g), veor_u8(g, b))) == 0 {
+                vst1_u8(output.as_mut_ptr().add(x), r);
+                x += 8;
+                continue;
+            }
             let r = bytes_to_f32(r);
             let g = bytes_to_f32(g);
             let b = bytes_to_f32(b);
@@ -82,6 +90,72 @@ pub(super) unsafe fn grayscale(frame: &Frame) -> Image {
             };
         });
     Image::from_buffer(frame.width() as usize, frame.height() as usize, pixels)
+}
+
+#[derive(Debug)]
+pub(super) struct ResizeBlock {
+    start: usize,
+    first: [u8; 8],
+    second: [u8; 8],
+    weights: [u16; 8],
+}
+
+pub(super) fn resize_plan(width: usize, coefficients: &[ResizeCoefficient]) -> Vec<ResizeBlock> {
+    let Some(last_load) = width.checked_sub(16) else {
+        return Vec::new();
+    };
+    coefficients
+        .chunks_exact(8)
+        .map_while(|group| {
+            // Each adjacent group in the ORB pyramid normally fits in a single 16-byte load.
+            let start = (group[0].first as usize).min(last_load);
+            ((group[7].second as usize) < start + 16).then(|| ResizeBlock {
+                start,
+                first: std::array::from_fn(|i| (group[i].first as usize - start) as u8),
+                second: std::array::from_fn(|i| (group[i].second as usize - start) as u8),
+                weights: std::array::from_fn(|i| group[i].second_weight),
+            })
+        })
+        .collect()
+}
+
+#[target_feature(enable = "neon")]
+pub(super) unsafe fn resize_blocks(
+    blocks: &[ResizeBlock],
+    vertical: ResizeCoefficient,
+    top: &[u8],
+    bottom: &[u8],
+    output: &mut [u8],
+) -> usize {
+    for (block, dst) in blocks.iter().zip(output.chunks_exact_mut(8)) {
+        // The plan bounds the full load on both rows, including the last complete block.
+        unsafe {
+            let first = vld1_u8(block.first.as_ptr());
+            let second = vld1_u8(block.second.as_ptr());
+            let weights = vld1q_u16(block.weights.as_ptr());
+            let horizontal = |row: &[u8]| {
+                let bytes = vld1q_u8(row.as_ptr().add(block.start));
+                let left = vmovl_u8(vqtbl1_u8(bytes, first));
+                let right = vmovl_u8(vqtbl1_u8(bytes, second));
+                // (256 - w) * left + w * right fits in 16 bits, including w = 256.
+                vmlaq_u16(vshlq_n_u16::<8>(left), vsubq_u16(right, left), weights)
+            };
+            let a = horizontal(top);
+            let b = horizontal(bottom);
+            let blend = |a, b| {
+                let sum = vmlal_n_u16(
+                    vmull_n_u16(a, vertical.first_weight),
+                    b,
+                    vertical.second_weight,
+                );
+                vrshrn_n_u32::<16>(sum)
+            };
+            let lo = blend(vget_low_u16(a), vget_low_u16(b));
+            let hi = blend(vget_high_u16(a), vget_high_u16(b));
+            vst1_u8(dst.as_mut_ptr(), vmovn_u16(vcombine_u16(lo, hi)));
+        }
+    }
+    blocks.len() * 8
 }
 
 pub(super) fn fast_polarity_masks(differences: &[i16; 16], threshold: i16) -> (u32, u32) {
@@ -294,17 +368,31 @@ pub(super) unsafe fn blur(image: &Image) -> Image {
                 *target = horizontal_blur_reflected(&image.pixels, image.width, x, y);
             }
             let mut x = 3;
-            while x + 4 <= image.width - 3 {
-                let source = image.pixels.as_ptr().add(y * image.width + x - 3);
-                let mut value = vmulq_n_f32(load_four_bytes(source), BLUR_KERNEL[0]);
-                for (offset, weight) in BLUR_KERNEL.iter().enumerate().skip(1) {
-                    value = vaddq_f32(
-                        value,
-                        vmulq_n_f32(load_four_bytes(source.add(offset)), *weight),
-                    );
+            if image.width >= 12 {
+                let source = image.pixels.as_ptr().add(y * image.width);
+                let mut first = load_four_bytes(source);
+                let mut middle = load_four_bytes(source.add(4));
+                // Consecutive four-pixel windows share eight input bytes.
+                while x - 3 + 12 <= image.width {
+                    let last = load_four_bytes(source.add(x - 3 + 8));
+                    let taps = [
+                        first,
+                        vextq_f32::<1>(first, middle),
+                        vextq_f32::<2>(first, middle),
+                        vextq_f32::<3>(first, middle),
+                        middle,
+                        vextq_f32::<1>(middle, last),
+                        vextq_f32::<2>(middle, last),
+                    ];
+                    let mut value = vmulq_n_f32(taps[0], BLUR_KERNEL[0]);
+                    for tap in 1..7 {
+                        value = vaddq_f32(value, vmulq_n_f32(taps[tap], BLUR_KERNEL[tap]));
+                    }
+                    vst1q_f32(row.as_mut_ptr().add(x), value);
+                    x += 4;
+                    first = middle;
+                    middle = last;
                 }
-                vst1q_f32(row.as_mut_ptr().add(x), value);
-                x += 4;
             }
             if x > 3 {
                 executed(2);
@@ -314,8 +402,7 @@ pub(super) unsafe fn blur(image: &Image) -> Image {
             }
         },
         |rows, output| unsafe {
-            let mut x = 0;
-            while x + 4 <= output.len() {
+            let rounded = |x| {
                 let load = |row: usize| vld1q_f32(rows[row].as_ptr().add(x));
                 let mut value = vmulq_n_f32(load(3), BLUR_KERNEL[3]);
                 for offset in 1..4 {
@@ -327,12 +414,14 @@ pub(super) unsafe fn blur(image: &Image) -> Image {
                         ),
                     );
                 }
-                let mut values = [0.0_f32; 4];
-                vst1q_f32(values.as_mut_ptr(), value);
-                for (target, value) in output[x..x + 4].iter_mut().zip(values) {
-                    *target = cv_round(value).clamp(0, 255) as u8;
-                }
-                x += 4;
+                // The scalar blur rounds ties to even before narrowing to a pixel.
+                vqmovn_u32(vcvtnq_u32_f32(value))
+            };
+            let mut x = 0;
+            while x + 8 <= output.len() {
+                let pixels = vqmovn_u16(vcombine_u16(rounded(x), rounded(x + 4)));
+                vst1_u8(output.as_mut_ptr().add(x), pixels);
+                x += 8;
             }
             if x > 0 {
                 executed(2);
@@ -384,6 +473,30 @@ pub(super) unsafe fn descriptor(image: &Image, keypoint: Keypoint) -> [u8; 32] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn neutral_and_mixed_vectors_preserve_grayscale_for_every_intensity() {
+        for channels in [3, 4] {
+            let mut pixels = Vec::new();
+            for value in 0..=255u8 {
+                for lane in 0..16 {
+                    let blue = if lane == 15 {
+                        value.wrapping_add(73)
+                    } else {
+                        value
+                    };
+                    pixels.extend_from_slice(&[value, value, blue]);
+                    if channels == 4 {
+                        pixels.push(255 - value);
+                    }
+                }
+            }
+            let expected: Vec<_> = pixels.chunks_exact(channels).map(grayscale_pixel).collect();
+            let mut gray = vec![0; expected.len()];
+            unsafe { grayscale_chunk(&pixels, &mut gray, channels) };
+            assert_eq!(gray, expected);
+        }
+    }
 
     #[test]
     fn neon_orb_kernels_execute_and_match_scalar_for_formats_tails_arcs_and_angles() {

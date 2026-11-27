@@ -464,7 +464,7 @@ pub(crate) struct SimilarityMap {
     valid: Vec<bool>,
 }
 
-fn similarity_for_tile(
+fn similarity_for_tile<const ALIGNED: bool>(
     reference: &GrayImage,
     incoming: &GrayImage,
     layout: TileLayout,
@@ -493,7 +493,7 @@ fn similarity_for_tile(
                 StitchAxis::Vertical => (x as f32, y as f32 - scaled_offset),
                 StitchAxis::Horizontal => (x as f32 - scaled_offset, y as f32),
             };
-            let Some(reference_value) = bilinear_axis_sample(
+            let Some(reference_value) = bilinear_axis_sample::<ALIGNED>(
                 reference_pixels,
                 reference.width,
                 reference.height,
@@ -527,7 +527,7 @@ fn similarity_for_tile(
                 StitchAxis::Vertical => (x as f32, y as f32 - scaled_offset),
                 StitchAxis::Horizontal => (x as f32 - scaled_offset, y as f32),
             };
-            let Some(reference_value) = bilinear_axis_sample(
+            let Some(reference_value) = bilinear_axis_sample::<ALIGNED>(
                 reference_pixels,
                 reference.width,
                 reference.height,
@@ -537,7 +537,7 @@ fn similarity_for_tile(
             ) else {
                 continue;
             };
-            let reference_gradient = bilinear_axis_sample(
+            let reference_gradient = bilinear_axis_sample::<ALIGNED>(
                 reference_gradients,
                 reference.width,
                 reference.height,
@@ -582,7 +582,7 @@ fn similarity_for_tile(
     Some((value, texture))
 }
 
-fn bilinear_axis_sample(
+fn bilinear_axis_sample<const ALIGNED: bool>(
     pixels: &[f32],
     width: usize,
     height: usize,
@@ -598,6 +598,9 @@ fn bilinear_axis_sample(
         || y > height.saturating_sub(1) as f32
     {
         return None;
+    }
+    if ALIGNED {
+        return Some(pixels[y as usize * width + x as usize]);
     }
     match axis {
         StitchAxis::Vertical => {
@@ -663,7 +666,27 @@ impl SimilarityMap {
         let scaled_offset = offset as f32 / DOWNSAMPLE as f32;
         let tiles = (0..layout.len())
             .into_par_iter()
-            .map(|tile| similarity_for_tile(reference, incoming, layout, axis, scaled_offset, tile))
+            .map(|tile| {
+                if offset % DOWNSAMPLE as i32 == 0 {
+                    similarity_for_tile::<true>(
+                        reference,
+                        incoming,
+                        layout,
+                        axis,
+                        scaled_offset,
+                        tile,
+                    )
+                } else {
+                    similarity_for_tile::<false>(
+                        reference,
+                        incoming,
+                        layout,
+                        axis,
+                        scaled_offset,
+                        tile,
+                    )
+                }
+            })
             .collect::<Vec<_>>();
         let mut map = Self {
             layout,
@@ -893,6 +916,23 @@ mod tests {
                 &*sobel_magnitude_scalar(&source, width, height),
                 "{width}x{height}"
             );
+        }
+    }
+
+    #[test]
+    fn whole_pixel_map_offsets_match_interpolated_tiles_exactly() {
+        let frame = gray_frame(69, 57, |x, y| ((x * 13 + y * 23) % 251) as u8);
+        let gray = GrayImage::from_frame(&frame).unwrap();
+        let layout = TileLayout::new(frame.width(), frame.height(), 17);
+        for axis in [StitchAxis::Vertical, StitchAxis::Horizontal] {
+            for offset in [-20.0, -3.0, 0.0, 4.0, 18.0] {
+                for tile in 0..layout.len() {
+                    assert_eq!(
+                        similarity_for_tile::<true>(&gray, &gray, layout, axis, offset, tile),
+                        similarity_for_tile::<false>(&gray, &gray, layout, axis, offset, tile)
+                    );
+                }
+            }
         }
     }
 

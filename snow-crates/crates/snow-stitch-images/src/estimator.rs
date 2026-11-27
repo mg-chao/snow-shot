@@ -287,23 +287,50 @@ unsafe fn nearest_two_neon(
             distance: u32::MAX,
         };
         let mut second = first;
-        for (train_index, candidate) in train.iter().enumerate() {
+        let counts = |candidate: &BinaryFeature| {
             let low = vcntq_u8(veorq_u8(query_low, vld1q_u8(candidate.descriptor.as_ptr())));
             let high = vcntq_u8(veorq_u8(
                 query_high,
                 vld1q_u8(candidate.descriptor.as_ptr().add(16)),
             ));
-            let distance = u32::from(vaddlvq_u8(vaddq_u8(low, high)));
-            let matched = DescriptorMatch {
-                train_index,
-                distance,
+            vaddq_u8(low, high)
+        };
+        let retain =
+            |first: &mut DescriptorMatch, second: &mut DescriptorMatch, train_index, distance| {
+                // Candidates arrive in index order. Earlier entries win equal distances.
+                let matched = DescriptorMatch {
+                    train_index,
+                    distance,
+                };
+                if distance < first.distance {
+                    *second = *first;
+                    *first = matched;
+                } else if distance < second.distance {
+                    *second = matched;
+                }
             };
-            if (distance, train_index) < (first.distance, first.train_index) {
-                second = first;
-                first = matched;
-            } else if (distance, train_index) < (second.distance, second.train_index) {
-                second = matched;
+        let mut blocks = train.chunks_exact(4);
+        for (index, block) in blocks.by_ref().enumerate() {
+            let a = vpaddq_u8(counts(&block[0]), counts(&block[1]));
+            let b = vpaddq_u8(counts(&block[2]), counts(&block[3]));
+            // Each lane sums all 256 descriptor bits. Widen before the final reductions.
+            let distances = vpaddlq_u16(vpaddlq_u8(vpaddq_u8(a, b)));
+            if vminvq_u32(distances) < second.distance {
+                let mut lanes = [0; 4];
+                vst1q_u32(lanes.as_mut_ptr(), distances);
+                for (lane, distance) in lanes.into_iter().enumerate() {
+                    retain(&mut first, &mut second, index * 4 + lane, distance);
+                }
             }
+        }
+        let remainder = blocks.remainder();
+        for (lane, candidate) in remainder.iter().enumerate() {
+            retain(
+                &mut first,
+                &mut second,
+                train.len() - remainder.len() + lane,
+                u32::from(vaddlvq_u8(counts(candidate))),
+            );
         }
         #[cfg(test)]
         NEON_MATCHES.fetch_add(train.len(), std::sync::atomic::Ordering::Relaxed);
@@ -344,12 +371,39 @@ fn match_descriptors(
     match_descriptors_portable(queries, train)
 }
 
+fn beats_lowe_ratio(distance: u32, alternative: u32) -> bool {
+    (distance as f32) < LOWE_RATIO * alternative as f32
+}
+
 fn passes_ratio(matches: [DescriptorMatch; 2]) -> Option<DescriptorMatch> {
     let first = matches[0];
     let second = matches[1];
     (first.distance as f32 <= MAX_HAMMING_DISTANCE
-        && (first.distance as f32) < LOWE_RATIO * second.distance as f32)
-        .then_some(first)
+        && beats_lowe_ratio(first.distance, second.distance))
+    .then_some(first)
+}
+
+fn prune_reverse_candidates(forward: &mut [Option<DescriptorMatch>], incoming_count: usize) {
+    // The reverse winner must beat even the other references that chose the same
+    // incoming feature. Reuse those distances to leave at most one full scan per feature.
+    let mut nearest = vec![[u32::MAX; 2]; incoming_count];
+    for matched in forward.iter().flatten() {
+        let [best, second] = &mut nearest[matched.train_index];
+        if matched.distance < *best {
+            *second = *best;
+            *best = matched.distance;
+        } else {
+            *second = (*second).min(matched.distance);
+        }
+    }
+    for matched in forward {
+        if matched.is_some_and(|candidate| {
+            let [best, second] = nearest[candidate.train_index];
+            candidate.distance != best || !beats_lowe_ratio(best, second)
+        }) {
+            *matched = None;
+        }
+    }
 }
 
 fn mutual_observations_rust(
@@ -357,55 +411,47 @@ fn mutual_observations_rust(
     incoming: &[BinaryFeature],
     layout: TileLayout,
     axis: StitchAxis,
-    parallel_work: bool,
 ) -> Vec<MatchObservation> {
-    let (reverse_best, forward_best) = if parallel_work {
-        rayon::join(
-            || match_descriptors(incoming, reference),
-            || match_descriptors(reference, incoming),
-        )
-    } else {
-        (
-            match_descriptors(incoming, reference),
-            match_descriptors(reference, incoming),
-        )
-    };
-    let mut observations = Vec::new();
-    for (reference_index, matched) in forward_best.into_iter().enumerate() {
-        let Some(matched) = matched else {
-            continue;
-        };
-        let incoming_index = matched.train_index;
-        if reverse_best
-            .get(incoming_index)
-            .and_then(|matched| *matched)
-            .map(|matched| matched.train_index)
-            != Some(reference_index)
-        {
-            continue;
-        }
-        let feature = reference[reference_index];
-        let incoming_feature = incoming[incoming_index];
-        let dx = round_coordinate(incoming_feature.x) - round_coordinate(feature.x);
-        let dy = round_coordinate(incoming_feature.y) - round_coordinate(feature.y);
-        if axis.cross_delta(dx, dy).abs() > MAX_CROSS_AXIS_DELTA {
-            continue;
-        }
-        let Some(reference_tile) = layout.index(feature.x, feature.y) else {
-            continue;
-        };
-        observations.push(MatchObservation {
-            distance: matched.distance as f32,
-            reference_x: feature.x,
-            reference_y: feature.y,
-            incoming_x: incoming_feature.x,
-            incoming_y: incoming_feature.y,
-            reference_tile,
-            dx,
-            dy,
-        });
+    if reference.len() < 2 || incoming.len() < 2 {
+        return Vec::new();
     }
-    observations
+    let mut forward = match_descriptors(reference, incoming);
+    prune_reverse_candidates(&mut forward, incoming.len());
+    forward
+        .into_par_iter()
+        .enumerate()
+        .filter_map(|(reference_index, matched)| {
+            let matched = matched?;
+            let feature = &reference[reference_index];
+            let incoming_feature = &incoming[matched.train_index];
+            let dx = round_coordinate(incoming_feature.x) - round_coordinate(feature.x);
+            let dy = round_coordinate(incoming_feature.y) - round_coordinate(feature.y);
+            if axis.cross_delta(dx, dy).abs() > MAX_CROSS_AXIS_DELTA {
+                return None;
+            }
+            let reference_tile = layout.index(feature.x, feature.y)?;
+            // References that did not choose this incoming feature can still rule it out.
+            if reference.iter().enumerate().any(|(index, other)| {
+                index != reference_index
+                    && !beats_lowe_ratio(
+                        matched.distance,
+                        hamming_distance(&incoming_feature.descriptor, &other.descriptor),
+                    )
+            }) {
+                return None;
+            }
+            Some(MatchObservation {
+                distance: matched.distance as f32,
+                reference_x: feature.x,
+                reference_y: feature.y,
+                incoming_x: incoming_feature.x,
+                incoming_y: incoming_feature.y,
+                reference_tile,
+                dx,
+                dy,
+            })
+        })
+        .collect()
 }
 
 fn detect_balanced_rust(
@@ -506,13 +552,8 @@ fn pure_rust_feature_evidence(
         .expect("prepared reference features");
     feature_perf.finish();
     let _perf = crate::perf::Scope::new(crate::perf::Stage::DescriptorMatching);
-    let observations = mutual_observations_rust(
-        reference_features,
-        &incoming_features,
-        layout,
-        axis,
-        parallel_work,
-    );
+    let observations =
+        mutual_observations_rust(reference_features, &incoming_features, layout, axis);
 
     let evidence = FeatureEvidence {
         reference_features: reference_features.len() as u32,
@@ -1788,6 +1829,124 @@ mod tests {
         assert_eq!(round_coordinate(1.5) - round_coordinate(0.49), 2);
     }
 
+    #[test]
+    fn mutual_matches_agree_with_two_exhaustive_ratio_searches() {
+        let features = (0..32)
+            .map(|i| BinaryFeature {
+                x: (i * 7) as f32,
+                y: (i * 5) as f32,
+                descriptor: std::array::from_fn(|byte| ((i * 73 + byte * 19) ^ (i + byte)) as u8),
+            })
+            .collect::<Vec<_>>();
+        let mut incoming = features.clone();
+        for (i, feature) in incoming.iter_mut().enumerate() {
+            feature.descriptor[0] ^= 1;
+            if i % 3 == 0 {
+                feature.x += 5.0;
+            }
+        }
+        incoming[3].descriptor = incoming[2].descriptor;
+        let mut reference = features;
+        reference[5].descriptor = reference[6].descriptor;
+        let layout = TileLayout::new(256, 180, 32);
+        for axis in [StitchAxis::Vertical, StitchAxis::Horizontal] {
+            for count in [0, 1, 2, reference.len()] {
+                let reference = &reference[..count];
+                let reverse = match_descriptors_portable(&incoming, reference);
+                let expected = match_descriptors_portable(reference, &incoming)
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(|(i, m)| {
+                        let m = m?;
+                        let a = &reference[i];
+                        let b = &incoming[m.train_index];
+                        let dx = round_coordinate(b.x) - round_coordinate(a.x);
+                        let dy = round_coordinate(b.y) - round_coordinate(a.y);
+                        (reverse[m.train_index]?.train_index == i
+                            && axis.cross_delta(dx, dy).abs() <= MAX_CROSS_AXIS_DELTA)
+                            .then_some((a.x, b.x, m.distance))
+                    })
+                    .collect::<Vec<_>>();
+                let actual = mutual_observations_rust(reference, &incoming, layout, axis);
+                assert_eq!(
+                    actual
+                        .into_iter()
+                        .map(|m| (m.reference_x, m.incoming_x, m.distance as u32))
+                        .collect::<Vec<_>>(),
+                    expected
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn repeated_forward_matches_leave_at_most_one_reverse_candidate() {
+        let feature = |descriptor, y| BinaryFeature {
+            x: 16.0,
+            y,
+            descriptor,
+        };
+        let incoming = [feature([0; 32], 12.0), feature([255; 32], 12.0)];
+        let mut repeated = [0; 32];
+        repeated[..25].fill(1);
+        let mut reference = vec![feature([0xAA; 32], 36.0); 512];
+        reference.resize(1024, feature(repeated, 36.0));
+        let layout = TileLayout::new(96, 96, 16);
+
+        // An equal distance and a distance exactly at the ratio threshold both fail.
+        for (distance, expected) in [(25, None), (20, None), (19, Some(19))] {
+            let mut descriptor = repeated;
+            descriptor[distance..].fill(0);
+            reference[1023] = feature(descriptor, 64.0);
+            let mut forward = match_descriptors(&reference, &incoming);
+            assert_eq!(forward.iter().flatten().count(), 512);
+            prune_reverse_candidates(&mut forward, incoming.len());
+            let count = usize::from(expected.is_some());
+            assert_eq!(forward.iter().flatten().count(), count);
+            assert_eq!(forward[1023].map(|matched| matched.distance), expected);
+
+            let observations =
+                mutual_observations_rust(&reference, &incoming, layout, StitchAxis::Vertical);
+            assert_eq!(observations.len(), count);
+            assert_eq!(
+                observations
+                    .first()
+                    .map(|matched| (matched.dy, matched.distance)),
+                expected.map(|distance| (-52, distance as f32))
+            );
+        }
+    }
+
+    #[test]
+    fn reverse_ratio_still_compares_references_that_chose_another_feature() {
+        let zero = BinaryFeature {
+            x: 16.0,
+            y: 12.0,
+            descriptor: [0; 32],
+        };
+        let mut other = zero;
+        other.descriptor[..3].fill(255);
+        let incoming = [zero, other];
+
+        let mut first = zero;
+        first.y = 24.0;
+        first.descriptor[3..6].copy_from_slice(&[255, 255, 15]);
+        other.y = 36.0;
+        let reference = [first, other];
+        let mut forward = match_descriptors(&reference, &incoming);
+        prune_reverse_candidates(&mut forward, incoming.len());
+        assert_eq!(forward[0].unwrap().train_index, 0);
+        assert_eq!(forward[1].unwrap().train_index, 1);
+
+        // The first reference is 20 bits from zero. The other reference is 24
+        // bits away, close enough to reject the first under the reverse ratio.
+        let layout = TileLayout::new(96, 96, 16);
+        let observations =
+            mutual_observations_rust(&reference, &incoming, layout, StitchAxis::Vertical);
+        assert_eq!(observations.len(), 1);
+        assert_eq!(observations[0].reference_y, other.y);
+    }
+
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[test]
     fn popcnt_matcher_matches_portable_results() {
@@ -1877,6 +2036,14 @@ mod tests {
             unsafe { nearest_two_neon(&zero, &[full, zero]) }.unwrap()[1].distance,
             256
         );
+        // Exercise the widening reduction at distance 256 and equal best matches
+        // on opposite sides of a four-descriptor block boundary.
+        for candidates in [[full; 8], [full, full, full, zero, zero, full, full, full]] {
+            assert_eq!(
+                unsafe { nearest_two_neon(&zero, &candidates) },
+                nearest_two(&zero, &candidates)
+            );
+        }
         assert!(NEON_MATCHES.load(std::sync::atomic::Ordering::Relaxed) > before);
     }
 

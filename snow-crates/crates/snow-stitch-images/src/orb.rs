@@ -109,6 +109,8 @@ struct ResizePlan {
     width: usize,
     height: usize,
     horizontal: Vec<ResizeCoefficient>,
+    #[cfg(target_arch = "aarch64")]
+    blocks: Vec<neon::ResizeBlock>,
     vertical: Vec<ResizeCoefficient>,
 }
 
@@ -742,20 +744,26 @@ fn resize_linear_exact(source: &Image, plan: &ResizePlan) -> Image {
             let vertical = plan.vertical[target_y];
             let source_y = vertical.first as usize;
             let next_y = vertical.second as usize;
-            for (target_x, &horizontal) in plan.horizontal.iter().enumerate() {
+            let top = &source_pixels[source_y * source.width..(source_y + 1) * source.width];
+            let bottom = &source_pixels[next_y * source.width..(next_y + 1) * source.width];
+            #[cfg(target_arch = "aarch64")]
+            let processed =
+                unsafe { neon::resize_blocks(&plan.blocks, vertical, top, bottom, output) };
+            #[cfg(not(target_arch = "aarch64"))]
+            let processed = 0;
+            for (target, horizontal) in output[processed..]
+                .iter_mut()
+                .zip(&plan.horizontal[processed..])
+            {
                 let source_x = horizontal.first as usize;
                 let next_x = horizontal.second as usize;
-                let top_value = u32::from(source_pixels[source_y * source.width + source_x])
-                    * u32::from(horizontal.first_weight)
-                    + u32::from(source_pixels[source_y * source.width + next_x])
-                        * u32::from(horizontal.second_weight);
-                let bottom_value = u32::from(source_pixels[next_y * source.width + source_x])
-                    * u32::from(horizontal.first_weight)
-                    + u32::from(source_pixels[next_y * source.width + next_x])
-                        * u32::from(horizontal.second_weight);
+                let top_value = u32::from(top[source_x]) * u32::from(horizontal.first_weight)
+                    + u32::from(top[next_x]) * u32::from(horizontal.second_weight);
+                let bottom_value = u32::from(bottom[source_x]) * u32::from(horizontal.first_weight)
+                    + u32::from(bottom[next_x]) * u32::from(horizontal.second_weight);
                 let value = top_value * u32::from(vertical.first_weight)
                     + bottom_value * u32::from(vertical.second_weight);
-                output[target_x] = ((value + (1_u32 << 15)) >> 16) as u8;
+                *target = ((value + (1_u32 << 15)) >> 16) as u8;
             }
         });
     Image::from_buffer(plan.width, plan.height, pixels)
@@ -826,12 +834,15 @@ impl PyramidPlan {
         let levels = (1..LEVELS)
             .map(|level| {
                 let (target_width, target_height) = level_size(width, height, level);
+                let horizontal = resize_coefficients(source_width, target_width);
                 let plan = ResizePlan {
                     source_width,
                     source_height,
                     width: target_width,
                     height: target_height,
-                    horizontal: resize_coefficients(source_width, target_width),
+                    #[cfg(target_arch = "aarch64")]
+                    blocks: neon::resize_plan(source_width, &horizontal),
+                    horizontal,
                     vertical: resize_coefficients(source_height, target_height),
                 };
                 source_width = target_width;
@@ -997,22 +1008,18 @@ fn orient(image: &Image, keypoint: &mut Keypoint, maximum_x: &[usize]) {
     let half = PATCH_SIZE / 2;
     let mut moment_y = 0_i32;
     let mut moment_x = 0_i32;
-    for horizontal in -(half as isize)..=half as isize {
-        moment_x += horizontal as i32 * i32::from(pixels[(center as isize + horizontal) as usize]);
+    for (index, &pixel) in pixels[center - half..=center + half].iter().enumerate() {
+        moment_x += (index as i32 - half as i32) * i32::from(pixel);
     }
-    for (vertical, &horizontal_maximum) in maximum_x.iter().enumerate().take(half + 1).skip(1) {
+    for (vertical, &radius) in maximum_x.iter().enumerate().take(half + 1).skip(1) {
+        let row_offset = vertical * image.width;
+        let lower = &pixels[center + row_offset - radius..=center + row_offset + radius];
+        let upper = &pixels[center - row_offset - radius..=center - row_offset + radius];
         let mut sum = 0_i32;
-        for horizontal in -(horizontal_maximum as isize)..=horizontal_maximum as isize {
-            let above = i32::from(
-                pixels[(center as isize + horizontal + vertical as isize * image.width as isize)
-                    as usize],
-            );
-            let below = i32::from(
-                pixels[(center as isize + horizontal - vertical as isize * image.width as isize)
-                    as usize],
-            );
-            sum += above - below;
-            moment_x += horizontal as i32 * (above + below);
+        for (index, (&a, &b)) in lower.iter().zip(upper).enumerate() {
+            let (a, b) = (i32::from(a), i32::from(b));
+            sum += a - b;
+            moment_x += (index as i32 - radius as i32) * (a + b);
         }
         moment_y += vertical as i32 * sum;
     }
@@ -1064,36 +1071,46 @@ fn vertical_blur_pixel(rows: &[&[f32]; 7], x: usize) -> u8 {
     cv_round(value).clamp(0, 255) as u8
 }
 
-/// A separable seven-tap blur needs seven horizontal rows, regardless of height.
-/// The slots are exclusively owned by this blur; reflected border rows can share
-/// a slot because each live source row has a distinct index modulo seven.
+/// Each stripe keeps a ring of seven horizontal rows. Reflect against the entire
+/// image so a worker boundary has exactly the same neighborhood as an interior row.
 fn blur_with_rows(
     image: &Image,
-    mut horizontal_row: impl FnMut(&mut [f32], usize),
-    mut vertical_row: impl FnMut([&[f32]; 7], &mut [u8]),
+    horizontal_row: impl Fn(&mut [f32], usize) + Sync,
+    vertical_row: impl Fn([&[f32]; 7], &mut [u8]) + Sync,
 ) -> Image {
-    let mut horizontal = RasterArray::<f32>::zeroed(image.width * 7);
-    let horizontal = &mut *horizontal;
-    let mut cached_rows = [usize::MAX; 7];
     let mut pixels = RasterBuffer::zeroed(image.pixels.len());
-    for (y, output) in pixels.as_mut_slice().chunks_mut(image.width).enumerate() {
-        let sources: [usize; 7] = std::array::from_fn(|offset| {
-            reflect_101(y as isize + offset as isize - 3, image.height)
-        });
-        for source in sources {
-            let slot = source % 7;
-            if cached_rows[slot] != source {
-                let start = slot * image.width;
-                horizontal_row(&mut horizontal[start..start + image.width], source);
-                cached_rows[slot] = source;
-            }
-        }
-        let rows = sources.map(|source| {
-            let start = source % 7 * image.width;
-            &horizontal[start..start + image.width]
-        });
-        vertical_row(rows, output);
+    if pixels.is_empty() {
+        return Image::from_buffer(image.width, image.height, pixels);
     }
+    let stripe_rows = (128 * 1024 / image.width).max(64).min(image.height);
+    pixels
+        .par_chunks_mut(image.width * stripe_rows)
+        .enumerate()
+        .for_each_init(
+            || RasterArray::<f32>::zeroed(image.width * 7),
+            |horizontal, (stripe, output)| {
+                let mut cached_rows = [usize::MAX; 7];
+                for (local_y, output_row) in output.chunks_mut(image.width).enumerate() {
+                    let y = stripe * stripe_rows + local_y;
+                    let sources: [usize; 7] = std::array::from_fn(|offset| {
+                        reflect_101(y as isize + offset as isize - 3, image.height)
+                    });
+                    for source in sources {
+                        let slot = source % 7;
+                        if cached_rows[slot] != source {
+                            let start = slot * image.width;
+                            horizontal_row(&mut horizontal[start..start + image.width], source);
+                            cached_rows[slot] = source;
+                        }
+                    }
+                    let rows = sources.map(|source| {
+                        let start = source % 7 * image.width;
+                        &horizontal[start..start + image.width]
+                    });
+                    vertical_row(rows, output_row);
+                }
+            },
+        );
     Image::from_buffer(image.width, image.height, pixels)
 }
 
@@ -1965,6 +1982,21 @@ mod tests {
                 assert_eq!(unsafe { blur_avx2(&image) }, expected);
             }
         }
+    }
+
+    #[test]
+    fn blur_stripes_match_the_full_raster_across_worker_boundaries() {
+        let empty = Image::new(17, 0, Vec::new());
+        assert_eq!(blur(&empty), empty);
+        let (width, height) = (1291, 267);
+        let image = Image::new(
+            width,
+            height,
+            (0..width * height)
+                .map(|i| ((i * 31 + i / width * 17) % 251) as u8)
+                .collect(),
+        );
+        assert_eq!(blur(&image), reference_blur(&image));
     }
 
     #[test]
