@@ -2,19 +2,21 @@ use std::collections::VecDeque;
 use std::mem::{size_of, size_of_val};
 use std::ptr;
 use std::slice;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use windows::Win32::Foundation::S_OK;
 use windows::Win32::Media::Audio::{
     AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY, AUDCLNT_BUFFERFLAGS_SILENT,
-    AUDCLNT_E_UNSUPPORTED_FORMAT, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM,
-    AUDCLNT_STREAMFLAGS_EVENTCALLBACK, AUDCLNT_STREAMFLAGS_LOOPBACK, AUDCLNT_STREAMFLAGS_NOPERSIST,
+    AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR, AUDCLNT_E_UNSUPPORTED_FORMAT, AUDCLNT_SHAREMODE_SHARED,
+    AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+    AUDCLNT_STREAMFLAGS_LOOPBACK, AUDCLNT_STREAMFLAGS_NOPERSIST,
     AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY, IAudioCaptureClient, IAudioClient,
     IMMDeviceEnumerator, WAVE_FORMAT_PCM, WAVEFORMATEX, WAVEFORMATEXTENSIBLE,
     WAVEFORMATEXTENSIBLE_0,
 };
 use windows::Win32::Media::KernelStreaming::{KSDATAFORMAT_SUBTYPE_PCM, WAVE_FORMAT_EXTENSIBLE};
 use windows::Win32::System::Com::{CLSCTX_ALL, CoTaskMemFree};
+use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
 
 use crate::device::{DeviceFlow, DeviceSelector};
 use crate::error::{AudioError, AudioResult};
@@ -274,6 +276,7 @@ impl PacketAccumulator {
                     discontinuity: pending.discontinuity,
                     is_silent: pending.is_silent,
                     sequence: *sequence,
+                    capture_time_estimated: pending.qpc_position_100ns.is_none(),
                     ..Default::default()
                 };
                 meta.set_timing(pending.capture_time, pending.qpc_position_100ns);
@@ -335,30 +338,10 @@ impl PacketAccumulator {
 fn merge_pending_meta(slot: &mut Option<PendingMetadata>, incoming: PendingMetadata) {
     match slot {
         Some(existing) => {
-            if let Some(capture_time) = incoming.capture_time {
-                existing.capture_time = Some(
-                    existing
-                        .capture_time
-                        .map_or(capture_time, |current| current.max(capture_time)),
-                );
-            }
-
-            if let Some(qpc) = incoming.qpc_position_100ns {
-                existing.qpc_position_100ns = Some(
-                    existing
-                        .qpc_position_100ns
-                        .map_or(qpc, |current| current.max(qpc)),
-                );
-            }
-
-            if let Some(position) = incoming.device_position_frames {
-                existing.device_position_frames = Some(
-                    existing
-                        .device_position_frames
-                        .map_or(position, |current| current.max(position)),
-                );
-            }
-
+            // All positions describe the last slice, including when its QPC is invalid.
+            existing.capture_time = incoming.capture_time;
+            existing.qpc_position_100ns = incoming.qpc_position_100ns;
+            existing.device_position_frames = incoming.device_position_frames;
             existing.discontinuity |= incoming.discontinuity;
             existing.is_silent &= incoming.is_silent;
         }
@@ -374,42 +357,132 @@ pub(crate) struct WasapiSource {
     runtime: SourceRuntime,
     converter: AudioConverter,
     accumulator: PacketAccumulator,
+    clock: WasapiClock,
     sequence: u64,
     silence_scratch: Vec<u8>,
 }
 
-/// WASAPI reports device and QPC positions for the first frame in a packet,
-/// while [`AudioPacketMetadata`] records positions at the packet end. Normalize
-/// the boundary once, before the chunk enters the accumulator, so slicing a
-/// chunk into multiple output packets cannot apply a variable offset.
+#[derive(Default)]
+struct WasapiClock {
+    // Rust's Windows Instant and WASAPI both use QPC. Calibrate their epochs once.
+    anchor: Option<(Instant, i64)>,
+    last_qpc_start: Option<i64>,
+}
+
+impl WasapiClock {
+    fn new() -> Self {
+        let mut frequency = 0;
+        if unsafe { QueryPerformanceFrequency(&mut frequency) }.is_err() || frequency <= 0 {
+            return Self::default();
+        }
+
+        // Prefer the tightest bracket in case the thread is preempted during calibration.
+        let anchor = (0..3)
+            .filter_map(|_| {
+                let before = Instant::now();
+                let mut ticks = 0;
+                unsafe { QueryPerformanceCounter(&mut ticks) }.ok()?;
+                let after = Instant::now();
+                let span = after.duration_since(before);
+                let qpc =
+                    i64::try_from(i128::from(ticks) * 10_000_000 / i128::from(frequency)).ok()?;
+                Some((span, (before + span / 2, qpc)))
+            })
+            .min_by_key(|&(span, _)| span)
+            .map(|(_, anchor)| anchor);
+        Self {
+            anchor,
+            ..Self::default()
+        }
+    }
+
+    fn capture_instant(&self, position: i64) -> Option<Instant> {
+        let (instant, anchor) = self.anchor?;
+        let offset = Duration::from_nanos(anchor.abs_diff(position).checked_mul(100)?);
+        if position >= anchor {
+            instant.checked_add(offset)
+        } else {
+            instant.checked_sub(offset)
+        }
+    }
+
+    fn packet_end(
+        &mut self,
+        read_at: Instant,
+        qpc_start: u64,
+        duration: Duration,
+    ) -> (Instant, Option<i64>) {
+        if let Ok(position) = i64::try_from(qpc_start)
+            && position > 0
+            && self.last_qpc_start.is_none_or(|last| position > last)
+            && let Some(start) = self.capture_instant(position)
+            && start <= read_at
+            && let Some(end) = start.checked_add(duration)
+            && let Some(qpc_end) = position.checked_add((duration.as_nanos() / 100) as i64)
+        {
+            self.last_qpc_start = Some(position);
+            return (end, Some(qpc_end));
+        }
+
+        (read_at, None)
+    }
+}
+
+/// Normalize the first-frame WASAPI positions to the end of the native chunk
+/// so a resampled or split output packet keeps its position on the capture clock.
 fn pending_metadata_for_wasapi_chunk(
-    capture_time: Instant,
+    clock: &mut WasapiClock,
+    read_at: Instant,
     qpc_position_100ns: u64,
     device_position_frames: u64,
     native_frames: u32,
     native_sample_rate: u32,
-    discontinuity: bool,
-    is_silent: bool,
+    flags: u32,
 ) -> PendingMetadata {
-    let qpc_position_100ns = if qpc_position_100ns == 0 {
-        None
-    } else {
-        Some(
-            (qpc_position_100ns as i64)
-                .saturating_add(frames_to_100ns(native_frames, native_sample_rate)),
-        )
-    };
+    let timestamp_valid = flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0 as u32 == 0;
+    let discontinuity = flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY.0 as u32 != 0;
+    let duration = frames_to_duration(native_frames, native_sample_rate);
+    let (end, qpc_position_100ns) = clock.packet_end(
+        read_at,
+        if timestamp_valid {
+            qpc_position_100ns
+        } else {
+            0
+        },
+        duration,
+    );
 
     PendingMetadata {
-        capture_time: Some(capture_time),
+        capture_time: Some(end),
         qpc_position_100ns,
-        device_position_frames: Some(
-            device_position_frames.saturating_add(u64::from(native_frames)),
-        ),
+        device_position_frames: timestamp_valid
+            .then(|| device_position_frames.saturating_add(u64::from(native_frames))),
         native_frames: Some(native_frames),
         native_sample_rate: Some(native_sample_rate),
         discontinuity,
-        is_silent,
+        is_silent: flags & AUDCLNT_BUFFERFLAGS_SILENT.0 as u32 != 0,
+    }
+}
+
+fn estimate_batch_times(packets: &mut [AudioPacket]) {
+    // A single wake can drain several native packets. Walk continuous runs
+    // backward from the next packet's time or the final packet's read time.
+    // An earlier packet was already available at its own read time.
+    let mut next_start = None;
+    for packet in packets.iter_mut().rev() {
+        if packet.metadata.capture_time_estimated
+            && let Some(end) = next_start
+            && packet
+                .end_capture_time()
+                .is_some_and(|read_end| end < read_end)
+        {
+            packet.metadata.set_timing(Some(end), None);
+        }
+        next_start = if packet.metadata.discontinuity {
+            None
+        } else {
+            packet.start_capture_time()
+        };
     }
 }
 
@@ -438,6 +511,7 @@ impl WasapiSource {
             runtime,
             converter,
             accumulator,
+            clock: WasapiClock::new(),
             sequence: 0,
             silence_scratch: Vec::new(),
         })
@@ -478,6 +552,7 @@ impl WasapiSource {
             }
             .map_err(|err| map_hresult(err.code(), "IAudioCaptureClient::GetBuffer"))?;
 
+            let read_at = Instant::now();
             let process_result = (|| {
                 let native_bytes_per_frame = self.runtime.native_format.bytes_per_frame()?;
                 let byte_count = native_bytes_per_frame
@@ -485,7 +560,6 @@ impl WasapiSource {
                     .ok_or(AudioError::BufferOverflow)?;
 
                 let is_silent = (flags & AUDCLNT_BUFFERFLAGS_SILENT.0 as u32) != 0;
-                let discontinuity = (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY.0 as u32) != 0;
 
                 let converted = if is_silent {
                     self.silence_scratch.resize(byte_count, 0);
@@ -514,13 +588,13 @@ impl WasapiSource {
                     converted,
                     out_frames,
                     pending_metadata_for_wasapi_chunk(
-                        Instant::now(),
+                        &mut self.clock,
+                        read_at,
                         qpc_position,
                         device_position,
                         frames,
                         self.runtime.native_format.sample_rate,
-                        discontinuity,
-                        is_silent,
+                        flags,
                     ),
                     &mut self.sequence,
                 )
@@ -536,6 +610,7 @@ impl WasapiSource {
             packets.extend(process_result?);
         }
 
+        estimate_batch_times(&mut packets);
         Ok(packets)
     }
 }
@@ -835,6 +910,195 @@ mod tests {
     use super::*;
 
     #[test]
+    fn batched_wasapi_reads_keep_each_packets_capture_time() {
+        let origin = Instant::now();
+        let qpc_at_origin = 1_000_000;
+        let anchor_time = origin + Duration::from_millis(30);
+        let read_at = origin + Duration::from_millis(80);
+        let format = AudioFormat::new(48_000, 2);
+        for source in [AudioSourceKind::System, AudioSourceKind::Microphone] {
+            let mut clock = WasapiClock {
+                anchor: Some((anchor_time, qpc_at_origin + 300_000)),
+                ..WasapiClock::default()
+            };
+            let mut accumulator =
+                PacketAccumulator::new(source, format, Duration::from_millis(10)).unwrap();
+            let mut sequence = 0;
+            for index in 0..8 {
+                let metadata = pending_metadata_for_wasapi_chunk(
+                    &mut clock,
+                    read_at,
+                    qpc_at_origin as u64 + index * 100_000,
+                    index * 480,
+                    480,
+                    format.sample_rate,
+                    0,
+                );
+                let packets = accumulator
+                    .push_chunk(vec![123; 960], 480, metadata, &mut sequence)
+                    .unwrap();
+                let [packet] = packets.as_slice() else {
+                    panic!("each chunk should produce one packet");
+                };
+                assert_eq!(
+                    packet.start_capture_time(),
+                    Some(origin + Duration::from_millis(index * 10))
+                );
+                assert!(!packet.metadata.capture_time_estimated);
+            }
+        }
+    }
+
+    #[test]
+    fn estimated_batch_times_follow_pcm_and_respect_discontinuities() {
+        let origin = Instant::now();
+        let read_at = origin + Duration::from_millis(100);
+        let format = AudioFormat::new(1_000, 1);
+        let timestamp_error = AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0 as u32;
+        for valid_tail in [false, true] {
+            let mut clock = WasapiClock {
+                anchor: Some((origin, 100_000)),
+                ..WasapiClock::default()
+            };
+            let mut accumulator =
+                PacketAccumulator::new(AudioSourceKind::System, format, Duration::from_millis(4))
+                    .unwrap();
+            let mut packets = Vec::new();
+            let mut sequence = 0;
+            for index in 0..4 {
+                let (qpc, flags) = match index {
+                    2 if valid_tail => (460_000, 0),
+                    3 => (
+                        0,
+                        timestamp_error | AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY.0 as u32,
+                    ),
+                    _ => (0, timestamp_error),
+                };
+                let metadata = pending_metadata_for_wasapi_chunk(
+                    &mut clock,
+                    read_at,
+                    qpc,
+                    index * 4,
+                    4,
+                    format.sample_rate,
+                    flags,
+                );
+                packets.extend(
+                    accumulator
+                        .push_chunk(vec![index as i16 + 1; 4], 4, metadata, &mut sequence)
+                        .unwrap(),
+                );
+            }
+            estimate_batch_times(&mut packets);
+            let expected_starts = if valid_tail {
+                [28, 32, 36, 96]
+            } else {
+                [88, 92, 96, 96]
+            };
+            for (index, (packet, ms)) in packets.iter().zip(expected_starts).enumerate() {
+                assert_eq!(
+                    packet.start_capture_time(),
+                    Some(origin + Duration::from_millis(ms))
+                );
+                assert_eq!(packet.data, [index as i16 + 1; 4]);
+                assert_eq!(
+                    packet.metadata.capture_time_estimated,
+                    !(index == 2 && valid_tail)
+                );
+            }
+            assert_eq!(
+                packets[2].end_qpc_position_100ns(),
+                valid_tail.then_some(500_000)
+            );
+        }
+    }
+
+    #[test]
+    fn estimated_batch_times_keep_the_read_time_as_an_upper_bound() {
+        let origin = Instant::now();
+        let mut accumulator = PacketAccumulator::new(
+            AudioSourceKind::System,
+            AudioFormat::new(1_000, 1),
+            Duration::from_millis(4),
+        )
+        .unwrap();
+        let mut packets = Vec::new();
+        let mut sequence = 0;
+        for end_ms in [4, 100] {
+            packets.extend(
+                accumulator
+                    .push_chunk(
+                        vec![1; 4],
+                        4,
+                        PendingMetadata {
+                            capture_time: Some(origin + Duration::from_millis(end_ms)),
+                            ..Default::default()
+                        },
+                        &mut sequence,
+                    )
+                    .unwrap(),
+            );
+        }
+        estimate_batch_times(&mut packets);
+        assert_eq!(packets[0].start_capture_time(), Some(origin));
+        assert_eq!(
+            packets[1].start_capture_time(),
+            Some(origin + Duration::from_millis(96))
+        );
+    }
+
+    #[test]
+    fn invalid_wasapi_timestamps_keep_pcm_and_do_not_reuse_a_previous_chunk_stamp() {
+        let origin = Instant::now();
+        let read_at = origin + Duration::from_millis(20);
+        let mut clock = WasapiClock {
+            anchor: Some((origin, 100_000)),
+            ..WasapiClock::default()
+        };
+        let format = AudioFormat::new(1_000, 1);
+        let mut accumulator =
+            PacketAccumulator::new(AudioSourceKind::System, format, Duration::from_millis(4))
+                .unwrap();
+        let mut sequence = 0;
+        let valid = pending_metadata_for_wasapi_chunk(&mut clock, read_at, 100_000, 0, 2, 1_000, 0);
+        assert!(
+            accumulator
+                .push_chunk(vec![1, 2], 2, valid, &mut sequence)
+                .unwrap()
+                .is_empty()
+        );
+
+        let invalid = pending_metadata_for_wasapi_chunk(
+            &mut clock,
+            read_at,
+            120_000,
+            2,
+            2,
+            1_000,
+            AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0 as u32,
+        );
+        let packets = accumulator
+            .push_chunk(vec![3, 4], 2, invalid, &mut sequence)
+            .unwrap();
+        let packet = &packets[0];
+        assert_eq!(packet.data, [1, 2, 3, 4]);
+        assert!(packet.metadata.capture_time_estimated);
+        assert_eq!(packet.end_capture_time(), Some(read_at));
+        assert_eq!(packet.end_qpc_position_100ns(), None);
+        assert_eq!(packet.metadata.device_position_frames, None);
+
+        for rejected in [0, 99_999, 500_000, u64::MAX] {
+            let (end, qpc) = clock.packet_end(read_at, rejected, Duration::from_millis(2));
+            assert_eq!((end, qpc), (read_at, None));
+        }
+        let (end, qpc) = clock.packet_end(read_at, 140_000, Duration::from_millis(2));
+        assert_eq!(
+            (end, qpc),
+            (origin + Duration::from_millis(6), Some(160_000))
+        );
+    }
+
+    #[test]
     fn packet_timestamp_describes_last_frame_when_wasapi_chunks_are_split() {
         let format = AudioFormat::new(1_000, 1);
         let mut accumulator = PacketAccumulator::new(
@@ -844,6 +1108,12 @@ mod tests {
         )
         .expect("test format should be valid");
         let mut sequence = 0;
+        let origin = Instant::now();
+        let read_at = origin + Duration::from_millis(100);
+        let mut clock = WasapiClock {
+            anchor: Some((origin, 100_000)),
+            ..WasapiClock::default()
+        };
 
         // WASAPI reports the position of the first frame in each chunk. The
         // source normalizes those positions to chunk ends before buffering.
@@ -851,15 +1121,7 @@ mod tests {
             .push_chunk(
                 vec![1, 2, 3],
                 3,
-                pending_metadata_for_wasapi_chunk(
-                    Instant::now(),
-                    100_000,
-                    10,
-                    3,
-                    1_000,
-                    false,
-                    false,
-                ),
+                pending_metadata_for_wasapi_chunk(&mut clock, read_at, 100_000, 10, 3, 1_000, 0),
                 &mut sequence,
             )
             .expect("first chunk should be accepted");
@@ -869,20 +1131,16 @@ mod tests {
             .push_chunk(
                 vec![4, 5, 6],
                 3,
-                pending_metadata_for_wasapi_chunk(
-                    Instant::now(),
-                    130_000,
-                    13,
-                    3,
-                    1_000,
-                    false,
-                    false,
-                ),
+                pending_metadata_for_wasapi_chunk(&mut clock, read_at, 130_000, 13, 3, 1_000, 0),
                 &mut sequence,
             )
             .expect("second chunk should complete a packet");
         assert_eq!(packets.len(), 1);
         assert_eq!(packets[0].end_qpc_position_100ns(), Some(140_000));
+        assert_eq!(
+            packets[0].end_capture_time(),
+            Some(origin + Duration::from_millis(4))
+        );
         assert_eq!(packets[0].metadata.device_position_frames, Some(14));
     }
 
@@ -939,6 +1197,12 @@ mod tests {
         )
         .expect("test format should be valid");
         let mut sequence = 0;
+        let origin = Instant::now();
+        let read_at = origin + Duration::from_millis(100);
+        let mut clock = WasapiClock {
+            anchor: Some((origin, 100_000)),
+            ..WasapiClock::default()
+        };
 
         // Ten native frames at 1 kHz become fifteen output frames at 1.5 kHz.
         // The first six output frames end 4 native frames into the chunk, so
@@ -948,15 +1212,7 @@ mod tests {
             .push_chunk(
                 vec![0; 15],
                 15,
-                pending_metadata_for_wasapi_chunk(
-                    Instant::now(),
-                    100_000,
-                    20,
-                    10,
-                    1_000,
-                    false,
-                    false,
-                ),
+                pending_metadata_for_wasapi_chunk(&mut clock, read_at, 100_000, 20, 10, 1_000, 0),
                 &mut sequence,
             )
             .expect("resampled chunk should produce a packet");
@@ -965,5 +1221,9 @@ mod tests {
         assert_eq!(packets[0].frames, 6);
         assert_eq!(packets[0].metadata.device_position_frames, Some(24));
         assert_eq!(packets[0].end_qpc_position_100ns(), Some(140_000));
+        assert_eq!(
+            packets[0].end_capture_time(),
+            Some(origin + Duration::from_millis(4))
+        );
     }
 }

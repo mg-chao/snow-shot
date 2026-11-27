@@ -17,6 +17,8 @@ pub struct AudioPacketMetadata {
     pub discontinuity: bool,
     pub is_silent: bool,
     pub sequence: u64,
+    /// The packet time was estimated without a valid source clock observation.
+    pub capture_time_estimated: bool,
     /// Packet-end timestamp in the source clock domain.
     pub stream_timestamp: Option<StreamTimestamp>,
 }

@@ -278,8 +278,7 @@ impl Engine {
         let source_duration =
             Duration::from_secs_f64(source_frames as f64 / f64::from(input.sample_rate));
         let capture_time = snow_macos::time::host_time_to_instant(input.timestamp)
-            .and_then(|time| time.checked_add(source_duration))
-            .unwrap_or_else(Instant::now);
+            .and_then(|time| time.checked_add(source_duration));
         let end = input
             .timestamp
             .checked_add_duration(source_duration)
@@ -287,12 +286,13 @@ impl Engine {
         self.sequence[index] = self.sequence[index].wrapping_add(1);
         let mut metadata = AudioPacketMetadata {
             sequence: self.sequence[index],
+            capture_time_estimated: capture_time.is_none(),
             discontinuity: input.discontinuity
                 || (index == 1 && std::mem::take(&mut self.microphone_restarted)),
             ..Default::default()
         };
         metadata.stream_timestamp = Some(snow_core::timestamp::StreamTimestamp {
-            instant: capture_time,
+            instant: capture_time.unwrap_or_else(Instant::now),
             raw_os_ticks: Some(end.value),
             tick_format: snow_core::timestamp::TickFormat::Rational {
                 timescale: end.timescale,
