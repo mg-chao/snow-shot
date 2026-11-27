@@ -182,7 +182,7 @@ Result<DocumentDescriptor> native_descriptor(const WebpFeatures& features,
     return document;
 }
 
-bool matching_descriptor(const DocumentDescriptor& left, const DocumentDescriptor& right) {
+bool matching_webp_descriptor(const DocumentDescriptor& left, const DocumentDescriptor& right) {
     return left.canvas_width == right.canvas_width && left.canvas_height == right.canvas_height &&
            left.frames.size() == 1 && right.frames.size() == 1 &&
            left.frames.front().width == right.frames.front().width &&
@@ -680,7 +680,7 @@ void apply_metadata(DocumentDescriptor* document, WebpMetadata metadata,
     }
 }
 
-bool sdr_srgb(const ColorEncoding& color) noexcept {
+bool webp_sdr_srgb(const ColorEncoding& color) noexcept {
     return color.dynamic_range == DynamicRange::standard &&
            (color.primaries == ColorPrimaries::unknown ||
             color.primaries == ColorPrimaries::srgb) &&
@@ -1172,7 +1172,7 @@ Result<void> WebpCodec::decode_into(const Input& input, RasterWriter& writer,
         metadata.value().source_orientation != Orientation::identity)
         return Codec::decode_into(input, writer, options, stop);
     apply_metadata(&descriptor.value(), std::move(metadata).value(), options);
-    if (!matching_descriptor(writer.descriptor(), descriptor.value()))
+    if (!matching_webp_descriptor(writer.descriptor(), descriptor.value()))
         return webp_error(ErrorCode::invalid_argument,
                           "WebP native raster writer does not match the decoded plane layout.");
     const RasterFrameDescriptor& frame = descriptor.value().frames.front();
@@ -1299,8 +1299,8 @@ Result<EncodedArtifactReceipt> WebpCodec::encode_raster_to_sink(const RasterSour
                                                                 const EncodeOptions& options,
                                                                 std::stop_token stop) const {
     const DocumentDescriptor& descriptor = source.descriptor();
-    if (packed_webp_source(descriptor) && sdr_srgb(descriptor.color) &&
-        sdr_srgb(descriptor.frames.front().color)) {
+    if (packed_webp_source(descriptor) && webp_sdr_srgb(descriptor.color) &&
+        webp_sdr_srgb(descriptor.frames.front().color)) {
         // Borrow mapped storage through the document adapter. A mapped-only
         // provider need not implement row copies, and no packed raster is allocated.
         if (has_access(source.access(), RasterAccess::mapped_planes))
@@ -1400,14 +1400,14 @@ Result<EncodedArtifactReceipt> WebpCodec::encode_raster_to_sink(const RasterSour
 
 RasterEncodeRoute WebpCodec::raster_encode_route(const DocumentDescriptor& descriptor,
                                                  const EncodeOptions& options) const noexcept {
-    if (packed_webp_source(descriptor) && sdr_srgb(descriptor.color) &&
-        sdr_srgb(descriptor.frames.front().color))
+    if (packed_webp_source(descriptor) && webp_sdr_srgb(descriptor.color) &&
+        webp_sdr_srgb(descriptor.frames.front().color))
         return RasterEncodeRoute::native;
-    if (options.lossless || descriptor.frames.size() != 1 || !sdr_srgb(descriptor.color))
+    if (options.lossless || descriptor.frames.size() != 1 || !webp_sdr_srgb(descriptor.color))
         return RasterEncodeRoute::materialized;
     const RasterFrameDescriptor& frame = descriptor.frames.front();
     if (frame.x != 0 || frame.y != 0 || frame.width != descriptor.canvas_width ||
-        frame.height != descriptor.canvas_height || !sdr_srgb(frame.color) ||
+        frame.height != descriptor.canvas_height || !webp_sdr_srgb(frame.color) ||
         !native_webp_source(frame))
         return RasterEncodeRoute::materialized;
     return RasterEncodeRoute::native;
