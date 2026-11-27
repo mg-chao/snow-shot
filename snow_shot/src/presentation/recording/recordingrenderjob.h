@@ -16,6 +16,7 @@ class QWidget;
 class RecordingRenderJob final : public QObject {
   public:
     enum class Outcome { Succeeded, Kept, Discarded };
+    enum class FailurePolicy { AwaitDecision, KeepSource };
     RecordingRenderJob(SnowRecordingSource* source, bool showDialog, QScreen* screen,
                        QObject* parent, const QRect& anchorGeometry = {},
                        QWidget* windowOwner = nullptr);
@@ -23,6 +24,7 @@ class RecordingRenderJob final : public QObject {
     void start();
     // Detach before the recording area is hidden or destroyed, preserving the job's UI.
     void detachWindowOwner();
+    void setFailurePolicy(FailurePolicy policy);
     // Retain native work until process exit; terminal shutdown must not cancel or join it.
     void prepareForSessionEnd();
     bool cancel();

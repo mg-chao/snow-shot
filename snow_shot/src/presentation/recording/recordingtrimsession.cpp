@@ -12,14 +12,18 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QCoreApplication>
+#include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QMimeData>
 #include <QSaveFile>
+#include <QTemporaryDir>
+#include <QTemporaryFile>
 #include <QUrl>
 #include <QUuid>
 #include <climits>
 #include <thread>
+#include <utility>
 
 namespace {
 QString trimText(const char* text) {
@@ -72,6 +76,10 @@ RecordingTrimSession::RecordingTrimSession(ScreenRecordingAreaWindow* area,
 }
 
 RecordingTrimSession::~RecordingTrimSession() {
+    if (m_saveDialog) {
+        disconnect(m_saveDialog, nullptr, this, nullptr);
+        m_saveDialog->reject();
+    }
     if (m_dialog)
         delete m_dialog;
     // A controller can be destroyed during acquisition or an export. Transfer the
@@ -81,7 +89,9 @@ RecordingTrimSession::~RecordingTrimSession() {
     std::thread(snow_shot::runtime::trackRuntimeWork([open = std::move(m_openFuture),
                                                       publish = std::move(m_publishFuture),
                                                       cancellation = std::move(m_cancelFuture),
-                                                      clip, task]() mutable {
+                                                      request = std::move(m_request),
+                                                      cached = std::move(m_cachedClip), clip,
+                                                      task]() mutable {
         snow_shot::platform::applyApplicationQoSToCurrentThread();
         if (open.valid())
             clip = open.get().clip;
@@ -93,6 +103,8 @@ RecordingTrimSession::~RecordingTrimSession() {
             snow_recording_clip_export_destroy(task);
         if (clip)
             snow_recording_clip_destroy(clip);
+        request.reset();
+        cached.reset();
     })).detach();
 }
 
@@ -221,10 +233,11 @@ void RecordingTrimSession::poll() {
         m_phase = Phase::Trimming;
         report(QStringLiteral("recording.trim_ready"));
         setBusy(false);
-        if (m_saveWhenReady)
+        if (m_saveWhenReady) {
             exportClip(true);
-        else
-            seek(0, true);
+            return;
+        }
+        seek(0, true);
     }
     if (m_export) {
         float percent = 0;
@@ -238,22 +251,22 @@ void RecordingTrimSession::poll() {
             const QString error = nativeText([this](char* data, size_t capacity) {
                 return snow_recording_clip_export_error(m_export, data, capacity);
             });
-            auto* completed = m_export;
-            m_export = nullptr;
-            std::thread(snow_shot::runtime::trackRuntimeWork([completed] {
-                snow_recording_clip_export_destroy(completed);
-            })).detach();
-            if (state == SNOW_RECORDING_RENDER_STATE_SUCCEEDED) {
-                m_cachePath = m_pendingPath;
-                m_cachedSelection = m_pendingSelection;
-                publish();
-            } else
+            const bool succeeded = state == SNOW_RECORDING_RENDER_STATE_SUCCEEDED;
+            retireExportTask(succeeded);
+            if (succeeded)
+                publish(m_cachedClip->file);
+            else
                 finishExport(false, error, state == SNOW_RECORDING_RENDER_STATE_CANCELED);
         }
     }
     if (m_publishFuture.valid() &&
         m_publishFuture.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
-        const auto result = m_publishFuture.get();
+        auto result = m_publishFuture.get();
+        if (m_request->kind == ExportKind::Copy) {
+            if (result.ok)
+                m_cachedClip->file.path = m_request->destination;
+            m_cachedClip->file.temporaryDirectory = std::move(result.retainedDirectory);
+        }
         finishExport(result.ok, result.error,
                      m_publication && m_publication->state.load() == Publication::Canceled);
     }
@@ -301,26 +314,41 @@ void RecordingTrimSession::poll() {
 }
 
 void RecordingTrimSession::exportClip(bool save) {
-    if (!ready() || m_detached)
+    if (!ready() || m_detached || m_saveDialog)
         return;
     seek(static_cast<int>(m_first), false);
-    m_destination.clear();
-    m_copy = !save;
-    if (save) {
-        const QString suffix = QFileInfo(m_outputPath).suffix();
-        const QString filter = QStringLiteral("%1 (*.%2)").arg(suffix.toUpper(), suffix);
-        QFileDialog dialog(m_area,
-                           trimText(QT_TRANSLATE_NOOP("RecordingTrimSession", "Save to file")),
-                           nextOutput(m_outputPath, m_exportContext), filter);
-        dialog.setAcceptMode(QFileDialog::AcceptSave);
-        dialog.setDefaultSuffix(suffix);
-        // The dialog resolves the default suffix before confirming replacement.
-        if (dialog.exec() != QDialog::Accepted || m_detached)
+    if (save)
+        chooseSavePath();
+    else
+        beginExport(ExportKind::Copy);
+}
+
+void RecordingTrimSession::chooseSavePath() {
+    const QString suffix = QFileInfo(m_outputPath).suffix();
+    const QString filter = QStringLiteral("%1 (*.%2)").arg(suffix.toUpper(), suffix);
+    auto* dialog =
+        new QFileDialog(m_area, trimText(QT_TRANSLATE_NOOP("RecordingTrimSession", "Save to file")),
+                        nextOutput(m_outputPath, m_exportContext), filter);
+    m_saveDialog = dialog;
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setWindowModality(Qt::ApplicationModal);
+    dialog->setAcceptMode(QFileDialog::AcceptSave);
+    dialog->setDefaultSuffix(suffix);
+    connect(dialog, &QDialog::finished, this, [this, dialog](int result) {
+        if (m_saveDialog != dialog)
             return;
-        m_destination = dialog.selectedFiles().value(0);
-        if (m_destination.isEmpty())
+        m_saveDialog.clear();
+        if (!m_detached && result == QDialog::Accepted)
+            beginExport(ExportKind::Save, dialog->selectedFiles().value(0));
+    });
+    dialog->show();
+}
+
+void RecordingTrimSession::beginExport(ExportKind kind, QString destination) {
+    if (kind == ExportKind::Save) {
+        if (destination.isEmpty())
             return;
-        if (QFileInfo(m_destination).canonicalFilePath() ==
+        if (QFileInfo(destination).canonicalFilePath() ==
             QFileInfo(m_sourcePath).canonicalFilePath()) {
             if (reportError)
                 reportError(trimText(QT_TRANSLATE_NOOP(
@@ -329,29 +357,52 @@ void RecordingTrimSession::exportClip(bool save) {
             return;
         }
     }
+    const Selection selection{m_first, m_end, m_speedPercent};
     m_percent = 0;
     m_phase = Phase::Exporting;
-    m_pendingSelection = {m_first, m_end, m_speedPercent};
-    m_pendingStartUs = snow_recording_clip_boundary(m_clip, m_pendingSelection.first);
-    m_pendingEndUs = snow_recording_clip_boundary(m_clip, m_pendingSelection.end);
+    auto& request =
+        m_request.emplace(ExportRequest{kind,
+                                        selection,
+                                        std::move(destination),
+                                        {},
+                                        snow_recording_clip_boundary(m_clip, selection.first),
+                                        snow_recording_clip_boundary(m_clip, selection.end)});
     ++m_exportAttempt;
     m_exportTimer.start();
     setBusy(true);
-    if (!m_deferred && m_pendingSelection.first == 0 &&
-        m_pendingSelection.end == m_info.frame_count && m_pendingSelection.speedPercent == 100) {
-        m_cachePath = m_sourcePath;
-        m_cachedSelection = m_pendingSelection;
-    }
-    m_cacheHit = m_cachedSelection == m_pendingSelection && QFileInfo::exists(m_cachePath);
+    const bool reuseSource = !m_deferred && selection == Selection{0, m_info.frame_count, 100} &&
+                             QFileInfo::exists(m_sourcePath);
+    const bool reuseCache = m_cachedClip && m_cachedClip->selection == selection &&
+                            QFileInfo::exists(m_cachedClip->file.path);
+    request.cacheHit = reuseSource || reuseCache;
     report(QStringLiteral("recording.trim_export_started"));
-    if (m_cacheHit) {
-        publish();
+    if (reuseSource) {
+        publish({m_sourcePath, {}});
         return;
     }
-    m_pendingPath = nextOutput(m_outputPath, m_exportContext);
+    if (reuseCache) {
+        publish(m_cachedClip->file);
+        return;
+    }
+    if (kind == ExportKind::Save) {
+        auto directory = std::make_unique<QTemporaryDir>(
+            QFileInfo(request.destination)
+                .absoluteDir()
+                .filePath(QStringLiteral(".snow-shot-trim-XXXXXX")));
+        if (!directory->isValid()) {
+            finishExport(false, directory->errorString());
+            return;
+        }
+        const QString suffix = QFileInfo(m_outputPath).suffix();
+        request.encoding = {directory->filePath(QStringLiteral("clip.") + suffix),
+                            std::move(directory)};
+    } else {
+        request.encoding.path = nextOutput(m_outputPath, m_exportContext);
+        request.destination = request.encoding.path;
+    }
     m_export = snow_recording_clip_export_start_with_speed(
-        m_clip, m_pendingSelection.first, m_pendingSelection.end,
-        m_pendingPath.toUtf8().constData(), m_pendingSelection.speedPercent);
+        m_clip, selection.first, selection.end, request.encoding.path.toUtf8().constData(),
+        selection.speedPercent);
     if (!m_export) {
         finishExport(false, nativeError());
         return;
@@ -362,53 +413,97 @@ void RecordingTrimSession::exportClip(bool save) {
     });
 }
 
-void RecordingTrimSession::publish() {
-    if (m_copy) {
-        copyRecording(m_cachePath);
-        finishExport(true, {});
-        return;
+void RecordingTrimSession::retireExportTask(bool succeeded) {
+    auto* completed = std::exchange(m_export, nullptr);
+    auto encoding = std::move(m_request->encoding);
+    std::optional<CachedClip> retiredCache;
+    if (succeeded)
+        retiredCache =
+            std::exchange(m_cachedClip, CachedClip{m_request->selection, std::move(encoding)});
+    std::thread(snow_shot::runtime::trackRuntimeWork([completed,
+                                                      directory =
+                                                          std::move(encoding.temporaryDirectory),
+                                                      retiredCache =
+                                                          std::move(retiredCache)]() mutable {
+        snow_recording_clip_export_destroy(completed);
+        directory.reset();
+        retiredCache.reset();
+    })).detach();
+}
+
+void RecordingTrimSession::publish(const ExportFile& input) {
+    auto& request = *m_request;
+    std::unique_ptr<QTemporaryDir> retireOnCopy;
+    if (request.kind == ExportKind::Copy) {
+        if (!input.temporaryDirectory) {
+            request.destination = input.path;
+            finishExport(true, {});
+            return;
+        }
+        request.destination = nextOutput(m_outputPath, m_exportContext);
+        retireOnCopy = std::move(m_cachedClip->file.temporaryDirectory);
     }
-    const QString from = m_cachePath, to = m_destination;
     m_publication = std::make_shared<Publication>();
-    m_publishFuture = std::async(
-        std::launch::async, snow_shot::runtime::trackRuntimeWork([from, to, state = m_publication] {
-            snow_shot::platform::applyApplicationQoSToCurrentThread();
-            PublishResult result;
-            QFile source(from);
-            QSaveFile destination(to);
-            if (!source.open(QIODevice::ReadOnly) || !destination.open(QIODevice::WriteOnly)) {
-                result.error = source.isOpen() ? destination.errorString() : source.errorString();
-                return result;
-            }
-            QByteArray buffer(256 * 1024, Qt::Uninitialized);
-            qint64 copied = 0;
-            while (true) {
-                if (state->state.load() == Publication::Canceled)
-                    return result;
-                const qint64 size = source.read(buffer.data(), buffer.size());
-                if (size == 0)
-                    break;
-                if (size < 0 || destination.write(buffer.constData(), size) != size) {
-                    result.error = size < 0 ? source.errorString() : destination.errorString();
-                    return result;
-                }
-                copied += size;
-                state->percent.store(
-                    static_cast<int>(100.0 * static_cast<double>(copied) /
-                                     static_cast<double>(qMax<qint64>(1, source.size()))));
-            }
-            int copying = Publication::Copying;
-            if (!state->state.compare_exchange_strong(copying, Publication::Committing))
-                return result;
-            result.ok = destination.commit();
-            if (!result.ok)
-                result.error = destination.errorString();
-            return result;
-        }));
+    m_publishFuture =
+        std::async(std::launch::async,
+                   snow_shot::runtime::trackRuntimeWork(
+                       [from = input.path, to = request.destination, kind = request.kind,
+                        state = m_publication, directory = std::move(retireOnCopy)]() mutable {
+                           snow_shot::platform::applyApplicationQoSToCurrentThread();
+                           auto result = state->write(from, to, kind);
+                           if (result.ok)
+                               directory.reset();
+                           else
+                               result.retainedDirectory = std::move(directory);
+                           return result;
+                       }));
     QTimer::singleShot(300, this, [this] {
         if (m_publishFuture.valid())
             showProgress();
     });
+}
+
+RecordingTrimSession::PublishResult
+RecordingTrimSession::Publication::write(const QString& from, const QString& to, ExportKind kind) {
+    QFile source(from);
+    if (!source.open(QIODevice::ReadOnly))
+        return {false, source.errorString(), {}};
+    const auto writeAndCommit = [&](QFileDevice& destination, auto commit) -> PublishResult {
+        QByteArray buffer(256 * 1024, Qt::Uninitialized);
+        const qint64 total = qMax<qint64>(1, source.size());
+        qint64 copied = 0;
+        while (state.load() != Canceled) {
+            const qint64 size = source.read(buffer.data(), buffer.size());
+            if (size < 0)
+                return {false, source.errorString(), {}};
+            if (size == 0)
+                break;
+            if (destination.write(buffer.constData(), size) != size)
+                return {false, destination.errorString(), {}};
+            copied += size;
+            percent.store(
+                static_cast<int>(100.0 * static_cast<double>(copied) / static_cast<double>(total)));
+        }
+        int copying = Copying;
+        if (!state.compare_exchange_strong(copying, Committing))
+            return {};
+        const bool ok = commit();
+        return {ok, ok ? QString() : destination.errorString(), {}};
+    };
+    if (kind == ExportKind::Copy) {
+        QTemporaryFile destination(
+            QFileInfo(to).absoluteDir().filePath(QStringLiteral(".snow-shot-trim-copy-XXXXXX")));
+        if (!destination.open())
+            return {false, destination.errorString(), {}};
+        auto result = writeAndCommit(destination, [&] { return destination.rename(to); });
+        if (result.ok)
+            destination.setAutoRemove(false);
+        return result;
+    }
+    QSaveFile destination(to);
+    if (!destination.open(QIODevice::WriteOnly))
+        return {false, destination.errorString(), {}};
+    return writeAndCommit(destination, [&] { return destination.commit(); });
 }
 void RecordingTrimSession::finishExport(bool ok, const QString& error, bool canceled) {
     report(ok         ? QStringLiteral("recording.trim_export_succeeded")
@@ -418,6 +513,11 @@ void RecordingTrimSession::finishExport(bool ok, const QString& error, bool canc
                ? QStringLiteral("Recording export failed without a native error message")
                : error,
            !ok && !canceled ? QtWarningMsg : QtInfoMsg);
+    const auto kind = m_request->kind;
+    const QString completedPath = m_request->destination;
+    if (ok && kind == ExportKind::Copy)
+        copyRecording(completedPath);
+    m_request.reset();
     m_publication.reset();
     m_phase = Phase::Trimming;
     if (m_dialog) {
@@ -432,7 +532,6 @@ void RecordingTrimSession::finishExport(bool ok, const QString& error, bool canc
     if (m_detached)
         releaseMedia();
     if (ok && exported) {
-        const QString completedPath = m_copy ? m_cachePath : m_destination;
         const auto onExported = exported;
         onExported(completedPath);
     }
@@ -465,6 +564,8 @@ void RecordingTrimSession::showProgress() {
 }
 void RecordingTrimSession::detach() {
     m_detached = true;
+    if (m_saveDialog)
+        m_saveDialog->reject();
     if (m_panel)
         m_panel->setPlaybackAvailable(false);
     if (m_toolbar)
@@ -488,6 +589,8 @@ void RecordingTrimSession::prepareForSessionEnd() {
     reportError = {};
     exported = {};
     m_detached = true;
+    if (m_saveDialog)
+        m_saveDialog->reject();
     if (m_dialog)
         m_dialog->cancel = {};
     // Keep pending native open/export/publication owners alive until process exit. Their
@@ -498,7 +601,7 @@ QString RecordingTrimSession::sourcePath() const {
     return m_sourcePath;
 }
 QString RecordingTrimSession::outputPath() const {
-    return m_destination.isEmpty() ? m_outputPath : m_destination;
+    return m_request && !m_request->destination.isEmpty() ? m_request->destination : m_outputPath;
 }
 void RecordingTrimSession::releaseMedia() {
     m_timer.stop();
@@ -506,9 +609,9 @@ void RecordingTrimSession::releaseMedia() {
 }
 
 void RecordingTrimSession::report(const QString& event, const QString& message, QtMsgType level) {
-    const bool exporting = m_phase == Phase::Exporting;
+    const bool exporting = m_request.has_value();
     const Selection selection =
-        exporting ? m_pendingSelection : Selection{m_first, m_end, m_speedPercent};
+        exporting ? m_request->selection : Selection{m_first, m_end, m_speedPercent};
     const auto boundary = [this](quint64 frame) {
         return m_phase == Phase::Trimming && m_clip ? snow_recording_clip_boundary(m_clip, frame)
                                                     : 0;
@@ -519,11 +622,12 @@ void RecordingTrimSession::report(const QString& event, const QString& message, 
          {QStringLiteral("export_attempt"), m_exportAttempt},
          {QStringLiteral("stage"), m_publication ? QStringLiteral("publish") : phase()},
          {QStringLiteral("action"),
-          exporting ? (m_copy ? QStringLiteral("copy") : QStringLiteral("save"))
+          exporting ? (m_request->kind == ExportKind::Copy ? QStringLiteral("copy")
+                                                           : QStringLiteral("save"))
                     : (m_saveWhenReady ? QStringLiteral("save") : QStringLiteral("preview"))},
          {QStringLiteral("deferred"), m_deferred},
          {QStringLiteral("detached"), m_detached},
-         {QStringLiteral("cache_hit"), exporting && m_cacheHit},
+         {QStringLiteral("cache_hit"), exporting && m_request->cacheHit},
          {QStringLiteral("width"), static_cast<int>(m_info.width)},
          {QStringLiteral("height"), static_cast<int>(m_info.height)},
          {QStringLiteral("fps"), static_cast<int>(m_options.fps)},
@@ -535,9 +639,9 @@ void RecordingTrimSession::report(const QString& event, const QString& message, 
          {QStringLiteral("first_frame"), static_cast<qint64>(selection.first)},
          {QStringLiteral("end_frame"), static_cast<qint64>(selection.end)},
          {QStringLiteral("start_us"),
-          static_cast<qint64>(exporting ? m_pendingStartUs : boundary(selection.first))},
+          static_cast<qint64>(exporting ? m_request->startUs : boundary(selection.first))},
          {QStringLiteral("end_us"),
-          static_cast<qint64>(exporting ? m_pendingEndUs : boundary(selection.end))},
+          static_cast<qint64>(exporting ? m_request->endUs : boundary(selection.end))},
          {QStringLiteral("speed_percent"), static_cast<int>(selection.speedPercent)},
          {QStringLiteral("worker_ms"),
           exporting && m_exportTimer.isValid() ? m_exportTimer.elapsed() : 0}});

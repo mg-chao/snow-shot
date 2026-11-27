@@ -3,8 +3,11 @@ mod f16;
 #[cfg(test)]
 pub(crate) mod hdr_tests;
 mod parallel;
+#[cfg(windows)]
+pub(crate) use parallel::try_install_conversion_pool;
+pub(crate) use parallel::{ConversionPool, for_each_conversion_job};
 #[cfg(test)]
-pub(crate) use parallel::{conversion_workers, pool_initialized};
+pub(crate) use parallel::{conversion_workers, pool_initialized, pool_worker_exits};
 mod scalar;
 #[cfg(target_arch = "aarch64")]
 pub(crate) mod simd_arm;
@@ -18,7 +21,7 @@ pub(crate) use f16::{
     build_bt2390_luma_lut,
 };
 pub(crate) use f16::{HdrPreparedContext, prepare_hdr_context_cached};
-use parallel::{install_conversion_pool, parallel_chunk_pixels, should_parallelize};
+use parallel::{parallel_chunk_pixels, should_parallelize};
 use std::sync::OnceLock;
 
 /// Initialize allocation-light conversion state such as lookup tables and
@@ -42,21 +45,15 @@ pub(crate) fn warmup_dispatch() {
     let _ = f16_hdr_prepared_opaque_kernel();
 }
 
-/// Initialize the complete conversion runtime so the first capture doesn't
-/// pay the worker-pool creation cost. Safe to call multiple times; only the
-/// first call performs initialization.
+/// Keep the complete conversion runtime warm for the life of the process.
 pub fn warmup() {
     warmup_dispatch();
     parallel::warmup_pool(CONVERSION_PARALLEL_MAX_WORKERS);
 }
 
-#[inline]
-#[cfg(windows)]
-pub(crate) fn with_conversion_pool<F>(max_workers: usize, job: F)
-where
-    F: FnOnce() + Send,
-{
-    install_conversion_pool(max_workers, job);
+pub(crate) fn acquire_capture_pool() -> ConversionPool {
+    warmup_dispatch();
+    parallel::acquire_capture_pool(CONVERSION_PARALLEL_MAX_WORKERS)
 }
 
 #[inline(always)]
@@ -937,22 +934,17 @@ unsafe fn run_rows_parallel_with<F>(
     let src_addr = layout.src as usize;
     let dst_addr = layout.dst as usize;
 
-    use rayon::prelude::*;
-    install_conversion_pool(max_workers, || {
-        (0..chunks.chunk_count)
-            .into_par_iter()
-            .for_each(|chunk_idx| {
-                let start_row = chunk_idx * chunks.chunk_rows;
-                let rows = (layout.height - start_row).min(chunks.chunk_rows);
-                for row_offset in 0..rows {
-                    let row = start_row + row_offset;
-                    row_fn(
-                        (src_addr + row * layout.src_pitch) as *const u8,
-                        (dst_addr + row * layout.dst_pitch) as *mut u8,
-                        layout.width,
-                    );
-                }
-            });
+    for_each_conversion_job(max_workers, 0..chunks.chunk_count, |chunk_idx| {
+        let start_row = chunk_idx * chunks.chunk_rows;
+        let rows = (layout.height - start_row).min(chunks.chunk_rows);
+        for row_offset in 0..rows {
+            let row = start_row + row_offset;
+            row_fn(
+                (src_addr + row * layout.src_pitch) as *const u8,
+                (dst_addr + row * layout.dst_pitch) as *mut u8,
+                layout.width,
+            );
+        }
     });
 }
 
@@ -972,17 +964,14 @@ unsafe fn run_pixels_parallel_with<F>(
     let src_addr = src as usize;
     let dst_addr = dst as usize;
 
-    use rayon::prelude::*;
-    install_conversion_pool(max_workers, || {
-        (0..chunk_count).into_par_iter().for_each(|chunk_idx| {
-            let start = chunk_idx * chunk_pixels;
-            let len = (total_pixels - start).min(chunk_pixels);
-            pixel_fn(
-                (src_addr + start * src_stride_bytes) as *const u8,
-                (dst_addr + start * dst_stride_bytes) as *mut u8,
-                len,
-            );
-        });
+    for_each_conversion_job(max_workers, 0..chunk_count, |chunk_idx| {
+        let start = chunk_idx * chunk_pixels;
+        let len = (total_pixels - start).min(chunk_pixels);
+        pixel_fn(
+            (src_addr + start * src_stride_bytes) as *const u8,
+            (dst_addr + start * dst_stride_bytes) as *mut u8,
+            len,
+        );
     });
 }
 
@@ -2589,20 +2578,19 @@ unsafe fn convert_f16_rgba_to_srgb_parallel_inner(
     let src_addr = src as usize;
     let dst_addr = dst as usize;
 
-    use rayon::prelude::*;
-    install_conversion_pool(CONVERSION_PARALLEL_MAX_WORKERS, || {
-        (0..chunk_count)
-            .into_par_iter()
-            .for_each(|chunk_idx| unsafe {
-                let start = chunk_idx * chunk_pixels;
-                let len = (pixel_count - start).min(chunk_pixels);
-                kernel(
-                    (src_addr + start * 8) as *const u8,
-                    (dst_addr + start * 4) as *mut u8,
-                    len,
-                );
-            });
-    });
+    for_each_conversion_job(
+        CONVERSION_PARALLEL_MAX_WORKERS,
+        0..chunk_count,
+        |chunk_idx| unsafe {
+            let start = chunk_idx * chunk_pixels;
+            let len = (pixel_count - start).min(chunk_pixels);
+            kernel(
+                (src_addr + start * 8) as *const u8,
+                (dst_addr + start * 4) as *mut u8,
+                len,
+            );
+        },
+    );
 }
 
 unsafe fn convert_bgra_to_rgba_parallel(
@@ -2676,19 +2664,14 @@ unsafe fn convert_bgra_to_rgba_parallel_inner(
     let src_addr = src as usize;
     let dst_addr = dst as usize;
 
-    use rayon::prelude::*;
-    install_conversion_pool(max_workers, || {
-        (0..chunk_count)
-            .into_par_iter()
-            .for_each(|chunk_idx| unsafe {
-                let start = chunk_idx * chunk_pixels;
-                let len = (pixel_count - start).min(chunk_pixels);
-                kernel(
-                    (src_addr + start * 4) as *const u8,
-                    (dst_addr + start * 4) as *mut u8,
-                    len,
-                );
-            });
+    for_each_conversion_job(max_workers, 0..chunk_count, |chunk_idx| unsafe {
+        let start = chunk_idx * chunk_pixels;
+        let len = (pixel_count - start).min(chunk_pixels);
+        kernel(
+            (src_addr + start * 4) as *const u8,
+            (dst_addr + start * 4) as *mut u8,
+            len,
+        );
     });
 }
 

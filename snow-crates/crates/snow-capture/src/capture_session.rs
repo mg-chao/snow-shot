@@ -300,7 +300,12 @@ impl CaptureSessionBuilder {
             },
         )?;
         let runtime = CaptureSessionRuntime::for_target(&target);
-        let mut session = CaptureSession {
+        let conversion_pool = if native.is_none() && config.mode == CaptureMode::Continuous {
+            Some(crate::convert::acquire_capture_pool())
+        } else {
+            None
+        };
+        Ok(CaptureSession {
             target,
             backend,
             config,
@@ -310,11 +315,8 @@ impl CaptureSessionBuilder {
             cursor_projector: CursorProjector::new(),
             latest_cursor_shape: None,
             native,
-        };
-        if session.config.mode == CaptureMode::Continuous {
-            session.warmup_runtime();
-        }
-        Ok(session)
+            _conversion_pool: conversion_pool,
+        })
     }
 
     pub(crate) fn build(self) -> CaptureResult<CaptureSession> {
@@ -450,6 +452,9 @@ pub struct CaptureSession {
     cursor_fallback_sampler: Option<CursorSampler>,
     cursor_projector: CursorProjector,
     latest_cursor_shape: Option<snow_cursor::CursorShape>,
+    // Drop the lease after the capture resources. Rayon shuts down idle workers
+    // after the last lease without waiting on this thread.
+    _conversion_pool: Option<crate::convert::ConversionPool>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -872,17 +877,13 @@ impl CaptureSession {
         self.target = CaptureTarget::Region(region);
     }
 
-    /// Warm conversion dispatch without allocating workers for one-shot captures.
+    /// Warm conversion dispatch for one-shot captures. Continuous captures
+    /// acquire their worker pool before publishing the session.
     pub fn warmup_runtime(&mut self) {
-        // Native target capturers own their pixel processing. Snapshot backends
-        // may copy pixels or convert serially, so their parallel conversion paths
-        // initialize the shared pool only when they actually need it. Continuous
-        // capture still warms the pool ahead of the first frame.
-        if self.native.is_none() {
-            match self.config.mode {
-                CaptureMode::Snapshot => crate::convert::warmup_dispatch(),
-                CaptureMode::Continuous => crate::convert::warmup(),
-            }
+        // Native targets own their conversion. Snapshot backends initialize
+        // the parallel pool only if they need it for an actual capture.
+        if self.native.is_none() && self.config.mode == CaptureMode::Snapshot {
+            crate::convert::warmup_dispatch();
         }
     }
 
@@ -3046,9 +3047,9 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_parallel_conversion_initializes_shared_pool_when_needed() {
+    fn snapshot_conversion_releases_workers_before_recording() {
         in_fresh_test_process(
-            "snapshot_parallel_conversion_initializes_shared_pool_when_needed",
+            "snapshot_conversion_releases_workers_before_recording",
             || {
                 let mut session =
                     lifecycle_session(Arc::new(Mutex::new(LifecycleState::default()))).unwrap();
@@ -3056,7 +3057,7 @@ mod tests {
                 session.capture_snapshot(false, Default::default()).unwrap();
                 assert!(!crate::convert::pool_initialized());
                 let workers = crate::convert::conversion_workers(usize::MAX);
-                let pixel_count = workers * 524_288;
+                let pixel_count = (workers * 131_072).max(524_288);
                 let source = [17, 29, 41, 53].repeat(pixel_count);
                 let mut destination = vec![0; source.len()];
                 crate::convert::convert_bgra_to_rgba(&source, &mut destination, pixel_count);
@@ -3065,29 +3066,88 @@ mod tests {
                         .chunks_exact(4)
                         .all(|pixel| pixel == [41, 29, 17, 53])
                 );
-                // A single-core process correctly keeps this conversion serial.
-                assert_eq!(crate::convert::pool_initialized(), workers > 1);
+                assert!(!crate::convert::pool_initialized());
+                let expected_exits = if workers > 1 { workers } else { 0 };
+                wait_for_conversion_workers_to_exit(expected_exits);
                 session.reset_to_prepared().unwrap();
+
+                let recording = continuous_pool_test_session();
                 assert_eq!(crate::convert::pool_initialized(), workers > 1);
+                drop(recording);
+                assert!(!crate::convert::pool_initialized());
+                wait_for_conversion_workers_to_exit(expected_exits * 2);
+            },
+        );
+    }
+
+    fn wait_for_conversion_workers_to_exit(expected: usize) {
+        use std::time::Duration;
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while crate::convert::pool_worker_exits() < expected && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert_eq!(crate::convert::pool_worker_exits(), expected);
+    }
+
+    fn continuous_pool_test_session() -> CaptureSession {
+        let backend: Arc<dyn CaptureBackend> = Arc::new(LifecycleBackend {
+            monitor: MonitorId::from_parts(41, 43, 0, "lifecycle-monitor", true),
+            state: Arc::new(Mutex::new(LifecycleState::default())),
+            native: false,
+        });
+        CaptureSession::builder()
+            .target(CaptureTarget::PrimaryMonitor)
+            .with_backend(backend)
+            .capture_mode(CaptureMode::Continuous)
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn continuous_capture_pool_lasts_until_the_last_session_closes() {
+        in_fresh_test_process(
+            "continuous_capture_pool_lasts_until_the_last_session_closes",
+            || {
+                assert!(!crate::convert::pool_initialized());
+                let workers = crate::convert::conversion_workers(usize::MAX);
+                let first = continuous_pool_test_session();
+                assert_eq!(crate::convert::pool_initialized(), workers > 1);
+                let second = continuous_pool_test_session();
+                if let (Some(first_pool), Some(second_pool)) =
+                    (&first._conversion_pool, &second._conversion_pool)
+                {
+                    assert!(Arc::ptr_eq(first_pool, second_pool));
+                }
+                drop(first);
+                assert_eq!(crate::convert::pool_initialized(), workers > 1);
+                let pixel_count = (workers * 131_072).max(524_288);
+                let source = [17, 29, 41, 53].repeat(pixel_count);
+                let mut destination = vec![0; source.len()];
+                crate::convert::convert_bgra_to_rgba(&source, &mut destination, pixel_count);
+                assert_eq!(&destination[..4], &[41, 29, 17, 53]);
+                drop(second);
+                assert!(!crate::convert::pool_initialized());
+
+                let reopened = continuous_pool_test_session();
+                assert_eq!(crate::convert::pool_initialized(), workers > 1);
+                drop(reopened);
+                assert!(!crate::convert::pool_initialized());
             },
         );
     }
 
     #[test]
-    fn continuous_conversion_pool_is_warmed_on_build() {
-        in_fresh_test_process("continuous_conversion_pool_is_warmed_on_build", || {
-            let backend: Arc<dyn CaptureBackend> = Arc::new(LifecycleBackend {
-                monitor: MonitorId::from_parts(41, 43, 0, "lifecycle-monitor", true),
-                state: Arc::new(Mutex::new(LifecycleState::default())),
-                native: false,
-            });
-            let _session = CaptureSession::builder()
-                .target(CaptureTarget::PrimaryMonitor)
-                .with_backend(backend)
-                .capture_mode(CaptureMode::Continuous)
-                .build()
-                .unwrap();
-            assert!(crate::convert::pool_initialized());
+    fn explicit_pool_warmup_outlives_the_capture_session() {
+        in_fresh_test_process("explicit_pool_warmup_outlives_the_capture_session", || {
+            assert!(!crate::convert::pool_initialized());
+            let session = continuous_pool_test_session();
+            crate::convert::warmup();
+            drop(session);
+            assert_eq!(
+                crate::convert::pool_initialized(),
+                crate::convert::conversion_workers(usize::MAX) > 1
+            );
         });
     }
 

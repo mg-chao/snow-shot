@@ -523,8 +523,6 @@ unsafe fn convert_dirty_rects_trusted_direct_unchecked(
     let can_parallel = converted >= DIRTY_RECT_PARALLEL_MIN_RECTS && should_parallelize;
 
     if can_parallel {
-        use rayon::prelude::*;
-
         let src_addr = src_base as usize;
         let dst_addr = dst_base as usize;
         let bgra_kernel = if use_bgra_batch_kernel {
@@ -541,41 +539,39 @@ unsafe fn convert_dirty_rects_trusted_direct_unchecked(
         } else {
             None
         };
-        convert::with_conversion_pool(DIRTY_RECT_PARALLEL_MAX_WORKERS, || {
-            dirty_rects.par_iter().for_each(|rect| {
-                let width = rect.width as usize;
-                let height = rect.height as usize;
-                if width == 0 || height == 0 {
-                    return;
-                }
+        convert::for_each_conversion_job(DIRTY_RECT_PARALLEL_MAX_WORKERS, dirty_rects, |rect| {
+            let width = rect.width as usize;
+            let height = rect.height as usize;
+            if width == 0 || height == 0 {
+                return;
+            }
 
-                let x = rect.x as usize;
-                let y = rect.y as usize;
-                let src_offset = y * src_pitch + x * src_bytes_per_pixel;
-                let dst_offset = (dst_origin_y + y) * dst_pitch + (dst_origin_x + x) * 4;
-                unsafe {
-                    if let Some(kernel) = bgra_kernel {
-                        convert::convert_bgra_rows_with_kernel_unchecked(
-                            kernel,
-                            (src_addr + src_offset) as *const u8,
-                            src_pitch,
-                            (dst_addr + dst_offset) as *mut u8,
-                            dst_pitch,
-                            width,
-                            height,
-                        );
-                    } else {
-                        converter.convert_rows_unchecked(
-                            (src_addr + src_offset) as *const u8,
-                            src_pitch,
-                            (dst_addr + dst_offset) as *mut u8,
-                            dst_pitch,
-                            width,
-                            height,
-                        );
-                    }
+            let x = rect.x as usize;
+            let y = rect.y as usize;
+            let src_offset = y * src_pitch + x * src_bytes_per_pixel;
+            let dst_offset = (dst_origin_y + y) * dst_pitch + (dst_origin_x + x) * 4;
+            unsafe {
+                if let Some(kernel) = bgra_kernel {
+                    convert::convert_bgra_rows_with_kernel_unchecked(
+                        kernel,
+                        (src_addr + src_offset) as *const u8,
+                        src_pitch,
+                        (dst_addr + dst_offset) as *mut u8,
+                        dst_pitch,
+                        width,
+                        height,
+                    );
+                } else {
+                    converter.convert_rows_unchecked(
+                        (src_addr + src_offset) as *const u8,
+                        src_pitch,
+                        (dst_addr + dst_offset) as *mut u8,
+                        dst_pitch,
+                        width,
+                        height,
+                    );
                 }
-            });
+            }
         });
         return Ok(converted);
     }
@@ -1365,12 +1361,12 @@ pub(crate) fn map_staging_dirty_rects_to_frame_with_offset(
                 && non_overlapping;
 
             if can_parallel {
-                use rayon::prelude::*;
-
                 let src_addr = src_base as usize;
                 let dst_addr = dst_base as usize;
-                convert::with_conversion_pool(DIRTY_RECT_PARALLEL_MAX_WORKERS, || {
-                    work_items_slice.par_iter().for_each(|item| unsafe {
+                convert::for_each_conversion_job(
+                    DIRTY_RECT_PARALLEL_MAX_WORKERS,
+                    work_items_slice,
+                    |item| unsafe {
                         converter.convert_rows_unchecked(
                             (src_addr + item.src_offset) as *const u8,
                             src_pitch,
@@ -1379,8 +1375,8 @@ pub(crate) fn map_staging_dirty_rects_to_frame_with_offset(
                             item.width,
                             item.height,
                         );
-                    });
-                });
+                    },
+                );
             } else {
                 let allow_inner_parallel = work_items_slice.len() == 1;
                 for item in work_items_slice {
@@ -1922,12 +1918,12 @@ mod tests {
         let can_parallel = converted >= DIRTY_RECT_PARALLEL_MIN_RECTS && should_parallelize;
 
         if can_parallel {
-            use rayon::prelude::*;
-
             let src_addr = src_base as usize;
             let dst_addr = dst_base as usize;
-            convert::with_conversion_pool(DIRTY_RECT_PARALLEL_MAX_WORKERS, || {
-                dirty_rects.par_iter().for_each(|rect| {
+            convert::for_each_conversion_job(
+                DIRTY_RECT_PARALLEL_MAX_WORKERS,
+                dirty_rects,
+                |rect| {
                     let width = rect.width as usize;
                     let height = rect.height as usize;
                     if width == 0 || height == 0 {
@@ -1948,8 +1944,8 @@ mod tests {
                             height,
                         );
                     }
-                });
-            });
+                },
+            );
             return Ok(converted);
         }
 
