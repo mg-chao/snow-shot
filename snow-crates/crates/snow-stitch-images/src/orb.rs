@@ -1300,7 +1300,6 @@ fn orb_pattern_xy() -> &'static ([i32; 512], [i32; 512]) {
     })
 }
 
-#[cfg(any(test, not(target_arch = "aarch64")))]
 fn descriptor_scalar(image: &Image, keypoint: Keypoint) -> [u8; 32] {
     const RADIANS_PER_DEGREE: f32 = (std::f64::consts::PI / 180.0) as f32;
     let scale = 1.0_f32 / scale_for_level(keypoint.octave);

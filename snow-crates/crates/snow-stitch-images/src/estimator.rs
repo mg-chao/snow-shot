@@ -1090,48 +1090,76 @@ impl VerticalMotionEstimator {
             cache.full_reference_features = previous_full_features;
         }
 
-        let (previous_gray, incoming_gray) = {
-            let _perf = crate::perf::Scope::new(crate::perf::Stage::Grayscale);
-            (
-                match previous_gray {
-                    Some(gray) => gray,
-                    None => Arc::new(GrayImage::from_frame(previous_raw)?),
-                },
-                GrayImage::from_frame(incoming)?,
+        let prepare_maps = || -> Result<_, StitchError> {
+            let (previous_gray, incoming_gray) = {
+                let _perf = crate::perf::Scope::new(crate::perf::Stage::Grayscale);
+                (
+                    match previous_gray {
+                        Some(gray) => gray,
+                        None => Arc::new(GrayImage::from_frame(previous_raw)?),
+                    },
+                    GrayImage::from_frame(incoming)?,
+                )
+            };
+            let direct = {
+                let _perf = crate::perf::Scope::new(crate::perf::Stage::SimilarityMaps);
+                SimilarityMap::between(&previous_gray, &incoming_gray, self.layout, self.axis, 0)
+            };
+            // Release the previous raw planes once the direct map is complete.
+            let same_reference = cache
+                .reference_gray
+                .as_ref()
+                .is_some_and(|gray| Arc::ptr_eq(gray, &previous_gray));
+            drop(previous_gray);
+            if cache.reference_gray.is_none() {
+                let _perf = crate::perf::Scope::new(crate::perf::Stage::Grayscale);
+                cache.reference_gray = Some(Arc::new(GrayImage::from_frame(motion_reference)?));
+            }
+            let reference_gray = cache
+                .reference_gray
+                .as_ref()
+                .expect("prepared reference grayscale");
+            // Both maps compare with the same incoming planes at offset zero.
+            let separate_zero = if same_reference {
+                None
+            } else {
+                let _perf = crate::perf::Scope::new(crate::perf::Stage::SimilarityMaps);
+                Some(SimilarityMap::between(
+                    reference_gray,
+                    &incoming_gray,
+                    self.layout,
+                    self.axis,
+                    0,
+                ))
+            };
+            Ok((incoming_gray, direct, separate_zero))
+        };
+        let max_features = self.options.max_features as usize;
+        let mut detect = || {
+            pure_rust_feature_evidence(
+                motion_reference,
+                incoming,
+                self.layout,
+                max_features,
+                self.axis,
+                self.parallel_work,
+                &self.pyramid_plan,
+                Some(&self.sampling),
+                &mut cache.reference_features,
             )
         };
-        let direct = {
-            let _perf = crate::perf::Scope::new(crate::perf::Stage::SimilarityMaps);
-            SimilarityMap::between(&previous_gray, &incoming_gray, self.layout, self.axis, 0)
+        let (maps, (evidence, incoming_features)) = if self.parallel_work && self.sampling.reduced()
+        {
+            crate::perf::join(prepare_maps, detect)
+        } else {
+            (prepare_maps(), detect())
         };
-        // The raw comparison is complete. Release its planes before ORB unless
-        // they are shared with the cached motion reference.
-        drop(previous_gray);
-        if cache.reference_gray.is_none() {
-            let _perf = crate::perf::Scope::new(crate::perf::Stage::Grayscale);
-            cache.reference_gray = Some(Arc::new(GrayImage::from_frame(motion_reference)?));
-        }
+        let (incoming_gray, direct, separate_zero) = maps?;
+        let zero_alignment = separate_zero.as_ref().unwrap_or(&direct);
         let reference_gray = cache
             .reference_gray
             .as_ref()
             .expect("prepared reference grayscale");
-        let zero_alignment = {
-            let _perf = crate::perf::Scope::new(crate::perf::Stage::SimilarityMaps);
-            SimilarityMap::between(reference_gray, &incoming_gray, self.layout, self.axis, 0)
-        };
-
-        let max_features = self.options.max_features as usize;
-        let (evidence, incoming_features) = pure_rust_feature_evidence(
-            motion_reference,
-            incoming,
-            self.layout,
-            max_features,
-            self.axis,
-            self.parallel_work,
-            &self.pyramid_plan,
-            Some(&self.sampling),
-            &mut cache.reference_features,
-        );
         cache.previous_features = Some(incoming_features);
         let images = EvaluationImages {
             reference: motion_reference,
@@ -1139,7 +1167,7 @@ impl VerticalMotionEstimator {
             reference_gray,
             incoming_gray: &incoming_gray,
             direct: &direct,
-            zero_alignment: &zero_alignment,
+            zero_alignment,
         };
         let mut evaluated = self.evaluate(&images, evidence);
         if self.sampling.reduced() && evaluated.needs_full_resolution() {
@@ -1223,30 +1251,32 @@ impl VerticalMotionEstimator {
             return EvaluatedMotion::rejected(direct_similarity < 0.6, 0.0, diagnostics);
         }
 
-        let mut scored = candidates
-            .into_iter()
-            .map(|offset| {
-                let compensated = if offset == 0 {
-                    None
-                } else {
-                    Some(SimilarityMap::between(
-                        reference_gray,
-                        incoming_gray,
-                        self.layout,
-                        self.axis,
-                        offset,
-                    ))
-                };
-                score_candidate(
-                    offset,
+        let score = |offset| {
+            let compensated = if offset == 0 {
+                None
+            } else {
+                Some(SimilarityMap::between(
+                    reference_gray,
+                    incoming_gray,
+                    self.layout,
                     self.axis,
-                    &observations,
-                    direct,
-                    zero_alignment,
-                    compensated.as_ref().unwrap_or(zero_alignment),
-                )
-            })
-            .collect::<Vec<_>>();
+                    offset,
+                ))
+            };
+            score_candidate(
+                offset,
+                self.axis,
+                &observations,
+                direct,
+                zero_alignment,
+                compensated.as_ref().unwrap_or(zero_alignment),
+            )
+        };
+        let mut scored: Vec<_> = if self.parallel_work {
+            candidates.into_par_iter().map(score).collect()
+        } else {
+            candidates.into_iter().map(score).collect()
+        };
         scored.sort_by(|left, right| {
             right
                 .score

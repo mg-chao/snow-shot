@@ -482,34 +482,51 @@ fn similarity_for_tile<const ALIGNED: bool>(
     let scaled_x1 = x1.div_ceil(DOWNSAMPLE) as usize;
     let scaled_y1 = y1.div_ceil(DOWNSAMPLE) as usize;
     let expected = (scaled_x1 - scaled_x0).saturating_mul(scaled_y1 - scaled_y0);
-    let mut sample_count = 0_usize;
-    let mut reference_sum = 0.0;
-    let mut incoming_sum = 0.0;
-
-    for y in scaled_y0..scaled_y1.min(incoming.height) {
-        let incoming_row = y * incoming.width;
-        for x in scaled_x0..scaled_x1.min(incoming.width) {
-            let (reference_x, reference_y) = match axis {
-                StitchAxis::Vertical => (x as f32, y as f32 - scaled_offset),
-                StitchAxis::Horizontal => (x as f32 - scaled_offset, y as f32),
-            };
-            let Some(reference_value) = bilinear_axis_sample::<ALIGNED>(
-                reference_pixels,
-                reference.width,
-                reference.height,
-                reference_x,
-                reference_y,
-                axis,
-            ) else {
-                continue;
-            };
-            reference_sum += reference_value;
-            incoming_sum += incoming_pixels[incoming_row + x];
-            sample_count += 1;
-        }
+    // Every sample of a translated tile has the same interpolation weights.
+    // Clip once to the intersection in downsampled coordinates. Both passes
+    // still accumulate in the original row-major order.
+    let displacement = -scaled_offset;
+    let whole = displacement.floor() as i64;
+    let fraction = displacement - whole as f32;
+    let (dx, dy, next_x, next_y) = match axis {
+        StitchAxis::Vertical => (0, whole, 0, i64::from(fraction != 0.0)),
+        StitchAxis::Horizontal => (whole, 0, i64::from(fraction != 0.0), 0),
+    };
+    let left = (scaled_x0 as i64).max(-dx);
+    let right = (scaled_x1.min(incoming.width) as i64).min(reference.width as i64 - dx - next_x);
+    let top = (scaled_y0 as i64).max(-dy);
+    let bottom = (scaled_y1.min(incoming.height) as i64).min(reference.height as i64 - dy - next_y);
+    if left >= right || top >= bottom {
+        return None;
     }
+    let width = (right - left) as usize;
+    let sample_count = width * (bottom - top) as usize;
     if sample_count < expected.div_ceil(2).max(4) {
         return None;
+    }
+    let neighbor = next_y as usize * reference.width + next_x as usize;
+    let rows = (top..bottom).map(|y| {
+        let r = (y + dy) as usize * reference.width + (left + dx) as usize;
+        let i = y as usize * incoming.width + left as usize;
+        (r, i)
+    });
+    let interpolate = |a: f32, b: f32| {
+        if ALIGNED {
+            a
+        } else {
+            a * (1.0 - fraction) + b * fraction
+        }
+    };
+    let mut reference_sum = 0.0;
+    let mut incoming_sum = 0.0;
+    for (r, i) in rows.clone() {
+        let first = &reference_pixels[r..r + width];
+        let second = &reference_pixels[r + neighbor..r + neighbor + width];
+        let current = &incoming_pixels[i..i + width];
+        for x in 0..width {
+            reference_sum += interpolate(first[x], second[x]);
+            incoming_sum += current[x];
+        }
     }
 
     let count = sample_count as f32;
@@ -520,36 +537,18 @@ fn similarity_for_tile<const ALIGNED: bool>(
     let mut covariance = 0.0;
     let mut gradient_error = 0.0;
     let mut mean_gradient = 0.0;
-    for y in scaled_y0..scaled_y1.min(incoming.height) {
-        let incoming_row = y * incoming.width;
-        for x in scaled_x0..scaled_x1.min(incoming.width) {
-            let (reference_x, reference_y) = match axis {
-                StitchAxis::Vertical => (x as f32, y as f32 - scaled_offset),
-                StitchAxis::Horizontal => (x as f32 - scaled_offset, y as f32),
-            };
-            let Some(reference_value) = bilinear_axis_sample::<ALIGNED>(
-                reference_pixels,
-                reference.width,
-                reference.height,
-                reference_x,
-                reference_y,
-                axis,
-            ) else {
-                continue;
-            };
-            let reference_gradient = bilinear_axis_sample::<ALIGNED>(
-                reference_gradients,
-                reference.width,
-                reference.height,
-                reference_x,
-                reference_y,
-                axis,
-            )?;
-            let index = incoming_row + x;
-            let incoming_value = incoming_pixels[index];
-            let incoming_gradient = incoming_gradients[index];
-            let reference_delta = reference_value - mean_reference;
-            let incoming_delta = incoming_value - mean_incoming;
+    for (r, i) in rows {
+        let first = &reference_pixels[r..r + width];
+        let second = &reference_pixels[r + neighbor..r + neighbor + width];
+        let grad_first = &reference_gradients[r..r + width];
+        let grad_second = &reference_gradients[r + neighbor..r + neighbor + width];
+        let current = &incoming_pixels[i..i + width];
+        let gradients = &incoming_gradients[i..i + width];
+        for x in 0..width {
+            let reference_delta = interpolate(first[x], second[x]) - mean_reference;
+            let incoming_delta = current[x] - mean_incoming;
+            let reference_gradient = interpolate(grad_first[x], grad_second[x]);
+            let incoming_gradient = gradients[x];
             reference_variance += reference_delta * reference_delta;
             incoming_variance += incoming_delta * incoming_delta;
             covariance += reference_delta * incoming_delta;
@@ -580,48 +579,6 @@ fn similarity_for_tile<const ALIGNED: bool>(
         .mul_add(0.5, 0.0)
         .clamp(0.0, 1.0);
     Some((value, texture))
-}
-
-fn bilinear_axis_sample<const ALIGNED: bool>(
-    pixels: &[f32],
-    width: usize,
-    height: usize,
-    x: f32,
-    y: f32,
-    axis: StitchAxis,
-) -> Option<f32> {
-    if !x.is_finite()
-        || !y.is_finite()
-        || x < 0.0
-        || y < 0.0
-        || x > width.saturating_sub(1) as f32
-        || y > height.saturating_sub(1) as f32
-    {
-        return None;
-    }
-    if ALIGNED {
-        return Some(pixels[y as usize * width + x as usize]);
-    }
-    match axis {
-        StitchAxis::Vertical => {
-            let y0 = y.floor() as usize;
-            let y1 = (y0 + 1).min(height - 1);
-            let fraction = y - y0 as f32;
-            Some(
-                pixels[y0 * width + x as usize] * (1.0 - fraction)
-                    + pixels[y1 * width + x as usize] * fraction,
-            )
-        }
-        StitchAxis::Horizontal => {
-            let x0 = x.floor() as usize;
-            let x1 = (x0 + 1).min(width - 1);
-            let fraction = x - x0 as f32;
-            Some(
-                pixels[y as usize * width + x0] * (1.0 - fraction)
-                    + pixels[y as usize * width + x1] * fraction,
-            )
-        }
-    }
 }
 
 #[inline(always)]
@@ -709,35 +666,39 @@ impl SimilarityMap {
         let source = self.values.clone();
         let columns = self.layout.columns as usize;
         let rows = self.layout.rows as usize;
-        for index in 0..self.layout.len() {
-            if !self.valid[index] {
-                continue;
-            }
-            let mut neighbors = [0.0_f32; 9];
-            let mut count = 0;
-            let column = index % columns;
-            let row = index / columns;
-            let first_column = column.saturating_sub(1);
-            let last_column = (column + 1).min(columns - 1);
-            let first_row = row.saturating_sub(1);
-            let last_row = (row + 1).min(rows - 1);
-            for neighbor_row in first_row..=last_row {
-                let row_start = neighbor_row * columns;
-                for neighbor_column in first_column..=last_column {
-                    let neighbor = row_start + neighbor_column;
-                    if self.valid[neighbor] {
-                        neighbors[count] = source[neighbor];
-                        count += 1;
+        self.values
+            .par_chunks_mut(columns.max(1))
+            .enumerate()
+            .for_each(|(row, output)| {
+                let first_row = row.saturating_sub(1);
+                let last_row = (row + 1).min(rows - 1);
+                for (column, target) in output.iter_mut().enumerate() {
+                    let index = row * columns + column;
+                    if !self.valid[index] {
+                        continue;
                     }
+                    let mut neighbors = [0.0_f32; 9];
+                    let mut count = 0;
+                    let first_column = column.saturating_sub(1);
+                    let last_column = (column + 1).min(columns - 1);
+                    for neighbor_row in first_row..=last_row {
+                        let row_start = neighbor_row * columns;
+                        for neighbor_column in first_column..=last_column {
+                            let neighbor = row_start + neighbor_column;
+                            if self.valid[neighbor] {
+                                neighbors[count] = source[neighbor];
+                                count += 1;
+                            }
+                        }
+                    }
+                    *target = if count == 9 {
+                        median_of_nine(&mut neighbors)
+                    } else {
+                        neighbors[..count].sort_by(f32::total_cmp);
+                        neighbors[count / 2]
+                    };
                 }
-            }
-            self.values[index] = if count == 9 {
-                median_of_nine(&mut neighbors)
-            } else {
-                neighbors[..count].sort_by(f32::total_cmp);
-                neighbors[count / 2]
-            };
-        }
+            });
         self
     }
 
@@ -931,6 +892,63 @@ mod tests {
                         similarity_for_tile::<true>(&gray, &gray, layout, axis, offset, tile),
                         similarity_for_tile::<false>(&gray, &gray, layout, axis, offset, tile)
                     );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn fractional_tiles_match_independently_shifted_planes() {
+        let frame = gray_frame(101, 89, |x, y| ((x * 17 + y * 31) % 251) as u8);
+        let gray = GrayImage::from_frame(&frame).unwrap();
+        let layout = TileLayout::new(frame.width(), frame.height(), 16);
+        for axis in [StitchAxis::Vertical, StitchAxis::Horizontal] {
+            for offset in [-2.75_f32, -0.25, 0.5, 1.25] {
+                let mut shifted = gray.clone();
+                for (target, source) in [
+                    (&mut shifted.pixels, &gray.pixels),
+                    (&mut shifted.gradients, &gray.gradients),
+                ] {
+                    for (i, pixel) in target.iter_mut().enumerate() {
+                        let (x, y) = (i % gray.width, i / gray.width);
+                        let (pos, len, stride) = match axis {
+                            StitchAxis::Vertical => (y, gray.height, gray.width),
+                            StitchAxis::Horizontal => (x, gray.width, 1),
+                        };
+                        let at = (pos as f32 - offset).clamp(0.0, (len - 1) as f32);
+                        let first = at.floor() as usize;
+                        let second = (first + 1).min(len - 1);
+                        let fraction = at - first as f32;
+                        let base = i - pos * stride;
+                        *pixel = source[base + first * stride] * (1.0 - fraction)
+                            + source[base + second * stride] * fraction;
+                    }
+                }
+                for tile in 0..layout.len() {
+                    let (x0, y0, x1, y1) = layout.tile_bounds(tile);
+                    let xs = x0 / DOWNSAMPLE..x1.div_ceil(DOWNSAMPLE);
+                    let ys = y0 / DOWNSAMPLE..y1.div_ceil(DOWNSAMPLE);
+                    let area = xs.len() * ys.len();
+                    let mut valid = 0;
+                    for y in ys {
+                        for x in xs.clone() {
+                            let (pos, length) = match axis {
+                                StitchAxis::Vertical => (y, gray.height),
+                                StitchAxis::Horizontal => (x, gray.width),
+                            };
+                            let at = pos as f32 - offset;
+                            valid += usize::from((0.0..=(length - 1) as f32).contains(&at));
+                        }
+                    }
+                    let actual =
+                        similarity_for_tile::<false>(&gray, &gray, layout, axis, offset, tile);
+                    assert_eq!(actual.is_some(), valid >= area.div_ceil(2).max(4));
+                    if valid == area {
+                        assert_eq!(
+                            actual,
+                            similarity_for_tile::<true>(&shifted, &gray, layout, axis, 0.0, tile)
+                        );
+                    }
                 }
             }
         }

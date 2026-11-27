@@ -289,6 +289,14 @@ pub(crate) fn synthesize_append_in_place(
             .ok_or(StitchError::Arithmetic {
                 operation: "calculating incoming append reference byte offset",
             })?;
+    // The repaint band already comes from incoming. If the retained rows
+    // match too, the immutable capture lease is the entire new reference.
+    if incoming.has_shared_pixels()
+        && reference.pixels()[reference_start..reference_end] == incoming.pixels()[..incoming_start]
+    {
+        *reference = incoming.clone();
+        return Ok(());
+    }
     reference
         .pixels_mut()
         .copy_within(reference_start..reference_end, 0);
@@ -378,6 +386,12 @@ pub(crate) fn synthesize_prepend_in_place(
             .ok_or(StitchError::Arithmetic {
                 operation: "calculating prepend reference length",
             })?;
+    if incoming.has_shared_pixels()
+        && reference.pixels()[reference_start..reference_end] == incoming.pixels()[band_len..]
+    {
+        *reference = incoming.clone();
+        return Ok(());
+    }
     reference
         .pixels_mut()
         .copy_within(reference_start..reference_end, band_len);
@@ -629,6 +643,46 @@ mod tests {
         let mut actual = old;
         prepend_and_repaint_in_place(&mut actual, &incoming, 2).unwrap();
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn shared_reference_reuses_only_an_exact_retained_band() {
+        use std::sync::Arc;
+        for append in [true, false] {
+            let first = if append { 0_u8 } else { 2 };
+            let next = if append { 2_u8 } else { 0 };
+            let pixels = |start: u8| {
+                (start..start + 8)
+                    .flat_map(|v| [v, v, v, 255])
+                    .collect::<Vec<_>>()
+            };
+            for mismatch in [false, true] {
+                let original = Frame::new(1, 8, PixelFormat::Rgba8, pixels(first)).unwrap();
+                let mut bytes = pixels(next);
+                if mismatch {
+                    // Even invisible alpha differences must survive reference synthesis.
+                    bytes[if append { 3 } else { 31 }] = 0;
+                }
+                let incoming =
+                    Frame::from_shared_buffer(1, 8, PixelFormat::Rgba8, Arc::new(bytes)).unwrap();
+                let mut actual = original.clone();
+                let expected = if append {
+                    synthesize_append_in_place(&mut actual, &incoming, 2).unwrap();
+                    synthesize_append(&original, &incoming, 2).unwrap()
+                } else {
+                    synthesize_prepend_in_place(&mut actual, &incoming, 2).unwrap();
+                    synthesize_prepend(&original, &incoming, 2).unwrap()
+                };
+                assert_eq!(actual, expected);
+                assert_eq!(
+                    actual.pixels().as_ptr() == incoming.pixels().as_ptr(),
+                    !mismatch
+                );
+                actual.pixels_mut()[0] ^= 1;
+                assert_ne!(actual.pixels()[0], expected.pixels()[0]);
+                assert_eq!(incoming.pixels()[0], next);
+            }
+        }
     }
 
     #[test]
