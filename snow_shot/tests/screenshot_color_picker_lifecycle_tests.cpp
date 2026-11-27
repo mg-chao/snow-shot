@@ -674,25 +674,21 @@ class StyleToolbarCommands final : public ScreenshotToolbarCommandSink,
     void setMoveTool() override {
         ++moveToolCount;
     }
-    void setSelectTool() override {
-        ++selectToolCount;
+    void setCanvasTool(SnowCanvasTool tool) override {
+        switch (tool) {
+        case SnowCanvasTool::Select:
+            ++selectToolCount;
+            break;
+        case SnowCanvasTool::Shape:
+            ++shapeToolCount;
+            break;
+        default:
+            break;
+        }
     }
-    void setShapeTool() override {
-        ++shapeToolCount;
-    }
-    void setArrowTool() override {}
-    void setLineTool() override {}
-    void setBrushTool() override {}
-    void setHighlightTool() override {}
-    void setBrushHighlightTool() override {}
-    void setEraserTool() override {}
-    void setFilterTool() override {}
-    void setWatermarkTool() override {}
     void setWatermarkConfigFromToolbar(const SnowCanvasWatermarkConfig&) override {}
     void previewWatermarkFromToolbar(const SnowCanvasWatermarkConfig&) override {}
     void setFilterStyleFromToolbar(const SnowCanvasFilterStyle&, quint32) override {}
-    void setTextTool() override {}
-    void setSequenceNumberTool() override {}
     void setOcrTool() override {}
     void startScrollingScreenshot() override {}
     void pinSelectionToScreen() override {}

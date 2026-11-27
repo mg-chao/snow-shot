@@ -24,6 +24,11 @@ class ScreenshotToolbarCommandSink {
   public:
     virtual void replicateStyleEdit(const SnowCanvasStyleEdit&, SnowCanvasWidget*) {}
     virtual ~ScreenshotToolbarCommandSink() = default;
+    using Action = void (ScreenshotToolbarCommandSink::*)();
+    virtual bool invoke(Action action) {
+        (this->*action)();
+        return true;
+    }
 
     virtual void undoCanvasEdit() {}
     virtual void redoCanvasEdit() {}
@@ -47,39 +52,16 @@ class ScreenshotToolbarCommandSink {
     virtual void setSelectionDisplayUnit(ScreenshotSelectionDisplayUnit) {}
     virtual void setSelectionToolbarHidden(bool) {}
     virtual void setMoveTool() = 0;
-    virtual void setSelectTool() = 0;
-    virtual void setShapeTool() = 0;
-    virtual void setSpeechBubbleTool() {}
-    virtual void setArrowTool() = 0;
-    virtual void setLineTool() = 0;
-    virtual void setDistanceTool() {}
-    virtual void setAngleTool() {}
-    virtual void setBracketTool() {}
-    virtual void setBrushTool() = 0;
-    virtual void setHighlightTool() = 0;
-    virtual void setBrushHighlightTool() = 0;
-    virtual void setSpotlightTool() {}
-    virtual void setMagnifierTool() {}
-    virtual void setEraserTool() = 0;
-    virtual void setRectangleEraserTool() {}
-    virtual void setBrushEraserTool() {}
-    virtual void setFilterTool() = 0;
-    virtual void setRectangleFilterTool() {
-        setFilterTool();
-    }
-    virtual void setBrushFilterTool() {}
-    virtual void setAutoFilterTool() {}
+    virtual void setCanvasTool(SnowCanvasTool tool) = 0;
     virtual void fillAutoFilterCategory(const QString&) {}
-    virtual void setWatermarkTool() = 0;
     virtual void setWatermarkConfigFromToolbar(const SnowCanvasWatermarkConfig& config) = 0;
     virtual void previewWatermarkFromToolbar(const SnowCanvasWatermarkConfig& config) = 0;
     virtual void setSpotlightConfigFromToolbar(const SnowCanvasSpotlightConfig&) {}
     virtual void previewSpotlightFromToolbar(const SnowCanvasSpotlightConfig&) {}
     virtual void setFilterStyleFromToolbar(const SnowCanvasFilterStyle& style,
                                            quint32 properties) = 0;
-    virtual void setTextTool() = 0;
-    virtual void setSequenceNumberTool() = 0;
     virtual void setOcrTool() = 0;
+    virtual void recognizeTextAndCopy() {}
     virtual void setTextTranslationTool() {
         setOcrTool();
     }

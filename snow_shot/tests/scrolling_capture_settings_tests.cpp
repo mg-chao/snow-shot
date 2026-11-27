@@ -169,21 +169,10 @@ class ToolbarCommands final : public ScreenshotToolbarCommandSink,
         require(capture->restart(), "changed settings must restart the active scrolling session");
     }
     void setMoveTool() override {}
-    void setSelectTool() override {}
-    void setShapeTool() override {}
-    void setArrowTool() override {}
-    void setLineTool() override {}
-    void setBrushTool() override {}
-    void setHighlightTool() override {}
-    void setBrushHighlightTool() override {}
-    void setEraserTool() override {}
-    void setFilterTool() override {}
-    void setWatermarkTool() override {}
+    void setCanvasTool(SnowCanvasTool) override {}
     void setWatermarkConfigFromToolbar(const SnowCanvasWatermarkConfig&) override {}
     void previewWatermarkFromToolbar(const SnowCanvasWatermarkConfig&) override {}
     void setFilterStyleFromToolbar(const SnowCanvasFilterStyle&, quint32) override {}
-    void setTextTool() override {}
-    void setSequenceNumberTool() override {}
     void setOcrTool() override {}
     void startScrollingScreenshot() override {}
     void pinSelectionToScreen() override {}

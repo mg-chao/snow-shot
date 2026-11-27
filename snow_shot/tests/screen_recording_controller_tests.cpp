@@ -6504,7 +6504,7 @@ void recordingExportNamingTests(const QString& directory) {
             requireNaming(QApplication::clipboard()->mimeData()->urls() ==
                               QList<QUrl>{QUrl::fromLocalFile(path(3))},
                           "cropped Copy follows normal export naming and preserves the extension");
-            copy->click();
+            controller.stopRecordingAndCopy();
             requireNaming(clipExports == beforeExports + 1 &&
                               QApplication::clipboard()->mimeData()->urls() ==
                                   QList<QUrl>{QUrl::fromLocalFile(path(3))},
@@ -6536,7 +6536,13 @@ void recordingExportNamingTests(const QString& directory) {
                           "Save preserves the cached crop bytes");
             requireNaming(clipExports == beforeExports + 1, "Save reuses the cached crop");
             first->setValue(2);
-            exportAndWait([&] { copy->click(); }, path(5), "changed cropped Copy");
+            exportAndWait(
+                [&] {
+                    requireNaming(
+                        palette()->activateRecordingShortcut(QStringLiteral("copy_to_clipboard")),
+                        "the recording Copy shortcut is available for the new crop");
+                },
+                path(5), "changed cropped Copy");
             requireNaming(copy->isEnabled() && clipExports == beforeExports + 2,
                           "changing the crop completes exactly one new export and restores Copy");
             requireNaming(QApplication::clipboard()->mimeData()->urls() ==

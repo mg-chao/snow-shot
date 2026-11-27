@@ -526,6 +526,12 @@ ScreenshotRecognitionWindow::ScreenshotRecognitionWindow(
 }
 
 ScreenshotRecognitionWindow::~ScreenshotRecognitionWindow() {
+    m_previewCommit.cancel();
+    ++m_attachmentToken;
+    m_sessionOwner.clear();
+    auto callbacks = std::move(m_sessionCallbacks);
+    if (callbacks.cancelCopy)
+        callbacks.cancelCopy();
     cancelLineBoxSelection();
     clearLatexPreview();
     delete m_originalImagePreview.data();
@@ -851,11 +857,17 @@ ScreenshotRecognitionImageSnapshot ScreenshotRecognitionWindow::ocrImageSnapshot
 
 ScreenshotRecognitionWindow::AttachmentToken
 ScreenshotRecognitionWindow::attachSession(QObject* owner, SessionCallbacks callbacks) {
+    m_previewCommit.cancel();
+    auto retire = std::move(m_sessionCallbacks.cancelCopy);
     const auto token = ++m_attachmentToken;
     m_sessionOwner = owner;
     m_sessionAttached = true;
     m_sessionCallbacks = std::move(callbacks);
-    setModelThinking(false);
+    const QPointer<ScreenshotRecognitionWindow> view(this);
+    if (retire)
+        retire();
+    if (view && view->m_attachmentToken == token)
+        view->setModelThinking(false);
     return token;
 }
 
@@ -874,11 +886,17 @@ bool ScreenshotRecognitionWindow::commandAttachmentMatches(const QObject* owner,
 void ScreenshotRecognitionWindow::detachSession(const QObject* owner, AttachmentToken token) {
     if (!ownsAttachment(owner, token))
         return;
-    ++m_attachmentToken;
+    m_previewCommit.cancel();
+    auto retire = std::move(m_sessionCallbacks.cancelCopy);
+    const auto detached = ++m_attachmentToken;
     m_sessionOwner.clear();
     m_sessionAttached = false;
     m_sessionCallbacks = {};
-    setModelThinking(false);
+    const QPointer<ScreenshotRecognitionWindow> view(this);
+    if (retire)
+        retire();
+    if (view && view->m_attachmentToken == detached)
+        view->setModelThinking(false);
 }
 
 bool ScreenshotRecognitionWindow::translationCopyActive() const {
@@ -1373,20 +1391,8 @@ void ScreenshotRecognitionWindow::setTableSession(
                     const QString payload = message;
                     callback(payload);
                 });
-        connect(m_tableEditor, &ScreenshotTableEditor::copyCompleted, this, [this]() {
-            // Context-menu copies originate inside the table editor's
-            // copy method. Defer capture teardown until that call has
-            // returned, otherwise the editor can be destroyed
-            // re-entrantly while it is still unwinding.
-            const auto owner = m_sessionOwner;
-            const auto token = m_attachmentToken;
-            QTimer::singleShot(0, this, [this, owner, token]() {
-                if (!commandAttachmentMatches(owner, token))
-                    return;
-                const auto callback = m_actions.handleCopy;
-                callback();
-            });
-        });
+        m_tableEditor->setCopyRequestHandler(
+            [this](ScreenshotRecognitionCopy intent) { return requestCopy(intent); });
     }
     // Showing and focusing a table scrolls its current cell into view. Do that while unbound,
     // then let session restoration apply the model's independent selection and scroll position.
@@ -2077,6 +2083,10 @@ void ScreenshotRecognitionWindow::registerWindowShortcuts() {
             return focusInside(m_conversionView, focus);
         }
         if (m_tableEditor != nullptr) {
+#if SNOW_SHOT_ENABLE_TABLE_RECOGNITION
+            if (m_tableEditor->isEditingCell())
+                return false;
+#endif
             return focusInside(m_tableEditor, focus);
         }
         if (m_textEditor != nullptr) {
@@ -2136,27 +2146,14 @@ void ScreenshotRecognitionWindow::registerWindowShortcuts() {
             return true;
         }
 #endif
-        const QPointer<ScreenshotRecognitionWindow> lifetime(this);
-        const auto owner = m_sessionOwner;
-        const auto token = m_attachmentToken;
-        const auto callback = m_actions.handleCopy;
-        const bool copyHandledByHost =
-            m_recognizedDocument ||
-            (m_actions.copyOcrResult && (m_ocrPresentation || translationCopyActive()));
-        if (!lifetime || !commandAttachmentMatches(owner, token))
-            return true;
-        const bool copied = copyVisibleContentToClipboard();
-        if (!lifetime)
-            return true;
-        if (!commandAttachmentMatches(owner, token))
-            return true;
+        // These inspectors have their own selectable representation of the result.
+        const bool preview = m_conversionView || m_recognizedDocument
 #if SNOW_SHOT_ENABLE_LATEX_RECOGNITION
-        if (m_latexDocument)
-            return true;
+                             || m_latexDocument
 #endif
-        if (copied && !copyHandledByHost && m_conversionView == nullptr) {
-            callback();
-        }
+            ;
+        static_cast<void>(requestCopy(preview ? ScreenshotRecognitionCopy::Preview
+                                              : ScreenshotRecognitionCopy::Result));
         return true;
     };
     static_cast<void>(m_shortcutManager->addBinding(this, std::move(copy)));
@@ -2370,6 +2367,8 @@ void ScreenshotRecognitionWindow::showImageConversion(SnowShotImageConversionFor
         clearTableSession();
         clearQrContents();
         m_conversionView = new ScreenshotImageConversionView(this);
+        m_conversionView->setCopyRequestHandler(
+            [this] { return requestCopy(ScreenshotRecognitionCopy::Preview); });
         m_stack->addWidget(m_conversionView);
         installSelectionResizeEventFilters(m_conversionView);
         connect(m_conversionView, &ScreenshotImageConversionView::retryRequested, this,
@@ -2441,71 +2440,77 @@ void ScreenshotRecognitionWindow::clearRecognitionError() {
 }
 
 bool ScreenshotRecognitionWindow::copyVisibleContentToClipboard() {
-    if (!commandAttachmentMatches(m_sessionOwner, m_attachmentToken))
-        return false;
-    if (m_recognitionErrorPage)
-        return false;
-    if (m_ocrPresentation && m_actions.copyOcrResult) {
-        const auto copy = m_actions.copyOcrResult;
-        return copy();
-    }
-    if (m_ocrPresentation && m_sessionCallbacks.copySmart &&
-        m_sessionCallbacks.copySmart(m_ocrPresentation.get()))
-        return true;
-#if SNOW_SHOT_ENABLE_IMAGE_CONVERSION
-    if (m_conversionView != nullptr) {
-        return m_conversionView->copyToClipboard();
-    }
-#endif
-    QClipboard* clipboard = QApplication::clipboard();
-    if (clipboard == nullptr) {
-        return false;
-    }
-    const auto copyText = [clipboard](const QString& text) {
-        static_cast<void>(ScreenshotClipboardService::reservePublication());
-        clipboard->setText(text);
-        return true;
-    };
+    return requestCopy(ScreenshotRecognitionCopy::Preview);
+}
 
-    const QPointer<ScreenshotRecognitionWindow> lifetime(this);
+bool ScreenshotRecognitionWindow::requestCopy(ScreenshotRecognitionCopy intent) {
+    const QPointer<ScreenshotRecognitionWindow> self(this);
     const auto owner = m_sessionOwner;
     const auto token = m_attachmentToken;
-#if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
-    if (m_recognizedDocument && m_stack->currentWidget() == m_textEditorContainer) {
-        const auto copy = m_sessionCallbacks.copyDocument;
-        return copy && copy(documentSelectionHtml());
-    }
-#endif
+    if (!commandAttachmentMatches(owner, token) || m_recognitionErrorPage)
+        return false;
+    const auto published = [self, owner, token, intent] {
+        if (intent == ScreenshotRecognitionCopy::Result && self &&
+            self->commandAttachmentMatches(owner, token)) {
+            const auto completed = self->m_actions.resultCopied;
+            completed();
+        }
+    };
+    if (const auto copy = m_sessionCallbacks.copy)
+        return copy(intent, m_ocrPresentation.get(), published);
+
+    auto* clipboard = QApplication::clipboard();
+    if (!clipboard)
+        return false;
+    const auto publication = ScreenshotClipboardService::reservePublication(clipboard);
+    m_previewCommit.cancel();
     const auto active = m_sessionCallbacks.translationActive;
     const auto provider = m_sessionCallbacks.translationClipboard;
     const bool translating = owner && active && active();
-    if (!lifetime || !lifetime->commandAttachmentMatches(owner, token))
+    if (!self || !commandAttachmentMatches(owner, token))
         return false;
-    if (translating) {
-        if (const auto copy = m_actions.copyOcrResult)
-            return copy();
-        if (!provider)
-            return false;
-        auto mime = provider();
-        if (!lifetime || !lifetime->ownsAttachment(owner, token) || !mime)
-            return false;
-        static_cast<void>(ScreenshotClipboardService::reservePublication());
-        clipboard->setMimeData(mime.release());
-        return true;
-    }
+    auto mime = translating ? (provider ? provider() : nullptr) : previewClipboardMimeData();
+    if (!self || !commandAttachmentMatches(owner, token) || !mime)
+        return false;
+    auto handle = ScreenshotClipboardService::publishMimeData(
+        clipboard, this, std::move(mime), publication, [published](const auto& result) {
+            if (result.published())
+                published();
+        });
+    if (self && commandAttachmentMatches(owner, token) &&
+        !ScreenshotClipboardService::publicationSuperseded(publication))
+        m_previewCommit = std::move(handle);
+    else
+        handle.cancel();
+    return true;
+}
 
-    if (auto selected = textSelectionClipboardMimeData()) {
-        static_cast<void>(ScreenshotClipboardService::reservePublication());
-        clipboard->setMimeData(selected.release());
-        return true;
-    }
-
-#if SNOW_SHOT_ENABLE_TABLE_RECOGNITION
-    if (m_tableEditor != nullptr) {
-        return m_tableEditor->copySelectionToClipboard();
-    }
+std::unique_ptr<QMimeData> ScreenshotRecognitionWindow::previewClipboardMimeData() const {
+    if (m_recognitionErrorPage)
+        return {};
+#if SNOW_SHOT_ENABLE_IMAGE_CONVERSION
+    if (m_conversionView)
+        return m_conversionView->clipboardMimeData();
 #endif
-
+    if (auto selected = textSelectionClipboardMimeData()) {
+        if (m_textEditor && m_stack->currentWidget() == m_textEditorContainer &&
+            !m_recognizedDocument
+#if SNOW_SHOT_ENABLE_LATEX_RECOGNITION
+            && !m_latexDocument
+#endif
+        )
+            selected->setHtml(QTextDocumentFragment(m_textEditor->textCursor()).toHtml());
+        return selected;
+    }
+#if SNOW_SHOT_ENABLE_TABLE_RECOGNITION
+    if (m_tableEditor)
+        return m_tableEditor->clipboardMimeData();
+#endif
+    const auto textMime = [](const QString& text) {
+        auto mime = std::make_unique<QMimeData>();
+        mime->setText(text);
+        return mime;
+    };
     QString text;
     bool contentAvailable = false;
     if (m_textEditor != nullptr) {
@@ -2513,7 +2518,7 @@ bool ScreenshotRecognitionWindow::copyVisibleContentToClipboard() {
         const QTextCursor cursor = m_textEditor->textCursor();
 #if SNOW_SHOT_ENABLE_LATEX_RECOGNITION
         if (m_latexDocument) {
-            return copyText(cursor.hasSelection()
+            return textMime(cursor.hasSelection()
                                 ? currentLatexSource(cursor.selectionStart(), cursor.selectionEnd())
                                 : currentLatexSource());
         }
@@ -2523,7 +2528,7 @@ bool ScreenshotRecognitionWindow::copyVisibleContentToClipboard() {
     }
 #if SNOW_SHOT_ENABLE_QR_RECOGNITION || SNOW_SHOT_ENABLE_LATEX_RECOGNITION
     else if (m_qrBrowser != nullptr) {
-        return copyText(m_qrSource);
+        return textMime(m_qrSource);
     }
 #endif
     else if (m_ocrPresentation != nullptr) {
@@ -2539,10 +2544,10 @@ bool ScreenshotRecognitionWindow::copyVisibleContentToClipboard() {
         }
     }
     if (!contentAvailable) {
-        return false;
+        return {};
     }
     text.replace(QChar::ParagraphSeparator, QLatin1Char('\n'));
-    return copyText(text);
+    return textMime(text);
 }
 
 bool ScreenshotRecognitionWindow::activeContentOwnsContextMenu(const QObject* watched) const {
@@ -2654,28 +2659,7 @@ void ScreenshotRecognitionWindow::populateTextEditorContextMenu(
     connect(copy, &QAction::triggered, m_textEditor, [this, owner, token]() {
         if (!commandAttachmentMatches(owner, token))
             return;
-        const QPointer<ScreenshotRecognitionWindow> lifetime(this);
-        const bool translating = translationCopyActive();
-        if (!lifetime || !commandAttachmentMatches(owner, token))
-            return;
-        if (translating) {
-            static_cast<void>(copyVisibleContentToClipboard());
-            return;
-        }
-#if SNOW_SHOT_ENABLE_LATEX_RECOGNITION
-        if (m_latexDocument) {
-            static_cast<void>(copyVisibleContentToClipboard());
-            return;
-        }
-#endif
-        if (m_recognizedDocument) {
-            static_cast<void>(copyVisibleContentToClipboard());
-            return;
-        }
-        if (m_textEditor->textCursor().hasSelection()) {
-            static_cast<void>(ScreenshotClipboardService::reservePublication());
-            m_textEditor->copy();
-        }
+        static_cast<void>(copyVisibleContentToClipboard());
     });
     connect(cut, &QAction::triggered, m_textEditor, &QTextEdit::cut);
     connect(paste, &QAction::triggered, m_textEditor, &QTextEdit::paste);

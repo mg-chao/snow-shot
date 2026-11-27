@@ -9605,6 +9605,7 @@ if(SNOW_SHOT_BUILD_TESTS)
 
     add_executable(snow-shot-recognition-window-tests
         tests/screenshot_recognition_window_tests.cpp
+        src/presentation/services/screenshotclipboardservice.cpp
         src/presentation/ocr/screenshotrecognitionimage.cpp
         include/snow_shot/presentation/screenshotcanvasrenderer.h
         include/snow_shot/presentation/screenshotgeometry.h
@@ -9633,6 +9634,9 @@ if(SNOW_SHOT_BUILD_TESTS)
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
     )
     target_link_libraries(snow-shot-recognition-window-tests PRIVATE
+        snow_shot_image_codec
+        snow_shot_diagnostics
+        snow_shot_clipboard_files
         ant_design_qt
         Qt6::Widgets
         snow_draw_engine_qt_canvas
@@ -12236,6 +12240,13 @@ if(SNOW_SHOT_BUILD_TESTS)
     snow_shot_offscreen_qpa_environment(_snow_controller_clipboard_qpa_environment)
     add_test(NAME snow-shot-screenshot-ocr-copy-shortcut-tests
         COMMAND snow_shot --clipboard-pin-tests --ocr-copy-shortcut-only -platform offscreen)
+    add_test(NAME snow-shot-recognition-result-copy-entry-points-tests
+        COMMAND snow_shot --clipboard-pin-tests --recognition-result-copy-only -platform offscreen)
+    add_test(NAME snow-shot-recognition-copy-workflow-tests
+        COMMAND snow_shot --clipboard-pin-tests --ocr-copy-workflows-only -platform offscreen)
+    set_tests_properties(snow-shot-recognition-copy-workflow-tests PROPERTIES
+        LABELS unit SNOW_TEST_CROSS_PLATFORM TRUE TIMEOUT 120 RUN_SERIAL TRUE
+        ENVIRONMENT "${_snow_controller_clipboard_qpa_environment}")
     add_test(NAME snow-shot-screenshot-controller-clipboard-tests
         COMMAND snow_shot --clipboard-pin-tests -platform offscreen)
     add_test(NAME snow-shot-recognition-image-outputs-tests
@@ -12266,6 +12277,7 @@ if(SNOW_SHOT_BUILD_TESTS)
     add_test(NAME snow-shot-mcp-selection-admission-tests
         COMMAND snow_shot --clipboard-pin-tests --mcp-selection-admission-tests -platform offscreen)
     set_tests_properties(snow-shot-screenshot-ocr-copy-shortcut-tests
+        snow-shot-recognition-result-copy-entry-points-tests
         snow-shot-screenshot-controller-clipboard-tests snow-shot-screenshot-export-tasks-tests
         snow-shot-clipboard-pin-selection-priority-tests
         snow-shot-clipboard-formula-pin-tests snow-shot-history-pin-admission-tests

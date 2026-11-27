@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "cloud_upload_test_support.h"
 #include "physical_key_test_support.h"
+#include "screenshot_clipboard_test_output.h"
 #include "snow_shot/presentation/screenshotclouduploadservice.h"
 #include "canvas_automatic_selection_test_support.h"
 #include "screenshot_controller_test_access.h"
@@ -17,6 +18,7 @@
 #include "snow_shot/presentation/screenshothistoryservice.h"
 #include "snow_shot/presentation/screenshotocrrecognitionservice.h"
 #include "snow_shot/presentation/screenshotocrpresentation.h"
+#include "snow_shot/presentation/screenshotrecognitionfileexport.h"
 #include "snow_shot/presentation/screenshotrecognitionsessioncontroller.h"
 #include "snow_shot/presentation/screenshotrecognitionwindow.h"
 #include "snow_shot/presentation/screenshotexportartifact.h"
@@ -96,6 +98,9 @@
 #include <iostream>
 #include <limits>
 #include <stdexcept>
+#ifdef Q_OS_WIN
+#include <thread>
+#endif
 #include <vector>
 
 namespace {
@@ -460,6 +465,16 @@ void captureActionsChooseToolBeforeFirstPresentation(const QString& directory) {
     }
 }
 
+QPointer<ScreenshotRecognitionWindow> visibleRecognitionWindow() {
+    for (QWidget* widget : QApplication::topLevelWidgets()) {
+        if (auto* window = qobject_cast<ScreenshotRecognitionWindow*>(widget);
+            window != nullptr && window->isVisible()) {
+            return window;
+        }
+    }
+    return {};
+}
+
 void localOcrCopyShortcut(const QString& directory) {
     using Access = ScreenshotControllerTestAccess;
     const snow_shot::storage::ScreenshotShortcutSettings shortcuts;
@@ -468,12 +483,13 @@ void localOcrCopyShortcut(const QString& directory) {
             snow_shot::storage::ScreenshotSettings().setAutoExecuteAfterTextRecognition(
                 QStringLiteral("enable_edit_mode")),
         "configure explicit OCR copy");
-    enum class Selection { Confirmed, Smart, Cached, Superseded, ReplacedDuringCopy };
-    for (auto selection : {Selection::Confirmed, Selection::Smart, Selection::Cached,
-                           Selection::Superseded, Selection::ReplacedDuringCopy}) {
+    enum class Selection { Confirmed, Smart, Cached, Superseded, ReplacedDuringCopy, PreviewCopy };
+    for (auto selection :
+         {Selection::Confirmed, Selection::Smart, Selection::Cached, Selection::Superseded,
+          Selection::ReplacedDuringCopy, Selection::PreviewCopy}) {
         const bool smart = selection == Selection::Smart;
-        const bool superseded =
-            selection == Selection::Superseded || selection == Selection::ReplacedDuringCopy;
+        const bool previewCopy = selection == Selection::PreviewCopy;
+        const bool superseded = selection == Selection::Superseded || previewCopy;
         if (superseded)
             require(snow_shot::storage::ScreenshotSettings().setAutoExecuteAfterTextRecognition(
                         QStringLiteral("copy_text_and_end_screenshot")),
@@ -525,15 +541,31 @@ void localOcrCopyShortcut(const QString& directory) {
             auto* clipboard = QApplication::clipboard();
             QObject::connect(
                 clipboard, &QClipboard::dataChanged, &controller,
-                [clipboard] { clipboard->setText(QStringLiteral("Newer clipboard")); },
+                [clipboard, session] {
+                    require(!session->active() && !visibleRecognitionWindow(),
+                            "explicit copy closes capture before publishing");
+                    clipboard->setText(QStringLiteral("Newer clipboard"));
+                },
                 Qt::SingleShotConnection);
         }
         session->seedRecognitionResults(std::move(results));
+        if (previewCopy) {
+            auto view = visibleRecognitionWindow();
+            require(view, "explicit copy is still preparing its recognition result");
+            source->beginTextSelection(ScreenshotOcrTextPosition{0, 0});
+            source->updateTextSelection(ScreenshotOcrTextPosition{0, 8});
+            source->finishTextSelection();
+            view->updateOcrSelection();
+            require(view->copyVisibleContentToClipboard(),
+                    "a preview copy supersedes the pending explicit copy");
+        }
         if (superseded) {
+            const auto expected =
+                previewCopy ? QStringLiteral("Selected") : QStringLiteral("Newer clipboard");
             waitUntil([&] { return source->lines.first().backgroundFillColor.isValid(); },
                       "a superseded explicit copy restores the OCR background");
             require(session->active() && !session->editing() &&
-                        QApplication::clipboard()->text() == QStringLiteral("Newer clipboard"),
+                        QApplication::clipboard()->text() == expected,
                     "recovery keeps the capture open and preserves the newer clipboard");
             press();
         }
@@ -544,12 +576,51 @@ void localOcrCopyShortcut(const QString& directory) {
             overlay->setFocus();
             press();
         }
-        waitUntil([&] { return !session->active(); }, "successful explicit copy ends capture");
-        require(QApplication::clipboard()->mimeData()->hasText() &&
-                    QApplication::clipboard()->text() ==
-                        (smart ? QString{} : QStringLiteral("Selected area")),
-                "copy writes the complete source, including successful empty OCR");
+        const auto expected = smart ? QString{}
+                              : selection == Selection::ReplacedDuringCopy
+                                  ? QStringLiteral("Newer clipboard")
+                                  : QStringLiteral("Selected area");
+        waitUntil(
+            [&] {
+                return QApplication::clipboard()->mimeData()->hasText() &&
+                       QApplication::clipboard()->text() == expected;
+            },
+            "explicit copy publishes its complete source unless a newer copy wins");
+        require(!session->active(), "explicit copy ends capture");
     }
+}
+
+void oversizedQuickOcrReportsPixelLimit(const QString& directory) {
+    using Access = ScreenshotControllerTestAccess;
+    using Action = ScreenshotController::CaptureAction;
+    ScreenshotOcrRecognitionService recognition(isolatedRecognitionOptions(directory));
+    ScreenshotController controller(nullptr, nullptr, &recognition);
+    QImage image(3840, 2161, QImage::Format_RGB32);
+    image.fill(Qt::white);
+    ScreenshotSelectionParams params;
+    params.selection = image.rect();
+    Access::prepareSelection(controller, std::move(image), params);
+    auto* overlay = Access::presentSelection(controller);
+    require(overlay, "present the oversized capture");
+    Access::confirmCaptureSelection(controller, Action::RecognizeText);
+    require(Access::interaction(controller).movingSelection() &&
+                Access::selection(controller).pixelSelection() == params.selection &&
+                Access::pendingCaptureAction(controller) == Action::None &&
+                !controller.findChild<ScreenshotRecognitionSessionController*>(),
+            "Quick OCR keeps the oversized selection editable without starting recognition");
+    auto* messages = adqt::widgets::AdMessageService::instance(overlay);
+    require(messages, "the capture overlay owns a message service");
+    const auto expected =
+        QStringLiteral("Text recognition is unavailable for screenshots larger than 4K");
+    waitUntil(
+        [&] {
+            for (auto* message : messages->findChildren<adqt::widgets::AdMessageHandle*>()) {
+                if (message->isOpen() && message->content() == expected)
+                    return true;
+            }
+            return false;
+        },
+        "Quick OCR explains why the oversized selection cannot be recognized");
 }
 
 void copyAndEndWorkflowsSkipTextBackgrounds(const QString& directory) {
@@ -652,6 +723,12 @@ void copyAndEndWorkflowsSkipTextBackgrounds(const QString& directory) {
                   (workflow == Workflow::Quick &&
                    followUp == QStringLiteral("quick_copy_text_and_end_screenshot"))));
             if (endCapture) {
+                waitUntil(
+                    [&] {
+                        return !session->active() && QApplication::clipboard()->text() ==
+                                                         QStringLiteral("Recognized text");
+                    },
+                    "copy-and-end publishes the source after capture closes");
                 require(!presentation->lines[0].backgroundFillColor.isValid(),
                         "copy-and-end skips solid-fill preparation");
             } else if (workflow != Workflow::Translation && !session->editing()) {
@@ -689,18 +766,23 @@ void copyAndEndWorkflowsSkipTextBackgrounds(const QString& directory) {
                             QApplication::clipboard()->text() ==
                                 QStringLiteral("Previous clipboard"),
                         "cached OCR must finish activating before copying and ending capture");
-                QCoreApplication::processEvents();
-                require(!session->active() &&
-                            QApplication::clipboard()->text() == QStringLiteral("Recognized text"),
-                        "switching to OCR must copy the source text and end capture");
+                waitUntil(
+                    [&] {
+                        return !session->active() && QApplication::clipboard()->text() ==
+                                                         QStringLiteral("Recognized text");
+                    },
+                    "switching to OCR copies the source text after capture closes");
             }
 #endif
             if (workflow == Workflow::Ordinary && followUp == QStringLiteral("no_action")) {
                 ScreenshotControllerTestAccess::commands(controller).copySelectionToClipboard();
-                waitUntil([&] { return !session->active(); },
-                          "copy recognized text through the screenshot window");
-                require(QApplication::clipboard()->text() == QStringLiteral("Recognized text"),
-                        "the primary copy exports the recognized text");
+                waitUntil(
+                    [] {
+                        return QApplication::clipboard()->text() ==
+                               QStringLiteral("Recognized text");
+                    },
+                    "the primary copy exports the recognized text");
+                require(!session->active(), "the primary copy closes capture");
             }
             controller.mcpCancelCapture();
         }
@@ -747,15 +829,182 @@ void queuedRecognitionDoesNotOverrideReselection(const QString& directory) {
     }
 }
 
-QPointer<ScreenshotRecognitionWindow> visibleRecognitionWindow() {
-    for (QWidget* widget : QApplication::topLevelWidgets()) {
-        if (auto* window = qobject_cast<ScreenshotRecognitionWindow*>(widget);
-            window != nullptr && window->isVisible()) {
-            return window;
+bool recognitionCopyErrorShown(const QString& expected) {
+    for (auto* widget : QApplication::topLevelWidgets()) {
+        for (auto* message : widget->findChildren<adqt::widgets::AdMessageHandle*>()) {
+            if (message->isOpen() && message->type() == adqt::widgets::AdMessage::Type::Error &&
+                message->content() == expected)
+                return true;
         }
     }
-    return {};
+    return false;
 }
+
+void captureResultCopyEntryPoints(const QString& directory) {
+    using Access = ScreenshotControllerTestAccess;
+    require(snow_shot::storage::ScreenshotSettings().setAutoExecuteAfterTextRecognition(
+                QStringLiteral("no_action")),
+            "defer copying until the user requests it");
+    enum class Entry { Toolbar, Keyboard, SupersededOnClose };
+    for (const auto entry : {Entry::Toolbar, Entry::Keyboard, Entry::SupersededOnClose}) {
+        ScreenshotOcrRecognitionService recognition(isolatedRecognitionOptions(directory));
+        ScreenshotController controller(nullptr, nullptr, &recognition);
+        ScreenshotSelectionParams params;
+        params.selection = QRect(10, 10, 60, 40);
+        Access::prepareSelection(controller, fixture(), params);
+        const QPointer<ScreenshotOverlayWindow> overlay = Access::presentSelection(controller);
+        require(overlay && overlay->isVisible(), "present the capture copy overlay");
+        Access::confirmCaptureSelection(controller,
+                                        ScreenshotController::CaptureAction::RecognizeText);
+        auto* session = controller.findChild<ScreenshotRecognitionSessionController*>();
+        require(session && session->active(), "start the capture recognition session");
+        auto* clipboard = QApplication::clipboard();
+        clipboard->setText(QStringLiteral("Before result copy"));
+        if (entry == Entry::Toolbar) {
+            require(!session->hasTextResult(), "recognition has not produced a result yet");
+            Access::commands(controller).copySelectionToClipboard();
+            require(recognitionCopyErrorShown(session->clipboardUnavailableMessage()) &&
+                        session->active() &&
+                        session->workflowState().value(u"error").toString().isEmpty() &&
+                        clipboard->text() == QStringLiteral("Before result copy"),
+                    "early Copy reports the missing result without interrupting recognition");
+        }
+        auto results = session->cachedRecognitionResults();
+        auto presentation = std::make_shared<ScreenshotOcrPresentation>();
+        presentation->selection = params.selection;
+        presentation->lines.push_back(
+            {QStringLiteral("Capture result"), 1.0,
+             QPolygonF{QPointF(12, 12), QPointF(46, 12), QPointF(46, 28), QPointF(12, 28)}});
+        presentation->prepareForRendering();
+        results.text = ScreenshotOcrRecognitionResult{presentation};
+        session->seedRecognitionResults(std::move(results));
+        waitUntil([] { return bool(visibleRecognitionWindow()); }, "show the OCR result");
+        const auto confirmClosed = [session, overlay] {
+            require(!session->active() && !visibleRecognitionWindow() &&
+                        (!overlay || !overlay->isVisible()),
+                    "the recognition window is already closed during publication");
+        };
+        const auto published =
+            QObject::connect(clipboard, &QClipboard::dataChanged, &controller, confirmClosed);
+        if (entry == Entry::SupersededOnClose) {
+            QObject::connect(
+                &controller, &ScreenshotController::mcpCaptureTerminated, &controller,
+                [clipboard] { clipboard->setText(QStringLiteral("Newer clipboard")); },
+                Qt::SingleShotConnection);
+        }
+        if (entry == Entry::Keyboard) {
+            auto view = visibleRecognitionWindow();
+            view->activateWindow();
+            view->setFocus();
+            QApplication::processEvents();
+            for (auto type : {QEvent::KeyPress, QEvent::KeyRelease}) {
+                if (!view)
+                    break;
+                PhysicalKeyEvent event(type, Qt::Key_C, Qt::ControlModifier);
+                QApplication::sendEvent(view, &event);
+            }
+        } else {
+            QAbstractButton* copy = nullptr;
+            for (QWidget* widget : QApplication::topLevelWidgets()) {
+                auto* toolbar = qobject_cast<ScreenshotToolbarWindow*>(widget);
+                if (!toolbar || !toolbar->isVisible())
+                    continue;
+                for (auto* button : toolbar->findChildren<QAbstractButton*>()) {
+                    if (button->property("screenshotToolbarItemId").toString() ==
+                            QStringLiteral("copy") &&
+                        button->isVisible()) {
+                        copy = button;
+                        break;
+                    }
+                }
+                if (copy)
+                    break;
+            }
+            require(copy && copy->isEnabled(), "find the visible capture Copy button");
+            copy->click();
+        }
+        const auto expected = entry == Entry::SupersededOnClose ? QStringLiteral("Newer clipboard")
+                                                                : QStringLiteral("Capture result");
+        waitUntil([&] { return clipboard->text() == expected; },
+                  "the toolbar and shortcut publish unless a newer write wins");
+        QCoreApplication::processEvents();
+        require(clipboard->text() == expected, "a detached copy preserves a newer clipboard");
+        confirmClosed();
+        QObject::disconnect(published);
+    }
+}
+
+#if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
+void captureDocumentCopyDetaches() {
+    using Access = ScreenshotControllerTestAccess;
+    const snow_shot::storage::ScreenshotSettings settings;
+    const bool previousCopyAsFile = settings.copyImageFileToClipboard();
+    const auto restore =
+        qScopeGuard([&] { settings.setCopyImageFileToClipboard(previousCopyAsFile); });
+    QTcpServer server;
+    require(server.listen(QHostAddress::LocalHost), "document copy test server listens");
+    SnowShotApiClient client(QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort()));
+    enum class Output { Html, File, EmptyFile };
+    for (const auto output : {Output::Html, Output::File, Output::EmptyFile}) {
+        const bool asFile = output != Output::Html;
+        require(settings.setCopyImageFileToClipboard(asFile), "configure document copy format");
+        ScreenshotController controller(nullptr, nullptr, nullptr, &client);
+        ScreenshotSelectionParams selection;
+        selection.selection = QRect(0, 0, 120, 80);
+        Access::prepareSelection(controller, fixture(), selection);
+        Access::presentSelection(controller);
+        auto& commands = Access::commands(controller);
+        commands.setDocumentTool();
+        auto* session = controller.findChild<ScreenshotRecognitionSessionController*>();
+        require(session && session->active(), "activate the capture document session");
+        session->cancelWorkflow();
+        auto results = session->cachedRecognitionResults();
+        auto document = std::make_shared<ScreenshotRecognizedDocument>();
+        if (output != Output::EmptyFile)
+            document->html = QStringLiteral("<p>Detached document copy</p>");
+        results.document = std::move(document);
+        session->seedRecognitionResults(std::move(results));
+        session->activate(ScreenshotRecognitionSessionController::Mode::Document);
+
+        auto* clipboard = QApplication::clipboard();
+        clipboard->setText(QStringLiteral("Before document copy"));
+        const auto published =
+            QObject::connect(clipboard, &QClipboard::dataChanged, &controller, [session] {
+                require(!session->active() && !visibleRecognitionWindow(),
+                        "document copy closes capture before publishing");
+            });
+        commands.copySelectionToClipboard();
+        require(session->active() && clipboard->text() == QStringLiteral("Before document copy"),
+                "document copy keeps capture open during asynchronous preparation");
+        if (output == Output::EmptyFile) {
+            waitUntil(
+                [] {
+                    return recognitionCopyErrorShown(
+                        ScreenshotRecognitionFileExport::noResultMessage());
+                },
+                "an asynchronous document export error reaches the recognition window");
+            require(session->active() &&
+                        clipboard->text() == QStringLiteral("Before document copy"),
+                    "a failed document export leaves the capture and clipboard intact");
+            QObject::disconnect(published);
+            continue;
+        }
+        waitUntil(
+            [&] {
+                const auto* mime = clipboard->mimeData();
+                if (!asFile)
+                    return mime->html().contains(QStringLiteral("Detached document copy"));
+                if (!mime->hasUrls())
+                    return false;
+                QFile file(mime->urls().constFirst().toLocalFile());
+                return file.open(QIODevice::ReadOnly) &&
+                       file.readAll().contains("Detached document copy");
+            },
+            "the prepared document remains copyable after capture ends");
+        QObject::disconnect(published);
+    }
+}
+#endif
 
 void sendMouse(QWidget& target, QEvent::Type type, const QPointF& point, Qt::MouseButton button,
                Qt::MouseButtons buttons) {
@@ -844,36 +1093,6 @@ void recognitionWindowsFollowSelectionTransitions(const QString& directory) {
             controller.mcpCancelCapture();
         }
     }
-}
-
-std::pair<QImage, QString> captureClipboardOutput() {
-#ifdef Q_OS_WIN
-    waitUntil([] { return OpenClipboard(nullptr) != FALSE; }, "open native clipboard output");
-    const auto close = qScopeGuard([] { CloseClipboard(); });
-    const auto handle = static_cast<HGLOBAL>(GetClipboardData(RegisterClipboardFormatW(L"PNG")));
-    const auto* data = handle ? static_cast<const char*>(GlobalLock(handle)) : nullptr;
-    QImage image;
-    if (data) {
-        image =
-            QImage::fromData(QByteArray(data, static_cast<qsizetype>(GlobalSize(handle))), "PNG");
-        GlobalUnlock(handle);
-    }
-    QString path;
-    const auto drop = static_cast<HDROP>(GetClipboardData(CF_HDROP));
-    if (drop && DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0) > 0) {
-        const UINT length = DragQueryFileW(drop, 0, nullptr, 0);
-        path.resize(length + 1);
-        DragQueryFileW(drop, 0, reinterpret_cast<LPWSTR>(path.data()), length + 1);
-        path.resize(length);
-    }
-    return {image, path};
-#else
-    const auto* mime = QApplication::clipboard()->mimeData();
-    if (!mime)
-        return {};
-    return {QImage::fromData(mime->data(QStringLiteral("image/png"))),
-            mime->hasUrls() ? mime->urls().constFirst().toLocalFile() : QString{}};
-#endif
 }
 
 void clipboardPinPrefersActiveScreenshotSelection(ScreenshotController& controller) {
@@ -1241,6 +1460,88 @@ bool samePixels(const QImage& a, const QImage& b) {
            b.convertToFormat(QImage::Format_ARGB32_Premultiplied);
 }
 
+#if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
+void captureTranslationImageCopyDetaches(const QString& directory,
+                                         [[maybe_unused]] bool clipboardBusy = false) {
+    using Access = ScreenshotControllerTestAccess;
+    const snow_shot::storage::ScreenshotTranslationSettings settings;
+    const bool previousCopyAsImage = settings.copyTranslationResultsAsImage();
+    const auto restore =
+        qScopeGuard([&] { settings.setCopyTranslationResultsAsImage(previousCopyAsImage); });
+    require(settings.setCopyTranslationResultsAsImage(true), "enable translation image copy");
+    ScreenshotOcrRecognitionService recognition(isolatedRecognitionOptions(directory));
+    ScreenshotController controller(nullptr, nullptr, &recognition);
+    ScreenshotSelectionParams params;
+    params.selection = QRect(10, 10, 60, 40);
+    Access::prepareSelection(controller, fixture(), params);
+    Access::presentSelection(controller);
+    auto& commands = Access::commands(controller);
+    commands.setOcrTool();
+    auto* session = controller.findChild<ScreenshotRecognitionSessionController*>();
+    require(session && session->active(), "activate the capture translation session");
+    auto results = session->cachedRecognitionResults();
+    auto source = std::make_shared<ScreenshotOcrPresentation>();
+    source->selection = params.selection;
+    source->lines.push_back(
+        {QStringLiteral("Source"), 1.0,
+         QPolygonF{QPointF(12, 12), QPointF(46, 12), QPointF(46, 28), QPointF(12, 28)}});
+    source->prepareForRendering();
+    results.text = ScreenshotOcrRecognitionResult{source};
+    auto translated = std::make_shared<ScreenshotOcrPresentation>(*source);
+    translated->lines[0].text = QStringLiteral("Translated");
+    results.translatedText = std::move(translated);
+    session->seedRecognitionResults(std::move(results));
+    require(session->activateCachedTextTranslation(), "show the translated overlay");
+    const auto prepared = session->recognitionClipboardMimeData();
+    require(prepared && prepared->hasImage(), "the translated overlay prepares an image");
+    const auto expected = qvariant_cast<QImage>(prepared->imageData());
+    QImage sentinel(2, 2, QImage::Format_RGB32);
+    sentinel.fill(Qt::red);
+    require(ScreenshotClipboardService::publishImage(QApplication::clipboard(), sentinel),
+            "seed distinct clipboard pixels before translation image copy");
+    const auto previous = readScreenshotClipboardOutput();
+#ifdef Q_OS_WIN
+    if (clipboardBusy) {
+        QSemaphore ready;
+        QSemaphore release;
+        bool locked = false;
+        std::thread locker([&] {
+            QDeadlineTimer deadline(2000);
+            while (!(locked = OpenClipboard(nullptr) != FALSE) && !deadline.hasExpired())
+                QThread::msleep(1);
+            ready.release();
+            release.acquire();
+            if (locked)
+                CloseClipboard();
+        });
+        const auto unlock = qScopeGuard([&] {
+            release.release();
+            locker.join();
+        });
+        ready.acquire();
+        require(locked, "hold the native clipboard throughout the detached copy");
+        int notifications = 0;
+        QObject::connect(&controller, &ScreenshotController::exportTaskFailed, &controller,
+                         [&] { ++notifications; });
+
+        commands.copySelectionToClipboard();
+        require(!session->active() && Access::exportActive(controller),
+                "the detached translation image copy is pending");
+        waitUntil([&] { return !Access::exportActive(controller); },
+                  "retry exhaustion completes the detached translation image copy");
+        require(notifications == 0, "clipboard retry exhaustion sends no system notification");
+        return;
+    }
+#endif
+    commands.copySelectionToClipboard();
+    require(!session->active() && !visibleRecognitionWindow() &&
+                readScreenshotClipboardOutput() == previous,
+            "translation image copy closes capture before publishing the image");
+    waitUntil([&] { return samePixels(readScreenshotClipboardOutput().image, expected); },
+              "the prepared translation image survives capture teardown");
+}
+#endif
+
 void capturePinKeepsEditableAnnotations() {
     auto& storage = snow_shot::storage::ApplicationStorage::instance();
     const snow_shot::storage::ScreenshotSettings settings;
@@ -1325,9 +1626,9 @@ void capturePinKeepsEditableAnnotations() {
             waitUntil([&] { return !QDir(directory.path()).entryList(QDir::Files).isEmpty(); },
                       "pin automatic save finishes");
         if (copy) {
-            waitUntil([&] { return !captureClipboardOutput().first.isNull(); },
+            waitUntil([&] { return !readScreenshotClipboardOutput().image.isNull(); },
                       "pin clipboard task publishes");
-            const auto [copied, copyFile] = captureClipboardOutput();
+            const auto [copied, copyFile] = readScreenshotClipboardOutput();
             require(samePixels(copied, composite) && (!copyFile.isEmpty() == save),
                     "copy after pin uses the annotated composite and honors file copying");
         } else {
@@ -1580,7 +1881,9 @@ void capturePinSamplesOnlyCroppedImage() {
             "sampling annotation pin finishes");
         auto* pin = visiblePins().first();
         waitUntil(
-            [&] { return normalize(captureClipboardOutput().first) == normalize(expectedPin); },
+            [&] {
+                return normalize(readScreenshotClipboardOutput().image) == normalize(expectedPin);
+            },
             "automatic copying uses the pin's cropped sampling and transferred annotations");
         require(normalize(editablePinImage(*pin)) == normalize(expectedPin),
                 "pinned filters and magnifiers sample only the cropped image");
@@ -1729,9 +2032,10 @@ void capturePinCopiesOnlyWhenEnabled() {
             const QImage pinned = visiblePins().constFirst()->persistenceSnapshot().image;
             require(!pinned.isNull(), "copy mode must preserve successful pinning");
             if (enabled)
-                waitUntil([&] { return captureClipboardOutput().first.size() == pinned.size(); },
-                          "post-pin clipboard write finishes");
-            const auto [copied, copiedFile] = captureClipboardOutput();
+                waitUntil(
+                    [&] { return readScreenshotClipboardOutput().image.size() == pinned.size(); },
+                    "post-pin clipboard write finishes");
+            const auto [copied, copiedFile] = readScreenshotClipboardOutput();
             if (enabled) {
                 require(!copied.isNull() &&
                             copied.convertToFormat(QImage::Format_ARGB32_Premultiplied) ==
@@ -1780,17 +2084,17 @@ void capturePinCopiesOnlyWhenEnabled() {
         "combined pin, clipboard and automatic save must finish");
     waitUntil(
         [&] {
-            return !captureClipboardOutput().second.isEmpty() &&
+            return !readScreenshotClipboardOutput().filePath.isEmpty() &&
                    QDir(directory.path()).entryList(QDir::Files).size() == 1;
         },
         "pin and copy must share one automatic save");
     closePins();
-    const auto clipboardBeforeFailure = captureClipboardOutput();
+    const auto clipboardBeforeFailure = readScreenshotClipboardOutput();
     ScreenshotControllerTestAccess::prepareSelection(controller, fixture(), {});
     ScreenshotControllerTestAccess::commands(controller).pinSelectionToScreen();
     waitUntil([&] { return !ScreenshotControllerTestAccess::exportActive(controller); },
               "a rejected pin must finish its export");
-    require(visiblePins().isEmpty() && captureClipboardOutput() == clipboardBeforeFailure &&
+    require(visiblePins().isEmpty() && readScreenshotClipboardOutput() == clipboardBeforeFailure &&
                 QDir(directory.path()).entryList(QDir::Files).size() == 1,
             "a rejected pin must not copy or save anything");
     require(settings.setExportTasks(ExportTrigger::ScreenshotPin, {}) &&
@@ -1997,7 +2301,7 @@ void scrollingCopyUsesHiDpiScalingWithEveryFileOption() {
                 "queued scrolling export must retain its accepted scale");
         waitUntil([&] { return !ScreenshotControllerTestAccess::exportActive(controller); },
                   "scaled scrolling copy completes");
-        const auto [copied, path] = captureClipboardOutput();
+        const auto [copied, path] = readScreenshotClipboardOutput();
         require(copied.size() == QSize(60, 40) && snapshot.rowSource().size == QSize(120, 80),
                 "plain and file scrolling copies scale once without changing the source");
         waitUntil([&] { return storage.captureHistory().recordsSnapshot().revision > before; },
@@ -2082,7 +2386,7 @@ void hiDpiScalingAffectsOnlyCopiedAndSavedOutputs() {
         waitUntil([&] { return !ScreenshotControllerTestAccess::exportActive(controller); },
                   "HiDPI output completes");
         if (scenario < 3) {
-            const auto [copied, path] = captureClipboardOutput();
+            const auto [copied, path] = readScreenshotClipboardOutput();
             require(copied.size() == expected, "clipboard dimensions must use the captured ratio");
             if (scenario == 2)
                 require(!path.isEmpty() && QImage(path).size() == expected,
@@ -2244,9 +2548,9 @@ void pinOutputsUseHiDpiScaling() {
                 waitUntil([&] { return !QDir(directory.path()).entryList(QDir::Files).isEmpty(); },
                           "scaled pin automatic save finishes");
             if (copy) {
-                waitUntil([&] { return !captureClipboardOutput().first.isNull(); },
+                waitUntil([&] { return !readScreenshotClipboardOutput().image.isNull(); },
                           "scaled pin copy finishes");
-                const auto [copied, path] = captureClipboardOutput();
+                const auto [copied, path] = readScreenshotClipboardOutput();
                 if (!samePixels(copied, expected) || !path.isEmpty() != copyFile)
                     std::cerr << "pin output mismatch: source=" << sourceKind
                               << " output=" << outputKind << " copied=" << copied.width() << 'x'
@@ -2539,7 +2843,7 @@ void exportTaskClipboardOrder() {
         require(Clipboard::publishImage(clipboard, newerCopy), "publish a newer explicit copy");
     };
     const auto hasNewerCopy = [&] {
-        const auto [image, path] = captureClipboardOutput();
+        const auto [image, path] = readScreenshotClipboardOutput();
         return samePixels(image, newerCopy) && path.isEmpty();
     };
     const auto idle = [&] {
@@ -2807,7 +3111,7 @@ void scopedDirectCopyTasksFollowTheTarget() {
     waitUntil([&] { return !controller.blocksApplicationUpdate(); },
               "focused window copy finishes");
     require(errors.isEmpty() && pins == QList<QColor>{Qt::red} &&
-                captureClipboardOutput().first.pixelColor(0, 0) == QColor(Qt::red),
+                readScreenshotClipboardOutput().image.pixelColor(0, 0) == QColor(Qt::red),
             "focused window capture copies and pins the red frame");
 
     const auto path = output.filePath(QStringLiteral("direct-monitor.png"));
@@ -2815,7 +3119,7 @@ void scopedDirectCopyTasksFollowTheTarget() {
     waitUntil([&] { return !controller.blocksApplicationUpdate() && QFileInfo::exists(path); },
               "current monitor copy finishes and auto-saves");
     require(errors.isEmpty() && pins == QList<QColor>{Qt::red} &&
-                captureClipboardOutput().first.pixelColor(0, 0) == QColor(Qt::blue) &&
+                readScreenshotClipboardOutput().image.pixelColor(0, 0) == QColor(Qt::blue) &&
                 QImage(path).pixelColor(0, 0) == QColor(Qt::blue) &&
                 QDir(output.path()).entryList(QDir::Files).size() == 1,
             "current monitor capture copies and saves the blue frame");
@@ -3095,9 +3399,38 @@ int runScreenshotControllerClipboardTests(int argc, char** argv) {
         storage.shutdown();
         return EXIT_SUCCESS;
     }
-    if (application.arguments().contains(QStringLiteral("--ocr-copy-shortcut-only"))) {
+    const bool resultCopy =
+        application.arguments().contains(QStringLiteral("--recognition-result-copy-only"));
+    if (resultCopy ||
+        application.arguments().contains(QStringLiteral("--ocr-copy-shortcut-only"))) {
         const auto shutdown = qScopeGuard([&] { storage.shutdown(); });
-        localOcrCopyShortcut(directory.path());
+#if SNOW_SHOT_ENABLE_QR_RECOGNITION
+        require(snow_shot::storage::ScreenshotSettings().setAutoRecognizeQrCode(false),
+                "OCR copy coverage uses only the seeded text recognition result");
+#endif
+        if (resultCopy) {
+            captureResultCopyEntryPoints(directory.path());
+#if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
+            captureDocumentCopyDetaches();
+#endif
+#if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
+            captureTranslationImageCopyDetaches(directory.path());
+#ifdef Q_OS_WIN
+            captureTranslationImageCopyDetaches(directory.path(), /*clipboardBusy=*/true);
+#endif
+#endif
+        } else {
+            localOcrCopyShortcut(directory.path());
+        }
+        return EXIT_SUCCESS;
+    }
+    if (application.arguments().contains(QStringLiteral("--ocr-copy-workflows-only"))) {
+        const auto shutdown = qScopeGuard([&] { storage.shutdown(); });
+#if SNOW_SHOT_ENABLE_QR_RECOGNITION
+        require(snow_shot::storage::ScreenshotSettings().setAutoRecognizeQrCode(false),
+                "Quick OCR coverage isolates the text recognition command");
+#endif
+        oversizedQuickOcrReportsPixelLimit(directory.path());
         copyAndEndWorkflowsSkipTextBackgrounds(directory.path());
         return EXIT_SUCCESS;
     }
@@ -3407,7 +3740,6 @@ int runScreenshotControllerClipboardTests(int argc, char** argv) {
         storage.shutdown();
         return EXIT_SUCCESS;
     }
-    copyAndEndWorkflowsSkipTextBackgrounds(directory.path());
     {
         ScreenshotController controller;
         combinedCopiesPreserveImagePlacementAndAppearance(controller);

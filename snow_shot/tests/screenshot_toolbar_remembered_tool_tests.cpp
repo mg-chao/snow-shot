@@ -52,36 +52,33 @@ class RecordingToolbarCommands : public ScreenshotToolbarCommandSink {
     void setMoveTool() override {
         ++moveToolCount;
     }
-    void setSelectTool() override {
-        ++selectToolCount;
+    void setCanvasTool(SnowCanvasTool tool) override {
+        switch (tool) {
+        case SnowCanvasTool::Select:
+            ++selectToolCount;
+            break;
+        case SnowCanvasTool::Shape:
+            ++shapeToolCount;
+            break;
+        case SnowCanvasTool::SpeechBubble:
+            ++speechBubbleToolCount;
+            break;
+        case SnowCanvasTool::Eraser:
+            ++elementEraserCount;
+            break;
+        case SnowCanvasTool::RectangleEraser:
+            ++rectangleEraserCount;
+            break;
+        case SnowCanvasTool::BrushEraser:
+            ++brushEraserCount;
+            break;
+        default:
+            break;
+        }
     }
-    void setShapeTool() override {
-        ++shapeToolCount;
-    }
-    void setSpeechBubbleTool() override {
-        ++speechBubbleToolCount;
-    }
-    void setArrowTool() override {}
-    void setLineTool() override {}
-    void setBrushTool() override {}
-    void setHighlightTool() override {}
-    void setBrushHighlightTool() override {}
-    void setEraserTool() override {
-        ++elementEraserCount;
-    }
-    void setRectangleEraserTool() override {
-        ++rectangleEraserCount;
-    }
-    void setBrushEraserTool() override {
-        ++brushEraserCount;
-    }
-    void setFilterTool() override {}
-    void setWatermarkTool() override {}
     void setWatermarkConfigFromToolbar(const SnowCanvasWatermarkConfig&) override {}
     void previewWatermarkFromToolbar(const SnowCanvasWatermarkConfig&) override {}
     void setFilterStyleFromToolbar(const SnowCanvasFilterStyle&, quint32) override {}
-    void setTextTool() override {}
-    void setSequenceNumberTool() override {}
     void setOcrTool() override {}
     void startScrollingScreenshot() override {}
     void splitScrollingScreenshot() override {
@@ -579,9 +576,13 @@ void selectionShortcutsReachToolbarCommands(bool hiddenTools = false, bool captu
                         "real toolbar command must receive committed bounds and editing state");
                 ++calls;
             }
-            void setShapeTool() override {
-                checkCommitted();
-                interaction.setCanvasTool(ScreenshotActiveTool::Shape);
+            void setCanvasTool(SnowCanvasTool tool) override {
+                if (tool == SnowCanvasTool::Shape) {
+                    checkCommitted();
+                    interaction.setCanvasTool(ScreenshotActiveTool::Shape);
+                } else {
+                    RecordingToolbarCommands::setCanvasTool(tool);
+                }
             }
             void setOcrTool() override {
                 checkCommitted();

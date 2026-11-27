@@ -631,9 +631,10 @@ void ScreenshotTableEditor::redoEdit() {
 }
 
 void ScreenshotTableEditor::copySelection() {
-    if (copySelectionToClipboard()) {
-        emit copyCompleted();
-    }
+    if (const auto request = m_requestCopy)
+        request(ScreenshotRecognitionCopy::Result);
+    else
+        static_cast<void>(copySelectionToClipboard());
 }
 
 std::unique_ptr<QMimeData> ScreenshotTableEditor::clipboardMimeData() const {
@@ -656,6 +657,8 @@ std::unique_ptr<QMimeData> ScreenshotTableEditor::clipboardMimeData() const {
 }
 
 bool ScreenshotTableEditor::copySelectionToClipboard() {
+    if (const auto request = m_requestCopy)
+        return request(ScreenshotRecognitionCopy::Preview);
     if (QApplication::clipboard() == nullptr) {
         return false;
     }
@@ -747,8 +750,8 @@ void ScreenshotTableEditor::keyPressEvent(QKeyEvent* event) {
         return;
     }
     if (snow_shot::shortcuts::matchesStandardShortcut(*event, QKeySequence::Copy)) {
-        copySelection();
         event->accept();
+        copySelection();
         return;
     }
     if (snow_shot::shortcuts::matchesStandardShortcut(*event, QKeySequence::Paste)) {

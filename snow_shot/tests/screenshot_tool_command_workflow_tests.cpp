@@ -1,3 +1,4 @@
+#include "snow_shot/presentation/screenshotcapturecommands.h"
 #include "snow_shot/presentation/screenshotcapturestate.h"
 #include "snow_shot/presentation/screenshotdisplaysession.h"
 #include "snow_shot/presentation/screenshotgeometry.h"
@@ -66,7 +67,19 @@ void nonDrawingToolsDisableCanvasInteraction() {
     require(canvasToolChanges == 0,
             "activating Move must not replace the retained canvas drawing tool");
 
-    workflow.setShapeTool();
+    for (const auto& command : snow_shot::presentation::screenshotCaptureCommands) {
+        require(snow_shot::presentation::captureCommandForAction(command.execute) == &command,
+                "each toolbar action identifies one capture command");
+        if (!command.shortcut.isEmpty())
+            require(snow_shot::presentation::captureCommandForShortcut(
+                        command.shortcut.toString()) == &command,
+                    "each persisted capture shortcut identifies one command");
+        if (command.pending != ScreenshotController::CaptureAction::None)
+            require(snow_shot::presentation::captureCommandForPendingAction(command.pending) ==
+                        &command,
+                    "each pending selection action resolves to its capture command");
+    }
+    workflow.setCanvasTool(SnowCanvasTool::Shape);
     require(canvasInteractionEnabled && interactionChanges == 2,
             "activating a drawing tool must re-enable canvas interaction");
     require(selectedCanvasTool == SnowCanvasTool::Shape && canvasToolChanges == 1,
@@ -75,17 +88,17 @@ void nonDrawingToolsDisableCanvasInteraction() {
     workflow.setMoveTool();
     require(!canvasInteractionEnabled && interactionChanges == 3,
             "returning to Move must disable canvas interaction again");
-    workflow.setAngleTool();
+    workflow.setCanvasTool(SnowCanvasTool::Angle);
     require(canvasInteractionEnabled && interactionChanges == 4 && canvasToolChanges == 2 &&
                 selectedCanvasTool == SnowCanvasTool::Angle &&
                 interaction.activeTool() == ScreenshotActiveTool::Angle,
             "activating Angle forwards its drawing tool and re-enables canvas interaction");
-    workflow.setSpeechBubbleTool();
+    workflow.setCanvasTool(SnowCanvasTool::SpeechBubble);
     require(canvasInteractionEnabled && canvasToolChanges == 3 &&
                 selectedCanvasTool == SnowCanvasTool::SpeechBubble &&
                 interaction.activeTool() == ScreenshotActiveTool::SpeechBubble,
             "activating Speech Bubble forwards its drawing tool and editing state");
-    workflow.setBracketTool();
+    workflow.setCanvasTool(SnowCanvasTool::Bracket);
     require(canvasInteractionEnabled && selectedCanvasTool == SnowCanvasTool::Bracket &&
                 interaction.activeTool() == ScreenshotActiveTool::Bracket,
             "activating Bracket forwards the tool through the shared canvas workflow");

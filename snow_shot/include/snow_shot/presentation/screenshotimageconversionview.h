@@ -3,6 +3,10 @@
 
 #include "snow_shot/presentation/screenshotimageconversion.h"
 #include <QWidget>
+#include <memory>
+#include <functional>
+
+class QMimeData;
 
 class QLabel;
 class QTextBrowser;
@@ -20,8 +24,12 @@ class ScreenshotImageConversionView final : public QWidget {
     [[nodiscard]] QString source() const {
         return m_source;
     }
+    [[nodiscard]] std::unique_ptr<QMimeData> clipboardMimeData() const;
     [[nodiscard]] bool copyToClipboard() const;
     void selectAll();
+    void setCopyRequestHandler(std::function<bool()> handler) {
+        m_requestCopy = std::move(handler);
+    }
 
   signals:
     void retryRequested();
@@ -31,6 +39,7 @@ class ScreenshotImageConversionView final : public QWidget {
     void changeEvent(QEvent* event) override;
 
   private:
+    std::function<bool()> m_requestCopy;
     void render();
     void retranslate();
     void showContextMenu(const QPoint& globalPosition);

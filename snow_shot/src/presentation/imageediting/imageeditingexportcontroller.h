@@ -21,11 +21,9 @@ class ImageEditingExportController final : public QObject {
   public:
     enum class Operation { Copy, Save, QuickSave, Print, Upload, AirDrop, Pin };
     using Content = std::variant<ScreenshotExportSource, ScreenshotRecognitionFileSnapshot>;
-    using CopyContent = std::variant<ScreenshotExportSource,
-#if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
-                                     ScreenshotDocumentCopyRequest,
-#endif
-                                     std::unique_ptr<QMimeData>>;
+    using CopyPrepared = std::function<void(std::unique_ptr<QMimeData>, QString)>;
+    using PrepareCopy = std::function<bool(QObject* request, CopyPrepared prepared)>;
+    using CopyContent = std::variant<ScreenshotExportSource, PrepareCopy>;
     struct CopyOptions {
         ScreenshotClipboardService::PublicationId publication = 0;
         std::optional<ScreenshotCloudUploadOptions> file;
@@ -42,7 +40,7 @@ class ImageEditingExportController final : public QObject {
     bool canStart(Operation operation) const;
     void start(Operation operation, Content content, QWidget* owner, QWidget* stackingOwner,
                Completion completion);
-    void startCopy(CopyContent content, CopyOptions options, QWidget* owner, Completion completion);
+    bool startCopy(CopyContent content, CopyOptions options, QWidget* owner, Completion completion);
     void cancelCopy();
     // Retires the request before cancelling services so reentrant and late callbacks are ignored.
     void cancel();
