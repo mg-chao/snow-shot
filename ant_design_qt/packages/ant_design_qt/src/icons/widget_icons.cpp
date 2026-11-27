@@ -15,10 +15,31 @@ using adqt::icons::IconPack;
 using adqt::icons::IconStaticColors;
 
 constexpr IconDescriptor kEntries[] = {
+    {std::string_view("ant-design-qt"), std::string_view("outlined"),
+     std::string_view("window-maximize"),
+     std::string_view(
+         R"ADQT_SVG_0(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="__ADQT_SLOT_PRIMARY__">
+  <path fill-rule="evenodd" d="M200 192h624a72 72 0 0 1 72 72v496a72 72 0 0 1-72 72H200a72 72 0 0 1-72-72V264a72 72 0 0 1 72-72ZM200 264v496h624V264Z"/>
+</svg>
+)ADQT_SVG_0"),
+     std::string_view("68970ef2cd4635019d9359d33d9d658007ba5473502bbf5c6b2f7e401071872b"),
+     IconColorModel::Monochrome, IconFit::Contain,
+     IconStaticColors{std::string_view(""), std::string_view(""), std::string_view("")}, false},
+    {std::string_view("ant-design-qt"), std::string_view("outlined"),
+     std::string_view("window-restore"),
+     std::string_view(
+         R"ADQT_SVG_1(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="__ADQT_SLOT_PRIMARY__">
+  <path d="M356 192h468a72 72 0 0 1 72 72v340a36 36 0 0 1-72 0V264H356a36 36 0 0 1 0-72Z"/>
+  <path fill-rule="evenodd" d="M200 384h432a72 72 0 0 1 72 72v304a72 72 0 0 1-72 72H200a72 72 0 0 1-72-72V456a72 72 0 0 1 72-72ZM200 456v304h432V456Z"/>
+</svg>
+)ADQT_SVG_1"),
+     std::string_view("a5db96828b559d7507949513dda3ed3ad1b047f26a5d5a1627f58d01cd481242"),
+     IconColorModel::Monochrome, IconFit::Contain,
+     IconStaticColors{std::string_view(""), std::string_view(""), std::string_view("")}, false},
     {std::string_view("ant-design-qt"), std::string_view("twotone"),
      std::string_view("empty-simple"),
      std::string_view(
-         R"ADQT_SVG_0(<svg width="64" height="41" viewBox="0 0 64 41" xmlns="http://www.w3.org/2000/svg" fill="__ADQT_SLOT_PRIMARY__">
+         R"ADQT_SVG_2(<svg width="64" height="41" viewBox="0 0 64 41" xmlns="http://www.w3.org/2000/svg" fill="__ADQT_SLOT_PRIMARY__">
   <g transform="translate(0 1)" fill="none" fill-rule="evenodd">
     <ellipse fill="__ADQT_SLOT_TERTIARY__" cx="32" cy="33" rx="32" ry="7" />
     <g fill-rule="nonzero" stroke="__ADQT_SLOT_PRIMARY__">
@@ -27,7 +48,7 @@ constexpr IconDescriptor kEntries[] = {
     </g>
   </g>
 </svg>
-)ADQT_SVG_0"),
+)ADQT_SVG_2"),
      std::string_view("4db64c1917fd372161934c01ca1f55de400c66fc9fc14ce53644c2d107ded26f"),
      IconColorModel::ThreeTone, IconFit::Contain,
      IconStaticColors{std::string_view(""), std::string_view("#E6E6E6"),
@@ -38,7 +59,7 @@ constexpr IconDescriptor kEntries[] = {
 constexpr IconPack kStaticPack{
     std::string_view("ant-design-qt"),
     std::string_view("ant_design_qt widget-owned static SVG assets"),
-    std::string_view("fb1a49c75e20a61d5ff4ab74a687f4e79b4cd8aef8c4bfac5d29f95373efbac8"), kEntries,
+    std::string_view("41a49a7727378a0b1781bf46250b2c36f1860f1a240e81c3f94cafa658f3b55b"), kEntries,
     sizeof(kEntries) / sizeof(kEntries[0])};
 
 }  // namespace
@@ -54,10 +75,22 @@ adqt::icons::IconPackRegistrationResult registerWith(adqt::icons::IconRenderer& 
 
 adqt::icons::IconPackRegistrationResult ensureRegistered() { return pack().ensureRegistered(); }
 
+namespace outlined {
+
+adqt::icons::IconRef WindowMaximize(const adqt::icons::IconColors& colors) {
+  return pack().icon(0, colors);
+}
+
+adqt::icons::IconRef WindowRestore(const adqt::icons::IconColors& colors) {
+  return pack().icon(1, colors);
+}
+
+}  // namespace outlined
+
 namespace twotone {
 
 adqt::icons::IconRef EmptySimple(const adqt::icons::IconColors& colors) {
-  return pack().icon(0, colors);
+  return pack().icon(2, colors);
 }
 
 }  // namespace twotone

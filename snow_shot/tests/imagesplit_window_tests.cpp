@@ -37,6 +37,8 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
+#include <utility>
 
 using namespace snow_shot::presentation;
 namespace {
@@ -116,6 +118,46 @@ adqt::widgets::AdMessageHandle* statusMessage(ImageSplitWindow& window) {
             return handle;
     }
     return nullptr;
+}
+
+void renderedSourceRetiresBeforePreviewAndClose() {
+    const auto baseline = imageStitchingResourceUsage().reservedBytes;
+    std::function<void(QImage)> deliver;
+    auto renderInput = std::make_shared<int>(0);
+    const std::weak_ptr<int> renderLease = renderInput;
+    ImageSplitWindow window;
+    window.presentSource({ScreenshotExportSource::fromImageLoader(
+                              [source = std::move(renderInput), &deliver](QObject*, auto callback) {
+                                  static_cast<void>(source);
+                                  deliver = std::move(callback);
+                                  return true;
+                              }),
+                          QStringLiteral("rendered.png"),
+                          {},
+                          {},
+                          {1001, 700}});
+    require(deliver && !renderLease.expired(), "render input lives until image delivery");
+
+    auto buffer = std::make_shared<QImage>(image());
+    const std::weak_ptr<QImage> pixelLease = buffer;
+    QImage pixels(
+        buffer->bits(), buffer->width(), buffer->height(), buffer->bytesPerLine(), buffer->format(),
+        [](void* value) { delete static_cast<std::shared_ptr<QImage>*>(value); },
+        new std::shared_ptr<QImage>(buffer));
+    buffer.reset();
+    std::exchange(deliver, {})(std::move(pixels));
+    require(window.loading() && renderLease.expired(),
+            "render inputs retire before the preview completion is delivered");
+    loaded(window);
+    require(!pixelLease.expired() && window.document()->createLine(true, 173) &&
+                imageStitchingResourceUsage().reservedBytes > baseline,
+            "the loaded document retains its raster, history and reservation");
+    window.shutdown();
+    require(!window.modal()->isOpen() && pixelLease.expired() &&
+                window.document()->image().isNull() && window.document()->preview().isNull() &&
+                !window.document()->canUndo() &&
+                imageStitchingResourceUsage().reservedBytes == baseline,
+            "closing releases the document payload before its owner is destroyed");
 }
 
 void windowPinStartsEnabledAndPreservesEdits() {
@@ -1604,6 +1646,7 @@ int main(int argc, char** argv) {
                                                                        : 1,
                       arguments.contains(QStringLiteral("--smart-preview")));
     } else {
+        renderedSourceRetiresBeforePreviewAndClose();
         footerActivationsWaitForSmartSettings();
         footerActionsDiscardObsoleteRequests();
         smartInitialLoadAndReplacement();

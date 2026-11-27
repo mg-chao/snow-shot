@@ -342,8 +342,7 @@ struct ImageSplitWindow::Impl final {
         QObject::connect(modal, &AdModal::closeRequested, &q,
                          [this](AdModal::CloseReason) { q.requestClose(); });
         QObject::connect(modal, &AdModal::finished, &q, [this](AdModal::DialogCode) {
-            closing = true;
-            cancelWork();
+            endSession();
             emit q.closed();
         });
         QObject::connect(editor, &components::ImageSplitEditorWidget::reloadRequested, &q,
@@ -673,8 +672,12 @@ struct ImageSplitWindow::Impl final {
         }
         showStatus();
     }
-    void cancelWork() {
+    void endSession() {
+        if (closing)
+            return;
+        closing = true;
         cancelSplit();
+        splitJob = {};
         ++generation;
         job.cancel();
         job = {};
@@ -692,6 +695,9 @@ struct ImageSplitWindow::Impl final {
             fileDialog->reject();
         if (confirmation)
             confirmation->reject();
+        if (!document->image().isNull())
+            document->setImage({});
+        imageReservation.reset();
     }
     void beginLoading() {
         cancelSplit();
@@ -748,8 +754,9 @@ struct ImageSplitWindow::Impl final {
                                                 .toLocalTime()
                                                 .toString(QStringLiteral("yyyyMMdd-HHmmss")))
                                  : stem;
-                if (!loaded->prepared || !document->setPreparedImage(loaded->image, loaded->preview,
-                                                                     *loaded->prepared)) {
+                if (!loaded->prepared ||
+                    !document->setPreparedImage(std::move(loaded->image),
+                                                std::move(loaded->preview), *loaded->prepared)) {
                     loadingErrorSource = "Image processing failed. Try again";
                     error = splitText(loadingErrorSource);
                     status = Status::LoadError;
@@ -758,7 +765,7 @@ struct ImageSplitWindow::Impl final {
                     emit q.imageLoaded(false);
                     return;
                 }
-                imageReservation = loaded->reservation;
+                imageReservation = std::move(loaded->reservation);
                 editor->canvas()->fitToCanvas();
             }
             updateActions();
@@ -1025,51 +1032,53 @@ void ImageSplitWindow::loadSource(ImageSplitSource source, quint64 token) {
     auto& d = *m_impl;
     auto loaded = std::make_shared<LoadedImage>();
     loaded->initialDirection = source.initialDirection;
+    loaded->originalFileName = std::move(source.originalFileName);
+    loaded->createdUtc = source.createdUtc;
+    const auto finish = [this, loaded, token](ScreenshotExportTaskResult result) {
+        m_impl->finishLoading(loaded, loaded->originalFileName, loaded->createdUtc, false, token,
+                              std::move(result));
+    };
     if (!source.error.isEmpty() || !source.source.isValid()) {
         if (source.error == imageMemoryError())
             loaded->errorSource = "The image is too large or there is not enough memory to load it";
-        d.finishLoading(loaded, source.originalFileName, source.createdUtc, false, token,
-                        ScreenshotExportTaskResult::failure(ScreenshotExportFailureStage::Source,
-                                                            source.error));
+        finish(ScreenshotExportTaskResult::failure(ScreenshotExportFailureStage::Source,
+                                                   std::move(source.error)));
         return;
     }
     if (!source.outputSize.isEmpty() &&
         !reserveImage(source.outputSize, loaded, 0, source.renderingBytes)) {
-        d.finishLoading(
-            loaded, source.originalFileName, source.createdUtc, false, token,
-            loadingFailure(loaded, ScreenshotExportFailureStage::Source,
-                           "The image is too large or there is not enough memory to load it"));
+        finish(loadingFailure(loaded, ScreenshotExportFailureStage::Source,
+                              "The image is too large or there is not enough memory to load it"));
         return;
     }
-    d.artifact = std::make_shared<ScreenshotExportArtifact>(source.source);
-    if (!d.artifact->requestImage(this, [this, loaded, source,
-                                         token](ScreenshotExportImageResult image) {
-            auto& impl = *m_impl;
-            if (impl.closing || token != impl.generation)
-                return;
-            if (!image.succeeded()) {
-                impl.finishLoading(loaded, source.originalFileName, source.createdUtc, false, token,
-                                   ScreenshotExportTaskResult::failure(
-                                       ScreenshotExportFailureStage::Render, image.error));
-                return;
-            }
-            impl.job = ScreenshotExportCoordinator::shared().submit(
-                this, ScreenshotExportCoordinator::Priority::Background,
-                [pixels = std::move(image.image), loaded](const auto& cancellation) {
-                    return prepareImage(pixels, loaded, cancellation);
-                },
-                [this, loaded, source, token](ScreenshotExportTaskResult result) {
-                    m_impl->finishLoading(loaded, source.originalFileName, source.createdUtc, false,
-                                          token, std::move(result));
-                });
-            if (!impl.job.isValid())
-                impl.finishLoading(loaded, source.originalFileName, source.createdUtc, false, token,
-                                   loadingFailure(loaded, ScreenshotExportFailureStage::Queue,
-                                                  "Image loading could not be started. Try again"));
-        }))
-        d.finishLoading(loaded, source.originalFileName, source.createdUtc, false, token,
-                        loadingFailure(loaded, ScreenshotExportFailureStage::Queue,
-                                       "Image loading could not be started. Try again"));
+    // A loader may deliver immediately. Keep the artifact alive through requestImage itself.
+    const auto rendering = std::make_shared<ScreenshotExportArtifact>(std::move(source.source));
+    d.artifact = rendering;
+    if (!rendering->requestImage(
+            this, [this, loaded, token, finish](ScreenshotExportImageResult image) {
+                auto& impl = *m_impl;
+                if (impl.closing || token != impl.generation)
+                    return;
+                // Preview preparation only needs the rendered pixels. Release the render plan and
+                // its input snapshots before submitting the next job.
+                impl.artifact.reset();
+                if (!image.succeeded()) {
+                    finish(ScreenshotExportTaskResult::failure(ScreenshotExportFailureStage::Render,
+                                                               std::move(image.error)));
+                    return;
+                }
+                impl.job = ScreenshotExportCoordinator::shared().submit(
+                    this, ScreenshotExportCoordinator::Priority::Background,
+                    [pixels = std::move(image.image), loaded](const auto& cancellation) mutable {
+                        return prepareImage(std::move(pixels), loaded, cancellation);
+                    },
+                    finish);
+                if (!impl.job.isValid())
+                    finish(loadingFailure(loaded, ScreenshotExportFailureStage::Queue,
+                                          "Image loading could not be started. Try again"));
+            }))
+        finish(loadingFailure(loaded, ScreenshotExportFailureStage::Queue,
+                              "Image loading could not be started. Try again"));
 }
 
 void ImageSplitWindow::presentImage(QImage image, QString originalFileName, QDateTime createdUtc) {
@@ -1185,11 +1194,8 @@ void ImageSplitWindow::requestClose() {
     if (m_impl->closing || m_impl->confirming)
         return;
     const auto close = [this](bool accepted) {
-        if (accepted) {
-            m_impl->closing = true;
-            m_impl->cancelWork();
-            m_impl->modal->reject();
-        }
+        if (accepted)
+            shutdown();
     };
     if (m_impl->document->image().isNull())
         close(true);
@@ -1199,8 +1205,7 @@ void ImageSplitWindow::requestClose() {
 void ImageSplitWindow::shutdown() {
     if (!m_impl || m_impl->closing)
         return;
-    m_impl->closing = true;
-    m_impl->cancelWork();
+    m_impl->endSession();
     m_impl->modal->reject();
 }
 bool ImageSplitWindow::busy() const {
