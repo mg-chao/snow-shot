@@ -1,8 +1,8 @@
+use std::ops::Range;
 use std::time::{Duration, Instant};
 
 use snow_core::timestamp::{StreamTimestamp, TickFormat, TimestampAnchor};
 
-use crate::format::AudioFormat;
 use crate::packet::AudioPacket;
 
 /// A range of source PCM frames admitted to the active recording timeline.
@@ -58,33 +58,119 @@ pub fn admit_active_pcm(
     });
 }
 
-/// Correct clock drift in an uninterrupted, unclipped PCM packet by at most one frame.
-/// A missing observation preserves sample continuity without treating delivery time as drift.
-/// The caller's scratch buffer is used only when a correction is needed.
-pub fn correct_pcm_clock<'a>(
-    samples: &'a [i16],
-    format: AudioFormat,
-    expected: u64,
-    observed: Option<u64>,
-    scratch: &'a mut Vec<i16>,
-) -> &'a [i16] {
-    const DRIFT_TOLERANCE_MS: u64 = 5;
-    let tolerance = u64::from(format.sample_rate) * DRIFT_TOLERANCE_MS / 1_000;
-    let Some(observed) = observed.filter(|observed| observed.abs_diff(expected) > tolerance) else {
-        return samples;
-    };
-    let channels = usize::from(format.channels);
-    if channels == 0 || !samples.len().is_multiple_of(channels) || samples.len() / channels < 3 {
-        return samples;
+const CLOCK_TOLERANCE_MS: u64 = 5;
+const CLOCK_RESET_MS: u64 = 50;
+
+/// Tracks the expected position of the next contiguous packet for one source.
+/// The sink still owns the samples it has accepted and its writable time range.
+#[derive(Default)]
+pub struct PcmTimeline {
+    next_frame: Option<u64>,
+}
+
+impl PcmTimeline {
+    pub fn reset(&mut self) {
+        self.next_frame = None;
     }
 
+    pub(crate) fn skip_frames(&mut self, frames: u64) {
+        self.next_frame = self.next_frame.map(|next| next.saturating_add(frames));
+    }
+
+    /// Place an admitted span, using capture time as a clock observation only
+    /// when the backend could establish it. Clipped spans break continuity.
+    pub fn place(
+        &mut self,
+        packet: &AudioPacket,
+        span: ActivePcmSpan,
+        writable: &Range<u64>,
+    ) -> PcmPlacement {
+        let whole_packet = span.source_start_frame == 0 && span.frames == u64::from(packet.frames);
+        let expected = self
+            .next_frame
+            .filter(|_| whole_packet && !packet.metadata.discontinuity);
+        let observed = span.timeline_start_frame;
+        let trusted = !packet.metadata.capture_time_estimated;
+        let frames_per_second = u64::from(packet.format.sample_rate);
+        let clock_reset = expected.is_some_and(|next| {
+            trusted && next.abs_diff(observed) > frames_per_second * CLOCK_RESET_MS / 1_000
+        });
+        let start_frame = expected
+            .filter(|next| {
+                !clock_reset && (writable.contains(next) || !writable.contains(&observed))
+            })
+            .unwrap_or(observed);
+        let correction = if expected == Some(start_frame)
+            && trusted
+            && span.frames >= 3
+            && start_frame.abs_diff(observed) > frames_per_second * CLOCK_TOLERANCE_MS / 1_000
+        {
+            if observed > start_frame {
+                ClockCorrection::Expand
+            } else {
+                ClockCorrection::Contract
+            }
+        } else {
+            ClockCorrection::None
+        };
+        let end_frame = start_frame.saturating_add(correction.output_frames(span.frames));
+        self.next_frame = whole_packet.then_some(end_frame);
+        PcmPlacement {
+            start_frame,
+            clock_reset,
+            span,
+            correction,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ClockCorrection {
+    None,
+    Expand,
+    Contract,
+}
+
+impl ClockCorrection {
+    fn output_frames(self, input_frames: u64) -> u64 {
+        match self {
+            Self::None => input_frames,
+            Self::Expand => input_frames + 1,
+            Self::Contract => input_frames - 1,
+        }
+    }
+}
+
+pub struct PcmPlacement {
+    pub start_frame: u64,
+    pub(crate) clock_reset: bool,
+    span: ActivePcmSpan,
+    correction: ClockCorrection,
+}
+
+impl PcmPlacement {
+    pub fn samples<'a>(&self, packet: &'a AudioPacket, scratch: &'a mut Vec<i16>) -> &'a [i16] {
+        let channels = usize::from(packet.format.channels);
+        let start = self.span.source_start_frame as usize * channels;
+        let end = start + self.span.frames as usize * channels;
+        let samples = &packet.data[start..end];
+        if self.correction == ClockCorrection::None {
+            return samples;
+        }
+        interpolate_pcm(samples, channels, self.correction, scratch)
+    }
+}
+
+/// Resample one whole PCM span at the rate selected by the recording clock.
+fn interpolate_pcm<'a>(
+    samples: &'a [i16],
+    channels: usize,
+    correction: ClockCorrection,
+    scratch: &'a mut Vec<i16>,
+) -> &'a [i16] {
     let last_input = samples.len() / channels - 1;
-    let expand = observed > expected;
-    let last_output = if expand {
-        last_input + 1
-    } else {
-        last_input - 1
-    };
+    let expand = correction == ClockCorrection::Expand;
+    let last_output = correction.output_frames(last_input as u64) as usize;
     let denominator = last_output as i64;
     scratch.clear();
     scratch.reserve((last_output + 1) * channels);
@@ -291,21 +377,35 @@ mod tests {
 
     #[test]
     fn clock_correction_interpolates_each_channel_and_preserves_endpoints() {
-        let format = AudioFormat::new(48_000, 2);
         let samples = [-1000, 900, 0, 100, 1000, -700, 2000, -1500];
+        let mut packet = packet(4);
+        packet.data.copy_from_slice(&samples);
+        let mut timeline = PcmTimeline {
+            next_frame: Some(1_000),
+        };
+        let mut span = ActivePcmSpan {
+            source_start_frame: 0,
+            frames: 4,
+            timeline_start_frame: 1_241,
+        };
         let mut scratch = Vec::new();
-        let expanded = correct_pcm_clock(&samples, format, 1_000, Some(1_241), &mut scratch);
+        let placement = timeline.place(&packet, span, &(0..u64::MAX));
+        let expanded = placement.samples(&packet, &mut scratch);
         assert_eq!(
             expanded,
             &[-1000, 900, -250, 300, 500, -300, 1250, -900, 2000, -1500]
         );
         let scratch_ptr = scratch.as_ptr();
-        let compressed = correct_pcm_clock(&samples, format, 1_000, Some(759), &mut scratch);
+        span.timeline_start_frame = 764;
+        let placement = timeline.place(&packet, span, &(0..u64::MAX));
+        let compressed = placement.samples(&packet, &mut scratch);
         assert_eq!(compressed, &[-1000, 900, 500, -300, 2000, -1500]);
         assert_eq!(compressed.as_ptr(), scratch_ptr);
 
-        let unchanged = correct_pcm_clock(&samples, format, 1_000, Some(1_240), &mut scratch);
-        assert_eq!(unchanged.as_ptr(), samples.as_ptr());
+        span.timeline_start_frame = 1_248;
+        let placement = timeline.place(&packet, span, &(0..u64::MAX));
+        let unchanged = placement.samples(&packet, &mut scratch);
+        assert_eq!(unchanged.as_ptr(), packet.data.as_ptr());
     }
 
     #[test]
@@ -313,13 +413,14 @@ mod tests {
         let mut scratch = Vec::new();
         for frames in [3, 4, 7, 480, 960] {
             for channels in [1, 2, 6] {
-                let format = AudioFormat::new(48_000, channels as u16);
                 let samples: Vec<i16> = (0..frames * channels)
                     .map(|sample| (sample as u16).wrapping_mul(13_577) as i16)
                     .collect();
-                for (observed, output_frames) in [(1_241, frames + 1), (759, frames - 1)] {
-                    let output =
-                        correct_pcm_clock(&samples, format, 1_000, Some(observed), &mut scratch);
+                for (correction, output_frames) in [
+                    (ClockCorrection::Expand, frames + 1),
+                    (ClockCorrection::Contract, frames - 1),
+                ] {
+                    let output = interpolate_pcm(&samples, channels, correction, &mut scratch);
                     assert_eq!(output.len(), output_frames * channels);
                     let denominator = output_frames - 1;
                     for (frame, actual) in output.chunks_exact(channels).enumerate() {
@@ -339,6 +440,72 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn pcm_timeline_bounds_drift_over_two_virtual_hours() {
+        const PACKETS: u64 = 2 * 60 * 60 * 100;
+        let packet = packet(480);
+        for packet_ns in [9_999_680, 10_000_320] {
+            let mut timeline = PcmTimeline::default();
+            let mut end_frame = 0;
+            for index in 0..PACKETS {
+                let observed = duration_to_frames_round(
+                    Duration::from_nanos(index * packet_ns),
+                    packet.format.sample_rate,
+                );
+                let span = ActivePcmSpan {
+                    source_start_frame: 0,
+                    frames: 480,
+                    timeline_start_frame: observed,
+                };
+                let writable = observed.saturating_sub(4_800)..observed + 5_760;
+                let placement = timeline.place(&packet, span, &writable);
+                assert_eq!(placement.start_frame, end_frame);
+                assert!(end_frame.abs_diff(observed) <= 241);
+                end_frame += placement.correction.output_frames(span.frames);
+            }
+        }
+    }
+
+    #[test]
+    fn pcm_timeline_reanchors_when_only_the_observation_is_writable() {
+        let mut packet = packet(480);
+        let writable = 191_995_200..192_006_240;
+        let span = ActivePcmSpan {
+            source_start_frame: 0,
+            frames: 480,
+            timeline_start_frame: 192_000_000,
+        };
+        for estimated in [false, true] {
+            packet.metadata.capture_time_estimated = estimated;
+            for expected in [191_990_400, 192_009_600] {
+                let mut timeline = PcmTimeline {
+                    next_frame: Some(expected),
+                };
+                let placement = timeline.place(&packet, span, &writable);
+                assert_eq!(placement.start_frame, span.timeline_start_frame);
+                assert_eq!(placement.correction, ClockCorrection::None);
+                assert_eq!(timeline.next_frame, Some(192_000_480));
+            }
+        }
+    }
+
+    #[test]
+    fn pcm_timeline_clipped_span_clears_continuity() {
+        let packet = packet(480);
+        let span = ActivePcmSpan {
+            source_start_frame: 240,
+            frames: 240,
+            timeline_start_frame: 2_000,
+        };
+        let mut timeline = PcmTimeline {
+            next_frame: Some(1_000),
+        };
+        let placement = timeline.place(&packet, span, &(0..u64::MAX));
+        assert_eq!(placement.start_frame, span.timeline_start_frame);
+        assert_eq!(placement.correction, ClockCorrection::None);
+        assert_eq!(timeline.next_frame, None);
     }
 
     #[test]

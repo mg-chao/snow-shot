@@ -464,6 +464,28 @@ fn pending_metadata_for_wasapi_chunk(
     }
 }
 
+fn estimate_batch_times(packets: &mut [AudioPacket]) {
+    // A single wake can drain several native packets. Walk continuous runs
+    // backward from the next packet's time or the final packet's read time.
+    // An earlier packet was already available at its own read time.
+    let mut next_start = None;
+    for packet in packets.iter_mut().rev() {
+        if packet.metadata.capture_time_estimated
+            && let Some(end) = next_start
+            && packet
+                .end_capture_time()
+                .is_some_and(|read_end| end < read_end)
+        {
+            packet.metadata.set_timing(Some(end), None);
+        }
+        next_start = if packet.metadata.discontinuity {
+            None
+        } else {
+            packet.start_capture_time()
+        };
+    }
+}
+
 impl WasapiSource {
     pub fn new(
         kind: AudioSourceKind,
@@ -588,6 +610,7 @@ impl WasapiSource {
             packets.extend(process_result?);
         }
 
+        estimate_batch_times(&mut packets);
         Ok(packets)
     }
 }
@@ -924,6 +947,104 @@ mod tests {
                 assert!(!packet.metadata.capture_time_estimated);
             }
         }
+    }
+
+    #[test]
+    fn estimated_batch_times_follow_pcm_and_respect_discontinuities() {
+        let origin = Instant::now();
+        let read_at = origin + Duration::from_millis(100);
+        let format = AudioFormat::new(1_000, 1);
+        let timestamp_error = AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0 as u32;
+        for valid_tail in [false, true] {
+            let mut clock = WasapiClock {
+                anchor: Some((origin, 100_000)),
+                ..WasapiClock::default()
+            };
+            let mut accumulator =
+                PacketAccumulator::new(AudioSourceKind::System, format, Duration::from_millis(4))
+                    .unwrap();
+            let mut packets = Vec::new();
+            let mut sequence = 0;
+            for index in 0..4 {
+                let (qpc, flags) = match index {
+                    2 if valid_tail => (460_000, 0),
+                    3 => (
+                        0,
+                        timestamp_error | AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY.0 as u32,
+                    ),
+                    _ => (0, timestamp_error),
+                };
+                let metadata = pending_metadata_for_wasapi_chunk(
+                    &mut clock,
+                    read_at,
+                    qpc,
+                    index * 4,
+                    4,
+                    format.sample_rate,
+                    flags,
+                );
+                packets.extend(
+                    accumulator
+                        .push_chunk(vec![index as i16 + 1; 4], 4, metadata, &mut sequence)
+                        .unwrap(),
+                );
+            }
+            estimate_batch_times(&mut packets);
+            let expected_starts = if valid_tail {
+                [28, 32, 36, 96]
+            } else {
+                [88, 92, 96, 96]
+            };
+            for (index, (packet, ms)) in packets.iter().zip(expected_starts).enumerate() {
+                assert_eq!(
+                    packet.start_capture_time(),
+                    Some(origin + Duration::from_millis(ms))
+                );
+                assert_eq!(packet.data, [index as i16 + 1; 4]);
+                assert_eq!(
+                    packet.metadata.capture_time_estimated,
+                    !(index == 2 && valid_tail)
+                );
+            }
+            assert_eq!(
+                packets[2].end_qpc_position_100ns(),
+                valid_tail.then_some(500_000)
+            );
+        }
+    }
+
+    #[test]
+    fn estimated_batch_times_keep_the_read_time_as_an_upper_bound() {
+        let origin = Instant::now();
+        let mut accumulator = PacketAccumulator::new(
+            AudioSourceKind::System,
+            AudioFormat::new(1_000, 1),
+            Duration::from_millis(4),
+        )
+        .unwrap();
+        let mut packets = Vec::new();
+        let mut sequence = 0;
+        for end_ms in [4, 100] {
+            packets.extend(
+                accumulator
+                    .push_chunk(
+                        vec![1; 4],
+                        4,
+                        PendingMetadata {
+                            capture_time: Some(origin + Duration::from_millis(end_ms)),
+                            ..Default::default()
+                        },
+                        &mut sequence,
+                    )
+                    .unwrap(),
+            );
+        }
+        estimate_batch_times(&mut packets);
+        assert_eq!(packets[0].start_capture_time(), Some(origin));
+        assert_eq!(
+            packets[1].start_capture_time(),
+            Some(origin + Duration::from_millis(96))
+        );
     }
 
     #[test]
