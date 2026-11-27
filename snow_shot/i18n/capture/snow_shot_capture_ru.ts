@@ -42,10 +42,6 @@
             <translation>Не удалось вставить шаблон разметки</translation>
         </message>
         <message>
-            <source>Could not open the selected file: %1</source>
-            <translation>Не удалось открыть выбранный файл: %1</translation>
-        </message>
-        <message>
             <source>Could not read the selected files from Finder. Please try again</source>
             <translation>Не удалось прочитать выбранные файлы из Finder. Повторите попытку</translation>
         </message>

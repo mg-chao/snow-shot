@@ -961,10 +961,6 @@ so every moment on screen can be expressed clearly and shared easily</source>
             <translation>更新已準備就緒。請開啟「關於」頁面，重新啟動並更新 Snow Shot</translation>
         </message>
         <message>
-            <source>Could not open the selected file: %1</source>
-            <translation>無法開啟所選檔案：%1</translation>
-        </message>
-        <message>
             <source>Could not pin selected files to screen</source>
             <translation>無法將所選檔案固定到螢幕</translation>
         </message>

@@ -2729,6 +2729,7 @@ dependencies = [
  "serde",
  "serde_json",
  "snow-core",
+ "snow-memory",
 ]
 
 [[package]]

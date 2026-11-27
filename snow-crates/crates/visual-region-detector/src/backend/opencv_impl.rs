@@ -3,12 +3,13 @@
 use super::{Backend, Component, KernelShape, MorphOp};
 use crate::error::Result;
 use crate::geometry::Rect;
-use crate::grid::{Grid, Image, Mask};
+use crate::grid::{Image, Labels, Mask};
 use opencv::{
     core::{self, Mat, Point, Scalar, Size, Vec3b, Vector},
     imgproc,
     prelude::*,
 };
+use snow_memory::RasterArray;
 
 pub(crate) struct OpenCvBackend;
 
@@ -51,7 +52,7 @@ impl Backend for OpenCvBackend {
         mask_from_mat(&output)
     }
 
-    fn connected_components(input: &Mask) -> Result<(Grid<i32>, Vec<Component>)> {
+    fn connected_components(input: &Mask) -> Result<(Labels, Vec<Component>)> {
         let (mut labels, mut stats, mut centers) = (Mat::default(), Mat::default(), Mat::default());
         let count = imgproc::connected_components_with_stats(
             &mask_mat(input)?,
@@ -167,12 +168,15 @@ fn mask_from_mat(mat: &Mat) -> Result<Mask> {
     })
 }
 
-fn grid_i32_from_mat(mat: &Mat) -> Result<Grid<i32>> {
+fn grid_i32_from_mat(mat: &Mat) -> Result<Labels> {
     let mat = mat.try_clone()?;
-    Ok(Grid {
+    let values = mat.data_typed::<i32>()?;
+    let mut data = RasterArray::try_zeroed(values.len())?;
+    data.copy_from_slice(values);
+    Ok(Labels {
         w: mat.cols(),
         h: mat.rows(),
-        data: mat.data_typed::<i32>()?.to_vec(),
+        data,
     })
 }
 

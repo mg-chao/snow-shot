@@ -41,12 +41,7 @@ class RuntimeActivityTracker final {
     explicit RuntimeActivityTracker(Clock clock = [] { return std::chrono::steady_clock::now(); })
         : m_state(std::make_shared<State>(std::move(clock))) {}
 
-    [[nodiscard]] static RuntimeActivityTracker& shared() {
-        // Detached native cleanup can post its final completion during static
-        // teardown. Admission state intentionally lasts until process exit.
-        static auto* tracker = new RuntimeActivityTracker;
-        return *tracker;
-    }
+    [[nodiscard]] static RuntimeActivityTracker& shared();
 
     [[nodiscard]] RuntimeActivityLease acquire(bool restartsQuiet = true) {
         auto reservation = std::make_shared<Reservation>(m_state);

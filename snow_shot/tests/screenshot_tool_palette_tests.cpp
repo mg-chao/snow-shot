@@ -11868,9 +11868,34 @@ void drawTemplateSelectSavesFiltersInsertsAndDeletes() {
     require(deletion != nullptr && deletion->isOpen() && deletion->ownerWindow() == &display &&
                 deletion->acceptAccentRole() == adqt::widgets::AdButton::AccentRole::Danger,
             "the option delete action should open a danger confirmation on the current display");
+    const auto savedTemplates = settings.templates();
+    auto replacements = savedTemplates;
+    replacements.front().payload.append('\n');
+    require(settings.setTemplates(replacements), "replace the saved payload under the same name");
+    deletion->acceptButton()->click();
+    require(deletion->isOpen() && settings.templates() == replacements,
+            "delete confirmation must preserve a replacement with the original template name");
+    require(settings.setTemplates(savedTemplates), "restore the originally selected template");
     deletion->acceptButton()->click();
     QCoreApplication::processEvents();
     require(settings.templates().isEmpty(), "deleting a Draw Template should remove its row");
+
+    require(settings.setTemplates({{QStringLiteral("Saved template"), payload}}),
+            "seed a template for the pooled toolbar lifecycle");
+    select->showPopup();
+    require(palette.loadedDrawTemplateCountForTests() == 1,
+            "the annotation template selector should load the saved template");
+    palette.setActiveTool(ScreenshotToolPalette::Tool::Move);
+    require(palette.loadedDrawTemplateCountForTests() == 0,
+            "retiring the annotation template selector must release its settings snapshot");
+    palette.setActiveTool(ScreenshotToolPalette::Tool::Select);
+    select =
+        palette.findChild<adqt::widgets::AdSelect*>(QStringLiteral("screenshotDrawTemplateSelect"));
+    require(select != nullptr && palette.loadedDrawTemplateCountForTests() == 1 &&
+                select->options().size() == 1 &&
+                select->options().front().label == QStringLiteral("Saved template"),
+            "the pooled toolbar should reload the saved annotation template on re-entry");
+    require(settings.setTemplates({}), "restore an empty annotation template library");
     palette.hide();
 }
 

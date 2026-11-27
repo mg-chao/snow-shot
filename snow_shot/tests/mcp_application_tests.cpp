@@ -30,6 +30,11 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#ifdef Q_OS_WIN
+#include "shell_context_menu_test_registry.h"
+#include "snow_shot/app/distribution.h"
+#include "snow_shot/platform/windows/packagedcontextmenupreference.h"
+#endif
 
 namespace {
 using namespace snow_shot;
@@ -278,7 +283,17 @@ void runMcpApplicationTests() {
     const auto suspended = shortcuts.suspendRegistrations();
     Q_UNUSED(suspended);
     const auto registry = settings::buildBuiltInSettingsRegistry();
+#ifdef Q_OS_WIN
+    shell_context_menu_tests::Registry menuRegistry;
+    QTemporaryDir menuDirectory;
+    auto menuOptions = menuRegistry.options();
+    menuOptions.packagedPreferencePath = menuDirectory.filePath(QStringLiteral("menu-state"));
+    platform::windows::ShellContextMenuRegistration shellMenu(menuOptions);
+    settings::BuiltInSettingsBackend backend(shortcuts, nullptr, nullptr, nullptr, nullptr,
+                                             &shellMenu);
+#else
     settings::BuiltInSettingsBackend backend(shortcuts);
+#endif
     settings::SettingsRuntimeSession session(registry, backend);
     McpJobRegistry jobs;
     QTemporaryDir updateDirectory;
@@ -492,6 +507,41 @@ void runMcpApplicationTests() {
                     .errorCode == QStringLiteral("idempotency_conflict"),
             "reused token with different arguments rejected");
     require(jobs.list(71).isEmpty(), "synchronous settings patches release reserved job capacity");
+
+#ifdef Q_OS_WIN
+    const auto pinId = QStringLiteral("pin_to_screen");
+    const auto editId = QStringLiteral("edit_images");
+    require(backend.applyMultiSelectValue(settings::SettingsMultiSelectBinding::ContextMenuOptions,
+                                          {pinId, editId}) &&
+                backend.applySelectValue(settings::SettingsSelectBinding::ContextMenuMode,
+                                         QStringLiteral("images_only")),
+            "enable two actions in the isolated Explorer menu");
+    constexpr auto menuScope = settings::SettingsLocalShortcutScope::WindowsContextMenu;
+    const auto* pinField = registry.fieldForLocalShortcut(menuScope, pinId);
+    const auto* editField = registry.fieldForLocalShortcut(menuScope, editId);
+    require(pinField && editField, "both Explorer shortcuts are discoverable through MCP");
+    const QJsonObject menuPatch{{pinField->id, QJsonArray{QStringLiteral("P")}},
+                                {editField->id, QJsonArray{QStringLiteral("E")}}};
+    const auto menuWrite = call(QStringLiteral("settings_update"),
+                                {{QStringLiteral("values"), menuPatch}}, configuration.revision());
+    const auto menu = shellMenu.preferences(configuration.snapshot());
+    require(menuWrite.ok && menu.actions[0] == 'P' && menu.actions[4] == 'E',
+            "the MCP shortcut batch commits both access keys");
+    if (app::distribution::isStoreManaged()) {
+        require(platform::windows::packaged_context_menu::readPreference(
+                    menuOptions.packagedPreferencePath.toStdWString()) == menu,
+                "the MCP batch publishes both access keys to the Store projection");
+    } else {
+        const auto label = [&](const QString& action) {
+            const auto verb = app::edition::registryName() + QStringLiteral(".File.") + action;
+            const auto path = shell_context_menu_tests::Registry::path(QStringLiteral("png"), verb);
+            return shell_context_menu_tests::stringText(
+                menuRegistry.keys.value(path).values.value({}));
+        };
+        require(label(pinId).endsWith(u" (&P)") && label(editId).endsWith(u" (&E)"),
+                "the MCP batch publishes both access keys to the Explorer registry");
+    }
+#endif
 
     const auto* autoHideField =
         registry.field(QStringLiteral("screen-recording.auto-hide-toolbar"));

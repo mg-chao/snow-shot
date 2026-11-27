@@ -57,7 +57,7 @@ class ImageStitchingWindow final : public QObject {
     void presentPinnedRecords(const QStringList& recordIds);
     void presentPinnedWindows(const QVector<ScreenshotPinnedImageSnapshot>& snapshots);
     [[nodiscard]] bool presentSplitImagesAsPdf(ImageSplitSnapshot snapshot);
-    void addFiles(const QStringList& paths);
+    void addFiles(const QStringList& paths, bool skipUnreadable = false);
     void paste();
     void addSelectedFiles(std::shared_ptr<platform::SelectedFileBackend> backend,
                           platform::SelectedFileTarget target);

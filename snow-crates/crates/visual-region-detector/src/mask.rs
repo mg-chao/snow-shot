@@ -3,7 +3,8 @@
 use crate::backend::{self, Component, KernelShape, MorphOp};
 use crate::error::Result;
 use crate::geometry::{Rect, clip};
-use crate::grid::{Grid, Mask};
+use crate::grid::{Grid, Labels, Mask};
+use std::collections::VecDeque;
 
 pub(crate) fn or(a: &Mask, b: &Mask) -> Mask {
     let mut out = a.clone();
@@ -46,7 +47,7 @@ pub(crate) fn morphology(
     morph(input, op, kernel_width, kernel_height, KernelShape::Rect)
 }
 
-pub(crate) fn cc(input: &Mask) -> Result<(Grid<i32>, Vec<Component>)> {
+pub(crate) fn cc(input: &Mask) -> Result<(Labels, Vec<Component>)> {
     backend::connected_components(input)
 }
 
@@ -95,16 +96,16 @@ pub(crate) fn shrink(rect: Rect, mask: &Mask, pad: i32) -> Option<Rect> {
 /// The implementation mirrors the flood-fill construction used by OpenCV:
 /// zeros connected to the padded border are background, and all remaining
 /// zeros are enclosed holes that become foreground.
-pub(crate) fn fill_holes(mask: &Mask) -> Result<Mask> {
+pub(crate) fn fill_holes(mut mask: Mask) -> Mask {
     let width = mask.w + 2;
     let height = mask.h + 2;
     let mut outside = Grid::new(width, height, false);
-    let mut queue = vec![(0, 0)];
+    // Keep only the flood frontier. An empty screenshot can have millions
+    // of exterior pixels, and the visited grid already records them.
+    let mut queue = VecDeque::from([(0, 0)]);
     outside.set(0, 0, true);
     let neighbors = [(-1, 0), (1, 0), (0, -1), (0, 1)];
-    let mut head = 0;
-    while let Some(&(x, y)) = queue.get(head) {
-        head += 1;
+    while let Some((x, y)) = queue.pop_front() {
         for (dx, dy) in neighbors {
             let nx = x + dx;
             let ny = y + dy;
@@ -117,19 +118,18 @@ pub(crate) fn fill_holes(mask: &Mask) -> Result<Mask> {
                 continue;
             }
             outside.set(nx, ny, true);
-            queue.push((nx, ny));
+            queue.push_back((nx, ny));
         }
     }
 
-    let mut out = mask.clone();
     for y in 0..mask.h {
         for x in 0..mask.w {
             if *mask.at(x, y) > 0 || !*outside.at(x + 1, y + 1) {
-                out.set(x, y, 255);
+                mask.set(x, y, 255);
             }
         }
     }
-    Ok(out)
+    mask
 }
 
 pub(crate) fn split_gaps(rect: Rect, ink: &Mask, gap_frac: f64) -> Vec<Rect> {
@@ -187,20 +187,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn hole_filling_handles_foreground_at_all_corners() -> Result<()> {
+    fn hole_filling_handles_foreground_at_all_corners() {
         let mut mask = Mask::new(30, 30, 255);
         for y in 5..25 {
             for x in 5..25 {
                 mask.set(x, y, 0);
             }
         }
-        assert!(fill_holes(&mask)?.data.iter().all(|value| *value == 255));
+        assert!(
+            fill_holes(mask.clone())
+                .data
+                .iter()
+                .all(|value| *value == 255)
+        );
         for y in 0..10 {
             for x in 13..17 {
                 mask.set(x, y, 0);
             }
         }
-        assert_eq!(fill_holes(&mask)?.data, mask.data);
-        Ok(())
+        assert_eq!(fill_holes(mask.clone()).data, mask.data);
     }
 }

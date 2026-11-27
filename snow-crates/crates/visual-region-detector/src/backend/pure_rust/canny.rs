@@ -1,6 +1,7 @@
 //! Scalar Canny detector matching OpenCV's 8-bit L1 path.
 
 use crate::grid::{Image, Mask};
+use snow_memory::RasterArray;
 
 pub(super) fn canny_edges(input: &Image) -> Mask {
     if input.w == 0 || input.h == 0 {
@@ -9,20 +10,29 @@ pub(super) fn canny_edges(input: &Image) -> Mask {
 
     let width = input.w as usize;
     let height = input.h as usize;
-    let gray: Vec<u8> = input.data.iter().copied().map(grayscale).collect();
-    let mut dx = vec![0i16; gray.len()];
-    let mut dy = vec![0i16; gray.len()];
-    sobel(&gray, width, height, &mut dx, &mut dy);
+    let mut dx = RasterArray::<i16>::zeroed(width * height);
+    let mut dy = RasterArray::<i16>::zeroed(width * height);
+    {
+        let mut gray = RasterArray::<u8>::zeroed(width * height);
+        for (value, &pixel) in gray.iter_mut().zip(&input.data) {
+            *value = grayscale(pixel);
+        }
+        sobel(&gray, width, height, &mut dx, &mut dy);
+    }
 
     let mapstep = width + 2;
-    let mut mag = vec![0i32; (height + 2) * mapstep];
-    let mut map = vec![1u8; (height + 2) * mapstep];
+    // The two 8-bit Sobel gradients have magnitudes of at most 1020 each.
+    let mut mag = RasterArray::<u16>::zeroed((height + 2) * mapstep);
+    let mut map = RasterArray::<u8>::zeroed((height + 2) * mapstep);
+    map[..mapstep].fill(1);
+    map[(height + 1) * mapstep..].fill(1);
     for y in 0..height {
-        let row = (y + 1) * mapstep + 1;
+        let row = (y + 1) * mapstep;
+        map[row] = 1;
+        map[row + width + 1] = 1;
         for x in 0..width {
             let index = y * width + x;
-            mag[row + x] = i32::from(dx[index]).abs() + i32::from(dy[index]).abs();
-            map[row + x] = 1;
+            mag[row + x + 1] = dx[index].unsigned_abs() + dy[index].unsigned_abs();
         }
     }
 
@@ -71,6 +81,7 @@ pub(super) fn canny_edges(input: &Image) -> Mask {
         }
     }
 
+    drop((mag, dx, dy));
     while let Some(index) = stack.pop() {
         for neighbor in [
             index - mapstep - 1,

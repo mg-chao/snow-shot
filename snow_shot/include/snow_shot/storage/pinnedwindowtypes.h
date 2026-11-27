@@ -81,6 +81,8 @@ struct PinnedWindowRecord final {
     bool animationPlaying = true;
     QString originalFilePath;
     QString originalFileName;
+    // A pending imported file can be written or restored without its decoded raster.
+    QByteArray originalFileBytes{};
     QString originalHtml;
     QString originalText;
     PinnedTextFormat textFormat = PinnedTextFormat::PlainText;

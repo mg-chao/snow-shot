@@ -53,10 +53,10 @@ int main(int argc, char** argv) {
         primary = screenshotClassicWindowsPrintBackend();
 #endif
     if (app.arguments().contains(QStringLiteral("--modern-unavailable")))
-        primary = [](QWidget*, QImage, auto done) {
+        primary = [](QWidget*, QImage, auto done, ScreenshotPrintService::CancelNative&) {
             done({ScreenshotPrintService::Status::Unavailable, {}});
         };
-    ScreenshotPrintService printer(std::move(primary), screenshotNativePrintBackend(true));
+    ScreenshotPrintService printer(std::move(primary), screenshotNativePrintBackend(true), nullptr);
     NativePrintFixtureWindow window;
     window.setWindowTitle(QStringLiteral("SnowShot native print fixture"));
     window.setWindowFlag(Qt::WindowStaysOnTopHint);

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+#include "saturated_export_queue.h"
 #include "snow_shot/presentation/imagesplitwindow.h"
 #include "snow_shot/presentation/collagedocument.h"
 #include "snow_shot/image/imageimportlimits.h"
@@ -280,6 +281,22 @@ void toolbarDropsOpenIndependentWindows() {
                 windows[2]->document()->image().size() == QSize(30, 20),
             "split windows retain the dropped images in order");
 
+    ImageSplitWindowCoordinator explorer;
+    SaturatedExportQueue occupied(explorer);
+    explorer.presentFiles({first, directory.filePath(QStringLiteral("missing.png")), second}, true);
+    require(explorer.windows().isEmpty(),
+            "queued split images wait for a worker before opening windows");
+    occupied.release();
+    waitUntil(
+        [&] {
+            const auto visible = explorer.windows();
+            return visible.size() == 2 && visible[0]->modal()->isOpen() &&
+                   visible[1]->modal()->isOpen();
+        },
+        "Explorer split opens one window per readable file");
+    require(explorer.windows()[0]->document()->image().size() == QSize(42, 31) &&
+                explorer.windows()[1]->document()->image().size() == QSize(36, 24),
+            "Explorer split preserves selection order after waiting for capacity");
     ScreenshotClipboardContentSnapshot corrupt;
     corrupt.encodedImages.append({QByteArrayLiteral("corrupt PNG"), QStringLiteral("image/png")});
     coordinator.presentDroppedImage(std::move(corrupt), reserveImageStitchingImport(0));

@@ -219,7 +219,13 @@ impl MacCapturer {
                 "Windows capture tuning is unavailable on macOS".into(),
             ));
         }
-        let session = DesktopSession::new(native_config(&target, &options)?).map_err(map_error)?;
+        let config = native_config(&target, &options)?;
+        let session = if options.workload == CaptureWorkload::Snapshot {
+            DesktopSession::new_for_snapshots(config)
+        } else {
+            DesktopSession::new(config)
+        }
+        .map_err(map_error)?;
         let transform = session.transform();
         Ok(Self {
             session,

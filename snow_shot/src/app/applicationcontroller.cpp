@@ -1,5 +1,11 @@
 #include "snow_shot/app/edition.h"
 #include "snow_shot/app/applicationcontroller.h"
+#ifdef Q_OS_WIN
+#include "snow_shot/platform/windows/shellbatchfile.h"
+#include "snow_shot/platform/windows/shellcontextmenuregistration.h"
+#include "snow_shot/app/supportedpinfiles.h"
+#include <QTextStream>
+#endif
 #include "snow_shot/app/distribution.h"
 #include "snow_shot/app/storeupdatelifecycle.h"
 #include "snow_shot/app/shellimagelaunch.h"
@@ -34,7 +40,6 @@
 #include "snow_shot/presentation/imagecompressionwindow.h"
 #include "snow_shot/presentation/screenshotexportartifact.h"
 #include "../presentation/pinned/screenshotpinneddragexport.h"
-#include "snow_shot/presentation/screenshotexportcache.h"
 
 #include "snow_shot/presentation/globalshortcutmanager.h"
 #include "snow_shot/presentation/globalcanvascontroller.h"
@@ -505,7 +510,7 @@ class ApplicationController::Impl {
         QObject::connect(&applicationStorage, &storage::ApplicationStorage::directoryChangeFinished,
                          &q, [this] {
                              const auto intent = shellLaunches.takeStorage();
-                             if (intent.paths.isEmpty())
+                             if (intent.fileArguments.isEmpty())
                                  return;
                              q.handleLaunchRequest(intent.replayArguments());
                          });
@@ -667,8 +672,15 @@ class ApplicationController::Impl {
                 }
             });
 #if !SNOW_SHOT_EDITION_MINI
-        cloudSettingsSync =
-            std::make_unique<CloudSettingsSyncService>(*accountSession, configuration, &q);
+        CloudSettingsSyncService::Options syncOptions;
+#ifdef Q_OS_WIN
+        syncOptions.commitMenuSettings = [](const auto& values, const auto& commit) {
+            const platform::windows::ShellContextMenuRegistration registration;
+            return registration.change(registration.preferences(values), commit).success;
+        };
+#endif
+        cloudSettingsSync = std::make_unique<CloudSettingsSyncService>(
+            *accountSession, configuration, std::move(syncOptions), &q);
 #endif
         mcpLifecycle = std::make_unique<mcp::McpRuntimeLifecycle>(mcp::McpRuntimeLifecycle::Hooks{
             [this] { return startMcp(); }, [this](auto done) { mcpGraph.drain(std::move(done)); },
@@ -702,11 +714,6 @@ class ApplicationController::Impl {
                        .toString() == QStringLiteral("smart_control");
         };
         memoryOptions.safe = [this] { return memoryTrimmingIsSafe(); };
-        memoryOptions.prepare = [] {
-            ScreenshotExportCache::pinnedPixels().clear();
-            ScreenshotExportCache::encodedBytes().clear();
-            ScreenshotExportCache::encodedFiles().clear();
-        };
         memoryOptimization = std::make_unique<runtime::MemoryOptimizationController>(
             runtime::RuntimeActivityTracker::shared(), std::move(memoryOptions), &q);
 #endif
@@ -1002,8 +1009,8 @@ class ApplicationController::Impl {
 #ifdef Q_OS_WIN
         const auto intent = shellLaunches.takeUpdate();
         updates->clearRelaunchArguments();
-        if (!intent.paths.isEmpty())
-            pinShellFiles(intent.paths);
+        if (!intent.fileArguments.isEmpty())
+            dispatchShellFiles(intent.fileArguments);
         if (intent.foreground)
             showMainWindow();
 #endif
@@ -1024,15 +1031,81 @@ class ApplicationController::Impl {
     }
 
 #ifdef Q_OS_WIN
-    void pinShellFiles(QStringList paths, std::function<void()> finished = {}) {
-        if (!actionGate.dispatch([this, paths = std::move(paths), finished]() mutable {
-                if (auto* controller = ensureScreenshotController())
-                    controller->pinFilesToScreen(std::move(paths), std::move(finished));
-                else if (finished)
-                    finished();
-            }) &&
-            finished)
-            finished();
+    void dispatchShellFiles(const QStringList& arguments, std::function<void()> finished = {}) {
+        using platform::windows::ShellAction;
+        ShellLaunchCoordinator::FirstFileCompletion completion(std::move(finished));
+        QStringList plainPins;
+        auto dispatch = [&](ShellAction action, QStringList paths) {
+            if (paths.isEmpty())
+                return;
+            auto ready = completion.take();
+            if (!actionGate.dispatch([this, action, paths = std::move(paths), ready]() mutable {
+                    switch (action) {
+                    case ShellAction::Pin:
+                    case ShellAction::Annotate:
+                        if (auto* controller = ensureScreenshotController()) {
+                            controller->pinFilesToScreen(std::move(paths), std::move(ready),
+                                                         action == ShellAction::Annotate);
+                            return;
+                        }
+                        break;
+                    case ShellAction::Stitch:
+                        ensureImageStitchingWindowCoordinator().presentFiles(paths, true);
+                        break;
+                    case ShellAction::Split:
+                        ensureImageSplitWindowCoordinator().presentFiles(paths, true);
+                        break;
+                    case ShellAction::Edit:
+                        ensureImageEditingWindowCoordinator().presentFiles(paths, true);
+                        break;
+                    case ShellAction::Compress:
+                        imageCompression.presentFiles(paths);
+                        break;
+                    }
+                    if (ready)
+                        ready();
+                }) &&
+                ready)
+                ready();
+        };
+        for (qsizetype i = 0; i + 1 < arguments.size(); i += 2) {
+            const auto operand = arguments.at(i + 1);
+            if (arguments.at(i) == u"--edit-with-snow-shot") {
+                plainPins.append(operand);
+                continue;
+            }
+            dispatch(ShellAction::Pin, std::exchange(plainPins, {}));
+            const auto directory = platform::windows::shellBatchDirectory(
+                edition::isMini, distribution::isStoreManaged());
+            if (directory.empty())
+                continue;
+            QFile file(directory / operand.toStdWString());
+            if (!file.open(QIODevice::ReadOnly))
+                continue;
+            QTextStream stream(&file);
+            stream.setEncoding(QStringConverter::Utf16LE);
+            const auto header = stream.readLine();
+            bool valid = false;
+            const auto index = header.toUInt(&valid);
+            if (!valid || index >= platform::windows::shellActionIds.size()) {
+                file.remove();
+                continue;
+            }
+            const auto action = static_cast<ShellAction>(index);
+            const auto formats = platform::windows::acceptsDocuments(action)
+                                     ? supportedPinFileExtensions()
+                                     : image::supportedImageFileExtensions();
+            QStringList paths;
+            while (!stream.atEnd()) {
+                const auto path = stream.readLine();
+                const QFileInfo info(path);
+                if (info.isAbsolute() && formats.contains(info.suffix().toLower()))
+                    paths.append(path);
+            }
+            file.remove();
+            dispatch(action, std::move(paths));
+        }
+        dispatch(ShellAction::Pin, std::move(plainPins));
     }
 
     void preserveShellLaunchForUpdate(const ShellLaunchCoordinator::Request& request) {
@@ -1040,7 +1113,7 @@ class ApplicationController::Impl {
         // Transport admission checked the cumulative intent before its receipt. Retain
         // accepted paths until helper acknowledgement or normal replay after failure.
         updates->setRelaunchArguments(
-            update::startupUpdateRelaunchArguments(intent.foreground, intent.paths));
+            update::startupUpdateShellArguments(intent.foreground, intent.fileArguments));
     }
 #endif
 
@@ -2290,7 +2363,7 @@ bool ApplicationController::acceptsLaunchRequest(const QStringList& arguments) c
             ShellLaunchCoordinator::parse(arguments), m_impl->updates->acceptsRelaunchArguments({}),
             [this](const auto& intent) {
                 return m_impl->updates->acceptsRelaunchArguments(
-                    update::startupUpdateRelaunchArguments(intent.foreground, intent.paths));
+                    update::startupUpdateShellArguments(intent.foreground, intent.fileArguments));
             });
     }
 #else
@@ -2314,9 +2387,6 @@ void ApplicationController::handleLaunchRequest(const QStringList& arguments,
             m_impl->reportSelectedFilePinFailure(tr("The selected file path is invalid"));
             return;
         }
-        for (const QString& path : request.unsupportedPaths)
-            m_impl->reportSelectedFilePinFailure(
-                tr("Could not open the selected file: %1").arg(path));
         if (storage::ApplicationStorage::instance().directoryChanging() ||
             (m_impl->migrationInput && m_impl->migrationInput->active)) {
             m_impl->shellLaunches.retainStorage(request);
@@ -2324,8 +2394,8 @@ void ApplicationController::handleLaunchRequest(const QStringList& arguments,
                    (m_impl->handoffInput && m_impl->handoffInput->active)) {
             m_impl->preserveShellLaunchForUpdate(request);
         } else {
-            if (!request.paths.isEmpty())
-                m_impl->pinShellFiles(request.paths, completion.take());
+            if (!request.fileArguments.isEmpty())
+                m_impl->dispatchShellFiles(request.fileArguments, completion.take());
             if (request.foreground)
                 m_impl->showMainWindow();
         }

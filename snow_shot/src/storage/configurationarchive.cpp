@@ -212,7 +212,8 @@ QString ConfigurationArchive::write(const QString& archivePath,
     return {};
 }
 
-ConfigurationArchiveReadResult ConfigurationArchive::read(const QString& archivePath) {
+ConfigurationArchiveReadResult ConfigurationArchive::read(const QString& archivePath,
+                                                          const QString& defaultContextMenuScope) {
     ConfigurationArchiveReadResult result;
     const QString invalidArchive =
         configArchiveTranslate(QT_TRANSLATE_NOOP("snow_shot::storage::ConfigurationArchive",
@@ -337,7 +338,19 @@ ConfigurationArchiveReadResult ConfigurationArchive::read(const QString& archive
     for (auto it = configuration.begin(); it != configuration.end(); ++it) {
         values.insert(it.key(), it.value());
     }
-    values = ConfigurationSchema::migrateLegacyValues(std::move(values));
+    const auto menuScopeKey = QStringLiteral("system/context_menu_mode");
+    const bool legacyMenuScope =
+        ConfigurationSchema::normalize(menuScopeKey, configuration.value(menuScopeKey)).valid;
+    const bool legacyAnnotation =
+        configuration.value(QStringLiteral("system/annotation_mode_when_opening_for_editing"))
+            .isBool();
+    const bool legacyAccessKey =
+        configuration.contains(QStringLiteral("context_menu_shortcuts/edit_with_snow_shot"));
+    values = ConfigurationSchema::migrateLegacyValues(std::move(values), schemaVersion,
+                                                      defaultContextMenuScope);
+    const auto menuOptionsKey = QStringLiteral("system/context_menu_options");
+    const bool inferredMenuOptions =
+        !configuration.contains(menuOptionsKey) && !legacyMenuScope && !legacyAnnotation;
     for (auto it = values.cbegin(); it != values.cend(); ++it) {
         if (it.key() == QLatin1String("storage/schema_version") ||
             !ConfigurationSchema::contains(it.key())) {
@@ -348,7 +361,12 @@ ConfigurationArchiveReadResult ConfigurationArchive::read(const QString& archive
         if (normalized.valid) {
             result.values.insert(it.key(), normalized.value);
             const auto raw = configuration.value(it.key());
-            if (raw.isUndefined() && mouse::isKey(it.key())) {
+            if (raw.isUndefined() &&
+                (mouse::isKey(it.key()) ||
+                 (schemaVersion < 12 &&
+                  (((legacyMenuScope || legacyAnnotation) &&
+                    it.key() == u"system/context_menu_options") ||
+                   (legacyAccessKey && it.key().startsWith(u"context_menu_shortcuts/")))))) {
                 // Migration materializes a whole category only when its legacy settings
                 // were supplied. Include every resulting transfer in the import journal.
                 result.explicitlyImported.insert(it.key());
@@ -362,7 +380,9 @@ ConfigurationArchiveReadResult ConfigurationArchive::read(const QString& archive
             }
         }
     }
-    if (result.values.isEmpty()) {
+    // An inferred default cannot make an otherwise incompatible legacy archive importable.
+    if (result.values.isEmpty() || (inferredMenuOptions && result.values.size() == 1 &&
+                                    result.values.contains(menuOptionsKey))) {
         return fail(configArchiveTranslate(
             QT_TRANSLATE_NOOP("snow_shot::storage::ConfigurationArchive",
                               "The configuration archive contains no compatible settings")));

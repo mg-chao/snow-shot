@@ -1088,7 +1088,83 @@ fn acquire_uninstall_lock(root: &Path) -> Result<Option<File>> {
     Ok(Some(lock))
 }
 
-fn uninstall_owned_files(root: &Path) -> Result<()> {
+fn owned_file_remove_error(error: std::io::Error) -> UpdateError {
+    io_error(
+        "owned_file_remove_failed",
+        "Could not remove an owned application file",
+        error,
+    )
+}
+
+#[cfg(windows)]
+fn remove_uninstall_image(
+    root: &Path,
+    path: &Path,
+    delete_on_restart: &dyn Fn(&Path) -> Result<()>,
+) -> Result<()> {
+    match fs::remove_file(path) {
+        Ok(()) => return Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {}
+        Err(error) => return Err(owned_file_remove_error(error)),
+    }
+    // Explorer can keep an image mapped beyond uninstall. Queue a unique, same-volume
+    // name outside the install tree before moving it, so reboot cleanup is durable and
+    // cannot delete a later installation's DLL.
+    let parent = root.parent().expect("installation roots have a parent");
+    let retired = tempfile::Builder::new()
+        .prefix(crate::edition::TEMP_PREFIX)
+        .suffix(".retired")
+        .rand_bytes(16)
+        .tempfile_in(parent)
+        .map_err(owned_file_remove_error)?
+        .into_temp_path();
+    delete_on_restart(&retired)?;
+    platform::replace_file(path, &retired)
+}
+
+#[cfg(windows)]
+fn remove_uninstall_shell_images(
+    root: &Path,
+    record: &InstallationRecord,
+    has_work_lock: bool,
+    delete_on_restart: &dyn Fn(&Path) -> Result<()>,
+) -> Result<()> {
+    if has_work_lock {
+        // A self-update may already have retired an older, still-loaded Explorer DLL.
+        let entries = fs::read_dir(root.join(UPDATE_WORK)).map_err(owned_file_remove_error)?;
+        for entry in entries {
+            let entry = entry.map_err(owned_file_remove_error)?;
+            let path = entry.path();
+            if entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| matches_work_file(name, "retired-", ".file"))
+                && no_links(&path).is_ok()
+                && path.is_file()
+            {
+                remove_uninstall_image(root, &path, delete_on_restart)?;
+            }
+        }
+    }
+    let relative = "bin/SnowShotExplorerCommand.dll";
+    let dll = root.join(relative);
+    if record
+        .files
+        .iter()
+        .any(|file| file.path.eq_ignore_ascii_case(relative))
+        && uninstall_target_removable(root, relative)
+        && dll.is_file()
+    {
+        remove_uninstall_image(root, &dll, delete_on_restart)?;
+    }
+    Ok(())
+}
+
+fn uninstall_owned_files(
+    root: &Path,
+    #[cfg(windows)] delete_on_restart: &dyn Fn(&Path) -> Result<()>,
+) -> Result<()> {
     let lock = acquire_uninstall_lock(root)?;
     if lock.is_some() && transaction_pending(root) {
         // Recovery only restores owned files that uninstall deletes next. A
@@ -1097,6 +1173,8 @@ fn uninstall_owned_files(root: &Path) -> Result<()> {
         restore(root).ok();
     }
     let record = installation_record(root).unwrap_or_default();
+    #[cfg(windows)]
+    remove_uninstall_shell_images(root, &record, lock.is_some(), delete_on_restart)?;
     let executing_image = std::env::current_exe().ok();
     for file in &record.files {
         if !uninstall_target_removable(root, &file.path) {
@@ -1113,13 +1191,7 @@ fn uninstall_owned_files(root: &Path) -> Result<()> {
             continue;
         }
         if path.is_file() {
-            fs::remove_file(&path).map_err(|error| {
-                io_error(
-                    "owned_file_remove_failed",
-                    "Could not remove an owned application file",
-                    error,
-                )
-            })?;
+            fs::remove_file(&path).map_err(owned_file_remove_error)?;
         }
     }
     drop(lock);
@@ -1138,7 +1210,11 @@ pub fn uninstall(root: &Path, remove_registrations: bool) -> Result<()> {
         platform::remove_installation_startup(&root).ok();
         platform::remove_installation_shell_verbs(&root).ok();
     }
-    uninstall_owned_files(&root)
+    uninstall_owned_files(
+        &root,
+        #[cfg(windows)]
+        &platform::delete_on_restart,
+    )
 }
 
 fn installer_helper_source(root: &Path, backup: &Path) -> Result<PathBuf> {
@@ -2307,6 +2383,84 @@ mod tests {
         uninstall(&root, false).unwrap();
         assert!(!root.join(crate::edition::APP_PATH).exists());
         assert!(!root.join(crate::edition::UPDATER_PATH).exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn uninstall_cleans_loaded_explorer_images_in_one_pass() {
+        use std::cell::RefCell;
+        use std::os::windows::ffi::OsStrExt;
+        use windows::Win32::Foundation::FreeLibrary;
+        use windows::Win32::System::LibraryLoader::{LOAD_LIBRARY_SEARCH_SYSTEM32, LoadLibraryExW};
+        use windows::core::PCWSTR;
+
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("SnowShot");
+        fs::create_dir_all(root.join("bin")).unwrap();
+        let relative = "bin/SnowShotExplorerCommand.dll";
+        let dll = root.join(relative);
+        let system = PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32");
+        fs::copy(system.join("version.dll"), &dll).unwrap();
+        let record = InstallationRecord {
+            platform: Some(crate::edition::PLATFORM.to_owned()),
+            product: crate::edition::PRODUCT.to_owned(),
+            schema: 1,
+            variant: "online".to_owned(),
+            version: "1.0.0".to_owned(),
+            files: vec![descriptor(relative, &fs::read(&dll).unwrap())],
+        };
+        fs::write(
+            root.join(INSTALLATION_RECORD),
+            serde_json::to_vec(&record).unwrap(),
+        )
+        .unwrap();
+
+        fs::create_dir_all(root.join(UPDATE_WORK)).unwrap();
+        let old_image = retired_path(&root).unwrap();
+        fs::copy(&dll, &old_image).unwrap();
+        let modules = [&dll, &old_image].map(|path| {
+            let wide = path
+                .as_os_str()
+                .encode_wide()
+                .chain([0])
+                .collect::<Vec<_>>();
+            unsafe {
+                LoadLibraryExW(PCWSTR(wide.as_ptr()), None, LOAD_LIBRARY_SEARCH_SYSTEM32).unwrap()
+            }
+        });
+        let failure = remove_uninstall_image(&root, &dll, &|_| {
+            Err(owned_file_remove_error(
+                std::io::ErrorKind::PermissionDenied.into(),
+            ))
+        });
+        assert!(failure.is_err());
+        assert!(
+            dll.is_file(),
+            "a denied reboot queue leaves the DLL at its original path"
+        );
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+        // Intercept only the reboot queue so this test never changes the machine's pending
+        // operations. The actual mapped DLLs, renames and uninstall cleanup run normally.
+        let queued = RefCell::new(Vec::new());
+        let result = uninstall_owned_files(&root, &|path| {
+            assert_eq!(path.parent(), root.parent());
+            assert_eq!(fs::metadata(path).unwrap().len(), 0);
+            queued.borrow_mut().push(path.to_owned());
+            Ok(())
+        });
+        for module in modules {
+            unsafe { FreeLibrary(module).unwrap() };
+        }
+        result.unwrap();
+        assert!(!dll.exists());
+        assert!(!root.join(UPDATE_WORK).exists());
+        let queued = queued.into_inner();
+        assert_eq!(queued.len(), 2);
+        assert_ne!(queued[0], queued[1]);
+        for retired in queued {
+            assert_eq!(fs::metadata(&retired).unwrap().len(), record.files[0].size);
+            fs::remove_file(retired).unwrap();
+        }
     }
 
     #[test]

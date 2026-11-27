@@ -39,7 +39,9 @@ pub unsafe extern "C" fn snow_detect_visual_regions(
         result.write(std::ptr::null_mut());
     }
     catch_unwind(AssertUnwindSafe(|| {
-        let row = width as usize * 3;
+        let Some(row) = (width as usize).checked_mul(3) else {
+            return 1;
+        };
         let Some(required) = stride
             .checked_mul(height.saturating_sub(1) as usize)
             .and_then(|n| n.checked_add(row))
@@ -56,11 +58,15 @@ pub unsafe extern "C" fn snow_detect_visual_regions(
             return 1;
         }
         let input = unsafe { std::slice::from_raw_parts(pixels, required) };
-        let mut bytes = Vec::with_capacity(row * height as usize);
-        for y in 0..height as usize {
-            bytes.extend_from_slice(&input[y * stride..y * stride + row]);
+        let mut bgr = Vec::with_capacity(width as usize * height as usize);
+        for input_row in input.chunks(stride) {
+            bgr.extend(
+                input_row[..row]
+                    .chunks_exact(3)
+                    .map(|pixel| [pixel[0], pixel[1], pixel[2]]),
+            );
         }
-        let Ok(image) = BgrImage::from_bgr_bytes(width, height, bytes) else {
+        let Ok(image) = BgrImage::from_bgr_pixels(width, height, bgr) else {
             return 1;
         };
         let Ok(regions) = detect_regions(&image) else {
@@ -117,6 +123,49 @@ pub unsafe extern "C" fn snow_detected_regions_release(result: *mut SnowDetected
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn strided_pixels_match_packed_pixels_without_trailing_padding() {
+        let width = 800;
+        let height = 400;
+        let row = width * 3;
+        let stride = row + 8;
+        let mut packed = vec![245; row * height];
+        for y in 200..233 {
+            packed[y * row + 400 * 3..y * row + 402 * 3].fill(0);
+        }
+        let mut padded = vec![1; stride * (height - 1) + row];
+        for (destination, source) in padded.chunks_mut(stride).zip(packed.chunks_exact(row)) {
+            destination[..row].copy_from_slice(source);
+        }
+
+        let detect = |pixels: &[u8], stride| {
+            let mut raw = std::ptr::null_mut();
+            assert_eq!(
+                unsafe {
+                    snow_detect_visual_regions(
+                        pixels.as_ptr(),
+                        pixels.len(),
+                        width as u32,
+                        height as u32,
+                        stride,
+                        &mut raw,
+                    )
+                },
+                0,
+            );
+            assert!(!raw.is_null());
+            let result = unsafe { Box::from_raw(raw) };
+            result
+                .regions
+                .iter()
+                .map(|r| (r.x, r.y, r.width, r.height, r.category))
+                .collect::<Vec<_>>()
+        };
+        let expected = detect(&packed, row);
+        assert!(!expected.is_empty());
+        assert_eq!(detect(&padded, stride), expected);
+    }
     #[test]
     fn rejects_invalid_input_and_clears_result() {
         let mut result = std::ptr::dangling_mut();

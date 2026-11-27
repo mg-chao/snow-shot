@@ -309,7 +309,8 @@ bool ScreenshotCaptureWorker::ensureSession(const QVector<std::uint32_t>& exclud
     config.capture_backend = backend;
     config.exclusions.windows = excludedWindowIds.constData();
     config.exclusions.window_count = static_cast<size_t>(excludedWindowIds.size());
-#if defined(Q_OS_WIN) || defined(_WIN32)
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+    // ScreenCaptureKit and the Windows desktop path both produce BGRA natively.
     config.pixel_format = SNOW_CAPTURE_PIXEL_FORMAT_BGRA8;
 #endif
     m_session = snow_capture_desktop_session_create(&config);

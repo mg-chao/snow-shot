@@ -165,6 +165,45 @@ ScreenshotToolPalette::Options editorOptions() {
     options.showDrawingModeShortcutOnConfirm = false;
     return options;
 }
+struct EditingFileImport {
+    ImageEditingSource source;
+    std::shared_ptr<ImageStitchingImportReservation> reservation;
+    bool rejected = false;
+};
+
+ScreenshotExportCoordinator::Work readEditingFile(QString path,
+                                                  const std::shared_ptr<EditingFileImport>& file) {
+    return [path = std::move(path), file](const auto& cancellation) {
+        const auto cancelled = [&cancellation] { return cancellation.isCancellationRequested(); };
+        file->source.originalFileName = QFileInfo(path).fileName();
+        file->reservation = reserveImageStitchingImport(0);
+        file->rejected = !file->reservation;
+        const auto files = ScreenshotClipboardContentReader::snapshotLocalFiles(
+            {path}, cancelled, ScreenshotClipboardContentReader::FilePurpose::ImageImport);
+        if (!file->rejected && !files.isEmpty()) {
+            file->source.image = ScreenshotClipboardContentReader::decodeImageFile(
+                files.first(), cancelled, [file](qint64 bytes) {
+                    if (!file->reservation->resize(bytes)) {
+                        file->rejected = true;
+                        return false;
+                    }
+                    return true;
+                });
+            if (!file->source.image.isNull()) {
+                const auto bytes = imageStitchingImageImportBytes(file->source.image.size());
+                file->rejected =
+                    bytes == 0 ||
+                    !file->reservation->resize(std::max(bytes, file->source.image.sizeInBytes()));
+                if (file->rejected)
+                    file->source.image = {};
+            }
+        }
+        file->source.pixelSize = file->source.image.size();
+        file->source.canvasRect = QRectF(QPointF(), QSizeF(file->source.pixelSize));
+        file->source.flattened = true;
+        return ScreenshotExportTaskResult{};
+    };
+}
 } // namespace
 
 struct ImageEditingWindow::Impl {
@@ -1725,46 +1764,10 @@ void ImageEditingWindow::presentFile(QString path) {
     d.cancelLoading();
     d.errorSource = nullptr;
     d.setLoading(true);
-    struct FileImage {
-        ImageEditingSource source;
-        std::shared_ptr<ImageStitchingImportReservation> reservation;
-        bool rejected = false;
-    };
-    auto file = std::make_shared<FileImage>();
+    auto file = std::make_shared<EditingFileImport>();
     d.loadJob = ScreenshotExportCoordinator::shared().submit(
         this, ScreenshotExportCoordinator::Priority::Foreground,
-        [path = std::move(path), file](const auto& cancellation) {
-            const auto cancelled = [&cancellation] {
-                return cancellation.isCancellationRequested();
-            };
-            file->source.originalFileName = QFileInfo(path).fileName();
-            file->reservation = reserveImageStitchingImport(0);
-            file->rejected = !file->reservation;
-            const auto files = ScreenshotClipboardContentReader::snapshotLocalFiles(
-                {path}, cancelled, ScreenshotClipboardContentReader::FilePurpose::ImageImport);
-            if (!file->rejected && !files.isEmpty()) {
-                file->source.image = ScreenshotClipboardContentReader::decodeImageFile(
-                    files.first(), cancelled, [file](qint64 bytes) {
-                        if (!file->reservation->resize(bytes)) {
-                            file->rejected = true;
-                            return false;
-                        }
-                        return true;
-                    });
-                if (!file->source.image.isNull()) {
-                    const auto bytes = imageStitchingImageImportBytes(file->source.image.size());
-                    file->rejected = bytes == 0 || !file->reservation->resize(std::max(
-                                                       bytes, file->source.image.sizeInBytes()));
-                    if (file->rejected)
-                        file->source.image = {};
-                }
-            }
-            file->source.pixelSize = file->source.image.size();
-            file->source.canvasRect = QRectF(QPointF(), QSizeF(file->source.pixelSize));
-            file->source.flattened = true;
-            return ScreenshotExportTaskResult{};
-        },
-        [this, file, generation](auto result) {
+        readEditingFile(std::move(path), file), [this, file, generation](auto result) {
             if (m_impl->closing || m_impl->loadGeneration != generation)
                 return;
             if (!result.succeeded() || file->source.image.isNull()) {
@@ -1773,23 +1776,29 @@ void ImageEditingWindow::presentFile(QString path) {
                         ? tr("The image is too large or there is not enough memory to load it")
                         : tr("The image could not be loaded");
             }
-            const bool success = result.succeeded() && !file->source.image.isNull();
-            const QPointer<ImageEditingWindow> guard(this);
-            present(std::move(file->source));
-            if (!guard || m_impl->closing || m_impl->loadGeneration != generation + 1)
-                return;
-            if (file->rejected)
-                m_impl->errorSource = QT_TRANSLATE_NOOP(
-                    "ImageEditingWindow",
-                    "The image is too large or there is not enough memory to load it");
-            if (success)
-                m_impl->fileReservation = std::move(file->reservation);
+            presentFileImage(std::move(file->source), std::move(file->reservation), file->rejected);
         });
     if (!d.loadJob.isValid()) {
         ImageEditingSource failure;
         failure.error = tr("The image could not be loaded");
         present(std::move(failure));
     }
+}
+void ImageEditingWindow::presentFileImage(
+    ImageEditingSource source, std::shared_ptr<ImageStitchingImportReservation> reservation,
+    bool rejected) {
+    const auto generation = m_impl->loadGeneration;
+    const bool success = source.error.isEmpty() && !source.image.isNull();
+    const QPointer<ImageEditingWindow> guard(this);
+    present(std::move(source));
+    if (!guard || m_impl->closing || m_impl->loadGeneration != generation + 1)
+        return;
+    if (rejected)
+        m_impl->errorSource =
+            QT_TRANSLATE_NOOP("ImageEditingWindow",
+                              "The image is too large or there is not enough memory to load it");
+    if (success)
+        m_impl->fileReservation = std::move(reservation);
 }
 void ImageEditingWindow::present(ImageEditingSource source) {
     auto& d = *m_impl;
@@ -2237,7 +2246,21 @@ ImageEditingWindow* ImageEditingWindowCoordinator::createWindow() {
             });
     return window;
 }
-void ImageEditingWindowCoordinator::presentFiles(const QStringList& paths) {
+void ImageEditingWindowCoordinator::presentFiles(const QStringList& paths, bool skipUnreadable) {
+    if (skipUnreadable) {
+        for (const auto& path : paths) {
+            auto file = std::make_shared<EditingFileImport>();
+            if (!m_fileImports.enqueue(ScreenshotExportCoordinator::Priority::Foreground,
+                                       readEditingFile(path, file), [this, file](auto result) {
+                                           if (result.succeeded() && !file->source.image.isNull())
+                                               createWindow()->presentFileImage(
+                                                   std::move(file->source),
+                                                   std::move(file->reservation), false);
+                                       }))
+                break;
+        }
+        return;
+    }
     if (auto* window = createWindow()) {
         window->presentEmpty();
         window->openFiles(paths);
@@ -2362,7 +2385,7 @@ bool ImageEditingWindowCoordinator::hasUnsavedChanges() const {
 }
 bool ImageEditingWindowCoordinator::prepareForUpdateHandoff() {
     Q_ASSERT(QThread::currentThread() == thread());
-    if (m_handoffPreparing || m_reviewPending)
+    if (m_handoffPreparing || m_reviewPending || m_fileImports.active())
         return false;
     const QPointer<ImageEditingWindowCoordinator> lifetime(this);
     m_handoffPreparing = true;
@@ -2381,9 +2404,11 @@ bool ImageEditingWindowCoordinator::prepareForUpdateHandoff() {
         if (m_windowRevision != revision || m_reviewPending || window->dirty())
             return false;
     }
-    return m_windowRevision == revision && !m_reviewPending && !hasUnsavedChanges();
+    return m_windowRevision == revision && !m_reviewPending && !m_fileImports.active() &&
+           !hasUnsavedChanges();
 }
 void ImageEditingWindowCoordinator::shutdown() {
+    m_fileImports.cancel();
     const auto windows = std::exchange(m_windows, {});
     if (!windows.isEmpty())
         ++m_windowRevision;

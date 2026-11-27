@@ -49,10 +49,13 @@ void ImageStitchingWindowCoordinator::presentPinnedWindows(
         window->presentPinnedWindows(snapshots);
 }
 
-void ImageStitchingWindowCoordinator::presentFiles(const QStringList& paths) {
-    if (auto* window = ensureWindow()) {
-        window->present();
-        window->addFiles(paths);
+void ImageStitchingWindowCoordinator::presentFiles(const QStringList& paths, bool skipUnreadable) {
+    if (m_shutdown || paths.isEmpty())
+        return;
+    if (auto* window = skipUnreadable && m_window ? m_window.data() : ensureWindow()) {
+        if (!skipUnreadable)
+            window->present();
+        window->addFiles(paths, skipUnreadable);
     }
 }
 

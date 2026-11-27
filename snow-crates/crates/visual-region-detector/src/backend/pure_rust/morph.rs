@@ -2,7 +2,8 @@
 
 use super::{Component, KernelShape, MorphOp};
 use crate::geometry::Rect;
-use crate::grid::{Grid, Mask};
+use crate::grid::{Labels, Mask};
+use snow_memory::RasterArray;
 use std::collections::VecDeque;
 
 pub(super) fn morphology(
@@ -235,12 +236,8 @@ fn sliding_minmax(
     }
 }
 
-pub(super) fn connected_components(input: &Mask) -> (Grid<i32>, Vec<Component>) {
-    let n = (input.w * input.h) as usize;
-    if n == 0 {
-        return (Grid::new(input.w, input.h, 0), Vec::new());
-    }
-    let mut provisional = vec![0i32; n];
+pub(super) fn connected_components(input: &Mask) -> (Labels, Vec<Component>) {
+    let mut provisional = RasterArray::zeroed(input.data.len());
     let mut parent = vec![0i32];
     let mut next_label = 1i32;
     let idx = |x: i32, y: i32| (y * input.w + x) as usize;
@@ -282,7 +279,6 @@ pub(super) fn connected_components(input: &Mask) -> (Grid<i32>, Vec<Component>) 
     }
 
     let mut root_to_id = vec![0i32; parent.len()];
-    let mut labels = Grid::new(input.w, input.h, 0i32);
     let mut stats: Vec<(i32, i32, i32, i32, i32)> = Vec::new();
     let mut id = 0i32;
     for y in 0..input.h {
@@ -300,7 +296,9 @@ pub(super) fn connected_components(input: &Mask) -> (Grid<i32>, Vec<Component>) 
             } else {
                 root_to_id[root as usize]
             };
-            labels.set(x, y, mapped);
+            // Later pixels still read their own provisional label. The
+            // union-find table is independent of this output buffer.
+            provisional[idx(x, y)] = mapped;
             let stat = &mut stats[(mapped - 1) as usize];
             stat.0 = stat.0.min(x);
             stat.1 = stat.1.min(y);
@@ -319,7 +317,14 @@ pub(super) fn connected_components(input: &Mask) -> (Grid<i32>, Vec<Component>) 
             id: (index + 1) as i32,
         })
         .collect();
-    (labels, components)
+    (
+        Labels {
+            w: input.w,
+            h: input.h,
+            data: provisional,
+        },
+        components,
+    )
 }
 
 fn find(parent: &mut [i32], mut label: i32) -> i32 {

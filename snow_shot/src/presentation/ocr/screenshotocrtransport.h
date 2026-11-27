@@ -83,7 +83,7 @@ class ScreenshotOcrTransport final : public QObject {
         releaseBuffer();
     }
 
-    void start(const ScreenshotOcrResolvedAssets& assets, const QProcessEnvironment& environment) {
+    void start(const ScreenshotOcrResolvedAssets& assets, QProcessEnvironment environment) {
         m_process = std::make_unique<QProcess>();
         connect(m_process.get(), &QProcess::started, this, [this]() {
             post(m_callbacks.started, m_process->processId());
@@ -106,6 +106,13 @@ class ScreenshotOcrTransport final : public QObject {
                     post(m_callbacks.finished, code, status);
                 });
         m_process->setWorkingDirectory(assets.runtimeDirectory);
+#ifdef Q_OS_MACOS
+        // libmalloc reads this setting before main(). Scope it to the OCR child so a
+        // resident worker returns freed large inference buffers after releasing its session.
+        const auto largeCache = QStringLiteral("MallocLargeCache");
+        if (!environment.contains(largeCache))
+            environment.insert(largeCache, QStringLiteral("0"));
+#endif
         m_process->setProcessEnvironment(environment);
         m_process->start(assets.processPath);
     }

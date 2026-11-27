@@ -19,6 +19,12 @@ pub struct SnowSpeechBubbleTextLayoutMetrics {
     pub text_ink_reserve: f64,
 }
 
+/// Releases cached speech bubble geometry for the calling render thread.
+#[unsafe(no_mangle)]
+pub extern "C" fn snow_clear_speech_bubble_geometry_cache_for_current_thread() {
+    ffi_void(snow_draw_engine_document::clear_speech_bubble_geometry_cache_for_current_thread);
+}
+
 /// # Safety
 /// Runtime must be live.
 #[unsafe(no_mangle)]

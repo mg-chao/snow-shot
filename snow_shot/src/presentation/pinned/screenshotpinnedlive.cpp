@@ -570,6 +570,7 @@ void ScreenshotPinnedWindow::finishLiveConversion(QImage image) {
     if (image.isNull() || !isLiveWindow() || m_closing)
         return;
     cancelCropInteraction();
+    cancelCropPreparation();
     if (m_interactionCropRect)
         endControlledInteraction(false);
     const QRect geometry = authoritativeContentNativeGeometry();

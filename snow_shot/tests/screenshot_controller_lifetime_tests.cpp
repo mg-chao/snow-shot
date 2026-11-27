@@ -69,6 +69,26 @@ ScreenshotPinnedWindow* fixturePin(const QString& id) {
     return found;
 }
 
+void cancellingWhileRecapturePreparesReleasesInput() {
+    QWidget hiddenWindow;
+    bool inputTransparent = false;
+    ScreenshotController controller;
+    QImage image(32, 32, QImage::Format_RGBA8888);
+    image.fill(Qt::white);
+    ScreenshotSelectionParams selection;
+    selection.selection = QRect(0, 0, 32, 32);
+    ScreenshotControllerTestAccess::prepareSelection(controller, std::move(image), selection);
+    ScreenshotControllerTestAccess::prepareRecaptureInput(controller, hiddenWindow,
+                                                          inputTransparent);
+    require(inputTransparent && !hiddenWindow.isVisible(),
+            "recapture preparation owns input state and a hidden window");
+
+    controller.mcpCancelCapture();
+
+    require(!inputTransparent, "cancelling must immediately restore prepared recapture input");
+    require(!hiddenWindow.isVisible(), "cancelling must leave retired capture windows hidden");
+}
+
 void reportRestoreFailure(const QString& id, const ScreenshotController& controller) {
     auto* pin = fixturePin(id);
     std::cerr << "restore fixture id=" << qPrintable(id)
@@ -504,6 +524,8 @@ int runScreenshotControllerLifetimeTests(int argc, char** argv) {
     plainGlobalMouseScreenshotHasNoPendingAction();
     drainRetiredCaptureSurfaces();
     capturePreparationSurvivesControllerRetirement();
+    drainRetiredCaptureSurfaces();
+    cancellingWhileRecapturePreparesReleasesInput();
     drainRetiredCaptureSurfaces();
     delayedPresentationWaitsForSuspensionRestoration();
     acceptedRestorationBlocksApplicationTransitionsUntilPresentationSettles();

@@ -17,6 +17,19 @@
 #include <atomic>
 #include <utility>
 
+namespace {
+ScreenshotAirDropService::NativeBackend
+withCancellation(ScreenshotAirDropService::Backend backend) {
+    if (!backend)
+        return {};
+    return [backend = std::move(backend)](QWidget* owner, QString path,
+                                          ScreenshotAirDropService::Completion done,
+                                          ScreenshotAirDropService::CancelNative&) {
+        backend(owner, std::move(path), std::move(done));
+    };
+}
+} // namespace
+
 struct ScreenshotAirDropService::Request {
     snow_shot::runtime::RuntimeActivityLease activity =
         snow_shot::runtime::RuntimeActivityTracker::shared().acquire();
@@ -26,6 +39,7 @@ struct ScreenshotAirDropService::Request {
     QString sharedPath;
     std::atomic_bool cancelled{false};
     Completion completion;
+    CancelNative cancelNative;
     QMetaObject::Connection ownerDestroyed;
     QMetaObject::Connection receiverDestroyed;
     bool completed = false;
@@ -38,11 +52,14 @@ struct ScreenshotAirDropService::Request {
 };
 
 ScreenshotAirDropService::ScreenshotAirDropService(Backend backend, QObject* parent)
+    : ScreenshotAirDropService(withCancellation(std::move(backend)), parent) {}
+
+ScreenshotAirDropService::ScreenshotAirDropService(NativeBackend backend, QObject* parent)
     : QObject(parent), m_backend(std::move(backend)) {}
 
 ScreenshotAirDropService::~ScreenshotAirDropService() {
     if (m_request)
-        finish(m_request, {Status::Cancelled, {}});
+        finish(m_request, {Status::Cancelled, {}}, true);
 }
 
 ScreenshotAirDropService& ScreenshotAirDropService::shared() {
@@ -56,12 +73,22 @@ bool ScreenshotAirDropService::busy() const {
     return m_request != nullptr;
 }
 
-void ScreenshotAirDropService::finish(const std::shared_ptr<Request>& request, Result result) {
+bool ScreenshotAirDropService::cancel(QObject* receiver) {
+    Q_ASSERT(QThread::currentThread() == thread());
+    if (!receiver || !m_request || m_request->receiver != receiver)
+        return false;
+    finish(m_request, {Status::Cancelled, {}}, true);
+    return true;
+}
+
+void ScreenshotAirDropService::finish(const std::shared_ptr<Request>& request, Result result,
+                                      bool cancelNative) {
     if (m_request != request || request->completed)
         return;
     // Copy before resetting: the destructor can pass m_request itself.
     const auto active = request;
     active->completed = true;
+    const auto activity = std::move(active->activity);
     active->cancelled.store(true, std::memory_order_release);
     active->preparation.cancel();
     QObject::disconnect(active->ownerDestroyed);
@@ -70,7 +97,11 @@ void ScreenshotAirDropService::finish(const std::shared_ptr<Request>& request, R
         result.sharedPath = active->sharedPath;
         result.fileLifetime = active->directory;
     }
-    m_request.reset();
+    const QPointer<ScreenshotAirDropService> lifetime(this);
+    if (auto cancel = std::move(active->cancelNative); cancelNative && cancel)
+        cancel();
+    if (lifetime)
+        m_request.reset();
     auto completion = std::move(active->completion);
     if (active->receiver && completion)
         completion(std::move(result));
@@ -86,7 +117,10 @@ bool ScreenshotAirDropService::shareImage(QObject* receiver, QWidget* owner, QIm
     request->owner = owner;
     request->completion = std::move(completion);
     m_request = request;
-    const auto abandon = [this, request] { finish(request, {Status::Cancelled, {}}); };
+    const auto abandon = [this, weak = std::weak_ptr(request)] {
+        if (const auto active = weak.lock())
+            finish(active, {Status::Cancelled, {}}, true);
+    };
     request->ownerDestroyed = connect(owner, &QObject::destroyed, this, abandon);
     if (receiver != owner)
         request->receiverDestroyed = connect(receiver, &QObject::destroyed, this, abandon);
@@ -123,21 +157,24 @@ bool ScreenshotAirDropService::shareImage(QObject* receiver, QWidget* owner, QIm
         request->directory = std::move(prepared->directory);
         request->sharedPath = prepared->path;
         const QPointer<ScreenshotAirDropService> guard(this);
-        const auto completed = [guard, request](Result result) {
+        const auto completed = [guard, weak = std::weak_ptr(request),
+                                fileLifetime = request->directory](Result result) {
+            // The native service may still be reading the file after caller cancellation.
+            Q_UNUSED(fileLifetime);
             // Dispatch through the application so a worker callback never races
             // destruction of the service while selecting its invocation receiver.
             if (!qApp)
                 return;
             QMetaObject::invokeMethod(
                 qApp,
-                [guard, request, result = std::move(result)]() mutable {
-                    if (guard)
-                        guard->finish(request, std::move(result));
+                [guard, weak, result = std::move(result)]() mutable {
+                    if (const auto active = weak.lock(); guard && active)
+                        guard->finish(active, std::move(result));
                 },
                 Qt::QueuedConnection);
         };
         if (m_backend)
-            m_backend(request->owner, prepared->path, completed);
+            m_backend(request->owner, prepared->path, completed, request->cancelNative);
         else
             completed({Status::Unavailable,
                        QCoreApplication::translate("ScreenshotAirDropService",

@@ -16,6 +16,7 @@ opencv = ["dep:opencv"]
 
 [dependencies]
 snow-core = { path = "../snow-core" }
+snow-memory = { path = "../snow-memory" }
 image = { version = "0.25", default-features = false }
 opencv = { version = "0.100.1", optional = true, default-features = false, features = ["clang-runtime", "imgproc"] }
 serde = { version = "1", features = ["derive"] }

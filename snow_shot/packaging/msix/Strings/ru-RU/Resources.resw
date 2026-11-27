@@ -3,5 +3,10 @@
   <data name="DisplayName" xml:space="preserve"><value>Snow Shot</value></data>
   <data name="Description" xml:space="preserve"><value>Делайте скриншоты, добавляйте разметку, распознавайте содержимое экрана и закрепляйте его на экране.</value></data>
   <data name="FileTypesDisplayName" xml:space="preserve"><value>Изображения и текстовые документы</value></data>
-  <data name="EditVerb" xml:space="preserve"><value>Редактировать в Snow Shot</value></data>
+  <data name="PinAction" xml:space="preserve"><value>Закрепить на экране</value></data>
+  <data name="AnnotateAction" xml:space="preserve"><value>Закрепить на экране и добавить аннотации</value></data>
+  <data name="StitchAction" xml:space="preserve"><value>Объединить изображения</value></data>
+  <data name="SplitAction" xml:space="preserve"><value>Разделить изображения</value></data>
+  <data name="EditAction" xml:space="preserve"><value>Редактировать изображения</value></data>
+  <data name="CompressAction" xml:space="preserve"><value>Сжать изображения</value></data>
 </root>

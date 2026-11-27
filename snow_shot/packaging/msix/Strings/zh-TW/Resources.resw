@@ -3,5 +3,10 @@
   <data name="DisplayName" xml:space="preserve"><value>Snow Shot</value></data>
   <data name="Description" xml:space="preserve"><value>擷取、標註和辨識螢幕內容，並將內容固定到螢幕。</value></data>
   <data name="FileTypesDisplayName" xml:space="preserve"><value>影像和文字文件</value></data>
-  <data name="EditVerb" xml:space="preserve"><value>使用 Snow Shot 編輯</value></data>
+  <data name="PinAction" xml:space="preserve"><value>固定到螢幕</value></data>
+  <data name="AnnotateAction" xml:space="preserve"><value>固定到螢幕並標註</value></data>
+  <data name="StitchAction" xml:space="preserve"><value>進行影像拼接</value></data>
+  <data name="SplitAction" xml:space="preserve"><value>進行影像分割</value></data>
+  <data name="EditAction" xml:space="preserve"><value>進行影像編輯</value></data>
+  <data name="CompressAction" xml:space="preserve"><value>進行影像壓縮</value></data>
 </root>

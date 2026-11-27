@@ -3,10 +3,10 @@
 
 #include "snow_shot/presentation/screenshotprintservice.h"
 
-[[nodiscard]] ScreenshotPrintService::Backend screenshotNativePrintBackend(bool legacy);
+[[nodiscard]] ScreenshotPrintService::NativeBackend screenshotNativePrintBackend(bool legacy);
 #ifdef Q_OS_WIN
 // Compatibility alias for the Windows legacy Photo Printing Wizard backend.
-[[nodiscard]] ScreenshotPrintService::Backend screenshotClassicWindowsPrintBackend();
+[[nodiscard]] ScreenshotPrintService::NativeBackend screenshotClassicWindowsPrintBackend();
 #endif
 
 #endif

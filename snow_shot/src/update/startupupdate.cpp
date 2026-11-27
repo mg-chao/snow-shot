@@ -43,12 +43,18 @@ QStringList normalStartupArguments(QStringList arguments) {
 
 QStringList startupUpdateRelaunchArguments(bool foregroundRequested,
                                            const QStringList& imagePaths) {
+    return startupUpdateShellArguments(foregroundRequested,
+                                       app::shellImageLaunchArguments(imagePaths));
+}
+
+QStringList startupUpdateShellArguments(bool foregroundRequested,
+                                        const QStringList& fileArguments) {
     QStringList arguments;
     if (foregroundRequested)
         arguments.append(QStringLiteral("--show-main-window"));
-    else if (imagePaths.isEmpty())
+    else if (fileArguments.isEmpty())
         arguments.append(QStringLiteral("--autostart"));
-    arguments.append(app::shellImageLaunchArguments(imagePaths));
+    arguments.append(fileArguments);
     arguments.append(QString::fromLatin1(kSkipStartupUpdate));
     return arguments;
 }

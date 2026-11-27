@@ -15,6 +15,8 @@ namespace snow_shot::update {
 [[nodiscard]] bool startupUpdateMayDelayLaunch(const QStringList& arguments);
 [[nodiscard]] QStringList normalStartupArguments(QStringList arguments);
 // Automatic updates return to the tray unless a new launch requests the main window.
+[[nodiscard]] QStringList startupUpdateShellArguments(bool foregroundRequested,
+                                                      const QStringList& fileArguments);
 [[nodiscard]] QStringList startupUpdateRelaunchArguments(bool foregroundRequested = false,
                                                          const QStringList& imagePaths = {});
 

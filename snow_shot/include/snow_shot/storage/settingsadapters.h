@@ -16,6 +16,7 @@
 #include <QColor>
 #include <QPoint>
 #include <QByteArray>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QMap>
@@ -705,8 +706,12 @@ struct DrawTemplate {
 
 class DrawTemplateSettings final {
   public:
+    [[nodiscard]] QJsonArray encodedTemplates() const;
+    [[nodiscard]] static QByteArray decodePayload(const QJsonObject& record);
     [[nodiscard]] QVector<DrawTemplate> templates() const;
     bool setTemplates(const QVector<DrawTemplate>& templates) const;
+    bool appendTemplate(const DrawTemplate& drawTemplate) const;
+    bool removeTemplate(qsizetype index, const QJsonObject& expected) const;
 };
 
 class PinToScreenSettings final {
@@ -794,8 +799,6 @@ class TraySettings final {
 
 class SystemSettings final {
   public:
-    [[nodiscard]] bool annotationModeWhenOpeningForEditing() const;
-    [[nodiscard]] bool setAnnotationModeWhenOpeningForEditing(bool enabled) const;
     [[nodiscard]] bool autoStartAtBoot() const;
     [[nodiscard]] bool launchAsAdministrator() const;
     [[nodiscard]] bool setLaunchAsAdministrator(bool enabled) const;

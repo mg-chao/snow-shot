@@ -9,6 +9,16 @@ fn rejects_invalid_images() {
 }
 
 #[test]
+fn owned_bgr_pixels_keep_the_input_allocation() -> Result<(), Box<dyn std::error::Error>> {
+    let pixels = vec![[20, 90, 240]; 8];
+    let allocation = pixels.as_ptr();
+    let image = BgrImage::from_bgr_pixels(4, 2, pixels)?;
+    assert_eq!(image.pixels().as_ptr(), allocation);
+    assert_eq!((image.width(), image.height()), (4, 2));
+    Ok(())
+}
+
+#[test]
 fn blank_and_tiny_inputs_have_no_regions() -> Result<(), Box<dyn std::error::Error>> {
     for (width, height) in [(320, 240), (1, 1), (1, 10), (10, 1), (3, 3)] {
         for value in [0, 30, 128, 255] {

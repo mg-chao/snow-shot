@@ -7,9 +7,9 @@ function Assert-SnowShotMiniPayload([string]$Stage,
     $binaries = @($files | Where-Object { $_.Extension -in @('.exe', '.dll') } |
         ForEach-Object { [IO.Path]::GetRelativePath($Stage, $_.FullName).Replace('\', '/') })
     $expected = @('bin/snow_shot_mini.exe', 'bin/snow-shot-mini-updater.exe',
-        'bin/snow-shot-mini-mcp.exe', 'bin/crashpad_handler.exe')
+        'bin/snow-shot-mini-mcp.exe', 'bin/crashpad_handler.exe', 'bin/SnowShotExplorerCommand.dll')
     if ((($binaries | Sort-Object) -join "`n") -cne (($expected | Sort-Object) -join "`n")) {
-        throw 'Mini must contain exactly its application, updater, MCP bridge, and crash collector.'
+        throw 'Mini must contain exactly its application, updater, MCP bridge, Explorer command, and crash collector.'
     }
     $allowedBinFiles = $expected + @('bin/assets/ocr/asset-manifest.json',
         'bin/audios/camera_shutter.mp3', 'bin/__mini_data_directory')

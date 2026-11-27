@@ -665,6 +665,18 @@ void configureScreenshotOverlayWindow(QWidget* widget) {
     configureControlledWindowDragging(widget, true);
 }
 
+void flushScreenshotPresentationTransactions(const QWidget& widget) {
+    if (qApp == nullptr || QThread::currentThread() != qApp->thread() ||
+        QGuiApplication::platformName() != QStringLiteral("cocoa") || !widget.isWindow() ||
+        widget.internalWinId() == 0) {
+        return;
+    }
+
+    @autoreleasepool {
+        [CATransaction flush];
+    }
+}
+
 void retireScreenshotWindowPresentation(QWidget* widget) {
     if (widget == nullptr || qApp == nullptr || QThread::currentThread() != qApp->thread() ||
         QGuiApplication::platformName() != QStringLiteral("cocoa") || !widget->isWindow() ||

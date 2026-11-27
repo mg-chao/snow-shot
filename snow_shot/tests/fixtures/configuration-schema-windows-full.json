@@ -250,10 +250,10 @@
       "allowedStringValues": [],
       "defaultJsonType": 2,
       "defaultStringIsNull": false,
-      "defaultValue": 11,
+      "defaultValue": 12,
       "integerRange": [
-        11,
-        11,
+        12,
+        12,
         1
       ],
       "key": "storage/schema_version",
@@ -546,14 +546,23 @@
       "valueKind": "String"
     },
     {
-      "allowedStringValues": [],
-      "defaultJsonType": 1,
+      "allowedStringValues": [
+        "pin_to_screen",
+        "pin_to_screen_and_annotate",
+        "stitch_images",
+        "split_images",
+        "edit_images",
+        "compress_images"
+      ],
+      "defaultJsonType": 4,
       "defaultStringIsNull": false,
-      "defaultValue": true,
+      "defaultValue": [
+        "pin_to_screen"
+      ],
       "integerRange": null,
-      "key": "system/annotation_mode_when_opening_for_editing",
+      "key": "system/context_menu_options",
       "maximumListItems": -1,
-      "valueKind": "Boolean"
+      "valueKind": "StringList"
     },
     {
       "allowedStringValues": [],
@@ -3246,7 +3255,57 @@
       "defaultStringIsNull": false,
       "defaultValue": [],
       "integerRange": null,
-      "key": "context_menu_shortcuts/edit_with_snow_shot",
+      "key": "context_menu_shortcuts/pin_to_screen",
+      "maximumListItems": 1,
+      "valueKind": "ShortcutList"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "context_menu_shortcuts/pin_to_screen_and_annotate",
+      "maximumListItems": 1,
+      "valueKind": "ShortcutList"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "context_menu_shortcuts/stitch_images",
+      "maximumListItems": 1,
+      "valueKind": "ShortcutList"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "context_menu_shortcuts/split_images",
+      "maximumListItems": 1,
+      "valueKind": "ShortcutList"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "context_menu_shortcuts/edit_images",
+      "maximumListItems": 1,
+      "valueKind": "ShortcutList"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 4,
+      "defaultStringIsNull": false,
+      "defaultValue": [],
+      "integerRange": null,
+      "key": "context_menu_shortcuts/compress_images",
       "maximumListItems": 1,
       "valueKind": "ShortcutList"
     },

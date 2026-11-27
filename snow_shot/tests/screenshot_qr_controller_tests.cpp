@@ -98,9 +98,13 @@ class Decoder final : public ScreenshotQrRecognitionPort {
     void cancel(RequestToken token) override {
         cancelled.append(token);
     }
+    void endAutomaticRecognitionSession() override {
+        ++endedSessions;
+    }
     QSize pixels;
     QList<Completion> callbacks;
     QList<RequestToken> cancelled;
+    int endedSessions = 0;
 };
 struct Fixture {
     SnowCanvasRuntime runtime;
@@ -525,7 +529,8 @@ void invalidationClearsPopoverContentAndAllowsReuse() {
     require(text->toPlainText() == payload && open->isVisible(),
             "the completed session must have visible QR payload and URL action");
     text->selectAll();
-    f.controller.invalidate();
+    f.controller.endSession();
+    require(f.decoder.endedSessions == 1, "ending a capture retires its automatic QR worker");
     require(!f.controller.available() && f.markers().isEmpty() && !popover->isVisible(),
             "invalidating must remove QR results and presentation");
     require(!popover->testAttribute(Qt::WA_WState_Created),
@@ -544,6 +549,8 @@ void invalidationClearsPopoverContentAndAllowsReuse() {
             "the cleared popover must be reusable for a fresh non-URL result");
     f.controller.invalidate();
     require(text->toPlainText().isEmpty(), "repeated session completion must clear QR data");
+    require(f.decoder.endedSessions == 1,
+            "invalidating results mid-capture preserves the automatic QR worker");
 }
 
 void hoverMovementOpensWithoutRestartingTheDelay() {

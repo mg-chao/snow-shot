@@ -156,6 +156,7 @@ struct ImportItem {
     std::shared_ptr<ImageStitchingImportReservation> reservation = {};
     std::shared_ptr<const ImageSplitSnapshot> split = {};
     qint64 splitIndex = 0;
+    std::shared_ptr<bool> explorerBatchPresented = {};
 };
 
 struct ImportedImage {
@@ -181,7 +182,6 @@ struct ImageStitchingWindow::Impl {
         ImportFailures,
         PdfSaving,
         PdfCancelling,
-        PdfPartial,
         External
     };
     ImageStitchingWindow& q;
@@ -196,7 +196,9 @@ struct ImageStitchingWindow::Impl {
     QPointer<AdModal> confirmation;
     QPointer<QFileDialog> fileDialog;
     QPointer<AdMessageHandle> statusMessage;
+    QPointer<AdMessageHandle> exportReport;
     ScreenshotExportJobHandle job;
+    ScreenshotExportQueue importQueue{ScreenshotExportCoordinator::shared(), nullptr, 1};
     ScreenshotManualSaveHandle nativeSave;
     ScreenshotClipboardCommitScope clipboard;
     std::shared_ptr<ScreenshotExportArtifact> artifact;
@@ -211,6 +213,7 @@ struct ImageStitchingWindow::Impl {
     quint64 generation = 0;
     bool importing = false;
     bool exporting = false;
+    QVector<ImportItem> deferredFiles;
     bool closing = false;
     bool confirmationPending = false;
     bool copying = false;
@@ -296,7 +299,7 @@ struct ImageStitchingWindow::Impl {
         QObject::connect(editor, &components::ImageStitchingEditorWidget::addImagesRequested, &q,
                          [this] { chooseFiles(0); });
         QObject::connect(editor, &components::ImageStitchingEditorWidget::imageFilesDropped, &q,
-                         &ImageStitchingWindow::addFiles);
+                         [this](const QStringList& paths) { q.addFiles(paths); });
         QObject::connect(editor, &components::ImageStitchingEditorWidget::replaceImageRequested, &q,
                          [this](quint64 id) { chooseFiles(id); });
         QObject::connect(editor, &components::ImageStitchingEditorWidget::clearRequested, &q,
@@ -368,6 +371,9 @@ struct ImageStitchingWindow::Impl {
             translateConfirmation();
         if (status != Status::External)
             showStatus(status);
+        if (exportReport && exportReport->isOpen() &&
+            exportReport->key() == QStringLiteral("collagePdfExportResult"))
+            showPdfReport();
     }
 
     QStringList importFailures() const {
@@ -411,44 +417,49 @@ struct ImageStitchingWindow::Impl {
         case Status::PdfCancelling:
             message = imageStitchingText("Canceling PDF export…");
             break;
-        case Status::PdfPartial: {
-            QString reason =
-                lastPdfResult.cancelled
-                    ? imageStitchingText(
-                          "PDF export was canceled. Your images and edits are preserved")
-                    : lastPdfResult.errorMessage();
-            if (reason.isEmpty())
-                reason = imageStitchingText("The PDFs could not be exported. Try again");
-            if (!lastPdfResult.completedPages.isEmpty()) {
-                QStringList pages;
-                for (auto page : lastPdfResult.completedPages)
-                    pages.append(QString::number(page));
-                const auto firstRemaining = lastPdfResult.completedPages.last() + 1;
-                if (firstRemaining <= lastPdfResult.totalCount)
-                    reason += u'\n' +
-                              (firstRemaining == lastPdfResult.totalCount
-                                   ? imageStitchingText("Page %1 was not saved").arg(firstRemaining)
-                                   : imageStitchingText("Pages %1–%2 were not saved")
-                                         .arg(firstRemaining)
-                                         .arg(lastPdfResult.totalCount));
-                reason = imageStitchingText("Saved pages: %1\nFiles:\n%2\n%3")
-                             .arg(pages.join(QStringLiteral(", ")), lastPdfResult.paths.join(u'\n'),
-                                  reason);
-            }
-            AdMessage::Request request;
-            request.key = QStringLiteral("collageStatus");
-            request.content = reason;
-            request.durationMs = 0;
-            statusMessage = lastPdfResult.cancelled
-                                ? AdMessageService::info(std::move(request), editor->window())
-                                : AdMessageService::error(std::move(request), editor->window());
-            return;
-        }
         case Status::None:
         case Status::External:
             break;
         }
         showMessage(message, next == Status::ImportFailures);
+    }
+
+    void clearExportReport() {
+        if (exportReport)
+            exportReport->close();
+        exportReport.clear();
+    }
+
+    void showPdfReport() {
+        QString reason =
+            lastPdfResult.cancelled
+                ? imageStitchingText("PDF export was canceled. Your images and edits are preserved")
+                : lastPdfResult.errorMessage();
+        if (reason.isEmpty())
+            reason = imageStitchingText("The PDFs could not be exported. Try again");
+        if (!lastPdfResult.completedPages.isEmpty()) {
+            QStringList pages;
+            for (auto page : lastPdfResult.completedPages)
+                pages.append(QString::number(page));
+            const auto firstRemaining = lastPdfResult.completedPages.last() + 1;
+            if (firstRemaining <= lastPdfResult.totalCount)
+                reason +=
+                    u'\n' + (firstRemaining == lastPdfResult.totalCount
+                                 ? imageStitchingText("Page %1 was not saved").arg(firstRemaining)
+                                 : imageStitchingText("Pages %1–%2 were not saved")
+                                       .arg(firstRemaining)
+                                       .arg(lastPdfResult.totalCount));
+            reason =
+                imageStitchingText("Saved pages: %1\nFiles:\n%2\n%3")
+                    .arg(pages.join(QStringLiteral(", ")), lastPdfResult.paths.join(u'\n'), reason);
+        }
+        AdMessage::Request request;
+        request.key = QStringLiteral("collagePdfExportResult");
+        request.content = reason;
+        request.durationMs = 0;
+        exportReport = lastPdfResult.cancelled
+                           ? AdMessageService::info(std::move(request), editor->window())
+                           : AdMessageService::error(std::move(request), editor->window());
     }
 
     void showMessage(const QString& message, bool error = false) {
@@ -526,6 +537,7 @@ struct ImageStitchingWindow::Impl {
 
     void cancelWork() {
         ++generation;
+        importQueue.cancel();
         job.cancel();
         job = {};
         if (pdfCancellation)
@@ -549,6 +561,8 @@ struct ImageStitchingWindow::Impl {
         importing = false;
         exporting = false;
         imports.clear();
+        deferredFiles.clear();
+        clearExportReport();
         showStatus(Status::None);
         updateActions();
         if (fileDialog)
@@ -560,7 +574,7 @@ struct ImageStitchingWindow::Impl {
     void finishExport(bool success, const QString& error = {}) {
         if (closing)
             return;
-        closing = success;
+        closing = success && deferredFiles.isEmpty();
         artifact.reset();
         clipboardReservation.reset();
         showStatus(Status::None);
@@ -571,11 +585,17 @@ struct ImageStitchingWindow::Impl {
             return;
         exporting = false;
         updateActions();
-        if (success) {
+        if (!success && !error.isEmpty()) {
+            AdMessage::Request notice;
+            notice.key = QStringLiteral("collageExportResult");
+            notice.content = error;
+            exportReport = AdMessageService::error(std::move(notice), editor->window());
+        }
+        if (!deferredFiles.isEmpty()) {
+            closing = false;
+            beginImport(std::exchange(deferredFiles, {}));
+        } else if (success) {
             modal->accept();
-        } else {
-            status = error.isEmpty() ? Status::None : Status::External;
-            showMessage(error, true);
         }
     }
 
@@ -668,7 +688,8 @@ struct ImageStitchingWindow::Impl {
         importArtifact.reset();
         bool failed = !result.succeeded();
         if (!result.succeeded()) {
-            failures.append(imageStitchingText("%1: %2").arg(request.label, result.error));
+            if (!request.explorerBatchPresented)
+                failures.append(imageStitchingText("%1: %2").arg(request.label, result.error));
         } else {
             const bool accepted =
                 request.replacement
@@ -676,7 +697,10 @@ struct ImageStitchingWindow::Impl {
                                         std::move(decoded->preview))
                     : document->append(std::move(result.image), request.label,
                                        std::move(decoded->preview)) != 0;
-            if (!accepted)
+            if (accepted && request.explorerBatchPresented &&
+                !std::exchange(*request.explorerBatchPresented, true))
+                q.present();
+            if (!accepted && !request.explorerBatchPresented)
                 failures.append(
                     imageStitchingText("%1: %2").arg(request.label, document->lastError()));
             failed = !accepted;
@@ -892,8 +916,8 @@ struct ImageStitchingWindow::Impl {
     void importStored(const ImportItem& request, const std::shared_ptr<ImportedImage>& decoded,
                       quint64 token) {
         const auto historyReader = services.readHistory;
-        job = ScreenshotExportCoordinator::shared().submit(
-            &q, ScreenshotExportCoordinator::Priority::Background,
+        const bool queued = importQueue.enqueue(
+            ScreenshotExportCoordinator::Priority::Background,
             [request, decoded, historyReader,
              preparation = captureScreenshotPinnedRenderPreparation()](
                 const ScreenshotExportCancellation& cancellation) {
@@ -981,7 +1005,7 @@ struct ImageStitchingWindow::Impl {
             [this, request, decoded, token](ScreenshotExportTaskResult result) {
                 finishImport(request, decoded, token, std::move(result));
             });
-        if (!job.isValid()) {
+        if (!queued) {
             failures.append(imageStitchingText("%1: %2").arg(
                 request.label,
                 imageStitchingText("Image loading could not be started. Try again")));
@@ -1095,12 +1119,14 @@ struct ImageStitchingWindow::Impl {
             return;
         pdfExporting = false;
         exporting = false;
-        closing = success;
+        closing = success && deferredFiles.isEmpty();
         updateActions();
-        if (success)
+        if (!success)
+            showPdfReport();
+        if (!deferredFiles.isEmpty())
+            beginImport(std::exchange(deferredFiles, {}));
+        else if (success)
             modal->accept();
-        else
-            showStatus(Status::PdfPartial);
     }
 
     void requestPdfCancellation() {
@@ -1179,6 +1205,7 @@ struct ImageStitchingWindow::Impl {
             document->items().isEmpty() ||
             !validateImageStitchingPdfSettings(document->pdfSettings()).isEmpty())
             return;
+        clearExportReport();
         pdfExporting = true;
         exporting = true;
         copying = false;
@@ -1264,6 +1291,7 @@ struct ImageStitchingWindow::Impl {
             !document->layout().isValid())
             return;
         copying = copy;
+        clearExportReport();
         exporting = true;
         const quint64 token = ++generation;
         updateActions();
@@ -1388,11 +1416,18 @@ bool ImageStitchingWindow::presentSplitImagesAsPdf(ImageSplitSnapshot snapshot) 
     return true;
 }
 
-void ImageStitchingWindow::addFiles(const QStringList& paths) {
+void ImageStitchingWindow::addFiles(const QStringList& paths, bool skipUnreadable) {
     QVector<ImportItem> requested;
-    for (const QString& path : paths)
-        requested.append({{}, {}, path, path, 0});
-    m_impl->beginImport(std::move(requested));
+    const auto presented = skipUnreadable ? std::make_shared<bool>(false) : nullptr;
+    for (const QString& path : paths) {
+        ImportItem item{{}, {}, path, path, 0};
+        item.explorerBatchPresented = presented;
+        requested.append(std::move(item));
+    }
+    if (skipUnreadable && m_impl->exporting)
+        m_impl->deferredFiles.append(std::move(requested));
+    else
+        m_impl->beginImport(std::move(requested));
 }
 
 void ImageStitchingWindow::paste() {

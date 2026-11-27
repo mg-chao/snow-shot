@@ -12,7 +12,7 @@ use crate::selection::merge;
 pub(crate) fn detect_images(bgr: &Image, fg: &Mask) -> Result<Vec<Rect>> {
     let (w, h) = (bgr.w, bgr.h);
     let k = 9.max((0.008 * f64::from(h)).round_ties_even() as i32);
-    let fat = fill_holes(&morphology(fg, MorphOp::Open, k, k)?)?;
+    let fat = fill_holes(morphology(fg, MorphOp::Open, k, k)?);
     let (labels, stats) = cc(&fat)?;
     let mut out = Vec::new();
     for c in stats {

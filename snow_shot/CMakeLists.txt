@@ -126,12 +126,18 @@ if(SNOW_SHOT_ENABLE_STRICT_COMPILE)
 endif()
 snow_enable_clang_tidy()
 
-if(WIN32 AND (SNOW_SHOT_BUILD_TESTS OR SNOW_SHOT_DISTRIBUTION_CHANNEL STREQUAL "store"))
+if(WIN32)
     add_subdirectory(src/platform/windows/explorercommand)
 endif()
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/SnowQt.cmake")
 snow_find_qt(COMPONENTS Widgets LinguistTools Svg Network)
+
+add_library(snow_shot_runtime_activity STATIC
+    include/snow_shot/runtime/runtimeactivitytracker.h
+    src/runtime/runtimeactivitytracker.cpp)
+target_include_directories(snow_shot_runtime_activity PUBLIC include)
+set_target_properties(snow_shot_runtime_activity PROPERTIES AUTOMOC OFF)
 
 add_library(snow_shot_distribution STATIC
     include/snow_shot/app/distribution.h
@@ -140,7 +146,7 @@ target_include_directories(snow_shot_distribution PUBLIC include)
 target_link_libraries(snow_shot_distribution PUBLIC Qt6::Core)
 # Every Snow Shot target follows the same channel policy. Keep native SDK headers out of
 # the shared policy header so their macros cannot change unrelated callers' C++ tokens.
-link_libraries(snow_shot_distribution)
+link_libraries(snow_shot_distribution snow_shot_runtime_activity)
 
 add_library(snow_shot_store_lifecycle STATIC
     include/snow_shot/app/storeupdatelifecycle.h
@@ -753,10 +759,6 @@ set(SNOW_SHOT_STORAGE_SOURCES
     src/storage/storagelogging.cpp
     src/storage/storageusagetracker.cpp
 )
-add_library(snow_shot_runtime_activity INTERFACE)
-target_include_directories(snow_shot_runtime_activity INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
-target_sources(snow_shot_runtime_activity INTERFACE
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/snow_shot/runtime/runtimeactivitytracker.h")
 # Native sharing/printing and all export hosts share one scheduler and memory-admission budget.
 add_library(snow_shot_export_scheduling STATIC src/presentation/services/screenshotexportcoordinator.cpp)
 target_include_directories(snow_shot_export_scheduling PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
@@ -772,8 +774,8 @@ add_library(snow_shot_memory_optimization STATIC
     src/runtime/memoryoptimizationcontroller.cpp)
 target_link_libraries(snow_shot_memory_optimization PUBLIC snow_shot_runtime_activity Qt6::Core)
 if(APPLE)
-    target_sources(snow_shot_memory_optimization PRIVATE src/platform/macos/memoryoptimization.cpp)
-    target_link_libraries(snow_shot_memory_optimization PRIVATE Qt6::Gui)
+    target_sources(snow_shot_memory_optimization PRIVATE src/platform/macos/memoryoptimization.mm)
+    target_link_libraries(snow_shot_memory_optimization PRIVATE Qt6::Gui "-framework AppKit")
 else()
     target_sources(snow_shot_memory_optimization PRIVATE src/platform/windows/memoryoptimization.cpp)
 endif()
@@ -2250,7 +2252,7 @@ qt_add_executable(snow_shot
     ${PROJECT_SOURCES}
 )
 snow_shot_link_macos_window_platform(snow_shot)
-if(WIN32 AND SNOW_SHOT_DISTRIBUTION_CHANNEL STREQUAL "store")
+if(WIN32)
     add_dependencies(snow_shot snow_shot_explorer_command)
 endif()
 if(SNOW_SHOT_BUILD_TESTS)
@@ -2587,7 +2589,7 @@ if(SNOW_SHOT_BUILD_TESTS)
     set_property(DIRECTORY PROPERTY LINK_LIBRARIES snow_test_cli_guard_native)
 
     snow_shot_add_image_codec_smoke_test()
-    set_property(DIRECTORY PROPERTY LINK_LIBRARIES snow_test_cli_guard_qt)
+    set_property(DIRECTORY PROPERTY LINK_LIBRARIES snow_test_cli_guard_qt snow_shot_runtime_activity)
 
     add_executable(snow-shot-qt-graphicsview-rendering-tests tests/qt_graphicsview_rendering_tests.cpp)
     target_link_libraries(snow-shot-qt-graphicsview-rendering-tests PRIVATE Qt6::Widgets)
@@ -5095,7 +5097,7 @@ if(SNOW_SHOT_BUILD_TESTS)
         tests/latest_frame_mailbox_tests.cpp
         src/presentation/capture/latestframemailbox.h
     )
-    set_property(DIRECTORY PROPERTY LINK_LIBRARIES snow_test_cli_guard_qt)
+    set_property(DIRECTORY PROPERTY LINK_LIBRARIES snow_test_cli_guard_qt snow_shot_runtime_activity)
     target_include_directories(snow-shot-latest-frame-mailbox-tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
     )
@@ -10227,6 +10229,12 @@ if(SNOW_SHOT_BUILD_TESTS)
         COMMAND snow-shot-cloud-settings-sync-tests -platform offscreen)
     set_tests_properties(snow-shot-cloud-settings-sync-tests PROPERTIES LABELS unit TIMEOUT 45
         ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}")
+    if(WIN32)
+        add_test(NAME snow-shot-cloud-settings-sync-explorer-upgrade-tests
+            COMMAND snow-shot-cloud-settings-sync-tests -platform offscreen --explorer-upgrade)
+        set_tests_properties(snow-shot-cloud-settings-sync-explorer-upgrade-tests PROPERTIES
+            LABELS unit TIMEOUT 45 ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}")
+    endif()
 
     add_executable(snow-shot-api-client-tests
         tests/snowshot_api_client_tests.cpp
@@ -10273,7 +10281,7 @@ if(SNOW_SHOT_BUILD_TESTS)
         add_executable(snow-shot-scrolling-thumbnail-uia-e2e-test
             tests/scrolling_thumbnail_uia_e2e_test.cpp
         )
-        set_property(DIRECTORY PROPERTY LINK_LIBRARIES snow_test_cli_guard_qt)
+        set_property(DIRECTORY PROPERTY LINK_LIBRARIES snow_test_cli_guard_qt snow_shot_runtime_activity)
         target_include_directories(snow-shot-scrolling-thumbnail-uia-e2e-test PRIVATE
             "${SNOW_SHOT_CAPTURE_CRATES_DIR}/crates/snow-stitch-images-c/include"
         )
@@ -10315,7 +10323,7 @@ if(SNOW_SHOT_BUILD_TESTS)
         add_executable(snow-shot-screenshot-ctrl-c-uia-e2e-test
             tests/screenshot_ctrl_c_uia_e2e_test.cpp
         )
-        set_property(DIRECTORY PROPERTY LINK_LIBRARIES snow_test_cli_guard_qt)
+        set_property(DIRECTORY PROPERTY LINK_LIBRARIES snow_test_cli_guard_qt snow_shot_runtime_activity)
         target_link_libraries(snow-shot-screenshot-ctrl-c-uia-e2e-test PRIVATE
             Ole32
             Uiautomationcore
@@ -11503,6 +11511,22 @@ if(WIN32 AND SNOW_SHOT_BUILD_BENCHMARKS)
 
     target_compile_definitions(snow_shot PRIVATE
         SNOW_SHOT_CAPTURE_PERF_INSTRUMENTATION=1
+    )
+endif()
+
+if(APPLE AND SNOW_APPS_BUILD_BENCHMARKS)
+    add_executable(snow-shot-capture-startup-performance-benchmark
+        tests/screenshot_capture_startup_performance_benchmark_macos.mm
+    )
+    target_compile_options(snow-shot-capture-startup-performance-benchmark PRIVATE -fobjc-arc)
+    target_link_libraries(snow-shot-capture-startup-performance-benchmark PRIVATE
+        Qt6::Core
+        "-framework AppKit"
+        "-framework ApplicationServices"
+        "-framework Carbon"
+        "-framework CoreMedia"
+        "-framework CoreVideo"
+        "-framework ScreenCaptureKit"
     )
 endif()
 
@@ -13759,11 +13783,16 @@ if(SNOW_SHOT_BUILD_TESTS)
         add_executable(snow-shot-macos-memory-optimization-tests
             tests/macos_memory_optimization_tests.cpp)
         target_link_libraries(snow-shot-macos-memory-optimization-tests PRIVATE
-            snow_shot_memory_optimization)
+            snow_shot_memory_optimization Qt6::GuiPrivate)
+        snow_shot_import_offscreen_platform(snow-shot-macos-memory-optimization-tests)
         add_test(NAME snow-shot-macos-memory-optimization-tests
             COMMAND snow-shot-macos-memory-optimization-tests)
         set_tests_properties(snow-shot-macos-memory-optimization-tests PROPERTIES
             LABELS "unit" TIMEOUT 30)
+        add_test(NAME snow-shot-macos-memory-optimization-foreground-tests
+            COMMAND snow-shot-macos-memory-optimization-tests --foreground-window-guard -platform offscreen)
+        set_tests_properties(snow-shot-macos-memory-optimization-foreground-tests PROPERTIES
+            LABELS "unit" TIMEOUT 30 ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}")
     endif()
 
     if(WIN32)
@@ -14372,6 +14401,7 @@ if(SNOW_SHOT_BUILD_TESTS)
         src/presentation/pinned/livewindowsource.cpp)
     target_include_directories(snow-shot-live-window-source-tests PRIVATE include
         "${SNOW_SHOT_CAPTURE_CRATES_DIR}/crates/snow-capture-c/include")
+    target_compile_definitions(snow-shot-live-window-source-tests PRIVATE SNOW_SHOT_TEST_HOOKS=1)
     target_link_libraries(snow-shot-live-window-source-tests PRIVATE Qt6::Widgets)
     snow_shot_import_offscreen_platform(snow-shot-live-window-source-tests)
     add_test(NAME snow-shot-live-window-source-tests

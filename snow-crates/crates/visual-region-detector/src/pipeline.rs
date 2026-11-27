@@ -75,8 +75,8 @@ fn finalize(
 }
 
 /// Pixel evidence shared by detection stages. Constructed once from a validated input.
-struct PreparedImage {
-    bgr: Image,
+struct PreparedImage<'a> {
+    bgr: &'a Image,
     bg: [f64; 3],
     local_bg: Image,
     surfaces: Vec<Rect>,
@@ -103,19 +103,19 @@ pub fn detect_regions(bgr: &BgrImage) -> Result<Vec<Region>> {
     detect_text_and_classify(prepared, media)
 }
 
-fn prepare_image(source: &BgrImage) -> Result<PreparedImage> {
+fn prepare_image(source: &BgrImage) -> Result<PreparedImage<'_>> {
     if source.width() == 0 || source.height() == 0 {
         return Err(Error::InvalidImage(
             "expected a non-empty H x W x 3 uint8 BGR image".into(),
         ));
     }
-    let bgr: Image = source.image.clone();
-    let bg = background(&bgr);
-    let (local_bg, surfaces, border) = estimate_surfaces(&bgr)?;
-    let (controls, outlines) = outlined_controls(&bgr)?;
+    let bgr = &source.image;
+    let bg = background(bgr);
+    let (local_bg, surfaces, border) = estimate_surfaces(bgr)?;
+    let (controls, outlines) = outlined_controls(bgr)?;
     let border = or(&border, &outlines);
-    let fg = foreground(&bgr, bg, 24.);
-    let local_fg = suppress(&local_foreground(&bgr, &local_bg, 20), &border);
+    let fg = foreground(bgr, bg, 24.);
+    let local_fg = suppress(&local_foreground(bgr, &local_bg, 20), &border);
     Ok(PreparedImage {
         bgr,
         bg,
@@ -128,9 +128,9 @@ fn prepare_image(source: &BgrImage) -> Result<PreparedImage> {
     })
 }
 
-fn detect_media(prepared: &PreparedImage) -> Result<MediaCandidates> {
+fn detect_media(prepared: &PreparedImage<'_>) -> Result<MediaCandidates> {
+    let bgr = prepared.bgr;
     let PreparedImage {
-        bgr,
         bg,
         surfaces,
         fg,
@@ -190,7 +190,7 @@ fn detect_media(prepared: &PreparedImage) -> Result<MediaCandidates> {
 }
 
 fn detect_text_and_classify(
-    prepared: PreparedImage,
+    prepared: PreparedImage<'_>,
     media: MediaCandidates,
 ) -> Result<Vec<Region>> {
     let PreparedImage {
@@ -214,7 +214,7 @@ fn detect_text_and_classify(
         &or(&or(&image_mask, &badge_mask), &border),
         &rasterize(&dots, w, h),
     );
-    let (texts, ink, char_h) = text_lines(&bgr, &local_bg, &text_suppress)?;
+    let (texts, ink, char_h) = text_lines(bgr, &local_bg, &text_suppress)?;
     let mut boxes: Vec<_> = surfaces
         .iter()
         .copied()
@@ -224,9 +224,9 @@ fn detect_text_and_classify(
                 && f64::from(s.w) < 0.4 * f64::from(w)
                 && f64::from(s.h) < 0.2 * f64::from(h)
                 && s.area() > 2000
-                && boundary_contrast(&bgr, *s) >= 20.
+                && boundary_contrast(bgr, *s) >= 20.
                 && !images.iter().any(|r| containment(*s, *r) > 0.7)
-                && surface_fraction(&bgr, *s) < 0.97
+                && surface_fraction(bgr, *s) < 0.97
         })
         .collect();
     boxes.extend(controls);
@@ -238,7 +238,7 @@ fn detect_text_and_classify(
     icons.extend(extra_icons);
     icons.extend(dots);
     let blocks = paragraphs(&texts);
-    let texts = split_styled_lines(&split_surface_text(&texts, &surfaces, &ink), &bgr, &ink)?;
+    let texts = split_styled_lines(&split_surface_text(&texts, &surfaces, &ink), bgr, &ink)?;
     let mut regions = finalize(&texts, &images, &avatars, &icons, &boxes, w, h);
     regions.extend(blocks.into_iter().map(|r| region(r, "text_block")));
     let mut regions = nms(regions, 0.8);

@@ -610,6 +610,10 @@ void McpApplicationService::Impl::handle(const ScreenshotMcpRequest& request,
             error(QStringLiteral("invalid_parameters"), QStringLiteral("values"));
             return;
         }
+        const bool hasContextMenuShortcut =
+            std::any_of(bindingValues.keyBegin(), bindingValues.keyEnd(), [](const QString& key) {
+                return key.startsWith(u"context_menu_shortcuts/");
+            });
         if (!expected) {
             error(QStringLiteral("revision_required"));
             return;
@@ -638,7 +642,9 @@ void McpApplicationService::Impl::handle(const ScreenshotMcpRequest& request,
                         auto& store = configuration();
                         if (!storage::cloudSettingShortcutChangesValid(store.snapshot(),
                                                                        bindingValues) ||
-                            !store.setValues(bindingValues)) {
+                            !(hasContextMenuShortcut
+                                  ? ports.settings->applyContextMenuShortcutBatch(bindingValues)
+                                  : store.setValues(bindingValues))) {
                             rejected = it.key();
                             return false;
                         }
@@ -1151,9 +1157,13 @@ void McpApplicationService::Impl::handle(const ScreenshotMcpRequest& request,
                     ports.jobs->fail(id, conflict ? QStringLiteral("stale_revision")
                                                   : QStringLiteral("storage_failed"));
             });
-        watcher->setFuture(runMcpWork(&workers, [path = file.absoluteFilePath()] {
-            return storage::ConfigurationArchive::read(path);
-        }));
+        watcher->setFuture(runMcpWork(
+            &workers, [path = file.absoluteFilePath(),
+                       scope = configuration()
+                                   .defaultValue(QStringLiteral("system/context_menu_mode"))
+                                   .toString()] {
+                return storage::ConfigurationArchive::read(path, scope);
+            }));
         finish({{QStringLiteral("job_id"), id}});
     } else if (method == u"snow_shot_settings_action" || method == u"snow_shot_storage_cleanup") {
         settings::SettingsActionBinding binding;

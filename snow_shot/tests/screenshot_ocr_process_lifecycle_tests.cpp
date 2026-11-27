@@ -216,6 +216,47 @@ void imageTransfersConvertDirectlyWithoutPublishingReady() {
         !transport_detail::copyImageToTransferSlot(fixture, slot.data(), kSlotHeaderBytes - 1, 7),
         "OCR mappings shorter than a header must reject staging");
 }
+
+#ifdef Q_OS_MACOS
+void allocatorPolicyAppliesOnlyToTheOcrChild() {
+    const auto setting = QStringLiteral("MallocLargeCache");
+    const auto parent = QProcessEnvironment::systemEnvironment();
+    const auto check = [&](const QString& overrideValue, const QByteArray& expectedValue) {
+        QProcessEnvironment environment;
+        environment.insert(QStringLiteral("SNOW_TEST_OCR_ENVIRONMENT"), QStringLiteral("kept"));
+        if (!overrideValue.isNull())
+            environment.insert(setting, overrideValue);
+
+        QObject receiver;
+        QByteArray output;
+        bool finished = false;
+        snow_shot::ocr::ScreenshotOcrTransport transport(
+            &receiver,
+            {[](qint64) {}, [&](QByteArray chunk) { output += chunk; }, [](QByteArray) {},
+             [&](int code, QProcess::ExitStatus status) {
+                 require(code == 0 && status == QProcess::NormalExit,
+                         "the child environment probe must exit successfully");
+                 finished = true;
+             },
+             [](QString, QString) { require(false, "the child environment probe must launch"); }});
+        ScreenshotOcrResolvedAssets assets;
+        assets.processPath = QStringLiteral("/usr/bin/env");
+        assets.runtimeDirectory = QDir::tempPath();
+        transport.start(assets, environment);
+        require(waitUntil([&] { return finished; }), "the child environment probe must finish");
+
+        const auto variables = output.split('\n');
+        require(variables.contains("MallocLargeCache=" + expectedValue) &&
+                    variables.contains("SNOW_TEST_OCR_ENVIRONMENT=kept"),
+                "OCR launch must supply its allocator default while preserving explicit values");
+        require(QProcessEnvironment::systemEnvironment() == parent,
+                "OCR launch must leave the parent environment unchanged");
+    };
+    check({}, "0");
+    check(QStringLiteral("1"), "1");
+    check(QStringLiteral(""), "");
+}
+#endif
 } // namespace
 
 // A real subprocess with the OCR wire handshake, but no model or inference timing.
@@ -436,6 +477,9 @@ int runOcrLifecycleChild() {
 
 void ocrProcessLifecycleTests() {
     imageTransfersConvertDirectlyWithoutPublishingReady();
+#ifdef Q_OS_MACOS
+    allocatorPolicyAppliesOnlyToTheOcrChild();
+#endif
     require(!ScreenshotOcrRuntimeConfiguration{}.hardwareAcceleration &&
                 !ScreenshotOcrRecognitionService::Options{}.hardwareAcceleration,
             "hardware acceleration must default off in runtime and initial options");

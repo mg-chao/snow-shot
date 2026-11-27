@@ -37,6 +37,32 @@ const QJsonValue undefined(QJsonValue::Undefined);
 const QString ocrModelKey = u"text_recognition/model_type"_s;
 const QString deferredOcrModelKey = u"deferred_ocr_model"_s;
 
+bool isMenuKey(const QString& key) {
+    return key.startsWith(u"system/context_menu_") || key.startsWith(u"context_menu_shortcuts/");
+}
+
+#ifdef Q_OS_WIN
+const QString menuOptionsKey = QStringLiteral("system/context_menu_options");
+const QString menuScopeKey = QStringLiteral("system/context_menu_mode");
+const QString legacyAnnotationKey =
+    QStringLiteral("system/annotation_mode_when_opening_for_editing");
+
+QJsonArray legacyMenuOptions(const QJsonValue& scope, bool annotate) {
+    if (scope.toString() == u"disabled")
+        return {};
+    return {annotate ? QStringLiteral("pin_to_screen_and_annotate")
+                     : QStringLiteral("pin_to_screen")};
+}
+#endif
+
+bool legacyCloudKey(const QString& key) {
+#ifdef Q_OS_WIN
+    if (key == legacyAnnotationKey)
+        return true;
+#endif
+    return storage::legacyMouseCloudKey(key);
+}
+
 QString platform() {
 #ifdef Q_OS_MACOS
     return u"macos"_s;
@@ -138,7 +164,7 @@ EditMap readEdits(const QJsonObject& object) {
     EditMap result;
     for (auto it = object.begin(); it != object.end(); ++it) {
         const auto edit = PendingEdit::read(it.value().toObject());
-        if ((storage::cloudSettingSupported(it.key()) || storage::legacyMouseCloudKey(it.key())) &&
+        if ((storage::cloudSettingSupported(it.key()) || legacyCloudKey(it.key())) &&
             edit.sequence != 0 && validOperation(edit.operation))
             result.insert(it.key(), edit);
     }
@@ -472,9 +498,9 @@ class CloudSettingsSyncService::Impl {
         running = true;
         editsDue = false;
         rounds = 0;
-        const bool pendingMouseMigration = std::any_of(
-            profile.pending.keyBegin(), profile.pending.keyEnd(), storage::legacyMouseCloudKey);
-        readCloud(profile.resume || pendingMouseMigration || !profile.sent.isEmpty() ||
+        const bool pendingMigration =
+            std::any_of(profile.pending.keyBegin(), profile.pending.keyEnd(), legacyCloudKey);
+        readCloud(profile.resume || pendingMigration || !profile.sent.isEmpty() ||
                   profile.clientVersion != QCoreApplication::applicationVersion());
     }
 
@@ -592,7 +618,16 @@ class CloudSettingsSyncService::Impl {
         const auto previousOcrModel = deferredOcrModel;
         if (remote.contains(ocrModelKey))
             deferredOcrModel = remote.value(ocrModelKey).toString();
-        const bool saved = store.setCloudSyncState(journalState(), remote);
+        const auto commit = [&] { return store.setCloudSyncState(journalState(), remote); };
+        const bool menuChanged = std::any_of(remote.keyBegin(), remote.keyEnd(), isMenuKey);
+        bool saved;
+        if (menuChanged && options.commitMenuSettings) {
+            auto merged = store.snapshot();
+            merged.insert(remote);
+            saved = options.commitMenuSettings(merged, commit);
+        } else {
+            saved = commit();
+        }
         if (!saved)
             deferredOcrModel = previousOcrModel;
         return saved;
@@ -652,6 +687,19 @@ class CloudSettingsSyncService::Impl {
         }
     }
 
+#ifdef Q_OS_WIN
+    QJsonValue menuProfileValue(const QJsonObject& values, const QString& key) const {
+        if (values.contains(key))
+            return values.value(key);
+        if (key == menuOptionsKey && values.contains(legacyAnnotationKey)) {
+            const auto scope = values.value(menuScopeKey);
+            return legacyMenuOptions(scope.isUndefined() ? store.defaultValue(menuScopeKey) : scope,
+                                     values.value(legacyAnnotationKey).toBool(true));
+        }
+        return store.defaultValue(key);
+    }
+#endif
+
     [[nodiscard]] bool restoreProfileValues() {
         const auto current = store.snapshot();
         // Older account profiles have only the shared mouse preferences. Restore a
@@ -661,6 +709,14 @@ class CloudSettingsSyncService::Impl {
             preferences.insert(it.key(), it.value());
         mouse::migrate(preferences);
         mouse::reconcile(preferences);
+#ifdef Q_OS_WIN
+        // Legacy profiles omit menu keys. Restore the destination's projection before
+        // the first pull can seed missing records from the live configuration.
+        for (const auto& key : storage::cloudSettingKeys()) {
+            if (isMenuKey(key))
+                preferences.insert(key, menuProfileValue(profile.values, key));
+        }
+#endif
 
         Values patch;
         for (auto it = preferences.cbegin(); it != preferences.cend(); ++it) {
@@ -1088,6 +1144,40 @@ class CloudSettingsSyncService::Impl {
         const auto current = store.snapshot();
         Values candidates;
         migrateMousePreferences(cloud, current, candidates);
+#ifdef Q_OS_WIN
+        const auto pendingToggle = profile.pending.take(legacyAnnotationKey);
+        const auto oldToggle = pendingToggle.operation.isEmpty()
+                                   ? cloud.value(legacyAnnotationKey).toObject()
+                                   : pendingToggle.operation;
+        for (const auto& key : storage::cloudSettingKeys()) {
+            if (!isMenuKey(key) || cloud.contains(key) || profile.pending.contains(key) ||
+                profile.localOnly.contains(key))
+                continue;
+            auto value = current.value(key);
+            // Older accounts stored only annotation. A new-format selection always wins.
+            if (key == menuOptionsKey && !oldToggle.isEmpty() &&
+                (!previous.joined || !previous.values.contains(key)) &&
+                (value == store.defaultValue(key) ||
+                 (!previous.values.contains(key) &&
+                  value == menuProfileValue(previous.values, key)))) {
+                const auto scope = cloud.contains(menuScopeKey)
+                                       ? resolved(store, menuScopeKey, cloud.value(menuScopeKey))
+                                       : current.value(menuScopeKey);
+                value = legacyMenuOptions(scope, oldToggle.value(u"value"_s).toBool(true));
+                if (value != current.value(key))
+                    candidates.insert(key, value);
+            }
+            if (oldToggle.isEmpty() && value == store.defaultValue(key))
+                continue;
+            PendingEdit edit;
+            edit.operation = operationFor(value, ConfigurationWriteOrigin::Explicit);
+            edit.base = missingOperation;
+            edit.fallback = store.defaultValue(key);
+            edit.sequence = ++profile.nextSequence;
+            edit.ifMissing = true;
+            profile.pending.insert(key, edit);
+        }
+#endif
         // A rolled-back swap member may never have had a cloud record.
         for (auto it = resolvedEdits.cbegin(); it != resolvedEdits.cend(); ++it) {
             if (cloud.contains(it.key()) || profile.pending.contains(it.key()))
@@ -1128,6 +1218,14 @@ class CloudSettingsSyncService::Impl {
         }
         for (auto it = changes.cbegin(); it != changes.cend(); ++it)
             profile.values.insert(it.key(), storage::cloudSettingValue(it.key(), it.value()));
+#ifdef Q_OS_WIN
+        for (const auto& key : storage::cloudSettingKeys()) {
+            if (isMenuKey(key) && !profile.values.contains(key) &&
+                (cloud.contains(key) ||
+                 current.value(key) != menuProfileValue(profile.values, key)))
+                profile.values.insert(key, storage::cloudSettingValue(key, current.value(key)));
+        }
+#endif
         for (const auto& action : mouse::definitions()) {
             const auto key = action.key();
             if (!profile.values.contains(key) && storage::cloudSettingSupported(key))

@@ -1,6 +1,10 @@
 #include "snow_shot/runtime/memoryoptimizationcontroller.h"
+
+#import <AppKit/AppKit.h>
+
 #include <QDebug>
 #include <QGuiApplication>
+#include <QWindow>
 #include <atomic>
 #include <dispatch/dispatch.h>
 #include <mach/mach.h>
@@ -118,6 +122,26 @@ MemoryOptimizationController::Options nativeMemoryOptimizationOptions() {
 bool currentProcessOwnsForegroundWindow() {
     const auto* application = qobject_cast<QGuiApplication*>(QCoreApplication::instance());
     // Without GUI state, conservatively block automatic reclamation.
-    return !application || QGuiApplication::applicationState() == Qt::ApplicationActive;
+    if (!application)
+        return true;
+    if (QGuiApplication::applicationState() != Qt::ApplicationActive)
+        return false;
+
+    // AppKit can leave this app active after its last pin closes. A prewarmed
+    // shell or a tooltip alone does not own foreground interaction.
+    for (const QWindow* window : QGuiApplication::topLevelWindows()) {
+        if (window->isVisible() && window->visibility() != QWindow::Minimized &&
+            window->type() != Qt::ToolTip)
+            return true;
+    }
+    if (QGuiApplication::platformName() != QStringLiteral("cocoa"))
+        return false;
+    if (!NSApp || NSApp.modalWindow)
+        return true;
+    // Native panels and sheets may not have a Qt window.
+    NSWindow* keyWindow = NSApp.keyWindow;
+    NSWindow* mainWindow = NSApp.mainWindow;
+    return (keyWindow.visible && !keyWindow.miniaturized) ||
+           (mainWindow.visible && !mainWindow.miniaturized);
 }
 } // namespace snow_shot::runtime
