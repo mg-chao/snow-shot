@@ -157,9 +157,14 @@ if(SNOW_IMAGE_CODEC_PNG)
             -Wall -Wextra -Wpedantic -Werror -Wconversion -Wshadow -Wstrict-prototypes)
     endif()
     list(APPEND SNOW_IMAGE_SOURCES src/codecs/png_codec.cpp src/codecs/png_codec.h
+        src/codecs/png_parallel.cpp src/codecs/png_parallel.h
         $<TARGET_OBJECTS:SnowImage_png_jump>)
     list(APPEND SNOW_IMAGE_PRIVATE_LIBRARIES PNG::PNG ZLIB::ZLIB)
     list(APPEND SNOW_IMAGE_PRIVATE_DEFINITIONS SNOW_IMAGE_HAS_PNG=1)
+    if(SNOW_IMAGE_BUILD_TESTS)
+        set_property(SOURCE src/codecs/png_parallel.cpp APPEND PROPERTY
+            COMPILE_DEFINITIONS SNOW_IMAGE_TEST_PNG_STRIPES=1)
+    endif()
 endif()
 
 if(SNOW_IMAGE_CODEC_JPEG)

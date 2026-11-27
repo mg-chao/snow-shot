@@ -1,5 +1,6 @@
 #include "codecs/png_codec.h"
 #include "codecs/png_jump.h"
+#include "codecs/png_parallel.h"
 
 #include <snow/memory/pixel_array.h>
 #include "exif_orientation.h"
@@ -1214,6 +1215,31 @@ Result<EncodedArtifactReceipt> PngCodec::encode_raster_to_sink(const RasterSourc
                 passes = options.interlaced ? png_set_interlace_handling(png) : 1;
             }))
             return failed();
+        if (const auto workers = parallel_png_workers(source_frame, options); workers >= 2) {
+            const auto write_data = [&](std::span<const std::uint8_t> bytes) -> Result<void> {
+                if (!run_png(png, [&] {
+                        png_write_chunk(png, reinterpret_cast<png_const_bytep>("IDAT"),
+                                        bytes.data(), bytes.size());
+                    })) {
+                    return state.failure.ok() ? Status::error(ErrorCode::encode_failed,
+                                                              "Could not write PNG data.", "libpng")
+                                              : state.failure;
+                }
+                return {};
+            };
+            auto written = write_parallel_png_data(source, strip_opaque_alpha,
+                                                   std::clamp(options.compression_level, 0, 9),
+                                                   workers, write_data, stop);
+            if (!written)
+                return written.error();
+            // Metadata was written by png_write_info. libpng has no deflater
+            // to finalize when the complete IDAT stream came from the workers.
+            if (!run_png(png, [&] {
+                    png_write_chunk(png, reinterpret_cast<png_const_bytep>("IEND"), nullptr, 0);
+                }))
+                return failed();
+            return receipt_for_descriptor(descriptor, format());
+        }
         for (int pass = 0; pass < passes; ++pass) {
             for (std::uint32_t y = 0; y < source_frame.height; ++y) {
                 if (stop.stop_requested()) {
