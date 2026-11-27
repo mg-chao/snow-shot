@@ -7,7 +7,6 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use snow_core::recording_clock::RecordingClock;
-use snow_core::timestamp::TimestampAnchor;
 use snow_media::time::{ClockDomain, MediaTime};
 use snow_recording_model::media::{DiscontinuityReason, TimelineDiscontinuity};
 use snow_recording_model::{
@@ -20,10 +19,7 @@ use crate::error::{AudioError, AudioResult};
 use crate::format::AudioFormat;
 use crate::packet::{AudioEvent, AudioPacket, AudioSourceKind};
 use crate::session::{AudioSession, AudioStreamConfig, SourceConfig};
-use crate::timeline::{
-    ActivePcmSpan, AudioPacketTimestamp, AudioTimestampAnchorExt, admit_active_pcm,
-    audio_anchor_from_first_packet,
-};
+use crate::timeline::{ActivePcmSpan, admit_active_pcm, correct_pcm_clock};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AudioTrackDevice {
@@ -290,9 +286,8 @@ fn run_audio_recording_worker(
     stop_flag: Arc<AtomicBool>,
     pause_flag: Arc<AtomicBool>,
 ) -> AudioResult<AudioRecordingArtifact> {
-    let started_at = clock.started_at();
     let format = AudioFormat::new(config.sample_rate_hz, config.channels);
-    let mut writers = RecordingTrackWriters::new(&config, started_at, format)?;
+    let mut writers = RecordingTrackWriters::new(&config, format)?;
     let mut stream = Some(stream);
 
     loop {
@@ -377,22 +372,18 @@ struct RecordingTrackWriters {
 }
 
 impl RecordingTrackWriters {
-    fn new(
-        config: &AudioRecordingConfig,
-        started_at: std::time::Instant,
-        format: AudioFormat,
-    ) -> AudioResult<Self> {
+    fn new(config: &AudioRecordingConfig, format: AudioFormat) -> AudioResult<Self> {
         let system_writer = config
             .tracks
             .iter()
             .find(|track| track.enabled && matches!(track.role, SystemOutput))
-            .map(|track| RecordedTrackWriter::new(track, &config.output_dir, started_at, format))
+            .map(|track| RecordedTrackWriter::new(track, &config.output_dir, format))
             .transpose()?;
         let microphone_writer = config
             .tracks
             .iter()
             .find(|track| track.enabled && matches!(track.role, MicrophoneInput))
-            .map(|track| RecordedTrackWriter::new(track, &config.output_dir, started_at, format))
+            .map(|track| RecordedTrackWriter::new(track, &config.output_dir, format))
             .transpose()?;
 
         Ok(Self {
@@ -462,57 +453,14 @@ struct RecordedTrackWriter {
     writer: BufWriter<File>,
     written_frames: u64,
     format: AudioFormat,
-    timeline: StableAudioTimeline,
     timeline_alignment_pending: bool,
     silence_chunk: Vec<u8>,
     discontinuities: Vec<TimelineDiscontinuity>,
     active_spans: Vec<ActivePcmSpan>,
 }
 
-struct StableAudioTimeline {
-    recording_started_at: std::time::Instant,
-    stream_start_offset: Duration,
-    stream_anchor: Option<TimestampAnchor>,
-}
-
-impl StableAudioTimeline {
-    fn new(recording_started_at: std::time::Instant) -> Self {
-        Self {
-            recording_started_at,
-            stream_start_offset: Duration::ZERO,
-            stream_anchor: None,
-        }
-    }
-
-    fn packet_timestamp(&mut self, packet: &AudioPacket) -> AudioPacketTimestamp {
-        if self.stream_anchor.is_none() {
-            let packet_start = packet
-                .start_capture_time()
-                .unwrap_or(self.recording_started_at);
-            self.stream_start_offset =
-                packet_start.saturating_duration_since(self.recording_started_at);
-            self.stream_anchor = Some(audio_anchor_from_first_packet(packet));
-        }
-
-        let relative = self
-            .stream_anchor
-            .as_ref()
-            .expect("audio stream anchor must be initialized")
-            .audio_stream_relative(packet);
-        AudioPacketTimestamp {
-            start: self.stream_start_offset.saturating_add(relative.start),
-            end: self.stream_start_offset.saturating_add(relative.end),
-        }
-    }
-}
-
 impl RecordedTrackWriter {
-    fn new(
-        config: &AudioTrackConfig,
-        output_dir: &Path,
-        started_at: std::time::Instant,
-        format: AudioFormat,
-    ) -> AudioResult<Self> {
+    fn new(config: &AudioTrackConfig, output_dir: &Path, format: AudioFormat) -> AudioResult<Self> {
         let asset_id = format!("audio/{}.pcm", config.track_id);
         let path = output_dir.join(format!("audio-{}.pcm", sanitize_track_id(&config.track_id)));
         let file = File::create(&path).map_err(AudioError::platform)?;
@@ -533,7 +481,6 @@ impl RecordedTrackWriter {
             writer,
             written_frames: 0,
             format,
-            timeline: StableAudioTimeline::new(started_at),
             timeline_alignment_pending: true,
             silence_chunk,
             discontinuities: Vec::new(),
@@ -551,12 +498,9 @@ impl RecordedTrackWriter {
                 "recorded PCM packet disagrees with its configured format".into(),
             ));
         }
-        let packet_ts = self.timeline.packet_timestamp(packet);
-        let packet_start = self
-            .timeline
-            .recording_started_at
-            .checked_add(packet_ts.start)
-            .ok_or(AudioError::BufferOverflow)?;
+        let Some(packet_start) = packet.start_capture_time() else {
+            return Ok(());
+        };
         admit_active_pcm(
             clock,
             packet_start,
@@ -570,10 +514,9 @@ impl RecordedTrackWriter {
         let channels = usize::from(self.format.channels);
         for index in 0..self.active_spans.len() {
             let span = self.active_spans[index];
-            let target = if whole_packet
-                && !self.timeline_alignment_pending
-                && !packet.metadata.discontinuity
-            {
+            let continuous =
+                whole_packet && !self.timeline_alignment_pending && !packet.metadata.discontinuity;
+            let target = if continuous {
                 self.written_frames
             } else {
                 span.timeline_start_frame
@@ -588,7 +531,15 @@ impl RecordedTrackWriter {
             let skip = self.written_frames.saturating_sub(target).min(span.frames);
             let first = (span.source_start_frame + skip) as usize * channels;
             let end = (span.source_start_frame + span.frames) as usize * channels;
-            self.append_i16_samples(&packet.as_i16_slice()[first..end])?;
+            let observation = (continuous && !packet.metadata.capture_time_estimated)
+                .then_some(span.timeline_start_frame);
+            let samples = correct_pcm_clock(
+                &packet.as_i16_slice()[first..end],
+                self.format,
+                target,
+                observation,
+            );
+            self.append_i16_samples(&samples)?;
         }
         // Inactive/clipped packets form an alignment boundary even when the
         // underlying stream's Paused/Resumed event arrives later.
@@ -863,8 +814,7 @@ mod tests {
             output_dir: output_dir.clone(),
             ..Default::default()
         };
-        let mut writers =
-            RecordingTrackWriters::new(&config, started, AudioFormat::new(48_000, 2)).unwrap();
+        let mut writers = RecordingTrackWriters::new(&config, AudioFormat::new(48_000, 2)).unwrap();
         let clock = RecordingClock::new(started);
         process_audio_event(
             &mut writers,
@@ -904,22 +854,6 @@ mod tests {
     }
 
     #[test]
-    fn stable_timeline_uses_wasapi_qpc_instead_of_packet_delivery_jitter() {
-        let started_at = std::time::Instant::now();
-        let first = timed_packet(started_at + Duration::from_millis(50), 1_000_000, 1);
-        let delayed_second = timed_packet(started_at + Duration::from_millis(95), 1_200_000, 2);
-        let mut timeline = StableAudioTimeline::new(started_at);
-
-        let first_ts = timeline.packet_timestamp(&first);
-        let second_ts = timeline.packet_timestamp(&delayed_second);
-
-        assert_eq!(first_ts.start, Duration::from_millis(30));
-        assert_eq!(first_ts.end, Duration::from_millis(50));
-        assert_eq!(second_ts.start, Duration::from_millis(50));
-        assert_eq!(second_ts.end, Duration::from_millis(70));
-    }
-
-    #[test]
     fn buffered_pcm_excludes_startup_pause_samples_and_clips_the_accepted_stop() {
         let start = std::time::Instant::now();
         let output = std::env::temp_dir().join(format!(
@@ -930,7 +864,7 @@ mod tests {
         std::fs::create_dir_all(&output).unwrap();
         let format = AudioFormat::new(48_000, 2);
         let track = AudioTrackConfig::microphone_default("clock");
-        let mut writer = RecordedTrackWriter::new(&track, &output, start, format).unwrap();
+        let mut writer = RecordedTrackWriter::new(&track, &output, format).unwrap();
         let clock = RecordingClock::new(start);
         let controller = clock.controller();
         controller.mark_pause(start);
@@ -966,6 +900,65 @@ mod tests {
     }
 
     #[test]
+    fn buffered_pcm_clips_a_packet_that_starts_before_recording() {
+        let origin = std::time::Instant::now();
+        let directory = std::env::temp_dir().join(format!(
+            "snow-audio-startup-{}-{}",
+            std::process::id(),
+            origin.elapsed().as_nanos()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let clock = RecordingClock::new(origin);
+        let mut packet = timed_packet(origin + Duration::from_millis(10), 1_000_000, 1);
+        packet.data = (1..=1920).collect();
+        let track = AudioTrackConfig::microphone_default("startup");
+        let mut writer = RecordedTrackWriter::new(&track, &directory, packet.format).unwrap();
+        writer.write_packet(&packet, &clock).unwrap();
+        let recorded = writer.finish().unwrap();
+        assert_eq!(recorded.manifest.duration_frames, 480);
+        let bytes = std::fs::read(&recorded.path).unwrap();
+        assert_eq!(i16::from_le_bytes(bytes[..2].try_into().unwrap()), 961);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn buffered_pcm_corrects_drift_only_from_trusted_capture_times() {
+        let origin = std::time::Instant::now();
+        let directory = std::env::temp_dir().join(format!(
+            "snow-audio-drift-{}-{}",
+            std::process::id(),
+            origin.elapsed().as_nanos()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let clock = RecordingClock::new(origin);
+
+        for (end_ms, estimated, expected) in
+            [(46, false, 1921), (34, false, 1919), (110, true, 1920)]
+        {
+            let track = AudioTrackConfig::microphone_default(format!("drift-{end_ms}"));
+            let mut first = timed_packet(origin + Duration::from_millis(20), 1_000_000, 1);
+            first.data = vec![1234; 1920];
+            let mut second = timed_packet(origin + Duration::from_millis(end_ms), 1_200_000, 2);
+            second.data = vec![2345; 1920];
+            second.metadata.capture_time_estimated = estimated;
+            let mut writer = RecordedTrackWriter::new(&track, &directory, first.format).unwrap();
+            writer.write_packet(&first, &clock).unwrap();
+            writer.write_packet(&second, &clock).unwrap();
+
+            let recorded = writer.finish().unwrap();
+            assert_eq!(recorded.manifest.duration_frames, expected);
+            assert!(recorded.discontinuities.is_empty());
+            let bytes = std::fs::read(&recorded.path).unwrap();
+            let mut pcm = bytes
+                .chunks_exact(2)
+                .map(|sample| i16::from_le_bytes(sample.try_into().unwrap()));
+            assert!(pcm.by_ref().take(1920).all(|sample| sample == 1234));
+            assert!(pcm.all(|sample| sample == 2345));
+        }
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
     fn contiguous_device_packets_ignore_subframe_qpc_jitter() {
         let started_at = std::time::Instant::now();
         let output_dir = std::env::temp_dir().join(format!(
@@ -975,7 +968,7 @@ mod tests {
         std::fs::create_dir_all(&output_dir).expect("temporary output directory should be created");
         let track = AudioTrackConfig::microphone_default("timing");
         let format = AudioFormat::new(48_000, 2);
-        let mut writer = RecordedTrackWriter::new(&track, &output_dir, started_at, format)
+        let mut writer = RecordedTrackWriter::new(&track, &output_dir, format)
             .expect("temporary track should be created");
         let clock = RecordingClock::new(started_at);
 
@@ -1003,7 +996,12 @@ mod tests {
             .expect("first packet should be written");
         writer
             .write_packet(
-                &make_packet(started_at + Duration::from_millis(40), 1_200_300, 1_920, 2),
+                &make_packet(
+                    started_at + Duration::from_micros(40_030),
+                    1_200_300,
+                    1_920,
+                    2,
+                ),
                 &clock,
             )
             .expect("second packet should be written");

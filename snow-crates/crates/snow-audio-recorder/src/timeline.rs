@@ -1,7 +1,9 @@
+use std::borrow::Cow;
 use std::time::{Duration, Instant};
 
 use snow_core::timestamp::{StreamTimestamp, TickFormat, TimestampAnchor};
 
+use crate::format::AudioFormat;
 use crate::packet::AudioPacket;
 
 /// A range of source PCM frames admitted to the active recording timeline.
@@ -55,6 +57,47 @@ pub fn admit_active_pcm(
             });
         }
     });
+}
+
+/// Correct clock drift in an uninterrupted, unclipped PCM packet by at most one frame.
+/// A missing observation preserves sample continuity without treating delivery time as drift.
+pub fn correct_pcm_clock(
+    samples: &[i16],
+    format: AudioFormat,
+    expected: u64,
+    observed: Option<u64>,
+) -> Cow<'_, [i16]> {
+    const DRIFT_TOLERANCE_MS: u64 = 5;
+    let tolerance = u64::from(format.sample_rate) * DRIFT_TOLERANCE_MS / 1_000;
+    let Some(observed) = observed.filter(|observed| observed.abs_diff(expected) > tolerance) else {
+        return Cow::Borrowed(samples);
+    };
+    let channels = usize::from(format.channels);
+    if channels == 0 || !samples.len().is_multiple_of(channels) || samples.len() / channels < 3 {
+        return Cow::Borrowed(samples);
+    }
+
+    // Interpolate independently in each channel and preserve the endpoints.
+    let last_input = samples.len() / channels - 1;
+    let last_output = if observed > expected {
+        last_input + 1
+    } else {
+        last_input - 1
+    };
+    let denominator = last_output as i64;
+    let mut output = Vec::with_capacity((last_output + 1) * channels);
+    for frame in 0..=last_output {
+        let position = frame as u128 * last_input as u128;
+        let first = (position / last_output as u128) as usize;
+        let next = (first + 1).min(last_input);
+        let fraction = (position % last_output as u128) as i64;
+        for channel in 0..channels {
+            let a = i64::from(samples[first * channels + channel]);
+            let b = i64::from(samples[next * channels + channel]);
+            output.push(((a * (denominator - fraction) + b * fraction) / denominator) as i16);
+        }
+    }
+    Cow::Owned(output)
 }
 
 /// Stream-relative packet time range.
@@ -232,6 +275,23 @@ mod tests {
     use super::*;
     use crate::format::AudioFormat;
     use crate::packet::{AudioPacketMetadata, AudioSourceKind};
+
+    #[test]
+    fn clock_correction_interpolates_each_channel_and_preserves_endpoints() {
+        let format = AudioFormat::new(48_000, 2);
+        let samples = [-1000, 900, 0, 100, 1000, -700, 2000, -1500];
+        let expanded = correct_pcm_clock(&samples, format, 1_000, Some(1_241));
+        assert_eq!(
+            expanded.as_ref(),
+            &[-1000, 900, -250, 300, 500, -300, 1250, -900, 2000, -1500]
+        );
+        let compressed = correct_pcm_clock(&samples, format, 1_000, Some(759));
+        assert_eq!(compressed.as_ref(), &[-1000, 900, 500, -300, 2000, -1500]);
+        assert!(matches!(
+            correct_pcm_clock(&samples, format, 1_000, Some(1_240)),
+            Cow::Borrowed(_)
+        ));
+    }
 
     #[test]
     fn active_pcm_maps_multiple_boundaries_to_exact_source_and_output_frames() {
