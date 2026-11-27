@@ -187,6 +187,8 @@ struct ImageStitchingLayout final {
 };
 
 [[nodiscard]] QSize transformedSize(const ImageStitchingItem& item);
+// Fit within the collage preview bounds, normalize to sRGB when profiled, and use a pixel DPR of 1.
+[[nodiscard]] QImage prepareImageStitchingPreview(const QImage& image, const QImage& supplied = {});
 [[nodiscard]] QImage transformedPreview(const ImageStitchingItem& item);
 // Quantize once in output pixels so the preview and row exporter use identical placement.
 [[nodiscard]] QRect resolveImageStitchingStaticImageRect(const ImageStitchingItem& item,
@@ -205,6 +207,7 @@ class ImageStitchingDocument final : public QObject {
 
     [[nodiscard]] const QVector<ImageStitchingItem>& items() const;
     [[nodiscard]] int indexOf(quint64 id) const;
+    [[nodiscard]] qint64 previewBytes() const;
     // Changes only when the ordered image collection or one of its transforms changes.
     [[nodiscard]] quint64 contentRevision() const;
     [[nodiscard]] ImageStitchingSettings settings() const;

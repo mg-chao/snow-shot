@@ -53,11 +53,12 @@
 // Quarter-turn rotations use tiled pixel copies into their final storage.
 // Large smooth flips use bounded conversion chunks to retain Qt's alpha rounding.
 // Common arbitrary 32-bit rotations paint directly into their final storage.
-// Uncommon transforms and scaling preserve Qt resampling, then transfer large
-// results into managed storage; Qt owns their temporary resampling allocation.
+// Uncommon transforms preserve Qt resampling, then transfer large results into managed storage.
 [[nodiscard]] QImage snowCanvasTransformImage(const QImage& image, const QTransform& transform,
                                               Qt::TransformationMode mode = Qt::FastTransformation);
 
+// Match QImage::scaled dimensions and pixels. Strong reductions of large straight-alpha images
+// can filter directly into a thumbnail. Large results use managed storage.
 [[nodiscard]] QImage snowCanvasScaleImage(const QImage& image, const QSize& size,
                                           Qt::AspectRatioMode aspectRatio = Qt::IgnoreAspectRatio,
                                           Qt::TransformationMode mode = Qt::FastTransformation);

@@ -7,6 +7,8 @@
 #include "snow_shot/presentation/languagemanager.h"
 #include "snow_shot/presentation/styles/thememanager.h"
 #include "snow_shot/storage/applicationstorage.h"
+#include "snow_draw_engine_qt/snow_canvas_image.h"
+#include "../../test-support/virtualmemory.h"
 #include "theme/theme_manager.h"
 #include "widgets/button.h"
 #include "widgets/input_number.h"
@@ -21,6 +23,7 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPointer>
 #include <QTemporaryDir>
 #include <QThread>
 #include <cstdlib>
@@ -370,18 +373,19 @@ void invalidSourcesLimitsAndCancellation() {
     ImageStitchingWindowCoordinator coordinator;
     auto invalid = snapshot(image());
     invalid.layout.size = QSize(2, 2);
-    require(!coordinator.presentSplitImagesAsPdf(std::move(invalid)),
-            "mismatched source geometry is rejected");
+    require(!coordinator.presentSplitImagesAsPdf(std::move(invalid)) && !coordinator.window(),
+            "mismatched source geometry is rejected before creating a stitching session");
     QImage oversized(QSize(std::numeric_limits<int>::max() / 4 + 1, 2), QImage::Format_Mono);
     require(!oversized.isNull(), "compact monochrome resource-limit fixture allocates");
     ImageSplitSnapshot limited{
         oversized, {oversized.size(), {}, {1}, {}}, QStringLiteral("oversized"), {}};
+    require(coordinator.presentSplitImagesAsPdf(std::move(limited)),
+            "the resource-limited batch enters the importer");
     QStringList failures;
     auto* window = coordinator.window();
     QObject::connect(window, &ImageStitchingWindow::importFinished, window,
                      [&](const auto& errors) { failures = errors; });
-    require(coordinator.presentSplitImagesAsPdf(std::move(limited)) &&
-                coordinator.presentSplitImagesAsPdf(snapshot(image({8, 6}))),
+    require(coordinator.presentSplitImagesAsPdf(snapshot(image({8, 6}))),
             "resource-limited and ordinary batches enter the importer");
     until([&] { return !window->loading(); }, "resource-limited batch finishes");
     require(failures.size() == 1 && window->document()->items().size() == 2,
@@ -410,6 +414,48 @@ void invalidSourcesLimitsAndCancellation() {
     require(canceled.document()->items().isEmpty() && completions == 0 && !canceled.loading(),
             "closing stitching cancels the dense batch and ignores stale completion");
 }
+
+void largeCropsReleaseTheirPixelMappings() {
+    ImageStitchingWindowCoordinator coordinator;
+    QImage source = snowCanvasAllocateImage({2048, 1024}, QImage::Format_RGBA64);
+    require(!source.isNull(), "large crop fixture allocates managed pixels");
+    source.fill(Qt::blue);
+    source.setPixelColor(1024, 0, Qt::red);
+    source.setColorSpace(QColorSpace::DisplayP3);
+    source.setDevicePixelRatio(2);
+    source.setDotsPerMeterY(4321);
+    source.setText(QStringLiteral("fixture"), QStringLiteral("large PDF crops"));
+    const void* donor = source.constBits() + source.sizeInBytes() / 2;
+    ImageSplitSettings settings;
+    settings.type = ImageSplitType::Equal;
+    settings.direction = ImageSplitDirection::Vertical;
+    require(coordinator.presentSplitImagesAsPdf(snapshot(std::move(source), settings)),
+            "submit managed source for large PDF crops");
+    const QPointer<ImageStitchingWindow> window(coordinator.window());
+    until([&] { return !window->loading() && !snow::test_support::virtualMemoryMapped(donor); },
+          "the last crop releases the original raster independently of the pages");
+    const auto& items = window->document()->items();
+    require(items.size() == 2 && items[0].image.pixelColor(0, 0) == QColor(Qt::blue) &&
+                items[1].image.pixelColor(0, 0) == QColor(Qt::red),
+            "the managed crops preserve the original pixels and split boundary");
+    QVector<const void*> mappings;
+    for (const auto& item : items) {
+        const auto& cropped = item.image;
+        const void* address = cropped.constBits() + cropped.sizeInBytes() / 2;
+        require(cropped.size() == QSize(1024, 1024) && cropped.format() == QImage::Format_RGBA64 &&
+                    cropped.colorSpace() == QColorSpace(QColorSpace::DisplayP3) &&
+                    cropped.devicePixelRatio() == 2 && cropped.dotsPerMeterY() == 4321 &&
+                    cropped.text(QStringLiteral("fixture")) == QStringLiteral("large PDF crops") &&
+                    snow::test_support::virtualMemoryMapped(address),
+                "each crop retains its native pixel layout and metadata in its own mapping");
+        mappings.append(address);
+    }
+    coordinator.shutdown();
+    until([&] { return !window; }, "closing the collage destroys its document");
+    for (const auto* address : mappings)
+        require(!snow::test_support::virtualMemoryMapped(address),
+                "the last page owner returns its crop mapping to the OS");
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -434,6 +480,7 @@ int main(int argc, char** argv) {
     queuedBatchesKeepRequestOrder();
     busyExportRejectsWithoutChangingStitching();
     invalidSourcesLimitsAndCancellation();
+    largeCropsReleaseTheirPixelMappings();
     until([] { return ScreenshotExportCoordinator::shared().pendingJobCount() == 0; },
           "handoff workers drain");
     ScreenshotExportCoordinator::shared().shutdown();

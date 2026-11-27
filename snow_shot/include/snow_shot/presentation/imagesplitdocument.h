@@ -179,6 +179,10 @@ struct ImageSplitSnapshot final {
     ImageSplitLayout layout;
     QString imageName;
     std::shared_ptr<void> resourceOwner;
+
+    [[nodiscard]] bool isValid() const {
+        return !image.isNull() && image.size() == layout.size && layout.isValid();
+    }
 };
 
 // Size-only validation and nominal geometry. Smart uses Equal's initial boundaries here;

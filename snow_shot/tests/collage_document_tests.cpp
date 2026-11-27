@@ -51,6 +51,21 @@ ImageStitchingSettings customSettings(int rows, int columns) {
     return settings;
 }
 
+void narrowPreviewSurvivesImport() {
+    QImage original = fixture({8, 4096});
+    original.setDevicePixelRatio(2);
+    original.setColorSpace(QColorSpace::DisplayP3);
+    const QImage preview = prepareImageStitchingPreview(original);
+    require(preview.size() == QSize(1, 256) && preview.devicePixelRatio() == 1 &&
+                preview.colorSpace() == QColorSpace(QColorSpace::SRgb),
+            "a narrow source produces a normalized preview before document admission");
+    ImageStitchingDocument document;
+    require(document.append(original, QStringLiteral("narrow"), preview) &&
+                document.items().front().preview.constBits() == preview.constBits() &&
+                document.items().front().image.constBits() == original.constBits(),
+            "the document shares prepared preview and original pixels");
+}
+
 void geometry() {
     ImageStitchingDocument document;
     require(!document.layout().isValid() && document.selectedId() == 0,
@@ -1253,6 +1268,7 @@ void scalingAndLargeAxes() {
 int main(int argc, char** argv) {
     QCoreApplication application(argc, argv);
     try {
+        narrowPreviewSurvivesImport();
         geometry();
         freeLayoutGeometryAndLifecycle();
         freeSpacingAndLayers();

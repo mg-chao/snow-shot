@@ -162,6 +162,21 @@ struct ImportItem {
 struct ImportedImage {
     QImage preview;
     std::shared_ptr<ImageStitchingImportReservation> reservation;
+
+    ScreenshotExportTaskResult prepare(QImage image) {
+        preview = prepareImageStitchingPreview(image);
+        if (preview.isNull())
+            return ScreenshotExportTaskResult::failure(
+                ScreenshotExportFailureStage::Source,
+                imageStitchingText("The image could not be decoded or is no longer available"));
+        ScreenshotExportTaskResult result;
+        result.image = std::move(image);
+        return result;
+    }
+};
+struct PdfExportSnapshot final {
+    QVector<ImageStitchingItem> items;
+    ImageStitchingPdfSettings settings;
 };
 struct PdfProgressState final {
     std::atomic<qsizetype> completedPages{0};
@@ -187,12 +202,12 @@ struct ImageStitchingWindow::Impl {
     ImageStitchingWindow& q;
     ImageStitchingWindowServices services;
     ImageStitchingDocument* document;
-    components::ImageStitchingEditorWidget* editor;
-    AdModal* modal;
-    AdButton* cancelButton;
-    AdButton* editButton;
-    AdButton* copyButton;
-    AdButton* saveButton;
+    components::ImageStitchingEditorWidget* editor = nullptr;
+    AdModal* modal = nullptr;
+    AdButton* cancelButton = nullptr;
+    AdButton* editButton = nullptr;
+    AdButton* copyButton = nullptr;
+    AdButton* saveButton = nullptr;
     QPointer<AdModal> confirmation;
     QPointer<QFileDialog> fileDialog;
     QPointer<AdMessageHandle> statusMessage;
@@ -221,7 +236,7 @@ struct ImageStitchingWindow::Impl {
     bool confirmationClear = false;
     quint64 confirmationGeneration = 0;
     bool pdfExporting = false;
-    bool choosingPdf = false;
+    std::optional<PdfExportSnapshot> pendingPdfExport;
     bool pdfCancelRequested = false;
     QTimer* pdfProgressTimer;
     std::shared_ptr<PdfProgressState> pdfProgress;
@@ -232,7 +247,6 @@ struct ImageStitchingWindow::Impl {
 
     Impl(ImageStitchingWindow& owner, ImageStitchingWindowServices ports)
         : q(owner), services(std::move(ports)), document(new ImageStitchingDocument(&q)),
-          editor(new components::ImageStitchingEditorWidget(document)), modal(new AdModal(&q)),
           pdfProgressTimer(new QTimer(&q)) {
         auto& storage = storage::ApplicationStorage::instance();
         if (!storage.isInitialized())
@@ -241,9 +255,19 @@ struct ImageStitchingWindow::Impl {
         document->setPdfSettings(ImageStitchingSettingsStore(storage.configuration()).readPdf());
         pdfProgressTimer->setInterval(100);
         QObject::connect(pdfProgressTimer, &QTimer::timeout, &q, [this] {
-            if (pdfExporting && !choosingPdf && !pdfCancelRequested)
+            if (pdfExporting && !pendingPdfExport && !pdfCancelRequested)
                 showStatus(Status::PdfSaving);
         });
+        QObject::connect(document, &ImageStitchingDocument::customGridAdjusted, &q,
+                         [this](const QStringList& fields) { persistSettings(fields); });
+        QObject::connect(qApp, &QCoreApplication::aboutToQuit, &q, &ImageStitchingWindow::shutdown);
+    }
+
+    void ensureUi() {
+        if (modal)
+            return;
+        editor = new components::ImageStitchingEditorWidget(document);
+        modal = new AdModal(&q);
         modal->setObjectName(QStringLiteral("collageModal"));
         modal->setMode(AdModal::Mode::Window);
         modal->setCentered(true);
@@ -290,8 +314,8 @@ struct ImageStitchingWindow::Impl {
         QObject::connect(modal, &AdModal::closeRequested, &q,
                          [this](AdModal::CloseReason) { q.requestClose(); });
         QObject::connect(modal, &AdModal::finished, &q, [this](AdModal::DialogCode) {
-            cancelWork();
             closing = true;
+            cancelWork();
             emit q.closed();
         });
         QObject::connect(document, &ImageStitchingDocument::changed, &q,
@@ -306,11 +330,8 @@ struct ImageStitchingWindow::Impl {
                          &ImageStitchingWindow::requestClear);
         QObject::connect(editor, &components::ImageStitchingEditorWidget::settingsEdited, &q,
                          [this](const QString& field) { persistSettings({field}); });
-        QObject::connect(document, &ImageStitchingDocument::customGridAdjusted, &q,
-                         [this](const QStringList& fields) { persistSettings(fields); });
         QObject::connect(&LanguageManager::instance(), &LanguageManager::languageChanged, &q,
                          [this] { retranslate(); });
-        QObject::connect(qApp, &QCoreApplication::aboutToQuit, &q, &ImageStitchingWindow::shutdown);
         pasteShortcuts = new WindowShortcutManager(&q);
         WindowShortcutManager::Binding binding;
         binding.id = QStringLiteral("collagePaste");
@@ -469,6 +490,8 @@ struct ImageStitchingWindow::Impl {
             statusMessage = nullptr;
             return;
         }
+        if (!q.isOpen())
+            return;
         AdMessage::Request request;
         request.key = QStringLiteral("collageStatus");
         request.content = message;
@@ -500,6 +523,8 @@ struct ImageStitchingWindow::Impl {
     }
 
     void updateActions() {
+        if (!editor)
+            return;
         const bool pdf = document->outputType() == ImageStitchingOutputType::PdfDocument;
         const bool valid =
             pdf ? !document->items().isEmpty() &&
@@ -531,8 +556,8 @@ struct ImageStitchingWindow::Impl {
     }
 
     bool canPaste() const {
-        return modal->isOpen() && !closing && !importing && !exporting && !confirmationPending &&
-               !fileDialog && !choosingPdf;
+        return q.isOpen() && !closing && !importing && !exporting && !confirmationPending &&
+               !fileDialog;
     }
 
     void cancelWork() {
@@ -546,7 +571,7 @@ struct ImageStitchingWindow::Impl {
         pdfCancellation.reset();
         pdfProgress.reset();
         pdfExporting = false;
-        choosingPdf = false;
+        pendingPdfExport.reset();
         pdfCancelRequested = false;
         clipboard.cancelAll();
         nativeSave.cancel();
@@ -602,6 +627,7 @@ struct ImageStitchingWindow::Impl {
     void askConfirmation(bool clear, std::function<void()> accepted) {
         if (closing || confirmationPending)
             return;
+        ensureUi();
         confirmationPending = true;
         const auto confirmationToken = ++confirmationGeneration;
         updateActions();
@@ -765,19 +791,11 @@ struct ImageStitchingWindow::Impl {
                 job = ScreenshotExportCoordinator::shared().submit(
                     &q, ScreenshotExportCoordinator::Priority::Background,
                     [image = std::move(rendered.image),
-                     decoded](const ScreenshotExportCancellation& cancellation) {
+                     decoded](const ScreenshotExportCancellation& cancellation) mutable {
                         if (cancellation.isCancellationRequested())
                             return ScreenshotExportTaskResult::failure(
                                 ScreenshotExportFailureStage::Cancelled, {});
-                        decoded->preview =
-                            image.width() <= 256 && image.height() <= 256
-                                ? image
-                                : snowCanvasScaleImage(
-                                      image, image.size().scaled(256, 256, Qt::KeepAspectRatio),
-                                      Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-                        ScreenshotExportTaskResult result;
-                        result.image = image;
-                        return result;
+                        return decoded->prepare(std::move(image));
                     },
                     [this, request, decoded, token](ScreenshotExportTaskResult result) {
                         finishImport(request, decoded, token, std::move(result));
@@ -942,7 +960,7 @@ struct ImageStitchingWindow::Impl {
                         return ScreenshotExportTaskResult::failure(
                             ScreenshotExportFailureStage::Source, error);
                     if (!cancelled())
-                        image = request.split->image.copy(region);
+                        image = snowCanvasCopyImage(request.split->image, region);
                 } else if (request.clipboard) {
                     image = readImageImportClipboard(
                         *request.clipboard, cancelled, [decoded, &error](qint64 bytes) {
@@ -992,15 +1010,7 @@ struct ImageStitchingWindow::Impl {
                             ? imageStitchingText(
                                   "The image could not be decoded or is no longer available")
                             : error);
-                decoded->preview =
-                    image.width() <= 256 && image.height() <= 256
-                        ? image
-                        : snowCanvasScaleImage(image,
-                                               image.size().scaled(256, 256, Qt::KeepAspectRatio),
-                                               Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-                ScreenshotExportTaskResult result;
-                result.image = std::move(image);
-                return result;
+                return decoded->prepare(std::move(image));
             },
             [this, request, decoded, token](ScreenshotExportTaskResult result) {
                 finishImport(request, decoded, token, std::move(result));
@@ -1102,7 +1112,7 @@ struct ImageStitchingWindow::Impl {
             return;
         pdfProgressTimer->stop();
         job = {};
-        choosingPdf = false;
+        pendingPdfExport.reset();
         pdfCancelRequested = false;
         pdfCancellation.reset();
         pdfProgress.reset();
@@ -1129,21 +1139,28 @@ struct ImageStitchingWindow::Impl {
             modal->accept();
     }
 
+    void cancelPdfDestination() {
+        ImageStitchingPdfExportResult result;
+        result.totalCount = pdfProgress->totalPages.load();
+        result.cancelled = true;
+        // Drop the snapshot before rejecting the dialog, which can reply synchronously.
+        pendingPdfExport.reset();
+        const QPointer<ImageStitchingWindow> guard(&q);
+        const quint64 token = generation;
+        if (fileDialog)
+            fileDialog->reject();
+        if (guard && token == generation)
+            finishPdfExport(std::move(result));
+    }
+
     void requestPdfCancellation() {
         if (!pdfExporting || pdfCancelRequested)
             return;
         pdfCancelRequested = true;
         if (pdfCancellation)
             pdfCancellation->store(true);
-        if (choosingPdf) {
-            // A chooser port may reply later; choosingPdf is cleared by the terminal completion.
-            ImageStitchingPdfExportResult result;
-            result.totalCount =
-                imageStitchingPdfPageCount(document->items().size(), document->pdfSettings());
-            result.cancelled = true;
-            if (fileDialog)
-                fileDialog->reject();
-            finishPdfExport(std::move(result));
+        if (pendingPdfExport) {
+            cancelPdfDestination();
             return;
         }
         job.cancel();
@@ -1153,7 +1170,6 @@ struct ImageStitchingWindow::Impl {
 
     void writePdf(QVector<ImageStitchingItem> items, ImageStitchingPdfSettings settings,
                   ImageStitchingPdfDestination destination, quint64 token) {
-        choosingPdf = false;
         auto result = std::make_shared<ImageStitchingPdfExportResult>();
         result->totalCount = imageStitchingPdfPageCount(items.size(), settings);
         const auto cancellation = pdfCancellation;
@@ -1205,35 +1221,33 @@ struct ImageStitchingWindow::Impl {
             document->items().isEmpty() ||
             !validateImageStitchingPdfSettings(document->pdfSettings()).isEmpty())
             return;
+        ensureUi();
         clearExportReport();
         pdfExporting = true;
         exporting = true;
         copying = false;
-        choosingPdf = true;
         pdfCancelRequested = false;
         pdfCancellation = std::make_shared<std::atomic_bool>(false);
         pdfProgress = std::make_shared<PdfProgressState>();
-        const auto items = document->items();
         const auto settings = document->pdfSettings();
-        pdfProgress->totalPages.store(imageStitchingPdfPageCount(items.size(), settings));
+        pendingPdfExport = PdfExportSnapshot{document->items(), settings};
+        pdfProgress->totalPages.store(
+            imageStitchingPdfPageCount(pendingPdfExport->items.size(), settings));
         const auto token = ++generation;
         updateActions();
         const QPointer<ImageStitchingWindow> guard(&q);
-        auto chosen = [guard, items, settings,
-                       token](std::optional<ImageStitchingPdfDestination> choice) {
+        auto chosen = [guard, token](std::optional<ImageStitchingPdfDestination> choice) {
             if (!guard)
                 return;
             auto& d = *guard->m_impl;
-            if (d.closing || token != d.generation || !d.pdfExporting || !d.choosingPdf)
+            if (d.closing || token != d.generation || !d.pendingPdfExport)
                 return;
             if (!choice || choice->path.isEmpty()) {
-                ImageStitchingPdfExportResult result;
-                result.totalCount = imageStitchingPdfPageCount(items.size(), settings);
-                result.cancelled = true;
-                d.finishPdfExport(std::move(result));
+                d.cancelPdfDestination();
                 return;
             }
-            d.writePdf(items, settings, std::move(*choice), token);
+            auto snapshot = std::exchange(d.pendingPdfExport, std::nullopt);
+            d.writePdf(std::move(snapshot->items), snapshot->settings, std::move(*choice), token);
         };
         if (services.choosePdfDestination) {
             services.choosePdfDestination(editor->window(), settings.exportMode, std::move(chosen));
@@ -1263,7 +1277,9 @@ struct ImageStitchingWindow::Impl {
         }
         QObject::connect(
             dialog, &QDialog::finished, &q,
-            [dialog, chosen = std::move(chosen), combined](int code) mutable {
+            [this, dialog, chosen = std::move(chosen), combined](int code) {
+                if (fileDialog == dialog)
+                    fileDialog.clear();
                 const auto files = dialog->selectedFiles();
                 if (code != QDialog::Accepted || files.isEmpty())
                     chosen(std::nullopt);
@@ -1290,6 +1306,7 @@ struct ImageStitchingWindow::Impl {
         if (closing || exporting || importing || confirmationPending ||
             !document->layout().isValid())
             return;
+        ensureUi();
         copying = copy;
         clearExportReport();
         exporting = true;
@@ -1355,13 +1372,19 @@ struct ImageStitchingWindow::Impl {
 ImageStitchingWindow::ImageStitchingWindow(QObject* parent, ImageStitchingWindowServices services)
     : QObject(parent), m_impl(std::make_unique<Impl>(*this, std::move(services))) {}
 ImageStitchingWindow::~ImageStitchingWindow() {
-    shutdown();
+    if (isOpen()) {
+        shutdown();
+    } else if (!m_impl->closing) {
+        m_impl->closing = true;
+        m_impl->cancelWork();
+    }
 }
 
 void ImageStitchingWindow::present(const QVector<storage::CaptureHistoryRecord>& records) {
     if (m_impl->closing || m_impl->exporting)
         return;
-    const bool firstPresentation = !m_impl->modal->isOpen();
+    m_impl->ensureUi();
+    const bool firstPresentation = !isOpen();
     if (firstPresentation) {
         QScreen* screen = QGuiApplication::screenAt(QCursor::pos());
         if (!screen)
@@ -1373,8 +1396,11 @@ void ImageStitchingWindow::present(const QVector<storage::CaptureHistoryRecord>&
     }
     m_impl->modal->present();
     m_impl->pasteShortcuts->addScopeWindow(m_impl->editor->window());
-    if (firstPresentation)
+    if (firstPresentation) {
         installWindowCloseShortcut(m_impl->editor->window(), [this] { requestClose(); });
+        if (m_impl->status != Impl::Status::External)
+            m_impl->showStatus(m_impl->status);
+    }
     QVector<ImportItem> requested;
     for (const auto& record : records)
         requested.append({record, {}, {}, imageStitchingText("Screenshot %1").arg(record.id), 0});
@@ -1404,9 +1430,7 @@ void ImageStitchingWindow::presentPinnedWindows(
 }
 
 bool ImageStitchingWindow::presentSplitImagesAsPdf(ImageSplitSnapshot snapshot) {
-    if (m_impl->closing || m_impl->exporting || m_impl->confirmationPending ||
-        snapshot.image.isNull() || snapshot.layout.size != snapshot.image.size() ||
-        !snapshot.layout.isValid() || snapshot.layout.outputCount() <= 0)
+    if (m_impl->closing || m_impl->exporting || m_impl->confirmationPending || !snapshot.isValid())
         return false;
     ImportItem request;
     request.split = std::make_shared<const ImageSplitSnapshot>(std::move(snapshot));
@@ -1487,15 +1511,10 @@ void ImageStitchingWindow::requestClose() {
         m_impl->requestPdfCancellation();
         return;
     }
-    const auto discard = [this] {
-        m_impl->closing = true;
-        m_impl->cancelWork();
-        m_impl->modal->reject();
-    };
     if (m_impl->document->items().isEmpty())
-        discard();
+        shutdown();
     else
-        m_impl->askConfirmation(false, discard);
+        m_impl->askConfirmation(false, [this] { shutdown(); });
 }
 void ImageStitchingWindow::requestClear() {
     if (m_impl->exporting || m_impl->document->items().isEmpty())
@@ -1520,9 +1539,16 @@ void ImageStitchingWindow::save() {
 void ImageStitchingWindow::shutdown() {
     if (!m_impl || m_impl->closing)
         return;
+    const bool wasOpen = isOpen();
     m_impl->closing = true;
     m_impl->cancelWork();
-    m_impl->modal->reject();
+    if (wasOpen)
+        m_impl->modal->reject();
+    else
+        emit closed();
+}
+bool ImageStitchingWindow::isOpen() const {
+    return m_impl->modal && m_impl->modal->isOpen();
 }
 bool ImageStitchingWindow::busy() const {
     return m_impl->exporting;

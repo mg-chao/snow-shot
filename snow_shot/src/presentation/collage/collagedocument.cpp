@@ -123,22 +123,6 @@ QStringList normalizeCustomGrid(ImageStitchingSettings& settings, qsizetype imag
     return fields;
 }
 
-QImage boundedPreview(const QImage& original, const QImage& supplied = {}) {
-    QImage preview = supplied.isNull() ? original : supplied;
-    if (preview.isNull())
-        return {};
-    if (preview.width() > previewExtent || preview.height() > previewExtent)
-        preview = snowCanvasScaleImage(preview, QSize(previewExtent, previewExtent),
-                                       Qt::KeepAspectRatio, Qt::SmoothTransformation);
-    if (!preview.isNull() && preview.colorSpace().isValid() &&
-        preview.colorSpace() != QColorSpace(QColorSpace::SRgb))
-        preview = snowCanvasColorConvertedImage(preview, QColorSpace(QColorSpace::SRgb),
-                                                QImage::Format_ARGB32_Premultiplied);
-    if (!preview.isNull() && preview.devicePixelRatio() != 1)
-        preview.setDevicePixelRatio(1);
-    return preview;
-}
-
 QTransform canonicalTransform(const QTransform& transform) {
     return {static_cast<qreal>(qRound(transform.m11())),
             static_cast<qreal>(qRound(transform.m12())),
@@ -965,9 +949,25 @@ QSize transformedSize(const ImageStitchingItem& item) {
     return {qRound(bounds.width()), qRound(bounds.height())};
 }
 
+QImage prepareImageStitchingPreview(const QImage& original, const QImage& supplied) {
+    QImage preview = supplied.isNull() ? original : supplied;
+    if (preview.isNull())
+        return {};
+    if (preview.width() > previewExtent || preview.height() > previewExtent)
+        preview = snowCanvasScaleImage(preview, QSize(previewExtent, previewExtent),
+                                       Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    if (!preview.isNull() && preview.colorSpace().isValid() &&
+        preview.colorSpace() != QColorSpace(QColorSpace::SRgb))
+        preview = snowCanvasColorConvertedImage(preview, QColorSpace(QColorSpace::SRgb),
+                                                QImage::Format_ARGB32_Premultiplied);
+    if (!preview.isNull() && preview.devicePixelRatio() != 1)
+        preview.setDevicePixelRatio(1);
+    return preview;
+}
+
 QImage transformedPreview(const ImageStitchingItem& item) {
-    return snowCanvasTransformImage(boundedPreview(item.image, item.preview), item.transform,
-                                    Qt::FastTransformation);
+    return snowCanvasTransformImage(prepareImageStitchingPreview(item.image, item.preview),
+                                    item.transform, Qt::FastTransformation);
 }
 
 static ImageStitchingLayout
@@ -1212,6 +1212,10 @@ int ImageStitchingDocument::indexOf(quint64 id) const {
     return m_impl->indices.value(id, -1);
 }
 
+qint64 ImageStitchingDocument::previewBytes() const {
+    return m_impl->previewBytes;
+}
+
 quint64 ImageStitchingDocument::contentRevision() const {
     return m_impl->contentRevision;
 }
@@ -1295,7 +1299,7 @@ quint64 ImageStitchingDocument::append(QImage image, QString label, QImage previ
         m_impl->error = preparationError();
         return 0;
     }
-    preview = boundedPreview(image, preview);
+    preview = prepareImageStitchingPreview(image, preview);
     if (preview.isNull()) {
         m_impl->error = preparationError();
         return 0;
@@ -1362,7 +1366,7 @@ bool ImageStitchingDocument::replace(quint64 id, QImage image, QString label, QI
         m_impl->error = preparationError();
         return false;
     }
-    preview = boundedPreview(image, preview);
+    preview = prepareImageStitchingPreview(image, preview);
     if (preview.isNull()) {
         m_impl->error = preparationError();
         return false;

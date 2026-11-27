@@ -28,6 +28,11 @@ ImageStitchingWindow* ImageStitchingWindowCoordinator::ensureWindow() {
                 m_window.clear();
             window->deleteLater();
         });
+        connect(window, &ImageStitchingWindow::importFinished, this, [window] {
+            // A quiet shell import opens the window only after accepting an image.
+            if (!window->isOpen())
+                window->shutdown();
+        });
     }
     return m_window;
 }
@@ -77,6 +82,8 @@ void ImageStitchingWindowCoordinator::shutdown() {
 }
 
 bool ImageStitchingWindowCoordinator::presentSplitImagesAsPdf(ImageSplitSnapshot snapshot) {
+    if (!snapshot.isValid())
+        return false;
     if (auto* window = ensureWindow())
         return window->presentSplitImagesAsPdf(std::move(snapshot));
     return false;
