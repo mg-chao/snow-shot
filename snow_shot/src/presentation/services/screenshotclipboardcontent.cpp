@@ -87,8 +87,8 @@ bool isTextFile(const QString& suffix) {
 }
 
 qint64 snapshotBytes(const ScreenshotClipboardContentSnapshot& snapshot) {
-    qint64 bytes =
-        snapshot.detachedImage.sizeInBytes() + (snapshot.html.size() + snapshot.text.size()) * 2;
+    qint64 bytes = snapshot.detachedImage.sizeInBytes() + snapshot.nativeTiff.size() +
+                   (snapshot.html.size() + snapshot.text.size()) * 2;
     for (const auto& encoded : snapshot.encodedImages)
         bytes += encoded.bytes.size();
     if (snapshot.nativeDib)
@@ -1194,8 +1194,11 @@ snapshotClipboardOnce(QClipboard* clipboard, qreal devicePixelRatio, AllocationC
     // snapshot() checks the revision so replacement cannot invalidate this fact.
     const bool bitmapIsDerivedFromPng =
         snow_shot::platform::macos::imageClipboardBitmapIsDerivedFromPng();
+    const bool onlyNativePng =
+        !bitmapIsDerivedFromPng && snow_shot::platform::macos::imageClipboardHasOnlyPng();
 #else
     constexpr bool bitmapIsDerivedFromPng = false;
+    constexpr bool onlyNativePng = false;
 #endif
     const QColor baseColor = QGuiApplication::palette().color(QPalette::Base);
     bool rejected = false;
@@ -1204,6 +1207,22 @@ snapshotClipboardOnce(QClipboard* clipboard, qreal devicePixelRatio, AllocationC
         return !rejected;
     })
                                              : AllocationCheck{};
+#ifdef Q_OS_MACOS
+    if (!bitmapIsDerivedFromPng && !onlyNativePng && std::isfinite(devicePixelRatio) &&
+        devicePixelRatio > 0.0) {
+        auto tiff = snow_shot::platform::macos::copyTiffOnlyClipboardItem(kMaximumEncodedImageBytes,
+                                                                          checked);
+        if (rejected)
+            return std::nullopt;
+        if (!tiff.isEmpty()) {
+            ScreenshotClipboardContentSnapshot snapshot;
+            snapshot.devicePixelRatio = devicePixelRatio;
+            snapshot.baseColor = baseColor;
+            snapshot.nativeTiff = std::move(tiff);
+            return snapshot;
+        }
+    }
+#endif
 #if defined(Q_OS_WIN) || defined(_WIN32)
     std::optional<ScreenshotClipboardContentSnapshot> nativeSnapshot;
     if (QGuiApplication::platformName() == QStringLiteral("windows") && OpenClipboard(nullptr)) {
@@ -1274,11 +1293,13 @@ snapshotClipboardOnce(QClipboard* clipboard, qreal devicePixelRatio, AllocationC
         snapshot->baseColor = baseColor;
     }
     const bool capturedCanonicalPng =
-        bitmapIsDerivedFromPng && snapshot &&
+        (bitmapIsDerivedFromPng || onlyNativePng) && snapshot &&
         std::any_of(snapshot->encodedImages.cbegin(), snapshot->encodedImages.cend(),
                     [](const ScreenshotClipboardEncodedImage& encoded) {
                         return encoded.mimeType == QStringLiteral("image/png");
                     });
+    if (capturedCanonicalPng)
+        snapshot->nativePngFallback = onlyNativePng;
     if (snapshot.has_value() && !snapshot->nativeDib.has_value() && !capturedCanonicalPng) {
         // Providers that expose only QMimeData::imageData() remain supported.
         SNOW_SHOT_PIN_PERF_COUNTER("clipboard.native_dib_fallback", 1);
@@ -1399,6 +1420,27 @@ ScreenshotClipboardContentReader::decode(ScreenshotClipboardContentSnapshot snap
     if (*rejected || cancellationRequested(cancelled)) {
         return std::nullopt;
     }
+#ifdef Q_OS_MACOS
+    const QByteArray* nativeBitmap = &snapshot.nativeTiff;
+    if (snapshot.nativePngFallback) {
+        const auto png = std::find_if(
+            snapshot.encodedImages.cbegin(), snapshot.encodedImages.cend(),
+            [](const auto& image) { return image.mimeType == QStringLiteral("image/png"); });
+        if (png != snapshot.encodedImages.cend())
+            nativeBitmap = &png->bytes;
+    }
+    if (!nativeBitmap->isEmpty()) {
+        const auto reserveWorkingBytes =
+            checked ? AllocationCheck([&](qint64 bytes) { return checked(retained + bytes); })
+                    : AllocationCheck{};
+        auto image = snow_shot::platform::macos::decodeNativeClipboardImage(
+            *nativeBitmap, kMaximumClipboardImagePixels, reserveWorkingBytes);
+        if (*rejected || cancellationRequested(cancelled))
+            return std::nullopt;
+        if (auto result = imageContent(std::move(image)); result.has_value())
+            return attachPlacement(std::move(result));
+    }
+#endif
     {
         SNOW_SHOT_PIN_PERF_SCOPE("clipboard.decode_detached_image");
 #if defined(Q_OS_WIN) || defined(_WIN32)

@@ -80,12 +80,14 @@ void configureTrace(const QString& path) {
         traceFile.setFileName(path);
         static_cast<void>(traceFile.open(QIODevice::WriteOnly | QIODevice::Append));
     }
-    activeSink = &fileSink;
+    activeSink = traceFile.isOpen() ? &fileSink : nullptr;
 }
 void beginSample(const char* scenario, qint64 width, qint64 height) {
-    if (state.active)
-        fileSink.finish(false);
     QMutexLocker lock(&mutex);
+    if (!activeSink)
+        return;
+    if (state.active)
+        activeSink->finish(false);
     state = {};
     state.scenario = QString::fromLatin1(scenario);
     state.width = width;

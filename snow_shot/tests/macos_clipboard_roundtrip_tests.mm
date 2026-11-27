@@ -139,8 +139,9 @@ void readForeignPngInFreshProcess() {
 void readForeignPngBeforePublication() {
     auto snapshot = ScreenshotClipboardContentReader::snapshot(QApplication::clipboard(), 1.0);
     require(snapshot && snapshot->encodedImages.size() == 1 &&
-                snapshot->encodedImages.front().mimeType == QStringLiteral("image/png"),
-            "the first clipboard read must recognize native PNG bytes");
+                snapshot->encodedImages.front().mimeType == QStringLiteral("image/png") &&
+                snapshot->detachedImage.isNull(),
+            "the first PNG-only read must snapshot the encoded bytes without synthesizing TIFF");
     auto content = ScreenshotClipboardContentReader::decode(std::move(*snapshot));
     require(content && hasSamePixels(content->image, imageFixture()) &&
                 content->image.colorSpace() == QColorSpace(QColorSpace::SRgb),
@@ -261,6 +262,28 @@ void snapshotSkipsDerivedBitmapAndRetainsForeignFallback() {
     content = ScreenshotClipboardContentReader::decode(std::move(*foreign));
     require(content && hasSamePixels(content->image, source),
             "a foreign bitmap must survive corrupt PNG and later clipboard replacement");
+}
+
+void tiffSnapshotSurvivesReplacement() {
+    const auto source = imageFixture();
+    const auto image = source.toCGImage();
+    auto* representation = [[[NSBitmapImageRep alloc] initWithCGImage:image] autorelease];
+    CGImageRelease(image);
+    NSPasteboard* board = NSPasteboard.generalPasteboard;
+    [board clearContents];
+    require([board setData:representation.TIFFRepresentation forType:NSPasteboardTypeTIFF],
+            "write an independent TIFF-only clipboard fixture");
+    auto* clipboard = QApplication::clipboard();
+    auto snapshot = ScreenshotClipboardContentReader::snapshotImage(clipboard, 1.0);
+    require(snapshot && !snapshot->nativeTiff.isEmpty() && snapshot->detachedImage.isNull(),
+            "a TIFF-only snapshot must capture the original bytes");
+    const auto tooSmall = [](qint64 bytes) { return bytes <= 32; };
+    require(!ScreenshotClipboardContentReader::snapshotImage(clipboard, 1.0, tooSmall),
+            "a native TIFF snapshot must respect the caller's byte budget");
+    clipboard->clear();
+    auto result = ScreenshotClipboardContentReader::decode(std::move(*snapshot));
+    require(result && hasSamePixels(result->image, source),
+            "a TIFF-only snapshot must preserve pixels after clipboard replacement");
 }
 
 void publicationReleasesEncodedInputs() {
@@ -464,6 +487,7 @@ int main(int argc, char** argv) {
         readForeignPngInFreshProcess();
         finderFileIconDoesNotMaskGif();
         snapshotSkipsDerivedBitmapAndRetainsForeignFallback();
+        tiffSnapshotSurvivesReplacement();
         publicationReleasesEncodedInputs();
         nativeMetadataAndNotifications();
         nativeImageFormatsRoundTrip();

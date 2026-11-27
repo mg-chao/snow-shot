@@ -11518,6 +11518,34 @@ if(WIN32 AND SNOW_SHOT_BUILD_BENCHMARKS)
 endif()
 
 if(APPLE AND SNOW_APPS_BUILD_BENCHMARKS)
+    set_property(SOURCE
+        src/app/main.cpp
+        src/presentation/capture/screenshotcaptureworkflow.cpp
+        src/presentation/capture/screenshotscrollingcapturecontroller.cpp
+        src/presentation/capture/screenshotscrollingpipeline.cpp
+        src/presentation/overlay/screenshotoverlaycoordinator.cpp
+        src/presentation/pinned/screenshotpinnedwindow.cpp
+        src/presentation/pinned/screenshotpintoperfinstrumentation.cpp
+        src/presentation/selection/screenshotselectionexportuiservices.cpp
+        src/presentation/selection/screenshotselectionexportworkflow.cpp
+        src/presentation/services/screenshotclipboardcontent.cpp
+        src/presentation/services/screenshotcontroller.cpp
+        src/presentation/services/screenshotexportservice.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        "$<$<STREQUAL:$<TARGET_PROPERTY:NAME>,snow_shot>:SNOW_SHOT_PIN_PERF_INSTRUMENTATION=1>"
+    )
+    add_executable(snow-shot-pin-to-screen-performance-benchmark
+        tests/screenshot_pin_to_screen_performance_macos.mm
+    )
+    target_compile_options(snow-shot-pin-to-screen-performance-benchmark PRIVATE -fobjc-arc)
+    target_link_libraries(snow-shot-pin-to-screen-performance-benchmark PRIVATE
+        "-framework AppKit"
+        "-framework ApplicationServices"
+        "-framework Carbon"
+        "-framework CoreMedia"
+        "-framework CoreVideo"
+        "-framework ScreenCaptureKit"
+    )
     add_executable(snow-shot-capture-startup-performance-benchmark
         tests/screenshot_capture_startup_performance_benchmark_macos.mm
     )

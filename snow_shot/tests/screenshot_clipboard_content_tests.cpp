@@ -224,6 +224,29 @@ void tiffFilesAndMimeDataPreservePixels() {
                                                        &error),
             "encode a TIFF import fixture with straight alpha");
 
+#ifdef Q_OS_MACOS
+    ScreenshotClipboardContentSnapshot native;
+    native.nativeTiff = bytes;
+    const auto nativeReference = ScreenshotClipboardContentReader::decode(native);
+    const auto rasterOnlyBudget = bytes.size() + pixels.width() * pixels.height() * 8;
+    require(!ScreenshotClipboardContentReader::decode(
+                native, {},
+                [rasterOnlyBudget](qint64 requested) { return requested <= rasterOnlyBudget; }),
+            "native TIFF decode must reserve conversion storage beyond a single raster");
+    QList<qint64> reservations;
+    const auto nativeBudgeted =
+        ScreenshotClipboardContentReader::decode(native, {}, [&reservations](qint64 requested) {
+            reservations.append(requested);
+            return true;
+        });
+    require(reservations.size() >= 2 && reservations.first() == bytes.size() &&
+                reservations.last() > rasterOnlyBudget,
+            "native TIFF decode must account for both retained bytes and conversion storage");
+    require(nativeReference && nativeBudgeted && nativeBudgeted->image == nativeReference->image &&
+                nativeBudgeted->image.colorSpace() == nativeReference->image.colorSpace(),
+            "the budgeted native TIFF conversion must preserve pixels and the color profile");
+#endif
+
     QMimeData mime;
     mime.setData(QStringLiteral("image/tiff"), bytes);
     const auto decoded = ScreenshotClipboardContentReader::readMimeData(&mime, 1.0);
