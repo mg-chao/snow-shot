@@ -2978,7 +2978,21 @@ void boundedPreviewAndNativeRegions() {
             require(samePixels(pipeline::readRegion(regional, region, cancellation, &error),
                                image.copy(region)),
                     "native region readers must bypass full-width row callbacks");
-            const QImage wide = fixture(QSize(3072, 1040));
+            QImage stripes(3072, 105, QImage::Format_RGBA8888);
+            for (int y = 0; y < stripes.height(); ++y) {
+                // Each blue row straddles two preview rows with one-third coverage each.
+                const QColor color = y % 3 == 1 ? QColor(0, 0, 255) : QColor(255, 0, 0, 0);
+                for (int x = 0; x < stripes.width(); ++x)
+                    stripes.setPixelColor(x, y, color);
+            }
+            const auto stripedSource = pipeline::prepare(
+                snow_shot::image_codec::srgbRowSource(stripes), cancellation, &error);
+            QImage expectedPreview(2048, 70, QImage::Format_RGBA8888);
+            expectedPreview.fill(QColor(0, 0, 255, 85));
+            require(samePixels(stripedSource.preview, expectedPreview),
+                    "fit previews must blend fractional row coverage in premultiplied space");
+            QImage wide = fixture(QSize(3072, 1040));
+            wide.setPixelColor(0, 0, QColor(84, 132, 168, 128));
             const auto wideRows = snow_shot::image_codec::srgbRowSource(wide);
             const QRect wideRegion(0, 8, 3072, 1024);
             const QImage wideDetail =
@@ -3011,10 +3025,13 @@ void boundedPreviewAndNativeRegions() {
                 return std::static_pointer_cast<void>(std::make_shared<int>(1));
             };
             const auto scalingSource = pipeline::prepare(scalingRows, cancellation, &error);
-            require(!scalingSource.preview.isNull() && scalingAdmissions->size() == 2 &&
-                        scalingAdmissions->back().second >=
+            require(!scalingSource.preview.isNull() && scalingReads->load() == 0 &&
+                        scalingSource.alphaContent == snow::image::AlphaContent::non_opaque &&
+                        scalingAdmissions->size() == 2 &&
+                        scalingAdmissions->front().first == scalingSource.preview.sizeInBytes() &&
+                        scalingAdmissions->back().second <
                             wide.sizeInBytes() + scalingSource.preview.sizeInBytes(),
-                    "backing preview scaling must admit Qt's complete premultiplied source copy");
+                    "A backed fit preview must detect alpha and scale in bounded scratch space");
             const QSize scalingSize(4097, 1024);
             auto scalingPixels =
                 pipeline::preparePixels(scalingSource, scalingSize, cancellation, &error);

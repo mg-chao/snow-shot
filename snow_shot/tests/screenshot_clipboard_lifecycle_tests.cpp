@@ -485,27 +485,55 @@ void completionCanCancelOtherCommitsAndStartANewBatch() {
 
 #ifndef Q_OS_WIN
 void replacementDuringImagePublicationSupersedesCopy() {
+    QTemporaryDir root;
+    require(root.isValid(), "clipboard cache fixture root must be available");
+    snow_shot::storage::ClipboardFileCache cache(root.path());
+    auto directory = cache.createDirectory(nullptr);
+    require(bool(directory), "clipboard export directory must be available");
+    const auto path = QDir(directory->path()).filePath(QStringLiteral("image.png"));
+    QFile file(path);
+    require(file.open(QIODevice::WriteOnly) && file.write("image") == 5,
+            "clipboard file fixture must be writable");
+    file.close();
+
     auto* clipboard = QApplication::clipboard();
-    const auto id = ScreenshotClipboardService::reservePublication(clipboard);
     QEventLoop loop;
     const QString replacement = QStringLiteral("newer copy");
+    QString copiedPath;
     QObject::connect(
-        clipboard, &QClipboard::dataChanged, &loop, [=] { clipboard->setText(replacement); },
+        clipboard, &QClipboard::dataChanged, &loop,
+        [&] {
+            const auto urls = clipboard->mimeData()->urls();
+            require(urls.size() == 1, "image publication must expose its staged file URL");
+            copiedPath = urls.first().toLocalFile();
+            clipboard->setText(replacement);
+        },
         Qt::SingleShotConnection);
+    const auto id = ScreenshotClipboardService::reservePublication(clipboard);
     QImage image(4, 4, QImage::Format_ARGB32);
     image.fill(Qt::red);
-    bool superseded = false;
-    const auto handle = ScreenshotClipboardService::commit(
-        clipboard, &loop, ScreenshotClipboardService::prepareImage(image), id, [&](auto result) {
-            superseded = result.superseded;
-            loop.quit();
+    bool retained = false;
+    auto payload = ScreenshotClipboardService::withFile(
+        ScreenshotClipboardService::prepareImage(image), path,
+        [directory = std::shared_ptr(std::move(directory)), &retained] {
+            directory->retain();
+            retained = true;
         });
+    bool superseded = false;
+    const auto handle = ScreenshotClipboardService::commit(clipboard, &loop, std::move(payload), id,
+                                                           [&](auto result) {
+                                                               superseded = result.superseded;
+                                                               loop.quit();
+                                                           });
     QTimer::singleShot(2000, &loop, &QEventLoop::quit);
     loop.exec();
     require(handle.isFinished() && superseded &&
                 !ScreenshotClipboardService::publicationCurrent(id) &&
                 clipboard->text() == replacement,
             "a clipboard listener's replacement supersedes copy-and-close before completion");
+    require(retained && copiedPath == path && file.open(QIODevice::ReadOnly) &&
+                file.readAll() == "image",
+            "the observed clipboard file must remain readable after a reentrant replacement");
 }
 
 void clipboardReadersOwnDecodedImages() {
