@@ -69,6 +69,9 @@ std::unique_ptr<NativeWindowCapture> createNativeWindowCapture(const LiveWindowT
 std::unique_ptr<NativeWindowMonitor> createNativeWindowMonitor(const LiveWindowTarget& target);
 std::unique_ptr<NativeWindowPresentation>
 createNativeWindowPresentation(const LiveWindowTarget& target);
+#ifdef SNOW_SHOT_TEST_HOOKS
+qsizetype sharedWindowMonitorCountForTesting();
+#endif
 
 // A fixed source-local rectangle is intersected without changing its destination extent.
 struct CropMapping {

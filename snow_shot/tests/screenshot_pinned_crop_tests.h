@@ -3,7 +3,8 @@
 #include "../src/presentation/pinned/screenshotpinnedcropgeometry.h"
 #include "../src/presentation/pinned/screenshotpinnedgeometrymapping.h"
 #include "snow_shot/presentation/screenshotcanvascolorsampler.h"
-#include <QThreadPool>
+#include <QSemaphore>
+#include <limits>
 
 namespace pinned_crop_tests {
 using Access = ScreenshotPinnedWindowTestAccess;
@@ -964,6 +965,9 @@ void liveConversion() {
             auto setup = live_pinned_tests::config(source);
             setup.initialShadowVisible = true;
             setup.persistenceWriter = [&](const auto& record) { persisted = record; };
+            setup.replacementPersistenceWriter = [](const auto&) {
+                return ScreenshotPinnedWindow::ReplacementPersistenceResult::Failed;
+            };
             live_pinned_tests::present(window, setup);
             require(Access::crop(window, {20, 10, 60, 40}), "live conversion crop fixture");
             if (cropState != 0)
@@ -1089,38 +1093,74 @@ void liveConversionEndsCropInteraction() {
     }
 }
 
-void liveConversionDiscardsPendingCrop() {
+void queuedCropReleasesOnCloseAndReplacement() {
+    ScreenshotPinnedWindow closing;
+    Access::prepareReplacement(closing, config());
+    closing.setAttribute(Qt::WA_DeleteOnClose, false);
+    require(Access::crop(closing, {110, 210, 30, 20}), "pending apply close fixture");
+
+    ScreenshotPinnedWindow replacing;
+    Access::prepareReplacement(replacing, config());
+    require(Access::crop(replacing, {110, 210, 30, 20}), "pending apply replacement fixture");
+    QTemporaryDir directory;
+    require(directory.isValid(), "crop replacement fixture directory");
+    QImage replacement(100, 80, QImage::Format_ARGB32_Premultiplied);
+    replacement.fill(Qt::green);
+    const QString replacementPath = directory.filePath(QStringLiteral("replacement.png"));
+    require(replacement.save(replacementPath), "save crop replacement fixture");
+
     auto source = patternedLiveSource();
-    ScreenshotPinnedWindow window;
-    live_pinned_tests::present(window, live_pinned_tests::config(source));
-    require(Access::crop(window, {20, 10, 60, 40}), "pending apply conversion fixture");
-    const QImage expected = exportImage(window, LiveAccess::artifact(window, false));
-    auto* pool = QThreadPool::globalInstance();
-    const int workers = pool->maxThreadCount();
-    pool->setMaxThreadCount(1);
+    ScreenshotPinnedWindow converting;
+    live_pinned_tests::present(converting, live_pinned_tests::config(source));
+    require(Access::crop(converting, {20, 10, 60, 40}), "pending apply conversion fixture");
+    const QImage expected = exportImage(converting, LiveAccess::artifact(converting, false));
+    auto& coordinator = ScreenshotExportCoordinator::shared();
+    translation_tests::waitUntil(
+        [&] { return coordinator.pendingJobCount() == 0 && coordinator.activeWorkingBytes() == 0; },
+        "finish prior export work before blocking crop preparation");
+    QObject blockerOwner;
     const auto started = std::make_shared<QSemaphore>();
     const auto release = std::make_shared<QSemaphore>();
-    const auto restoreWorkers = qScopeGuard([&] {
-        release->release();
-        pool->setMaxThreadCount(workers);
-    });
-    pool->start([started, release] {
-        started->release();
-        release->acquire();
-    });
-    require(started->tryAcquire(1, 5000), "hold crop preparation until after conversion");
-    Access::startApplyCrop(window);
-    require(Access::cropApplying(window), "crop preparation remains pending");
-    LiveAccess::convert(window);
-    translation_tests::waitUntil([&] { return !window.isLiveWindow(); },
-                                 "conversion installs its independently prepared snapshot");
+    const auto releaseWorker = qScopeGuard([release] { release->release(); });
+    const auto blocker = coordinator.submit(
+        &blockerOwner, ScreenshotExportCoordinator::Priority::Foreground,
+        [started, release](const ScreenshotExportCancellation&) {
+            started->release();
+            release->acquire();
+            return ScreenshotExportTaskResult{};
+        },
+        [](const ScreenshotExportTaskResult&) {}, std::numeric_limits<qint64>::max());
+    require(blocker.isValid() && started->tryAcquire(1, 5000),
+            "reserve the export budget before starting crop preparation");
+    for (auto* window : {&closing, &replacing, &converting}) {
+        Access::startApplyCrop(*window);
+        require(Access::cropApplying(*window), "crop preparation remains queued");
+    }
+    require(coordinator.pendingJobCount() == 4, "three crops share bounded export admission");
+    require(closing.close() && !Access::cropApplying(closing) && coordinator.pendingJobCount() == 3,
+            "close drops queued crop resources while the worker remains blocked");
+    Access::loadFiles(replacing, {replacementPath});
+    require(!Access::cropApplying(replacing) && Access::replacementPending(replacing) &&
+                coordinator.pendingJobCount() == 3,
+            "content loading replaces its queued crop job");
+    // Complete the independently prepared live snapshot while all crop workers remain queued.
+    Access::finishLiveConversion(converting, expected);
+    require(!converting.isLiveWindow() && !Access::cropApplying(converting) &&
+                coordinator.pendingJobCount() == 2,
+            "live conversion drops the superseded queued crop preparation");
     release->release();
-    translation_tests::waitUntil([&] { return !Access::cropApplying(window); },
-                                 "obsolete crop preparation retires");
-    require(!window.persistenceSnapshot().cropRect && Access::originalImage(window) == expected &&
-                exportImage(window, Access::cropSave(window)) == expected,
+    translation_tests::waitUntil([&] { return !Access::replacementPending(replacing); },
+                                 "new content loads after queued crop cancellation");
+    const auto replacedImage = Access::originalImage(replacing);
+    require(!replacing.persistenceSnapshot().cropRect &&
+                replacedImage.size() == replacement.size() &&
+                replacedImage.pixelColor(0, 0) == Qt::green,
+            "obsolete crop work cannot overwrite replaced content");
+    require(!converting.persistenceSnapshot().cropRect &&
+                Access::originalImage(converting) == expected &&
+                exportImage(converting, Access::cropSave(converting)) == expected,
             "pending crop work cannot overwrite the converted source");
-    window.hide();
+    converting.hide();
 }
 
 void restorationAndTransforms() {
@@ -1338,5 +1378,5 @@ void pinnedCropTests() {
     pinned_crop_tests::liveConversion();
     pinned_crop_tests::liveConversionRejectsChangedCrop();
     pinned_crop_tests::liveConversionEndsCropInteraction();
-    pinned_crop_tests::liveConversionDiscardsPendingCrop();
+    pinned_crop_tests::queuedCropReleasesOnCloseAndReplacement();
 }

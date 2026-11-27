@@ -252,15 +252,20 @@ std::unique_ptr<NativeWindowCapture> createNativeWindowCapture(const LiveWindowT
 }
 class FakeNativeMonitor final : public NativeWindowMonitor {
   public:
-    FakeNativeMonitor() {
+    explicit FakeNativeMonitor(quintptr targetId) : m_targetId(targetId) {
         ++activeMonitors;
         ++createdMonitors;
     }
     ~FakeNativeMonitor() override {
         --activeMonitors;
-        notifyNativeState = {};
+        if (m_targetId == 42)
+            notifyNativeState = {};
     }
-    bool initialize(QString*) override {
+    bool initialize(QString* error) override {
+        if (m_targetId != 42) {
+            *error = QStringLiteral("Fake monitor initialization failed");
+            return false;
+        }
         notifyNativeState = [this] {
             if (changed)
                 changed();
@@ -275,6 +280,9 @@ class FakeNativeMonitor final : public NativeWindowMonitor {
                                                   "The selected window is no longer available")
                     : QString()};
     }
+
+  private:
+    quintptr m_targetId;
 };
 class FakeNativePresentation final : public NativeWindowPresentation {
   public:
@@ -304,8 +312,8 @@ class FakeNativePresentation final : public NativeWindowPresentation {
   private:
     bool m_presenting = false;
 };
-std::unique_ptr<NativeWindowMonitor> createNativeWindowMonitor(const LiveWindowTarget&) {
-    return std::make_unique<FakeNativeMonitor>();
+std::unique_ptr<NativeWindowMonitor> createNativeWindowMonitor(const LiveWindowTarget& target) {
+    return std::make_unique<FakeNativeMonitor>(target.nativeId);
 }
 std::unique_ptr<NativeWindowPresentation> createNativeWindowPresentation(const LiveWindowTarget&) {
     return std::make_unique<FakeNativePresentation>();
@@ -463,6 +471,44 @@ void failedInitializationCanRestart() {
     source.reset();
     require(waitFor([&] { return activeStreams == 0; }), "Retry cleanup releases all streams.");
     require(activeMonitors == 0, "Retry cleanup releases its shared monitor.");
+}
+
+void failedMonitorsDoNotAccumulate() {
+    using namespace snow_shot::presentation;
+    using live_window_detail::sharedWindowMonitorCountForTesting;
+    LiveWindowTarget target{42, 7, QRect(100, 200, 100, 80), QPoint(150, 240)};
+    const QRect selection(120, 220, 60, 40);
+    auto source = createLiveWindowSource(target, selection);
+    bool initialized = false;
+    source->initialize([&](bool ok, const QString&) {
+        require(ok, "Initialize the live monitor fixture.");
+        initialized = true;
+    });
+    require(waitFor([&] { return initialized; }), "The live monitor fixture is ready.");
+    require(sharedWindowMonitorCountForTesting() == 1, "One active monitor is cached.");
+
+    const auto failMonitor = [&](quintptr id) {
+        target.nativeId = id;
+        auto failed = createLiveWindowSource(target, selection);
+        int completions = 0;
+        failed->initialize([&](bool ok, const QString& error) {
+            require(!ok && !error.isEmpty(), "Monitor initialization failure is reported.");
+            ++completions;
+        });
+        require(completions == 1, "A failed monitor completes initialization synchronously.");
+    };
+
+    failMonitor(43);
+    require(sharedWindowMonitorCountForTesting() == 1 && activeMonitors == 1,
+            "Failed monitor initialization preserves only the active monitor.");
+    source->shutdown();
+    require(activeMonitors == 0, "Closing the source retires its native monitor.");
+    for (quintptr id = 44; id < 60; ++id) {
+        failMonitor(id);
+        require(sharedWindowMonitorCountForTesting() == 0 && activeMonitors == 0,
+                "Failed targets prune expired monitors without retaining new entries.");
+    }
+    require(waitFor([&] { return activeStreams == 0; }), "The live fixture retires its capture.");
 }
 
 void callbacksMayShutdownTheirSource() {
@@ -686,6 +732,7 @@ int main(int argc, char** argv) {
     callbacksMayShutdownTheirSource();
     shutdownDoesNotWaitForNativeCleanup();
     failedInitializationCanRestart();
+    failedMonitorsDoNotAccumulate();
     nativePresentationAvoidsContinuousReadback();
     return EXIT_SUCCESS;
 }

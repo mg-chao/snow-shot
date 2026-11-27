@@ -285,24 +285,27 @@ class SharedWindowMonitor final : public QObject,
     QTimer m_timer;
 };
 
-std::shared_ptr<SharedWindowMonitor> sharedMonitor(const LiveWindowTarget& target, QString* error) {
+auto& sharedWindowMonitors() {
     // Sources and native observers belong to the GUI thread. Only capture pixels
     // cross into the worker; monitoring is shared independently of presentation.
     static std::map<std::pair<quintptr, qint64>, std::weak_ptr<SharedWindowMonitor>> monitors;
+    return monitors;
+}
+
+std::shared_ptr<SharedWindowMonitor> sharedMonitor(const LiveWindowTarget& target, QString* error) {
+    auto& monitors = sharedWindowMonitors();
+    std::erase_if(monitors, [](const auto& entry) { return entry.second.expired(); });
     const auto key = std::make_pair(target.nativeId, target.processId);
-    auto monitor = monitors[key].lock();
-    if (!monitor || monitor->state().state == LiveWindowState::Closed) {
-        monitor = std::make_shared<SharedWindowMonitor>(target);
-        if (!monitor->initialize(error))
-            return {};
-        monitors[key] = monitor;
+    if (const auto existing = monitors.find(key); existing != monitors.end()) {
+        auto monitor = existing->second.lock();
+        if (monitor && monitor->state().state != LiveWindowState::Closed)
+            return monitor;
     }
-    for (auto iterator = monitors.begin(); iterator != monitors.end();) {
-        if (iterator->second.expired())
-            iterator = monitors.erase(iterator);
-        else
-            ++iterator;
-    }
+
+    auto monitor = std::make_shared<SharedWindowMonitor>(target);
+    if (!monitor->initialize(error))
+        return {};
+    monitors.insert_or_assign(key, monitor);
     return monitor;
 }
 
@@ -965,6 +968,12 @@ class CapturedLiveWindowSource final
     std::shared_ptr<LiveCaptureWorker> m_worker;
 };
 } // namespace
+
+#ifdef SNOW_SHOT_TEST_HOOKS
+qsizetype live_window_detail::sharedWindowMonitorCountForTesting() {
+    return static_cast<qsizetype>(sharedWindowMonitors().size());
+}
+#endif
 
 std::shared_ptr<LiveWindowSource> createLiveWindowSource(const LiveWindowTarget& target,
                                                          const QRect& selection) {
