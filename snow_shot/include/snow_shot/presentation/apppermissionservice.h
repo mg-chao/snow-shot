@@ -75,9 +75,11 @@ class AppPermissionService final : public QObject {
     bool requestPending() const {
         return !m_pending.isEmpty();
     }
-    // Queries current permissions before admitting an action; never prompts.
+    // A settings-row Begin can reuse its press check until an OS refresh is pending.
+    enum class Admission { Fresh, CheckedAtGesturePress };
     bool allow(const AppPermissions& requirements,
-               const std::function<void(const AppPermissions&)>& blocked = {});
+               const std::function<void(const AppPermissions&)>& blocked = {},
+               Admission admission = Admission::Fresh);
     void refresh();
     void refreshNow();
     void request(AppPermission permission);

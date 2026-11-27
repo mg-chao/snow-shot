@@ -1832,7 +1832,27 @@ void initialCaptureSnapshotsScreenshotSettings() {
                 state.restoreOriginalScreenColors && runtime.lastCaptureRequest.captureCursor &&
                 state.captureCursor && displays.cursorVisible,
             "normal capture must honor the enabled cursor setting with smart selection");
-    workflow.startCapture(ScreenshotCaptureWorkflow::StartMode::ExternalDrag);
+    using Workflow = ScreenshotCaptureWorkflow;
+    int waits = 0;
+    const auto startWithWait = [&] {
+        workflow.startCapture(Workflow::StartMode::ExternalDrag,
+                              Workflow::ToolbarPreparation::Prewarm,
+                              Workflow::ToolbarVisibility::ShowAfterSelection,
+                              Workflow::PresentationMode::Visible, [&waits] { ++waits; });
+    };
+    startWithWait();
+    require(!waits && bool(runtime.lastCaptureRequest.beforeAcquisition),
+            "dispatch must transfer the compositor wait without blocking the caller");
+    runtime.lastCaptureRequest.beforeAcquisition();
+    require(waits == 1, "the acquisition worker receives the toolbar fence");
+    const int dispatches = runtime.captureAllAsyncCalls;
+    workflow.setCaptureSuspended(true);
+    startWithWait();
+    require(runtime.captureAllAsyncCalls == dispatches && waits == 1,
+            "a suspended start must drop its compositor wait without dispatch");
+    workflow.setCaptureSuspended(false);
+    workflow.startCapture(Workflow::StartMode::ExternalDrag);
+    require(!runtime.lastCaptureRequest.beforeAcquisition, "a hide fence belongs to one capture");
     require(runtime.lastCaptureRequest.restoreOriginalScreenColors &&
                 runtime.lastCaptureRequest.captureCursor && state.captureCursor,
             "external region drags must also observe the cursor setting");
@@ -2012,6 +2032,8 @@ void externalDragBypassesSelectorAndPreparesBeforeReveal() {
         ScreenshotCaptureWorkflow* active = nullptr;
         int prepared = 0;
         int presented = 0;
+        int hoverPickerSamples = 0;
+        context.presentation.updateColorPicker = [&] { ++hoverPickerSamples; };
         context.presentation.beforeCapturePresented = [&]() {
             require(runtime.showOverlayCalls == 0 && !geometry.isEmpty(),
                     "external selection must prepare against final geometry before reveal");
@@ -2049,6 +2071,7 @@ void externalDragBypassesSelectorAndPreparesBeforeReveal() {
                     runtime.showOverlayCalls == (cancelBeforeReveal ? 0 : 1) &&
                     (cancelBeforeReveal || framePacedReveal),
                 "external capture must present once frame-paced, or stay hidden after cancel");
+        require(hoverPickerSamples == 0, "external reveal uses the drag endpoint for its picker");
         require(runtime.capturedImageShowCalls == 0,
                 "frame-paced external reveals must not take the synchronous reveal path");
         require(runtime.startWorkflowRefreshCalls == 0,

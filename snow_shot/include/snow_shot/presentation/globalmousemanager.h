@@ -4,6 +4,7 @@
 #include "snow_shot/presentation/globalmousegesture.h"
 
 #include <QObject>
+#include <atomic>
 #include <functional>
 #include <memory>
 
@@ -28,6 +29,20 @@ class GlobalMouseBackend {
     virtual void setPermissionRefreshHandler(std::function<void()>) {}
     virtual void requestPermission() {}
     virtual void openPermissionSettings() {}
+    [[nodiscard]] GlobalMouseModifiers heldActivationModifiers() const {
+        return GlobalMouseModifiers::fromInt(m_heldActivation.load(std::memory_order_relaxed));
+    }
+
+  protected:
+    void beginActivationHold(GlobalMouseModifiers modifiers) {
+        m_heldActivation.store(modifiers.toInt(), std::memory_order_relaxed);
+    }
+    void retainActivationHold(GlobalMouseModifiers modifiers) {
+        m_heldActivation.fetch_and(modifiers.toInt(), std::memory_order_relaxed);
+    }
+
+  private:
+    std::atomic<GlobalMouseModifiers::Int> m_heldActivation{0};
 };
 
 [[nodiscard]] std::unique_ptr<GlobalMouseBackend> createGlobalMouseBackend();
@@ -47,6 +62,8 @@ class GlobalMouseManager final : public QObject {
     void setFocusedFullscreenSuppressionActive(bool active);
     void setCaptureAvailable(bool available);
     void cancelGesture(quint64 id);
+    [[nodiscard]] Qt::KeyboardModifiers heldActivationModifiers() const;
+    void deliverPendingDrag(quint64 id, bool includeTerminal = false);
     void beginButtonDrag(settings::SettingsGlobalMouseAction action);
     [[nodiscard]] GlobalMousePermissionState permissionState() const;
     void refreshPermission();
@@ -58,6 +75,7 @@ class GlobalMouseManager final : public QObject {
     void globalMouseEnabledChanged(bool enabled);
     void permissionRefreshRequested();
     void dragEvent(const snow_shot::presentation::GlobalMouseDragEvent& event);
+    void dragUpdatePending(quint64 id, const QPointF& position);
     void operationFailed(const QString& message);
     void permissionStateChanged(snow_shot::presentation::GlobalMousePermissionState state);
 

@@ -22,6 +22,8 @@ class FloatingToolbarController final : public QObject {
     void refreshConfiguration();
     // Each producer owns a stable key. Restoring is deferred so capture-to-recording
     // transitions and overlapping acquisitions cannot briefly show the desktop surface.
+    // The caller runs the returned compositor wait before acquiring desktop pixels.
+    [[nodiscard]] std::function<void()> beginCaptureActivity(const QString& source);
     void setCaptureActive(const QString& source, bool active);
     void shutdown();
     [[nodiscard]] bool ownsIdleSurface(const QWidget* widget) const;

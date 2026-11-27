@@ -4,6 +4,9 @@
 #include "snow_shot/platform/macos/screenshotbackgroundwindowguard.h"
 #include <QObject>
 #include <QTimer>
+#include <QThreadPool>
+#include <chrono>
+#include <future>
 #include <functional>
 #include <memory>
 #include <utility>
@@ -12,12 +15,37 @@ class QWidget;
 
 namespace snow_shot::platform::macos {
 
+// A packaged task owns its native query. Retiring a target or restoring before the
+// answer arrives must never join the worker on the GUI thread.
+template <typename Details> class ScreenshotFocusSnapshot {
+  public:
+    template <typename Query> void capture(bool asynchronous, Query query) {
+        std::packaged_task<Details()> task(std::move(query));
+        m_pending = task.get_future();
+        if (asynchronous)
+            QThreadPool::globalInstance()->start([task = std::move(task)]() mutable { task(); });
+        else
+            task();
+    }
+
+    Details takeReady() {
+        if (m_pending.valid() &&
+            m_pending.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+            return m_pending.get();
+        return {};
+    }
+
+  private:
+    std::future<Details> m_pending;
+};
+
 // Native identities remain owned by the target, never by an asynchronous export.
 class ScreenshotFocusTarget {
   public:
     virtual ~ScreenshotFocusTarget() = default;
     [[nodiscard]] virtual bool canRestore() const = 0;
     virtual void restore() = 0;
+    virtual void captureDetails(bool) {}
     [[nodiscard]] virtual bool isExternalApplication() const {
         return false;
     }
@@ -32,11 +60,13 @@ class ScreenshotSessionFocus final : public QObject {
         : m_capture(std::move(capture)), m_background(std::move(background)) {}
 
     // Prepare before dismissing input blockers; a rejected start must abandon this candidate.
-    void prepare() {
+    void prepare(bool asynchronousDetails = false) {
         if (!m_active) {
             resetFocus();
             m_prepared = true;
             m_target = m_capture();
+            if (m_target)
+                m_target->captureDetails(asynchronousDetails);
             if (m_background)
                 m_background->prepare(m_target && m_target->isExternalApplication());
         }

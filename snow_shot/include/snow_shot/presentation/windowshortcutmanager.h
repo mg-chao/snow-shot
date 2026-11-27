@@ -92,6 +92,12 @@ class WindowShortcutManager final : public QObject {
     [[nodiscard]] bool setKeyCombinations(BindingHandle handle,
                                           const QList<QKeyCombination>& keyCombinations);
     [[nodiscard]] bool removeBinding(BindingHandle handle);
+    using HeldKeyQuery = std::function<bool(const shortcuts::ShortcutBinding&)>;
+    // Adopt only this held action when focus arrives after its physical press.
+    void reconcileHeldBinding(BindingHandle handle, QWidget* receiver,
+                              Qt::KeyboardModifiers modifiers,
+                              Qt::KeyboardModifiers activationModifiers,
+                              const HeldKeyQuery& held = {});
 
     [[nodiscard]] static QList<QKeyCombination>
     keyCombinationsFromBindings(const shortcuts::ShortcutBindingList& shortcuts);

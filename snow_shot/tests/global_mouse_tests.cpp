@@ -9,8 +9,6 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QTemporaryDir>
-#include <QTimer>
-#include <QThread>
 #include <array>
 #include <atomic>
 #include <cstdlib>
@@ -165,6 +163,8 @@ void multipleKeysMustBeHeldTogetherOnlyAtActivation() {
 void directButtonDragPreservesQtInputAndLatchesAction() {
     GlobalMouseGesture gesture;
     const auto begin = gesture.beginButtonDrag(Action::ScreenshotOcr, {-20, 30});
+    require(begin.event && begin.event->fromSettingsButton,
+            "direct presses carry their admission origin");
     require(begin.event && !begin.consumed && begin.activationModifiers == GlobalMouseModifiers{} &&
                 begin.event->action == Action::ScreenshotOcr &&
                 begin.event->position == QPoint(-20, 30),
@@ -258,28 +258,6 @@ void selectionRetainsThePhysicalAnchorUntilReady() {
     drag.setReady();
     require(!drag.active() && !drag.update(42, {0, 0}, true),
             "cancelled sessions cannot be revived");
-}
-
-void revealRefreshCatchesUpToLiveCursorOnlyWhileDragging() {
-    ScreenshotGlobalMouseDrag drag;
-    drag.begin(7, {100, 100});
-    require(drag.update(7, {200, 200}) && !drag.ready(),
-            "a pending drag must buffer paced movement before readiness");
-    drag.setReady();
-    drag.refreshEndFromLivePosition(QPoint(319, 407));
-    require(drag.start() == QPoint(100, 100) && drag.end() == QPoint(319, 407) && !drag.released(),
-            "activation must adopt the live cursor instead of the last paced event");
-    drag.refreshEndFromLivePosition(std::nullopt);
-    require(drag.end() == QPoint(319, 407),
-            "an unavailable cursor position must keep the buffered end point");
-    require(drag.update(7, {400, 400}, true), "a release after activation must buffer normally");
-    drag.refreshEndFromLivePosition(QPoint(900, 900));
-    require(drag.end() == QPoint(400, 400) && drag.released(),
-            "a buffered release must never be overridden by the live cursor");
-    ScreenshotGlobalMouseDrag inactive;
-    inactive.refreshEndFromLivePosition(QPoint(5, 5));
-    require(!inactive.active() && inactive.end() == QPoint(),
-            "a reset drag must ignore live-cursor refreshes");
 }
 
 class FakeBackend final : public GlobalMouseBackend {
@@ -641,75 +619,73 @@ void managerPacesSustainedMovementAndDeliversTerminalEventsImmediately() {
         auto* input = backend.get();
         GlobalMouseManager manager(std::move(backend));
         manager.initialize();
-        auto* timer = manager.findChild<QTimer*>(QStringLiteral("globalMouseFrameTimer"));
-        require(timer != nullptr && timer->isSingleShot() && timer->timerType() == Qt::PreciseTimer,
-                "movement pacing must use a single-shot precise frame timer");
         QVector<GlobalMouseDragEvent> delivered;
+        int requests = 0;
         QObject::connect(&manager, &GlobalMouseManager::dragEvent, &manager,
-                         [&delivered](const auto& event) { delivered.push_back(event); });
+                         [&](const auto& event) { delivered.push_back(event); });
+        QObject::connect(&manager, &GlobalMouseManager::dragUpdatePending, &manager,
+                         [&](quint64, QPointF) { ++requests; });
         const auto drain = [&] { QCoreApplication::sendPostedEvents(&manager, QEvent::MetaCall); };
-        const auto deadline = [&] {
-            require(timer->isActive(), "a pending frame must have a deadline");
-            timer->stop();
-            require(QMetaObject::invokeMethod(timer, "timeout", Qt::DirectConnection),
-                    "the deterministic frame deadline must be delivered");
-        };
         input->handler({EventKind::Begin, 1, Action::ScreenshotCopy, {10, 20}});
         drain();
-        require(delivered.size() == 1 && timer->isActive() && timer->interval() > 0,
-                "Begin must arrive immediately and establish presentation pacing");
         for (int frame = 0; frame < 3; ++frame) {
-            for (int i = 0; i < 1000; ++i) {
-                input->handler({EventKind::Update, 1, Action::ScreenshotCopy, QPoint(i, frame)});
+            for (int x = 0; x < 1000; ++x) {
+                input->handler({EventKind::Update, 1, Action::ScreenshotCopy, QPoint(x, frame)});
                 drain();
             }
-            require(delivered.size() == frame + 1,
-                    "interleaved GUI delivery must not let movement bypass the frame deadline");
-            deadline();
-            require(delivered.size() == frame + 2 &&
-                        delivered.back().position == QPoint(999, frame),
-                    "each deadline must present exactly the newest position");
+            require(delivered.size() == frame + 1 && requests == frame + 1,
+                    "an input burst should request exactly one presenter frame");
+            manager.deliverPendingDrag(1);
+            require(delivered.back().position == QPoint(999, frame),
+                    "the display deadline should consume the newest native position");
         }
         input->handler({EventKind::Update, 1, Action::ScreenshotCopy, {1001, 4}});
+        drain();
         input->handler({EventKind::Finish, 1, Action::ScreenshotCopy, {1002, 5}});
+        manager.deliverPendingDrag(1);
         drain();
         require(delivered.size() == 5 && delivered.back().kind == EventKind::Finish &&
-                    delivered.back().position == QPoint(1002, 5) && !timer->isActive(),
-                "Finish must bypass pacing, supersede pending movement, and stop its timer");
-        QMetaObject::invokeMethod(timer, "timeout", Qt::DirectConnection);
-        require(delivered.size() == 5, "a stale deadline must not deliver movement after Finish");
+                    delivered.back().position == QPoint(1002, 5),
+                "release must supersede pending movement and bypass the frame");
         input->handler({EventKind::Cancel, 1, Action::ScreenshotCopy, {}});
         drain();
-        require(delivered.size() == 6 && delivered.back().kind == EventKind::Cancel &&
-                    !timer->isActive(),
-                "a released capture must remain cancellable while preparation is pending");
+        require(delivered.size() == 6 && delivered.back().kind == EventKind::Cancel,
+                "release remains cancellable until the capture acknowledges it");
         manager.cancelGesture(1);
         input->handler({EventKind::Cancel, 1, Action::ScreenshotCopy, {}});
         drain();
-        require(delivered.size() == 6, "acknowledged cancellation must reject stale events");
-        delivered.removeLast();
+        require(delivered.size() == 6, "stale cancellation after acknowledgement");
         input->handler({EventKind::Begin, 2, Action::ScreenshotCopy, {}});
         drain();
         input->handler({EventKind::Update, 2, Action::ScreenshotCopy, {5, 5}});
         input->handler({EventKind::Cancel, 2, Action::ScreenshotCopy, {}});
         drain();
-        require(delivered.size() == 7 && delivered.back().kind == EventKind::Cancel &&
-                    !timer->isActive(),
-                "Cancel must bypass the deadline and suppress its pending movement");
+        require(delivered.size() == 8 && delivered.back().kind == EventKind::Cancel,
+                "cancel must supersede unread movement");
         input->handler({EventKind::Begin, 3, Action::ScreenshotCopy, {}});
         drain();
-        deadline();
-        require(!timer->isActive(), "a stationary pointer must not keep waking the GUI");
-        input->handler({EventKind::Update, 3, Action::ScreenshotCopy, {6, 6}});
-        drain();
-        require(delivered.back().position == QPoint(6, 6) && timer->isActive(),
-                "movement after an idle deadline must resume without an extra frame of delay");
         input->handler({EventKind::Update, 3, Action::ScreenshotCopy, {7, 7}});
         manager.cancelGesture(3);
         drain();
-        require(delivered.back().position == QPoint(6, 6) && !timer->isActive(),
-                "controller cancellation must discard paced movement");
+        manager.deliverPendingDrag(3);
+        require(delivered.back().kind == EventKind::Begin, "cancel must discard unread motion");
 
+        for (const auto kind : {EventKind::Update, EventKind::Finish, EventKind::Cancel}) {
+            input->handler({EventKind::Begin, 10, Action::ScreenshotCopy, {1, 1}});
+            drain();
+            input->handler({EventKind::Update, 10, Action::ScreenshotCopy, {40, 30}});
+            if (kind != EventKind::Update)
+                input->handler({EventKind::Finish, 10, Action::ScreenshotCopy, {42, 32}});
+            if (kind == EventKind::Cancel)
+                input->handler({EventKind::Cancel, 10, Action::ScreenshotCopy, {}});
+            const auto beforeReveal = delivered.size();
+            manager.deliverPendingDrag(10, true);
+            drain();
+            require(delivered.size() == beforeReveal + 1 && delivered.back().kind == kind &&
+                        (kind != EventKind::Finish || delivered.back().position == QPoint(42, 32)),
+                    "reveal must drain the ordered endpoint or cancellation exactly once");
+            manager.cancelGesture(10);
+        }
         const auto oldHandler = input->handler;
         const auto oldFailure = input->failure;
         int failures = 0;
@@ -736,59 +712,27 @@ void managerPacesSustainedMovementAndDeliversTerminalEventsImmediately() {
         input->handler({EventKind::Begin, 6, Action::ScreenshotCopy, {}});
         input->handler({EventKind::Finish, 6, Action::ScreenshotCopy, {20, 20}});
         drain();
-        require(delivered.back().id == 6 && delivered.back().kind == EventKind::Cancel &&
-                    !timer->isActive(),
-                "reentrant restart must stop delivery of the old batch and its timer");
-
+        require(delivered.back().id == 6 && delivered.back().kind == EventKind::Cancel,
+                "reentrant restart must stop delivery of the old gesture");
         input->handler({EventKind::Begin, 7, Action::ScreenshotCopy, {}});
         drain();
-        input->handler({EventKind::Finish, 7, Action::ScreenshotCopy, {1, 1}});
-        input->handler({EventKind::Begin, 8, Action::ScreenshotCopy, {2, 2}});
-        deadline();
-        const auto beforeStaleWake = delivered.size();
-        input->handler({EventKind::Update, 8, Action::ScreenshotCopy, {3, 3}});
+        input->handler({EventKind::Update, 7, Action::ScreenshotCopy, {1, 1}});
+        manager.deliverPendingDrag(7);
+        const int beforeWake = requests;
         drain();
-        require(delivered.size() == beforeStaleWake,
-                "a queued wake overtaken by the timer must not present new movement early");
-        deadline();
-        require(delivered.size() == beforeStaleWake + 1 &&
-                    delivered.back().position == QPoint(3, 3),
-                "movement deferred by a stale wake must arrive at the next deadline");
-        input->handler({EventKind::Finish, 8, Action::ScreenshotCopy, {4, 4}});
+        require(requests == beforeWake && delivered.back().position == QPoint(1, 1),
+                "sampling before the queued wake must retire that wake");
+        input->handler({EventKind::Finish, 7, Action::ScreenshotCopy, {4, 4}});
         drain();
-        const auto completedCount = delivered.size();
-        input->handler({EventKind::Update, 8, Action::ScreenshotCopy, {5, 5}});
+        const auto countAfterRelease = delivered.size();
+        input->handler({EventKind::Update, 7, Action::ScreenshotCopy, {5, 5}});
         drain();
-        require(delivered.size() == completedCount && !timer->isActive(),
-                "released captures must reject movement while remaining cancellable");
-        input->handler({EventKind::Cancel, 8, Action::ScreenshotCopy, {}});
-        manager.cancelGesture(8);
+        manager.deliverPendingDrag(7);
+        input->handler({EventKind::Cancel, 7, Action::ScreenshotCopy, {}});
+        manager.cancelGesture(7);
         drain();
-        require(delivered.size() == completedCount && !timer->isActive(),
-                "completion acknowledgement must discard queued cancellation after release");
-
-        int frameBudget = 0;
-        const auto slowSubscriber = QObject::connect(
-            &manager, &GlobalMouseManager::dragEvent, &manager, [&](const auto& event) {
-                if (event.id == 9) {
-                    if (event.kind == EventKind::Begin) {
-                        frameBudget = timer->interval();
-                    }
-                    // Force an overrun without depending on machine speed or timer delivery.
-                    QThread::msleep(static_cast<unsigned long>(frameBudget + 20));
-                }
-            });
-        input->handler({EventKind::Begin, 9, Action::ScreenshotCopy, {}});
-        drain();
-        require(timer->isActive() && timer->interval() == 1,
-                "a subscriber exceeding the frame budget must not incur another full interval");
-        input->handler({EventKind::Update, 9, Action::ScreenshotCopy, {10, 10}});
-        deadline();
-        require(timer->isActive() && timer->interval() == 1 &&
-                    delivered.back().position == QPoint(10, 10),
-                "update subscribers must consume the frame budget just like capture startup");
-        QObject::disconnect(slowSubscriber);
-        manager.cancelGesture(9);
+        require(delivered.size() == countAfterRelease && requests == beforeWake,
+                "completed gestures must discard stale movement and cancellation");
     }
     storage.shutdown();
 }
@@ -857,7 +801,6 @@ int main(int argc, char** argv) {
     directButtonDragPreservesQtInputAndLatchesAction();
     suppressionAndCancellationPreserveInputPairs();
     selectionRetainsThePhysicalAnchorUntilReady();
-    revealRefreshCatchesUpToLiveCursorOnlyWhileDragging();
     fullscreenSuppressionRespectsInputScope();
     managerLoadsLiveSettingsAndCoalescesOnlyMovement();
     managerPacesSustainedMovementAndDeliversTerminalEventsImmediately();

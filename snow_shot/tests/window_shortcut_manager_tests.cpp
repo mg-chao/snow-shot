@@ -617,6 +617,63 @@ void dispatchSurvivesBindingRemovalFromCallbacks() {
             "removed binding must stay unregistered on later dispatches");
 }
 
+void canvasFocusAdoptsOnlyConfiguredHeldKeys() {
+    QWidget window;
+    QWidget outside;
+    WindowShortcutManager manager;
+    manager.addScopeWindow(&window);
+    int presses = 0;
+    int releases = 0;
+    int cancellations = 0;
+    auto hold = binding(QStringLiteral("external-move"), Qt::Key_K, 100, [&] {
+        ++presses;
+        return true;
+    });
+    hold.keyCombinations = {QKeyCombination(Qt::ControlModifier, Qt::Key_K)};
+    hold.allowedAdditionalModifiers = Qt::AltModifier;
+    hold.cancel = [&] { ++cancellations; };
+    hold.release = [&](const auto&) {
+        ++releases;
+        return true;
+    };
+    const auto handle = manager.addBinding(&window, std::move(hold));
+    const auto down = [](const auto& shortcut) { return shortcut.portableText == u"Ctrl+K"; };
+    manager.reconcileHeldBinding(handle, &outside, Qt::ControlModifier, Qt::NoModifier, down);
+    manager.reconcileHeldBinding(handle, &window, Qt::NoModifier, Qt::NoModifier, down);
+    manager.reconcileHeldBinding(handle, &window, Qt::ControlModifier, Qt::NoModifier,
+                                 [](const auto&) { return false; });
+    require(!presses, "focus reconciliation must respect scope, chord and physical state");
+    const auto chord = Qt::ControlModifier | Qt::AltModifier;
+    manager.reconcileHeldBinding(handle, &window, chord, Qt::NoModifier, down);
+    manager.reconcileHeldBinding(handle, &window, chord, Qt::NoModifier, down);
+    sendKey(&window, QEvent::KeyPress, Qt::Key_K, chord);
+    require(presses == 1 && sendKey(&outside, QEvent::KeyRelease, Qt::Key_K) && releases == 1,
+            "an adopted hold must ignore duplicate presses and release by trigger key");
+    manager.reconcileHeldBinding(handle, &window, chord, Qt::NoModifier, down);
+    auto suspension = manager.suspendInput();
+    manager.reconcileHeldBinding(handle, &window, chord, Qt::NoModifier, down);
+    require(presses == 2 && cancellations == 1,
+            "interrupted holds must cancel and respect suspension");
+    manager.resumeInput(suspension);
+    auto ratio = binding(QStringLiteral("external-ratio"), Qt::Key_Shift, 100, [&] {
+        ++presses;
+        return true;
+    });
+    ratio.keyCombinations = {QKeyCombination(Qt::ShiftModifier, Qt::Key_Shift)};
+    ratio.cancel = [] {};
+    ratio.release = [&](const auto&) {
+        ++releases;
+        return true;
+    };
+    const auto shift = manager.addBinding(&window, std::move(ratio));
+    manager.reconcileHeldBinding(shift, &window, Qt::ShiftModifier, Qt::ShiftModifier);
+    require(presses == 2,
+            "the original Shift mouse chord must not implicitly constrain a selection");
+    manager.reconcileHeldBinding(shift, &window, Qt::ShiftModifier, Qt::NoModifier);
+    require(presses == 3 && sendKey(&window, QEvent::KeyRelease, Qt::Key_Shift) && releases == 2,
+            "a separately held Shift must constrain until its physical release");
+}
+
 void heldBindingsReleaseByTriggerKey() {
     QWidget window;
     QWidget otherWindow;
@@ -1933,6 +1990,7 @@ int main(int argc, char** argv) {
     textGuardsLeaveInputUntouched();
     readOnlyTextSurfacesRemainCommandRoutable();
     dispatchSurvivesBindingRemovalFromCallbacks();
+    canvasFocusAdoptsOnlyConfiguredHeldKeys();
     heldBindingsReleaseByTriggerKey();
     heldModifierParsingAndAdditionalModifiersAreScoped();
     macPhysicalBindingsSurviveLogicalLayoutChanges();

@@ -188,6 +188,7 @@ class ScreenshotOverlayInputHandler final {
     void beginExternalSelectionDrag(const QPointF& canvasPosition);
     void beginExternalSelectionDrag(const QPointF& start, const QPointF& latestEnd);
     void updateExternalSelectionDrag(const QPointF& canvasPosition);
+    void applyExternalReleasePosition(const QPointF& canvasPosition);
 
     void handleMousePress(ScreenshotOverlayWindow* overlay, const QPointF& localPosition);
     [[nodiscard]] ScreenshotSelectionDragMode

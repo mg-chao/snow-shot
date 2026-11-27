@@ -224,9 +224,11 @@ void verifySettings() {
     require(desktopTools->sections.size() == 2 &&
                 desktopTools->sections.at(0).id == QStringLiteral("tray") &&
                 desktopTools->sections.at(1).id == QStringLiteral("floating-toolbar") &&
-                desktopTools->sections.at(1).items.size() == 3 &&
+                desktopTools->sections.at(1).items.size() == 4 &&
                 desktopTools->sections.at(1).items.at(0).id ==
-                    QStringLiteral("floating-toolbar.enabled"),
+                    QStringLiteral("floating-toolbar.enabled") &&
+                desktopTools->sections.at(1).items.at(1).id ==
+                    QStringLiteral("floating-toolbar.drop-behavior"),
             "the unified floating toolbar section follows the unified tray section");
 }
 void verifyHoverMovementWithoutEnter() {
@@ -369,7 +371,12 @@ void verifyOpacity() {
     expectOpacity(icon, 0.25, "closing the tool group popover restores idle icon opacity");
     expectOpacity(toolbar, 0.25, "closing the tool group popover restores idle toolbar opacity");
     enter(toolbar);
-    controller.setCaptureActive(QStringLiteral("opacity-test"), true);
+    const auto waitForHide = controller.beginCaptureActivity(QStringLiteral("opacity-test"));
+#ifdef Q_OS_WIN
+    require(bool(waitForHide), "a visible desktop toolbar supplies an acquisition fence");
+#endif
+    require(!controller.beginCaptureActivity(QStringLiteral("opacity-test")),
+            "an already hidden toolbar requires no additional wait");
     require(!icon->isVisible() && !toolbar->isVisible(), "capture hides hovered toolbar surfaces");
     expectOpacity(icon, 0.25, "hidden toolbar cannot retain shared hover opacity");
     controller.setCaptureActive(QStringLiteral("opacity-test"), false);

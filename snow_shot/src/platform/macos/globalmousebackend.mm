@@ -216,6 +216,7 @@ class MacOSGlobalMouseBackend final : public QObject, public GlobalMouseBackend 
             const auto result = input.gesture.beginButtonDrag(action, *startPosition);
             if (!result.event)
                 return;
+            beginActivationHold({});
             input.lastPosition = *startPosition;
             emitEvent(result.event);
             if (!api.inputState().buttons.testFlag(Qt::LeftButton)) {
@@ -447,7 +448,12 @@ class MacOSGlobalMouseBackend final : public QObject, public GlobalMouseBackend 
         }
         if (self.stopping || !event)
             return event;
+        const auto priorFlags = self.input.maskedFlags;
         const auto result = self.input.handle(type, event, self.configuration);
+        if (result.event && result.event->kind == GlobalMouseDragEvent::Kind::Begin)
+            self.beginActivationHold(result.activationModifiers);
+        else if (self.input.maskedFlags != priorFlags)
+            self.retainActivationHold(self.input.maskedModifiers());
         self.emitEvent(result.event);
         self.retireIdleTap();
         return result.consumed ? nullptr : event;

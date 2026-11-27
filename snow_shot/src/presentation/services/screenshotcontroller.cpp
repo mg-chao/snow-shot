@@ -313,12 +313,14 @@ struct ScreenshotController::Impl final : public ScreenshotToolbarCommandSink,
     void handleCapturePresented();
     void invalidateDelayedCapture();
     void resetPendingCaptureRequest();
+    [[nodiscard]] std::function<void()> beginSelectionCaptureActivity();
     [[nodiscard]] bool beginCapture(
         PendingSelectionAction action = PendingSelectionAction::None,
         ScreenshotCaptureWorkflow::StartMode mode = ScreenshotCaptureWorkflow::StartMode::Normal);
-    void applyGlobalMouseDrag(bool finishReleased);
+    void prepareGlobalMouseSelection();
+    void updateGlobalMousePointer(const QPointF& canvasPosition);
+    void applyGlobalMouseDrag();
     void finishGlobalMouseDragIfReleased(bool finishReleased);
-    void refreshGlobalMouseDragFromLiveCursor();
     QPointF globalMouseCanvasPosition(const QPointF& point) const;
     void endGlobalMouseDrag();
     void handleSelectionConfirmed();
@@ -631,6 +633,7 @@ struct ScreenshotController::Impl final : public ScreenshotToolbarCommandSink,
     ScreenshotController& owner;
     ScreenshotDeferredPresentation m_deferredPresentation;
     ScreenshotDelayedCapture m_delayedCapture;
+    std::function<std::function<void()>()> m_prepareCaptureAcquisition;
     bool m_capturePreparing = false;
     bool m_shuttingDown = false;
     ScreenshotSelectorCoordinator* m_selectorCoordinator = nullptr;
@@ -744,6 +747,7 @@ struct ScreenshotController::Impl final : public ScreenshotToolbarCommandSink,
     quint64 m_historyPinEpoch = 0;
     PendingSelectionAction m_pendingSelectionAction = PendingSelectionAction::None;
     ScreenshotGlobalMouseDrag m_globalMouseDrag;
+    std::function<Qt::KeyboardModifiers()> m_globalMouseActivationModifiers;
     bool m_pendingOcrFromQuickOcrAction = false;
     bool m_ocrFromQuickOcrAction = false;
     bool m_ocrTranslateAfterRecognition = false;
@@ -1293,8 +1297,15 @@ void ScreenshotController::Impl::createPresentationInfrastructure() {
     m_overlayEventAdapter = std::make_unique<ScreenshotOverlayEventAdapter>();
     m_overlayCoordinator = std::make_unique<ScreenshotOverlayCoordinator>(
         *m_overlayEventAdapter, m_canvasRuntime, *m_windowShortcutManager);
-    QObject::connect(qApp, &QApplication::focusChanged, &owner,
-                     [this](QWidget*, QWidget* nowFocused) { rememberKeyboardOwner(nowFocused); });
+    QObject::connect(qApp, &QApplication::focusChanged, &owner, [this](QWidget*, QWidget* focused) {
+        rememberKeyboardOwner(focused);
+        if (m_globalMouseDrag.ready() && !m_globalMouseDrag.released() && m_keyboardOwnerOverlay &&
+            focused == m_keyboardOwnerOverlay->canvas() && m_keyboardOwnerOverlay->isVisible()) {
+            m_overlayShortcutController->reconcileExternalDragHolds(
+                focused, m_globalMouseActivationModifiers ? m_globalMouseActivationModifiers()
+                                                          : Qt::NoModifier);
+        }
+    });
     m_messages = std::make_unique<ScreenshotMessageService>(
         m_displaySession, m_geometry, m_selection, [this]() {
             return m_overlayCoordinator != nullptr ? m_overlayCoordinator->toolbar() : nullptr;
@@ -1333,6 +1344,10 @@ void ScreenshotController::Impl::createPresentationInfrastructure() {
             [this](const QPointF& canvasPosition) {
                 m_colorPickerController->updateForSelectionDrag(
                     canvasPosition, m_presentationServices->colorPickerContext());
+            },
+            [this] {
+                if (m_globalMouseDrag.ready())
+                    emit owner.globalMouseSampleRequested(m_globalMouseDrag.id(), false);
             },
         });
     QObject::connect(&snow_shot::shortcuts::ShortcutDisplayService::instance(),
@@ -1839,16 +1854,7 @@ void ScreenshotController::Impl::createCaptureWorkflow() {
                 [this]() { m_presentationServices->updateOverlayState(); },
                 [this]() { updateColorPickerAtCurrentCursor(); },
                 [this]() { handleCapturePresented(); },
-                [this]() {
-                    if (m_globalMouseDrag.active()) {
-                        m_globalMouseDrag.setReady();
-                        refreshGlobalMouseDragFromLiveCursor();
-                        m_overlayInputHandler->beginExternalSelectionDrag(
-                            globalMouseCanvasPosition(m_globalMouseDrag.start()),
-                            globalMouseCanvasPosition(m_globalMouseDrag.end()));
-                        finishGlobalMouseDragIfReleased(false);
-                    }
-                },
+                [this]() { prepareGlobalMouseSelection(); },
                 [this]() { m_presentationServices->resetPresentation(); },
             },
             [this]() {
@@ -1974,9 +1980,26 @@ void ScreenshotController::Impl::startHistoryEdit(const QString& recordId) {
     invalidateRecognitionSession();
     m_historyService->resetCaptureNavigation();
     resetGuideVisibilityForSession();
-    emit owner.captureActivityChanged(QStringLiteral("selection"), true);
+    const QPointer<ScreenshotController> lifetime(&owner);
+    auto beforeAcquisition = beginSelectionCaptureActivity();
+    if (!lifetime)
+        return;
     emit owner.captureAvailabilityChanged(false);
-    m_captureWorkflow->startCapture();
+    if (!lifetime)
+        return;
+    using Workflow = ScreenshotCaptureWorkflow;
+    if (m_captureWorkflow->captureSuspended()) {
+        m_pendingHistoryEditRecordId.clear();
+#ifdef Q_OS_MACOS
+        m_sessionFocus->abandonPrepared();
+#endif
+        emit owner.captureActivityChanged(QStringLiteral("selection"), false);
+        return;
+    }
+    m_captureWorkflow->startCapture(
+        Workflow::StartMode::Normal, Workflow::ToolbarPreparation::Prewarm,
+        Workflow::ToolbarVisibility::ShowAfterSelection, Workflow::PresentationMode::Visible,
+        std::move(beforeAcquisition));
 }
 
 void ScreenshotController::Impl::handleCapturePresented() {
@@ -2052,7 +2075,7 @@ void ScreenshotController::Impl::handleCapturePresented() {
     }
 
     if (m_globalMouseDrag.active()) {
-        applyGlobalMouseDrag(true);
+        finishGlobalMouseDragIfReleased(true);
         return;
     }
     if (ensureExportFeature() && m_selectionExportUiServices != nullptr) {
@@ -2179,7 +2202,9 @@ void ScreenshotController::Impl::createOverlayInputPipeline() {
             m_presentationServices->updatePointerPresentation(overlay, localPosition);
         },
         [this](const QPointF& virtualPosition) {
-            m_presentationServices->requestSelectionDragColorPickerPresentation(virtualPosition);
+            if (!m_globalMouseDrag.released())
+                m_presentationServices->requestSelectionDragColorPickerPresentation(
+                    virtualPosition);
         },
         [this]() {
             m_presentationServices->flushColorPickerPresentation();
@@ -2302,7 +2327,8 @@ void ScreenshotController::Impl::createOverlayInputPipeline() {
         *m_overlayInputHandler,
         [this]() { m_presentationServices->raiseToolbarForCanvasInteraction(); },
         [this](ScreenshotOverlayWindow* overlay, const QPointF& position) {
-            m_presentationServices->updatePointerPresentation(overlay, position);
+            if (!m_globalMouseDrag.active())
+                m_presentationServices->updatePointerPresentation(overlay, position);
         });
 }
 
@@ -6277,31 +6303,41 @@ QPointF ScreenshotController::Impl::globalMouseCanvasPosition(const QPointF& poi
     return m_geometry.canvasPositionForPhysicalPoint(m_displaySession, physical);
 }
 
-void ScreenshotController::Impl::refreshGlobalMouseDragFromLiveCursor() {
-    if (m_globalMouseDrag.coordinateSpace() ==
-        snow_shot::presentation::GlobalMouseCoordinateSpace::DesktopPoints) {
-        m_globalMouseDrag.refreshEndFromLivePosition(QCursor::pos());
+void ScreenshotController::Impl::prepareGlobalMouseSelection() {
+    const auto id = m_globalMouseDrag.id();
+    if (!id)
         return;
+    const QPointer<ScreenshotController> lifetime(&owner);
+    emit owner.globalMouseSampleRequested(id, true);
+    if (!lifetime || m_globalMouseDrag.id() != id)
+        return;
+    m_globalMouseDrag.setReady();
+    const QPointF end = globalMouseCanvasPosition(m_globalMouseDrag.end());
+    updateGlobalMousePointer(end);
+    m_overlayInputHandler->beginExternalSelectionDrag(
+        globalMouseCanvasPosition(m_globalMouseDrag.start()), end);
+    if (lifetime && m_globalMouseDrag.id() == id) {
+        const bool directExport = m_pendingSelectionAction == PendingSelectionAction::Copy ||
+                                  m_pendingSelectionAction == PendingSelectionAction::Pin ||
+                                  m_pendingSelectionAction == PendingSelectionAction::QuickSave;
+        finishGlobalMouseDragIfReleased(directExport);
     }
-    // Reveal work delays paced drag deliveries, leaving the buffered end point
-    // behind the cursor. Refresh it once from the live cursor so the first
-    // presented selection frame is current instead of catching up later.
-    std::optional<QPoint> position;
-    if (m_physicalCursor != nullptr && m_physicalCursor->isSupported()) {
-        position = m_physicalCursor->position();
-    }
-    if (!position.has_value() && !m_geometry.isEmpty()) {
-        position = m_geometry.physicalPositionForLogicalPoint(m_displaySession, QCursor::pos());
-    }
-    m_globalMouseDrag.refreshEndFromLivePosition(position);
 }
 
-void ScreenshotController::Impl::applyGlobalMouseDrag(bool finishReleased) {
-    if (!m_globalMouseDrag.active() || !m_globalMouseDrag.ready())
-        return;
+void ScreenshotController::Impl::updateGlobalMousePointer(const QPointF& end) {
+    if (const auto* display = m_geometry.displayForCanvasPoint(m_displaySession, end)) {
+        if (auto* overlay = m_displaySession.overlayForDisplay(display)) {
+            const QPointF local = m_geometry.logicalPositionForCanvasPoint(*display, end) -
+                                  overlay->captureGeometry().topLeft();
+            m_presentationServices->updatePointerPresentation(overlay, local);
+        }
+    }
+}
+
+void ScreenshotController::Impl::applyGlobalMouseDrag() {
     const QPointF end = globalMouseCanvasPosition(m_globalMouseDrag.end());
+    updateGlobalMousePointer(end);
     m_overlayInputHandler->updateExternalSelectionDrag(end);
-    finishGlobalMouseDragIfReleased(finishReleased);
 }
 
 void ScreenshotController::Impl::finishGlobalMouseDragIfReleased(bool finishReleased) {
@@ -6312,9 +6348,12 @@ void ScreenshotController::Impl::finishGlobalMouseDragIfReleased(bool finishRele
         return;
     }
     if (finishReleased) {
+        const QPointer<ScreenshotController> lifetime(&owner);
+        const quint64 session = m_captureState.sessionId;
         m_interaction.finishDrag();
         endGlobalMouseDrag();
-        m_overlayInputHandler->confirmSelection();
+        if (lifetime && m_captureState.sessionId == session && !m_interaction.inactive())
+            m_overlayInputHandler->confirmSelection();
     }
 }
 
@@ -6350,6 +6389,15 @@ bool ScreenshotController::Impl::canBeginCapture(bool includeCaptureSuspension,
     return m_captureWorkflow != nullptr;
 }
 
+std::function<void()> ScreenshotController::Impl::beginSelectionCaptureActivity() {
+    const QPointer<ScreenshotController> lifetime(&owner);
+    const auto prepare = m_prepareCaptureAcquisition;
+    auto beforeAcquisition = prepare ? prepare() : std::function<void()>{};
+    if (lifetime)
+        emit owner.captureActivityChanged(QStringLiteral("selection"), true);
+    return beforeAcquisition;
+}
+
 bool ScreenshotController::Impl::beginCapture(PendingSelectionAction action,
                                               ScreenshotCaptureWorkflow::StartMode mode) {
     if (!canBeginCapture())
@@ -6367,7 +6415,7 @@ bool ScreenshotController::Impl::beginCapture(PendingSelectionAction action,
     });
 #ifdef Q_OS_MACOS
     if (m_mcpOptions.value(QStringLiteral("presentation")).toString() != QStringLiteral("silent"))
-        m_sessionFocus->prepare();
+        m_sessionFocus->prepare(mode == ScreenshotCaptureWorkflow::StartMode::ExternalDrag);
 #endif
     if (!snow_shot::presentation::prepareCaptureInput() || !lifetime ||
         !canBeginCapture(true, false)) {
@@ -6398,7 +6446,7 @@ bool ScreenshotController::Impl::beginCapture(PendingSelectionAction action,
         m_historyService->resetCaptureNavigation();
     }
     resetGuideVisibilityForSession();
-    emit owner.captureActivityChanged(QStringLiteral("selection"), true);
+    auto beforeAcquisition = beginSelectionCaptureActivity();
     if (!lifetime)
         return false;
     emit owner.captureAvailabilityChanged(false);
@@ -6426,7 +6474,8 @@ bool ScreenshotController::Impl::beginCapture(PendingSelectionAction action,
                              : ToolbarVisibility::Suppressed),
         m_mcpOptions.value(QStringLiteral("presentation")).toString() == QStringLiteral("silent")
             ? ScreenshotCaptureWorkflow::PresentationMode::Silent
-            : ScreenshotCaptureWorkflow::PresentationMode::Visible);
+            : ScreenshotCaptureWorkflow::PresentationMode::Visible,
+        std::move(beforeAcquisition));
     return true;
 }
 
@@ -6767,6 +6816,11 @@ void ScreenshotController::releaseCaptureBackgroundWindow() {
 }
 #endif
 
+void ScreenshotController::setPrepareCaptureAcquisition(
+    std::function<std::function<void()>()> prepare) {
+    m_impl->m_prepareCaptureAcquisition = std::move(prepare);
+}
+
 void ScreenshotController::setCaptureSuspended(bool suspended) {
     if (!m_impl->m_captureWorkflow || m_impl->m_captureWorkflow->captureSuspended() == suspended)
         return;
@@ -6859,15 +6913,33 @@ bool ScreenshotController::beginGlobalMouseCapture(
     return true;
 }
 
+void ScreenshotController::setGlobalMouseActivationModifiersQuery(
+    std::function<Qt::KeyboardModifiers()> query) {
+    m_impl->m_globalMouseActivationModifiers = std::move(query);
+}
+
+void ScreenshotController::requestGlobalMouseFrame(quint64 gestureId, const QPointF& position) {
+    if (m_impl->m_globalMouseDrag.id() != gestureId || !m_impl->m_globalMouseDrag.ready())
+        return;
+    const auto* display = m_impl->m_geometry.displayForCanvasPoint(
+        m_impl->m_displaySession, m_impl->globalMouseCanvasPosition(position));
+    m_impl->m_presentationServices->requestExternalDragFrame(display ? display->screen.data()
+                                                                     : nullptr);
+}
+
 void ScreenshotController::updateGlobalMouseCapture(quint64 gestureId, const QPointF& position) {
-    if (m_impl->m_globalMouseDrag.update(gestureId, position)) {
-        m_impl->applyGlobalMouseDrag(true);
-    }
+    auto& drag = m_impl->m_globalMouseDrag;
+    if (drag.end() != position && drag.update(gestureId, position) && drag.ready())
+        m_impl->applyGlobalMouseDrag();
 }
 
 void ScreenshotController::finishGlobalMouseCapture(quint64 gestureId, const QPointF& position) {
-    if (m_impl->m_globalMouseDrag.update(gestureId, position, true)) {
-        m_impl->applyGlobalMouseDrag(true);
+    auto& drag = m_impl->m_globalMouseDrag;
+    if (drag.update(gestureId, position, true) && drag.ready()) {
+        const QPointF end = m_impl->globalMouseCanvasPosition(position);
+        m_impl->updateGlobalMousePointer(end);
+        m_impl->m_overlayInputHandler->applyExternalReleasePosition(end);
+        m_impl->finishGlobalMouseDragIfReleased(true);
     }
 }
 
@@ -7272,6 +7344,20 @@ void ScreenshotControllerTestAccess::setQrRecognition(
     controller.m_impl->m_qrRecognition = std::move(recognition);
 }
 #endif
+
+void ScreenshotControllerTestAccess::prepareGlobalMouseSelection(
+    ScreenshotController& controller, ScreenshotController::CaptureAction action, quint64 id,
+    const QPointF& start) {
+    auto& state = *controller.m_impl;
+    state.m_interaction.enterOverlayVisible(false);
+    state.m_captureState.sessionState = ScreenshotSessionState::OverlayVisible;
+    state.m_pendingSelectionAction = action;
+    state.m_overlayCoordinator->applyDisplayModels(state.m_displaySession);
+    state.m_presentationServices->updateOverlayState();
+    state.m_globalMouseDrag.begin(id, start);
+    state.m_overlayInputHandler->setExternalDragActive(true);
+    state.prepareGlobalMouseSelection();
+}
 
 void ScreenshotControllerTestAccess::confirmCaptureSelection(
     ScreenshotController& controller, ScreenshotController::CaptureAction action) {

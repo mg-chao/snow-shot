@@ -442,6 +442,12 @@ void ScreenshotOverlayInputHandler::updateExternalSelectionDrag(const QPointF& c
     }
 }
 
+void ScreenshotOverlayInputHandler::applyExternalReleasePosition(const QPointF& canvasPosition) {
+    // Confirmation presents the result. A modifier may have changed since the last mouse move.
+    if (m_externalDragActive && m_context.interaction.dragging())
+        updateSelectionDragState(canvasPosition);
+}
+
 void ScreenshotOverlayInputHandler::beginSelectionDrag(ScreenshotOverlayWindow* overlay,
                                                        const QPointF& virtualPosition,
                                                        ScreenshotSelectionDragMode dragMode,

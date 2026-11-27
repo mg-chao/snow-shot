@@ -1548,6 +1548,96 @@ bool samePixels(const QImage& a, const QImage& b) {
            b.convertToFormat(QImage::Format_ARGB32_Premultiplied);
 }
 
+void earlyGlobalReleaseUsesCapturedPixelsBeforeShowing() {
+    using Action = ScreenshotController::CaptureAction;
+    using Access = ScreenshotControllerTestAccess;
+    QTemporaryDir output;
+    const snow_shot::storage::ScreenshotSettings settings;
+    require(output.isValid() && settings.setImageSaveDirectory(output.path()) &&
+                settings.setAutoSaveFilenameFormat(QStringLiteral("fast-release")) &&
+                settings.setImageFormat(QStringLiteral("png")) &&
+                settings.setHiDpiImageScaling(QStringLiteral("disabled")) &&
+                settings.setExportTasks(snow_shot::storage::ExportTrigger::ScreenshotPin, {}) &&
+                settings.setExportTasks(snow_shot::storage::ExportTrigger::ScreenshotSave, {}),
+            "fast release tests need isolated lossless image output");
+    struct OverlayShows final : QObject {
+        int count = 0;
+        bool eventFilter(QObject* object, QEvent* event) override {
+            if (event->type() == QEvent::Show && qobject_cast<ScreenshotOverlayWindow*>(object))
+                ++count;
+            return false;
+        }
+    } shows;
+    qApp->installEventFilter(&shows);
+    for (auto action :
+         {Action::Copy, Action::Pin, Action::QuickSave, Action::None, Action::StartVideo}) {
+        ScreenshotController controller;
+        QImage image(48, 48, QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::green);
+        image.setPixelColor(3, 4, Qt::red);
+        image.setPixelColor(20, 15, Qt::blue);
+        image.setColorSpace(QColorSpace::SRgb);
+        const QImage expected = image.copy(QRect(3, 4, 18, 12));
+        Access::prepareSelection(controller, std::move(image), {});
+        int sampled = 0;
+        int finished = 0;
+        QObject observer;
+        QObject::connect(&controller, &ScreenshotController::globalMouseSampleRequested, &observer,
+                         [&](quint64 id, bool includeTerminal) {
+                             require(includeTerminal, "reveal must include the buffered release");
+                             ++sampled;
+                             controller.finishGlobalMouseCapture(id, {20, 15});
+                             controller.updateGlobalMouseCapture(id, {44, 44});
+                         });
+        QObject::connect(&controller, &ScreenshotController::globalMouseCaptureEnded, &observer,
+                         [&](quint64 id) {
+                             require(id == 7 && Access::selection(controller).pixelSelection() ==
+                                                    QRect(3, 4, 18, 12),
+                                     "fast release must commit the exact native rectangle");
+                             ++finished;
+                         });
+        Access::prepareGlobalMouseSelection(controller, action, 7, {3, 4});
+        const bool exports =
+            action == Action::Copy || action == Action::Pin || action == Action::QuickSave;
+        require(sampled == 1 && finished == int(exports) &&
+                    Access::interaction(controller).inactive() == exports,
+                "direct exports must retire capture before reveal while interactive actions wait");
+        if (action == Action::Pin) {
+            waitUntil([] { return visiblePins().size() == 1; },
+                      "fast release must present the pin");
+            require(samePixels(visiblePins().first()->persistenceSnapshot().image, expected),
+                    "the pin must contain the exact released rectangle");
+            closePins();
+        } else if (action == Action::QuickSave) {
+            const auto file = output.filePath(QStringLiteral("fast-release.png"));
+            waitUntil([&] { return samePixels(QImage(file), expected); },
+                      "quick save must write the released pixels");
+        } else if (action == Action::Copy) {
+            require(Access::exportActive(controller),
+                    "copy must schedule publication while hidden");
+        }
+        require(shows.count == 0, "buffered input must be resolved before any overlay is shown");
+    }
+}
+
+void globalReleaseUsesModifiersPressedSinceTheLastMovement() {
+    ScreenshotController controller;
+    QImage image(48, 48, QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::green);
+    ScreenshotControllerTestAccess::prepareSelection(controller, std::move(image), {});
+    QObject::connect(&controller, &ScreenshotController::globalMouseSampleRequested,
+                     [&](quint64 id, bool) { controller.updateGlobalMouseCapture(id, {20, 15}); });
+    ScreenshotControllerTestAccess::prepareGlobalMouseSelection(
+        controller, ScreenshotController::CaptureAction::None, 9, {3, 4});
+    require(ScreenshotControllerTestAccess::overlayInput(controller)
+                .activateKeepSelectionAspectRatioShortcut(false),
+            "the active global marquee must accept its aspect shortcut");
+    controller.finishGlobalMouseCapture(9, {20, 15});
+    require(ScreenshotControllerTestAccess::selection(controller).pixelSelection() ==
+                QRect(3, 4, 18, 18),
+            "releasing at the last sampled pixel must include a newly held aspect shortcut");
+}
+
 #if SNOW_SHOT_ENABLE_TEXT_TRANSLATION
 void captureTranslationImageCopyDetaches(const QString& directory,
                                          [[maybe_unused]] bool clipboardBusy = false) {
@@ -3581,6 +3671,12 @@ int runScreenshotControllerClipboardTests(int argc, char** argv) {
                 settings.setShowBorderByDefault(true) && settings.setShowShadowByDefault(false),
             "clipboard controller settings must be isolated and deterministic");
     static_cast<void>(snow_shot::presentation::styles::ThemeManager::instance());
+    if (application.arguments().contains(QStringLiteral("--global-mouse-release-only"))) {
+        const auto shutdown = qScopeGuard([&] { storage.shutdown(); });
+        earlyGlobalReleaseUsesCapturedPixelsBeforeShowing();
+        globalReleaseUsesModifiersPressedSinceTheLastMovement();
+        return EXIT_SUCCESS;
+    }
     if (application.arguments().contains(QStringLiteral("--export-tasks"))) {
         captureExportCancelsQueuedAutoFilter();
         captureCancellationReleasesNativeDialogs();

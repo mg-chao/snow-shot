@@ -18,9 +18,11 @@
 
 #include <algorithm>
 #include <utility>
-
-#ifdef Q_OS_MACOS
+#ifdef Q_OS_WIN
+#include "../../platform/windows/shortcutvirtualkey.h"
+#elif defined(Q_OS_MACOS)
 #include "../../platform/macos/windowshortcutinput_p.h"
+#include <CoreGraphics/CGEventSource.h>
 #endif
 
 namespace snow_shot::presentation {
@@ -316,6 +318,44 @@ struct WindowShortcutManager::Impl {
         }
         m_unreleasedKeys.unite(m_heldKeys);
         m_heldKeys.clear();
+    }
+
+    bool activatePress(const Candidate& candidate, const ActivationContext& context,
+                       quint64 keyToken, bool recovered = false) {
+        auto* registered = findBinding(candidate.handle);
+        if (!registered || !registered->owner)
+            return false;
+        const auto activate = registered->binding.activate;
+        auto& releaseOwners = applicationKeyState().releaseOwners;
+        const quint64 pressRevision = m_keyStateRevisions.value(keyToken);
+        // Arm before entering client code so a synchronous modal dialog,
+        // deactivation, or physical release can end this hold immediately.
+        const bool armed = registered->binding.release &&
+                           !registered->activeReleaseBindings.contains(candidate.binding);
+        if (armed) {
+            registered->activeReleaseBindings.push_back(candidate.binding);
+            releaseOwners.insert(keyToken, &q);
+        }
+        const QPointer<WindowShortcutManager> guard(&q);
+        const bool activated = activate && activate(context);
+        if (!guard)
+            return true;
+        if (!activated) {
+            registered = findBinding(candidate.handle);
+            if (armed && registered != nullptr) {
+                registered->activeReleaseBindings.removeAll(candidate.binding);
+                releaseOwners.remove(keyToken);
+            }
+            // A declining handler must not consume another manager's recovery
+            // evidence. Do not roll back any newer input/lifecycle transition
+            // that happened reentrantly inside the callback.
+            if (recovered && m_keyStateRevisions.value(keyToken) == pressRevision) {
+                m_heldKeys.remove(keyToken);
+                m_unreleasedKeys.insert(keyToken);
+                ++m_keyStateRevisions[keyToken];
+            }
+        }
+        return activated;
     }
 
     void cancelHeldBindings(bool cancelRelease = true) {
@@ -678,6 +718,62 @@ bool WindowShortcutManager::inputTargetsPopup(const ActivationContext& context) 
     return isPopup(qobject_cast<QWidget*>(context.receiver)) || isPopup(context.focusWidget);
 }
 
+void WindowShortcutManager::reconcileHeldBinding(BindingHandle handle, QWidget* receiver,
+                                                 Qt::KeyboardModifiers modifiers,
+                                                 Qt::KeyboardModifiers activationModifiers,
+                                                 const HeldKeyQuery& held) {
+    const auto* registered = m_impl->findBinding(handle);
+    QWidget* scope = m_impl->scopeForReceiver(receiver);
+    if (!scope || !registered || !registered->owner || !registered->binding.release ||
+        !registered->activeReleaseBindings.isEmpty() || m_impl->inputSuspended() ||
+        m_impl->scopeInputBlocked(scope))
+        return;
+    const ActivationContext context{receiver, receiver, nullptr, scope};
+    const QPointer<WindowShortcutManager> lifetime(this);
+    const auto eligible = registered->binding.canActivate;
+    if ((eligible && !eligible(context)) || !lifetime)
+        return;
+    registered = m_impl->findBinding(handle);
+    if (!registered || !registered->owner)
+        return;
+    const auto bindings = registered->binding.shortcutBindings;
+    const auto allowed = registered->binding.allowedAdditionalModifiers;
+    for (const auto& binding : bindings) {
+        const auto identity =
+            shortcuts::effectiveIdentity(binding, shortcuts::ShortcutPolicy::Application);
+        const auto required = identity.modifiers & ~Qt::KeypadModifier;
+        if ((modifiers & required) != required ||
+            (modifiers & ~(required | allowed)) != Qt::NoModifier)
+            continue;
+        const auto token =
+            shortcuts::shortcutKeyToken(binding, shortcuts::ShortcutPolicy::Application);
+        if (applicationKeyState().releaseOwners.value(token))
+            continue;
+        const bool modifierKey = identity.key == Qt::Key_Shift || identity.key == Qt::Key_Alt ||
+                                 identity.key == Qt::Key_Control;
+        if (modifierKey && (required & activationModifiers) != Qt::NoModifier)
+            continue;
+        bool down = false;
+        if (held) {
+            down = held(binding);
+        } else if (modifierKey) {
+            down = required != Qt::NoModifier;
+        } else {
+#ifdef Q_OS_WIN
+            platform::windows::NativeShortcut native;
+            down = platform::windows::parseNativeShortcut(binding, &native) &&
+                   (GetAsyncKeyState(static_cast<int>(native.virtualKey)) & 0x8000) != 0;
+#elif defined(Q_OS_MACOS)
+            if (const auto key = shortcuts::macVirtualKeyForBinding(binding))
+                down = CGEventSourceKeyState(kCGEventSourceStateCombinedSessionState,
+                                             static_cast<CGKeyCode>(*key));
+#endif
+        }
+        if (down && m_impl->activatePress({handle, 0, 0, binding}, context, token))
+            return;
+    }
+}
+
 bool WindowShortcutManager::eventFilter(QObject* watched, QEvent* event) {
     if (event == nullptr) {
         return QObject::eventFilter(watched, event);
@@ -925,36 +1021,7 @@ bool WindowShortcutManager::eventFilter(QObject* watched, QEvent* event) {
             event->accept();
             return true;
         }
-        const quint64 pressRevision = m_impl->m_keyStateRevisions.value(keyToken);
-        // Arm before entering client code so a synchronous modal dialog,
-        // deactivation, or physical release can end this hold immediately.
-        const bool armed = registered->binding.release &&
-                           !registered->activeReleaseBindings.contains(candidate.binding);
-        if (armed) {
-            registered->activeReleaseBindings.push_back(candidate.binding);
-            releaseOwners.insert(keyToken, this);
-        }
-        const QPointer<WindowShortcutManager> guard(this);
-        const bool activated = activate && activate(context);
-        if (!guard) {
-            event->accept();
-            return true;
-        }
-        if (!activated) {
-            registered = m_impl->findBinding(candidate.handle);
-            if (armed && registered != nullptr) {
-                registered->activeReleaseBindings.removeAll(candidate.binding);
-                releaseOwners.remove(keyToken);
-            }
-            // A declining handler must not consume another manager's recovery
-            // evidence. Do not roll back any newer input/lifecycle transition
-            // that happened reentrantly inside the callback.
-            if (recovered && m_impl->m_keyStateRevisions.value(keyToken) == pressRevision) {
-                m_impl->m_heldKeys.remove(keyToken);
-                m_impl->m_unreleasedKeys.insert(keyToken);
-                ++m_impl->m_keyStateRevisions[keyToken];
-            }
-        }
+        const bool activated = m_impl->activatePress(candidate, context, keyToken, recovered);
         if (activated) {
             event->accept();
             return true;

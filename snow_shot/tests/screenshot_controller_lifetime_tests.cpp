@@ -323,26 +323,44 @@ void capturePreparationCannotReplaceWorkCreatedWhileClosingABlocker() {
 }
 
 void capturePreparationRechecksAfterActivityObservers() {
-    int starts = 0;
-    int retires = 0;
-    ScreenshotController controller;
-    QObject::connect(&controller, &ScreenshotController::captureActivityChanged, &controller,
-                     [&](const QString& source, bool active) {
-                         if (source != QStringLiteral("selection"))
-                             return;
-                         if (active) {
-                             ++starts;
-                             controller.setCaptureSuspended(true);
-                         } else {
-                             ++retires;
-                         }
-                     });
-    require(!controller.captureForAction(ScreenshotController::CaptureAction::Copy) &&
-                starts == 1 && retires == 1 && !controller.captureAcquisitionActive(),
+    for (const bool historyEdit : {false, true}) {
+        int starts = 0;
+        int retires = 0;
+        int waits = 0;
+        std::weak_ptr<int> pendingWait;
+        ScreenshotController controller;
+        controller.setPrepareCaptureAcquisition([&] {
+            const auto pending = std::make_shared<int>(1);
+            pendingWait = pending;
+            return [pending, &waits] { waits += *pending; };
+        });
+        QObject::connect(&controller, &ScreenshotController::captureActivityChanged, &controller,
+                         [&](const QString& source, bool active) {
+                             if (source != QStringLiteral("selection"))
+                                 return;
+                             if (active) {
+                                 require(!pendingWait.expired(),
+                                         "activity must follow acquisition preparation");
+                                 ++starts;
+                                 controller.setCaptureSuspended(true);
+                             } else {
+                                 ++retires;
+                             }
+                         });
+        if (historyEdit)
+            controller.editHistoryRecord(QStringLiteral("blocked-history-edit"));
+        else
+            require(!controller.captureForAction(ScreenshotController::CaptureAction::Copy),
+                    "activity observer suspension must decline capture");
+        require(
+            starts == 1 && retires == 1 && !controller.captureAcquisitionActive(),
             "activity observer suspension declines before native dispatch and retires activity");
-    controller.setCaptureSuspended(false);
-    require(controller.captureAvailable(),
-            "activity observer refusal releases the preparation reservation");
+        require(pendingWait.expired() && waits == 0,
+                "the abandoned capture must release its compositor wait without running it");
+        controller.setCaptureSuspended(false);
+        require(controller.captureAvailable(),
+                "activity observer refusal releases the preparation reservation");
+    }
 }
 
 void plainGlobalMouseScreenshotHasNoPendingAction() {

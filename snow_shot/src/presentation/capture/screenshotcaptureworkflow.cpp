@@ -75,7 +75,8 @@ bool ScreenshotCaptureWorkflow::captureSuspended() const {
 
 void ScreenshotCaptureWorkflow::startCapture(StartMode mode, ToolbarPreparation toolbarPreparation,
                                              ToolbarVisibility toolbarVisibility,
-                                             PresentationMode presentation) {
+                                             PresentationMode presentation,
+                                             std::function<void()> beforeAcquisition) {
     if (m_captureSuspended)
         return;
     m_context.captureStarting(presentation == PresentationMode::Visible);
@@ -129,7 +130,7 @@ void ScreenshotCaptureWorkflow::startCapture(StartMode mode, ToolbarPreparation 
         m_context.runtime.createColorPicker(initialCursorGlobalPosition);
     if (m_context.screenshotSoundNotification())
         m_context.playShutterSound();
-    beginCapturePreparation(sessionId);
+    beginCapturePreparation(sessionId, std::move(beforeAcquisition));
 }
 
 bool ScreenshotCaptureWorkflow::startRecapture(const QVector<std::uint32_t>& excludedWindowIds) {
@@ -391,7 +392,8 @@ void ScreenshotCaptureWorkflow::scheduleLayoutRefresh() {
     m_context.runtime.refreshLayoutAsync(m_layoutRevision);
 }
 
-void ScreenshotCaptureWorkflow::beginCapturePreparation(quint64 sessionId) {
+void ScreenshotCaptureWorkflow::beginCapturePreparation(quint64 sessionId,
+                                                        std::function<void()> beforeAcquisition) {
     if (!m_context.runtime.captureWorkerCreated()) {
         m_context.runtime.ensureCaptureWorker();
     }
@@ -418,7 +420,8 @@ void ScreenshotCaptureWorkflow::beginCapturePreparation(quint64 sessionId) {
                                                             m_state.captureCursor,
                                                             ScreenshotCapturePurpose::Initial,
                                                             {},
-                                                            {}});
+                                                            {},
+                                                            std::move(beforeAcquisition)});
     SNOW_SHOT_CAPTURE_PERF_MILESTONE("capture.async_dispatched");
     if (sessionId != m_state.sessionId || !m_state.captureInProgress) {
         return;
@@ -638,7 +641,8 @@ void ScreenshotCaptureWorkflow::showCapturePresentationWhenReady(quint64 session
     SNOW_SHOT_CAPTURE_PERF_MILESTONE("presentation.composited");
     SNOW_SHOT_CAPTURE_PERF_FINISH(true);
     m_startup->phase = ScreenshotStartupContext::Phase::Revealed;
-    if (!m_state.presentationSuppressed && m_context.presentation.updateColorPicker) {
+    if (m_startMode != StartMode::ExternalDrag && !m_state.presentationSuppressed &&
+        m_context.presentation.updateColorPicker) {
         m_context.presentation.updateColorPicker();
     }
     if (sessionId != m_state.sessionId)

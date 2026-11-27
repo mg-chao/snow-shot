@@ -347,8 +347,14 @@ class ApplicationController::Impl {
                                      },
                                      [this, event] { dispatchGlobalMouseEvent(event); },
                                      [this, event] {
-                                         return allowPermissions(presentation::requiredPermissions(
-                                             event.action, permissions.microphoneEnabled()));
+                                         using Admission =
+                                             presentation::AppPermissionService::Admission;
+                                         return allowPermissions(
+                                             presentation::requiredPermissions(
+                                                 event.action, permissions.microphoneEnabled()),
+                                             event.fromSettingsButton
+                                                 ? Admission::CheckedAtGesturePress
+                                                 : Admission::Fresh);
                                      }));
                                  return;
                              }
@@ -1434,11 +1440,13 @@ class ApplicationController::Impl {
 #ifdef Q_OS_MACOS
         permissions.setMicrophoneEnabled(storage::RecordingSettings().microphoneEnabled());
         globalMouseManager.usePermissionSnapshot(false, false);
-        QObject::connect(&permissions, &presentation::AppPermissionService::refreshed, &q, [this] {
+        QObject::connect(&permissions, &presentation::AppPermissionService::changed, &q, [this] {
             const auto& snapshot = permissions.snapshot();
             globalMouseManager.usePermissionSnapshot(
                 snapshot.granted(presentation::AppPermission::InputMonitoring),
                 snapshot.granted(presentation::AppPermission::Accessibility));
+        });
+        QObject::connect(&permissions, &presentation::AppPermissionService::refreshed, &q, [this] {
             const auto missing = permissions.takeStartupMissing();
             if (!missing.isEmpty())
                 ensureMainWindow().showAppPermissions(
@@ -1495,6 +1503,14 @@ class ApplicationController::Impl {
             screenshotController = std::make_unique<ScreenshotController>(
                 &q, &groupManager, ocrRecognition.get(), apiClient());
             screenshotController->setCaptureSuspended(applicationSuspended());
+            screenshotController->setGlobalMouseActivationModifiersQuery(
+                [this] { return globalMouseManager.heldActivationModifiers(); });
+            QObject::connect(
+                &globalMouseManager, &presentation::GlobalMouseManager::dragUpdatePending,
+                screenshotController.get(), &ScreenshotController::requestGlobalMouseFrame);
+            QObject::connect(screenshotController.get(),
+                             &ScreenshotController::globalMouseSampleRequested, &globalMouseManager,
+                             &presentation::GlobalMouseManager::deliverPendingDrag);
 #ifdef Q_OS_MACOS
             screenshotController->setCaptureBackgroundWindow(mainWindow);
 #endif
@@ -1505,9 +1521,15 @@ class ApplicationController::Impl {
             QObject::connect(
                 screenshotController.get(), &ScreenshotController::exportTaskFailed, &systemTray,
                 [this](const QString& message) { systemTray.showCaptureMessage(message, true); });
+            screenshotController->setPrepareCaptureAcquisition([this] {
+                return floatingToolbar.beginCaptureActivity(QStringLiteral("selection"));
+            });
             QObject::connect(screenshotController.get(),
                              &ScreenshotController::captureActivityChanged, &floatingToolbar,
-                             &presentation::FloatingToolbarController::setCaptureActive);
+                             [this](const QString& source, bool active) {
+                                 if (!active || source != u"selection")
+                                     floatingToolbar.setCaptureActive(source, active);
+                             });
 #ifdef Q_OS_MACOS
             screenshotController->setRecordingPermissionCheck([this](bool microphone, bool input,
                                                                      bool notify) {
@@ -1811,12 +1833,19 @@ class ApplicationController::Impl {
         }
     }
 
-    bool allowPermissions(const presentation::AppPermissions& requirements) {
+    bool allowPermissions(const presentation::AppPermissions& requirements,
+                          presentation::AppPermissionService::Admission admission =
+                              presentation::AppPermissionService::Admission::Fresh) {
 #ifdef Q_OS_MACOS
-        return permissions.allow(requirements, [this](const presentation::AppPermissions& missing) {
-            ensureMainWindow().showAppPermissions(presentation::appPermissionId(missing.first()));
-        });
+        return permissions.allow(
+            requirements,
+            [this](const presentation::AppPermissions& missing) {
+                ensureMainWindow().showAppPermissions(
+                    presentation::appPermissionId(missing.first()));
+            },
+            admission);
 #else
+        Q_UNUSED(admission);
         Q_UNUSED(requirements);
 #endif
         return true;

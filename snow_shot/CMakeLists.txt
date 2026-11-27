@@ -901,7 +901,7 @@ target_link_libraries(snow_shot_window_shortcuts PUBLIC Qt6::Widgets PRIVATE Qt6
 target_link_libraries(snow_shot_window_shortcuts PUBLIC snow_shot_shortcuts)
 if(APPLE)
     target_sources(snow_shot_window_shortcuts PRIVATE src/platform/macos/windowshortcutinput.mm)
-    target_link_libraries(snow_shot_window_shortcuts PRIVATE "-framework AppKit")
+    target_link_libraries(snow_shot_window_shortcuts PRIVATE "-framework AppKit" "-framework CoreGraphics")
 endif()
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/SnowShotTranslations.cmake")
@@ -12265,6 +12265,11 @@ if(SNOW_SHOT_BUILD_TESTS)
         LABELS unit SNOW_TEST_CROSS_PLATFORM TRUE TIMEOUT 30
         ENVIRONMENT "${_SNOW_SHOT_OFFSCREEN_QPA_ENVIRONMENT}")
     snow_shot_offscreen_qpa_environment(_snow_controller_clipboard_qpa_environment)
+    add_test(NAME snow-shot-global-mouse-release-tests
+        COMMAND snow_shot --clipboard-pin-tests --global-mouse-release-only -platform offscreen)
+    set_tests_properties(snow-shot-global-mouse-release-tests PROPERTIES
+        LABELS unit SNOW_TEST_CROSS_PLATFORM TRUE TIMEOUT 60
+        ENVIRONMENT "${_snow_controller_clipboard_qpa_environment}")
     add_test(NAME snow-shot-screenshot-ocr-copy-shortcut-tests
         COMMAND snow_shot --clipboard-pin-tests --ocr-copy-shortcut-only -platform offscreen)
     add_test(NAME snow-shot-recognition-result-copy-entry-points-tests

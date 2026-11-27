@@ -99,19 +99,25 @@ AppPermissions AppPermissionService::takeStartupMissing() {
     return startupMissing();
 }
 bool AppPermissionService::allow(const AppPermissions& requirements,
-                                 const std::function<void(const AppPermissions&)>& blocked) {
+                                 const std::function<void(const AppPermissions&)>& blocked,
+                                 Admission admission) {
     if (requirements.isEmpty())
         return true;
     const bool checking = std::find(m_snapshot.statuses.cbegin(), m_snapshot.statuses.cend(),
                                     AppPermissionStatus::Checking) != m_snapshot.statuses.cend();
-    if (!checking && !m_refreshTimer.isActive() && requirements.size() == 1 &&
-        requirements.front() == AppPermission::ScreenRecording) {
-        auto next = m_snapshot;
-        next.statuses[static_cast<size_t>(AppPermission::ScreenRecording)] =
-            m_backend->queryPermission(AppPermission::ScreenRecording);
-        publishSnapshot(next);
-    } else {
+    if (checking || m_refreshTimer.isActive()) {
         refreshNow();
+    } else if (admission == Admission::Fresh) {
+        auto next = m_snapshot;
+        std::array<bool, std::tuple_size_v<decltype(next.statuses)>> queried{};
+        for (const auto permission : requirements) {
+            const auto index = static_cast<size_t>(permission);
+            if (!queried.at(index)) {
+                next.statuses[index] = m_backend->queryPermission(permission);
+                queried[index] = true;
+            }
+        }
+        publishSnapshot(next);
     }
     const auto unavailable = missing(requirements);
     if (unavailable.isEmpty())

@@ -40,6 +40,7 @@ struct MacGlobalMouseInput {
     [[nodiscard]] GlobalMouseInputResult handle(CGEventType type, CGEventRef event,
                                                 const GlobalMouseConfiguration& configuration);
     [[nodiscard]] std::optional<GlobalMouseDragEvent> interrupt();
+    [[nodiscard]] GlobalMouseModifiers maskedModifiers() const;
     void resynchronize(const MacGlobalMouseInputState& state);
     void reset();
 };
