@@ -3,8 +3,6 @@
 
 #include <QPainter>
 #include <QPainterPath>
-#include <QPixmap>
-#include <algorithm>
 
 namespace adqt::widgets {
 
@@ -32,21 +30,6 @@ inline void paintWindowSizeIcon(QPainter& painter, int extent, int stroke, int o
     painter.drawRoundedRect(QRectF(inset, inset, side, side), 1, 1);
   }
   painter.restore();
-}
-
-inline QPixmap windowSizeIconPixmap(bool maximized, const QColor& color, qreal scale) {
-  const int extent = qRound(10 * scale);
-  const int stroke = std::max(1, qRound(scale));
-  QPixmap pixmap(extent, extent);
-  pixmap.fill(Qt::transparent);
-  {
-    QPainter painter(&pixmap);
-    painter.setPen(QPen(color, stroke, Qt::SolidLine, Qt::SquareCap, Qt::MiterJoin));
-    paintWindowSizeIcon(painter, extent, stroke, std::max(stroke + 1, qRound(2 * scale)),
-                        maximized);
-  }
-  pixmap.setDevicePixelRatio(scale);
-  return pixmap;
 }
 
 }  // namespace adqt::widgets

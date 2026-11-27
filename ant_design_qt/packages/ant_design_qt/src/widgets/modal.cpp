@@ -1,9 +1,9 @@
 #include "modal.h"
-#include "window_size_icon.h"
 #include "detail/pointer_region.h"
 #include "detail/native_window_chrome.h"
 
 #include "antd_icons.h"
+#include "icons/widget_icons.h"
 #include "theme/theme.h"
 
 #ifdef Q_OS_MACOS
@@ -3233,28 +3233,17 @@ void AdModal::applyVisualStyle() {
         style.closeButtonBorderColor, style.closeButtonBorderWidth, style.closeButtonRadius);
   };
 
-  applyChromeButton(closeButton_,
-                    outlined_icons::Close(adqt::icons::IconColors::primary(style.closeIconColor)));
-  applyChromeButton(minimizeButton_,
-                    outlined_icons::Minus(adqt::icons::IconColors::primary(style.closeIconColor)));
-  applyChromeButton(
-      maximizeButton_,
-      overlay_->isMaximized()
-          ? outlined_icons::Copy(adqt::icons::IconColors::primary(style.closeIconColor))
-          : outlined_icons::Border(adqt::icons::IconColors::primary(style.closeIconColor)));
+  const auto chromeColors = adqt::icons::IconColors::primary(style.closeIconColor);
+  applyChromeButton(closeButton_, outlined_icons::Close(chromeColors));
+  applyChromeButton(minimizeButton_, outlined_icons::Minus(chromeColors));
+  applyChromeButton(maximizeButton_, overlay_->isMaximized()
+                                         ? icons::outlined::WindowRestore(chromeColors)
+                                         : icons::outlined::WindowMaximize(chromeColors));
   if (maximizeButton_) {
-#ifdef Q_OS_WIN
-    maximizeButton_->setIcon(QIcon(windowSizeIconPixmap(
-        overlay_->isMaximized(), style.closeIconColor, panel_->devicePixelRatioF())));
-    maximizeButton_->setIconSize(QSize(10, 10));
-#endif
     maximizeButton_->setEnabled(windowResizable_ && !acceptButtonBusy_);
   }
-  applyChromeButton(
-      alwaysOnTopButton_,
-      windowAlwaysOnTop_
-          ? filled_icons::Pushpin(adqt::icons::IconColors::primary(style.closeIconColor))
-          : outlined_icons::Pushpin(adqt::icons::IconColors::primary(style.closeIconColor)));
+  applyChromeButton(alwaysOnTopButton_, windowAlwaysOnTop_ ? filled_icons::Pushpin(chromeColors)
+                                                           : outlined_icons::Pushpin(chromeColors));
 
   if (rejectButtonControl_) {
     rejectButtonControl_->setEnabled(!acceptButtonBusy_);

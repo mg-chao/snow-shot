@@ -302,8 +302,8 @@ void everyBuiltInAndWidgetEntryRenders() {
   renderPackEntries(adqt::widgets::icons::pack(), renderer);
   require(adqt::icons::antd::pack().staticPack()->entryCount == 829,
           "the pinned built-in Ant pack should contain exactly 829 upstream entries");
-  require(adqt::widgets::icons::pack().staticPack()->entryCount == 1,
-          "the widget-owned pack should contain only empty-simple");
+  require(adqt::widgets::icons::pack().staticPack()->entryCount == 3,
+          "the widget-owned pack should contain empty-simple and both window size icons");
 }
 
 }  // namespace

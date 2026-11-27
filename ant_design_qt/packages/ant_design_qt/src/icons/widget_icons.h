@@ -10,6 +10,11 @@ const adqt::icons::ExternalIconPack& pack();
 adqt::icons::IconPackRegistrationResult registerWith(adqt::icons::IconRenderer& renderer);
 adqt::icons::IconPackRegistrationResult ensureRegistered();
 
+namespace outlined {
+[[nodiscard]] adqt::icons::IconRef WindowMaximize(const adqt::icons::IconColors& colors = {});
+[[nodiscard]] adqt::icons::IconRef WindowRestore(const adqt::icons::IconColors& colors = {});
+}  // namespace outlined
+
 namespace twotone {
 [[nodiscard]] adqt::icons::IconRef EmptySimple(const adqt::icons::IconColors& colors = {});
 }  // namespace twotone

@@ -30,6 +30,7 @@ extern "C" void NSBeep(void) { ++blockedClickBeeps; }
 
 #include "widgets/modal.h"
 #include "widgets/form.h"
+#include "icons/widget_icons.h"
 
 using adqt::widgets::AdModal;
 
@@ -1748,6 +1749,9 @@ class TstModalWindow : public QObject {
     modal.setWindowMinimizeButtonVisible(true);
     modal.setWindowMaximizeButtonVisible(true);
     modal.setWindowTitle(QStringLiteral("Independent window chrome"));
+    AdModal::ComponentTokens tokens;
+    tokens.closeIconColor = QColor(36, 96, 156);
+    modal.setComponentTokens(tokens);
     auto* content = new QLabel(QStringLiteral("Content"));
     modal.setContentWidget(content);
     QPixmap firstPixmap(16, 16);
@@ -1773,6 +1777,18 @@ class TstModalWindow : public QObject {
     QVERIFY(icon && icon->isVisible() && !icon->pixmap().isNull());
     QVERIFY(maximize && maximize->isVisible() && maximize->isEnabled());
     QVERIFY(minimize && minimize->isVisible());
+    const auto verifyWindowSizeIcon = [maximize, minimize](const adqt::icons::IconRef& glyph) {
+      const QSize size = minimize->iconSize();
+      const qreal ratio = maximize->devicePixelRatioF();
+      const QIcon expected(adqt::icons::renderIconPixmap(glyph, {size, ratio}));
+      QVERIFY(!expected.isNull());
+      QCOMPARE(maximize->iconSize(), size);
+      QCOMPARE(maximize->icon().pixmap(size, ratio).toImage(),
+               expected.pixmap(size, ratio).toImage());
+    };
+    const auto iconColors = adqt::icons::IconColors::primary(*tokens.closeIconColor);
+    const auto maximizeIcon = adqt::widgets::icons::outlined::WindowMaximize(iconColors);
+    verifyWindowSizeIcon(maximizeIcon);
     QCOMPARE(maximize->focusPolicy(), Qt::StrongFocus);
     QCOMPARE(maximize->accessibleName(), QStringLiteral("Maximize"));
     QCOMPARE(maximize->toolTip(), QStringLiteral("Maximize"));
@@ -1805,6 +1821,7 @@ class TstModalWindow : public QObject {
     QTRY_VERIFY(surface->isMaximized());
     QCOMPARE(maximize->accessibleName(), QStringLiteral("Restore"));
     QCOMPARE(maximize->toolTip(), QStringLiteral("Restore"));
+    verifyWindowSizeIcon(adqt::widgets::icons::outlined::WindowRestore(iconColors));
     QCOMPARE(surface->normalGeometry(), normal);
 #ifdef Q_OS_WIN
     if (QGuiApplication::platformName() == QStringLiteral("windows")) {
@@ -1830,6 +1847,7 @@ class TstModalWindow : public QObject {
     QTRY_VERIFY(!surface->isMaximized());
     QTRY_COMPARE(surface->geometry(), normal);
     QCOMPARE(maximize->accessibleName(), QStringLiteral("Maximize"));
+    verifyWindowSizeIcon(maximizeIcon);
 #ifdef Q_OS_WIN
     if (QGuiApplication::platformName() == QStringLiteral("windows")) {
       const auto hwnd = reinterpret_cast<HWND>(surface->winId());

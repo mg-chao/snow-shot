@@ -5,6 +5,20 @@
   "source": "ant_design_qt widget-owned static SVG assets",
   "entries": [
     {
+      "variant": "outlined",
+      "symbol": "WindowMaximize",
+      "name": "window-maximize",
+      "source": "icons/window-maximize.svg",
+      "colorModel": "monochrome"
+    },
+    {
+      "variant": "outlined",
+      "symbol": "WindowRestore",
+      "name": "window-restore",
+      "source": "icons/window-restore.svg",
+      "colorModel": "monochrome"
+    },
+    {
       "variant": "twotone",
       "symbol": "EmptySimple",
       "name": "empty-simple",
