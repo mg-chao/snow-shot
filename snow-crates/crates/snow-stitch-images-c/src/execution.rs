@@ -188,6 +188,34 @@ mod tests {
     }
 
     #[test]
+    fn wide_seed_frame_does_not_start_workers() {
+        // Only a fresh test process can check the one-time global pool initialization.
+        const CHILD: &str = "SNOW_STITCH_WIDE_SEED_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let status = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "execution::tests::wide_seed_frame_does_not_start_workers",
+                ])
+                .env(CHILD, "1")
+                .status()
+                .unwrap();
+            assert!(status.success());
+            return;
+        }
+
+        let mut session = StitchSession::new(StitchConfig::default()).unwrap();
+        let frame = Frame::new(1024, 256, PixelFormat::Rgba8, vec![0; 1024 * 256 * 4]);
+        let outcome = session.push_owned_frame(frame).unwrap();
+        assert!(matches!(outcome.event, FrameEvent::Initial));
+        assert!(session.execution.pool.get().is_none());
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build_global()
+            .expect("the seed frame must leave the global pool uninitialized");
+    }
+
+    #[test]
     fn ffi_session_reuses_workers_until_destroy() {
         use std::{collections::HashSet, sync::mpsc, time::Duration};
 

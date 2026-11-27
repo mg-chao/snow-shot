@@ -791,6 +791,38 @@ mod tests {
     }
 
     #[test]
+    fn repainting_horizontal_stripes_does_not_extend_the_canvas() {
+        let make_frame = |phase| {
+            let mut pixels = Vec::new();
+            for y in 0..256 {
+                for x in 0..192 {
+                    let value = if (16..240).contains(&y) {
+                        let row = y - 16 + phase;
+                        ((73 * row + 17 * row * row) % 251) as u8
+                    } else if (x / 13 + y / 3) % 2 == 0 {
+                        30
+                    } else {
+                        220
+                    };
+                    pixels.extend([value, value, value, 255]);
+                }
+            }
+            Frame::new(192, 256, PixelFormat::Rgba8, pixels).unwrap()
+        };
+        let first = make_frame(0);
+        let result = stitch(
+            &[first.clone(), make_frame(29)],
+            StitchOptions {
+                record_decisions: true,
+                ..StitchOptions::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(result.decisions[0].branch, StitchBranch::NoMovement);
+        assert_eq!(result.image, first);
+    }
+
+    #[test]
     fn empty_and_too_small_inputs_have_structured_errors() {
         assert!(matches!(
             stitch(&[], StitchOptions::default()).unwrap_err(),

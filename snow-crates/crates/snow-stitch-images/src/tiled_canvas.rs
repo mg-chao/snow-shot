@@ -1,3 +1,4 @@
+use rayon::prelude::*;
 use snow_memory::RasterBuffer;
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -186,9 +187,18 @@ impl TiledCanvas {
             match self.axis {
                 StitchAxis::Vertical => {
                     let row_bytes = frame.width() as usize * channels;
-                    output.copy_from_slice(
-                        &source[cursor as usize * row_bytes..(cursor + span) as usize * row_bytes],
-                    );
+                    let rows =
+                        &source[cursor as usize * row_bytes..(cursor + span) as usize * row_bytes];
+                    // Reuse the caller's pool without starting global workers for a seed frame.
+                    if rows.len() >= 1024 * 1024 && rayon::current_thread_index().is_some() {
+                        const CHUNK: usize = 256 * 1024;
+                        output
+                            .par_chunks_mut(CHUNK)
+                            .zip(rows.par_chunks(CHUNK))
+                            .for_each(|(dst, src)| dst.copy_from_slice(src));
+                    } else {
+                        output.copy_from_slice(rows);
+                    }
                 }
                 StitchAxis::Horizontal => {
                     let span_bytes = span as usize * channels;
@@ -997,6 +1007,22 @@ mod tests {
                 .sum::<usize>()
                 <= MAX_SPARE_TILE_BYTES
         );
+    }
+
+    #[test]
+    fn wide_vertical_tiles_match_the_source_across_copy_boundaries() {
+        let rows: Vec<_> = (0..519).collect();
+        let source = axis_values_frame(StitchAxis::Vertical, 1411, &rows);
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(2)
+            .build()
+            .unwrap();
+        pool.install(|| {
+            let mut canvas = TiledCanvas::new(source.crop(0, 17, 1411, 29).unwrap()).unwrap();
+            canvas.append_axis(&source, 46, 519).unwrap();
+            canvas.prepend_axis(&source, 0, 17).unwrap();
+            assert_eq!(canvas.materialize().unwrap(), source);
+        });
     }
 
     #[test]

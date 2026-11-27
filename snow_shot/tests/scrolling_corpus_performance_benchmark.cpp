@@ -19,6 +19,7 @@
 #include <condition_variable>
 #include <cstring>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <vector>
 
@@ -160,7 +161,8 @@ QJsonObject replay(const std::vector<Slice>& slices, const QImage& expected,
     std::size_t index = 0;
     qint64 paintedAt = 0;
     qint64 exportedAt = 0;
-    ScreenshotScrollingPipeline pipeline(
+    std::unique_ptr<ScreenshotScrollingPipeline> pipeline;
+    pipeline = std::make_unique<ScreenshotScrollingPipeline>(
         [&](ScrollingPipelineFrame frame) {
             const int height = slices.front().frame.height() + slices.at(index).offset;
             require(frame.changed && !frame.fatalError &&
@@ -186,15 +188,15 @@ QJsonObject replay(const std::vector<Slice>& slices, const QImage& expected,
                 exportedAt = scrolling_perf::now();
                 loop.quit();
             };
-            require(pipeline.requestSnapshot(0, height, &loop, finish),
+            require(pipeline->requestSnapshot(0, height, &loop, finish),
                     "Could not request the export snapshot.");
         },
         [](quint64, const QString& error) { qFatal("%s", qPrintable(error)); });
     QTimer::singleShot(std::chrono::minutes(2), &loop, [] { qFatal("Corpus replay timed out."); });
     const auto start = scrolling_perf::now();
     input->publish(slices.front().frame);
-    pipeline.begin(1, slices.front().frame.size(), ScreenshotScrollingRecognitionMode::Vertical,
-                   [input] { return std::make_unique<Source>(input); });
+    pipeline->begin(1, slices.front().frame.size(), ScreenshotScrollingRecognitionMode::Vertical,
+                    [input] { return std::make_unique<Source>(input); });
     loop.exec();
     if (!pngPath.isEmpty())
         output = QImage(pngPath).convertToFormat(QImage::Format_RGBA8888);

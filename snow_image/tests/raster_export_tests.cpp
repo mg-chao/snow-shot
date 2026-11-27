@@ -2,6 +2,9 @@
 #include "snow/image/processing.h"
 #include "snow/image/service.h"
 #include "../src/srgb_quantization.h"
+#if defined(SNOW_IMAGE_TEST_PNG_STRIPES)
+#include "../src/codecs/png_parallel.h"
+#endif
 
 #include <algorithm>
 #include <array>
@@ -114,6 +117,9 @@ class RowSource final : public RasterSource {
 
     void setFormat(Format format) {
         descriptor_.format = format;
+    }
+    void setComment(std::string comment) {
+        descriptor_.metadata.comment = std::move(comment);
     }
     void makeOpaque() {
         if (descriptor_.frames.front().layout.planes.front().format.channel_count() != 4)
@@ -530,6 +536,95 @@ void packedBgrAndRgbCodecParity() {
     }
 }
 
+#if defined(SNOW_IMAGE_TEST_PNG_STRIPES)
+void largePngStripesPreserveEveryPixel() {
+    Service service;
+    for (bool opaque : {false, true}) {
+        RowSource source(769, 5501);
+        if (opaque)
+            source.makeOpaque();
+        source.setComment("scrolling PNG metadata");
+        EncodeOptions options;
+        options.format = Format::png;
+        options.compression_level = opaque ? 9 : 1;
+        options.verified_alpha_content = opaque ? AlphaContent::opaque : AlphaContent::non_opaque;
+        auto png = std::make_shared<std::vector<std::byte>>();
+        const auto result =
+            take(service.encode(source, memory_output(png), options), "encode striped PNG");
+        require(source.maximumRows() > 1 && source.readCount() > 1,
+                "PNG writer did not request multiple stripes");
+        require(result.bytes_written == png->size() &&
+                    result.receipt.encoder_finalized_and_sink_flushed &&
+                    source.strictlyIncreasing() &&
+                    source.maximumRows() < source.descriptor().canvas_height,
+                "striped PNG must consume the source once and finish its sink");
+        DecodeOptions decode;
+        decode.output_format = kRgba8;
+        const auto decoded = take(service.decode(memory_input(png), decode), "decode striped PNG");
+        require(decoded.metadata.comment == source.descriptor().metadata.comment,
+                "striped PNG lost its metadata");
+        const auto expected = source.document();
+        const auto pixels = decoded.frames.front().image.pixels();
+        const auto reference = expected.frames.front().image.pixels();
+        require(pixels.size() == reference.size() &&
+                    std::equal(pixels.begin(), pixels.end(), reference.begin()),
+                "stripe boundaries or alpha changed a PNG sample");
+    }
+}
+
+void interruptedPngStripesPropagateTheSourceError() {
+    class InterruptedRows final : public RasterSource {
+      public:
+        InterruptedRows(const RowSource& source, std::stop_source* cancellation)
+            : source_(source), cancellation_(cancellation) {}
+        const DocumentDescriptor& descriptor() const noexcept override {
+            return source_.descriptor();
+        }
+        RasterAccess access() const noexcept override {
+            return RasterAccess::sequential_rows;
+        }
+        Result<void> read_rows(std::uint32_t frame, std::uint32_t plane, std::uint32_t first,
+                               std::uint32_t count, std::size_t stride, std::span<std::byte> dst,
+                               std::stop_token stop) const override {
+            if (first > 0) {
+                if (!cancellation_)
+                    return Status::error(ErrorCode::io_error, "interrupted PNG source");
+                cancellation_->request_stop();
+            }
+            return source_.read_rows(frame, plane, first, count, stride, dst, stop);
+        }
+
+      private:
+        const RowSource& source_;
+        std::stop_source* cancellation_;
+    };
+    Service service;
+    RowSource source(769, 5501);
+    for (bool cancel : {false, true}) {
+        source.resetMetrics();
+        std::stop_source stop;
+        InterruptedRows rows(source, cancel ? &stop : nullptr);
+        EncodeOptions options;
+        options.format = Format::png;
+        options.compression_level = 6;
+        options.verified_alpha_content = AlphaContent::non_opaque;
+        auto sink = memory_output(std::make_shared<std::vector<std::byte>>());
+        const auto result = service.encode(rows, sink, options, stop.get_token());
+        require(source.maximumRows() > 1, "interruption must exercise the striped PNG writer");
+        require(!result &&
+                    result.error().code == (cancel ? ErrorCode::cancelled : ErrorCode::io_error),
+                "interrupted PNG export must propagate its source status");
+    }
+}
+
+void testPngStripes() {
+    internal::set_png_worker_count_for_testing(2);
+    largePngStripesPreserveEveryPixel();
+    interruptedPngStripesPropagateTheSourceError();
+    internal::set_png_worker_count_for_testing(0);
+}
+#endif
+
 void mappedOnlyCodecParity() {
     class MappedSource final : public RasterSource {
       public:
@@ -577,6 +672,12 @@ void mappedOnlyCodecParity() {
 
 int main(int argc, char* argv[]) {
     try {
+#if defined(SNOW_IMAGE_TEST_PNG_STRIPES)
+        if (argc == 2 && std::string_view(argv[1]) == "--png-stripes-only") {
+            testPngStripes();
+            return EXIT_SUCCESS;
+        }
+#endif
         srgbByteQuantizationMatchesScalar();
         resizeParityAndValidation();
         resizePackedTransferParity();
@@ -584,6 +685,9 @@ int main(int argc, char* argv[]) {
         if (argc == 2 && std::string_view(argv[1]) == "--resize-only")
             return EXIT_SUCCESS;
         packedCodecStreamingAndOpacity();
+#if defined(SNOW_IMAGE_TEST_PNG_STRIPES)
+        testPngStripes();
+#endif
         packedBgrAndRgbCodecParity();
         mappedOnlyCodecParity();
         nativeCodecRoutesAndParity();
