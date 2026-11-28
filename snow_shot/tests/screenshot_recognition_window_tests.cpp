@@ -36,6 +36,7 @@
 #include <QGraphicsTextItem>
 #include <QGraphicsView>
 #include <QImage>
+#include <QItemSelectionModel>
 #include <QKeyEvent>
 #include <QKeySequence>
 #include <QLineEdit>
@@ -3662,32 +3663,51 @@ void recognitionContextMenusUseAntDesignAndCopyLocally() {
                     "read-only translation should expose only Copy and Select All");
         });
 
-    auto tableSession = std::make_shared<ScreenshotTableEditingSession>(
-        ScreenshotTableDocument::fromPlainText(QStringLiteral("Alpha cell\tB\nC\tD")));
+    auto tableSession =
+        std::make_shared<ScreenshotTableEditingSession>(ScreenshotTableDocument::fromPlainText(
+            QStringLiteral("Alpha cell\tNorth\tEast\nWest\tOne\tTwo\nSouth\tThree\tFour")));
     window.setTableSession(tableSession);
     QApplication::processEvents();
     auto* table =
         window.findChild<ScreenshotTableEditor*>(QStringLiteral("snowShotRecognizedTable"));
     require(table != nullptr, "table context menu test should expose its editor");
     const QModelIndex firstCell = table->model()->index(0, 0);
-    table->selectionModel()->select(table->model()->index(0, 1),
+    const QModelIndex firstSelectedCell = table->model()->index(1, 1);
+    table->selectionModel()->select(QItemSelection(firstSelectedCell, table->model()->index(2, 2)),
                                     QItemSelectionModel::ClearAndSelect);
     inspectContextMenu(
-        *table->viewport(), table->visualRect(firstCell).center(),
+        *table->viewport(), table->visualRect(firstSelectedCell).center(),
         [](adqt::widgets::AdContextMenu& menu) {
             require(menu.objectName() == QStringLiteral("screenshotTableContextMenu") &&
                         contextMenuActionTexts(menu) ==
-                            QStringList{QStringLiteral("Copy"), QStringLiteral("Paste"),
-                                        QStringLiteral("Clear contents"), QStringLiteral("|"),
-                                        QStringLiteral("Merge cells"),
+                            QStringList{QStringLiteral("Copy selected cells"),
+                                        QStringLiteral("Paste"), QStringLiteral("Clear contents"),
+                                        QStringLiteral("|"), QStringLiteral("Merge cells"),
                                         QStringLiteral("Split cells")},
                     "table menu should remove Edit and retain table commands");
             requireContextMenuShortcutsHidden(menu);
-            contextMenuAction(menu, QStringLiteral("Copy"))->trigger();
+            auto* copy = contextMenuAction(menu, QStringLiteral("Copy selected cells"));
+            require(copy->isEnabled(), "the table range enables Copy selected cells");
+            copy->trigger();
         });
-    require(QApplication::clipboard()->text() == QStringLiteral("Alpha cell\tB\nC\tD") &&
-                copyCommandCalls == 0,
-            "table context Copy should copy the full table locally with a partial selection");
+    const QString selectedText = QStringLiteral("One\tTwo\nThree\tFour");
+    const auto* tableMime = QApplication::clipboard()->mimeData();
+    require(tableMime && tableMime->text() == selectedText && tableMime->hasHtml() &&
+                ScreenshotTableDocument::fromClipboardMimeData(*tableMime) ==
+                    ScreenshotTableDocument::fromPlainText(selectedText),
+            "table context copy preserves the selected rows and columns in the clipboard");
+    require(window.isVisible() && table->isVisible() && copyCommandCalls == 0 &&
+                table->selectedRange() == ScreenshotTableRange{1, 1, 2, 2},
+            "copying selected cells keeps the screenshot and range open");
+
+    inspectContextMenu(
+        *table->viewport(), table->visualRect(firstCell).center(),
+        [](adqt::widgets::AdContextMenu& menu) {
+            contextMenuAction(menu, QStringLiteral("Copy selected cells"))->trigger();
+        });
+    require(QApplication::clipboard()->text() == QStringLiteral("Alpha cell") &&
+                table->selectedRange() == ScreenshotTableRange{0, 0, 0, 0} && copyCommandCalls == 0,
+            "copying from outside the selection copies the clicked cell in place");
 
     clickCell(*table, 0, 0);
     auto* cellEditor = table->findChild<QPlainTextEdit*>(QStringLiteral("snowShotTableCellEditor"));
@@ -3761,11 +3781,15 @@ void recognitionContextMenusUseAntDesignAndCopyLocally() {
     QApplication::sendEvent(cellEditor, &escape);
     processEditorClose();
     table->selectionModel()->clearSelection();
-    inspectContextMenu(*table->viewport(), table->viewport()->rect().bottomRight() - QPoint(2, 2),
-                       [](adqt::widgets::AdContextMenu& menu) {
-                           require(!contextMenuAction(menu, QStringLiteral("Copy"))->isEnabled(),
-                                   "blank table context should not copy the whole table");
-                       });
+    QApplication::clipboard()->setText(QStringLiteral("Keep previous clipboard"));
+    inspectContextMenu(
+        *table->viewport(), table->viewport()->rect().bottomRight() - QPoint(2, 2),
+        [](adqt::widgets::AdContextMenu& menu) {
+            require(!contextMenuAction(menu, QStringLiteral("Copy selected cells"))->isEnabled(),
+                    "the table menu disables Copy selected cells without a range");
+        });
+    require(QApplication::clipboard()->text() == QStringLiteral("Keep previous clipboard"),
+            "opening a table menu without a range leaves the clipboard intact");
 
     QWidget embeddedHost;
     embeddedHost.resize(360, 240);

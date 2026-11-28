@@ -397,6 +397,10 @@
             <translation>Копировать</translation>
         </message>
         <message>
+            <source>Copy selected cells</source>
+            <translation>Копировать выбранные ячейки</translation>
+        </message>
+        <message>
             <source>Cut</source>
             <translation>Вырезать</translation>
         </message>

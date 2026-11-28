@@ -81,6 +81,7 @@ class ScreenshotTableEditor final : public QTableView {
     bool commitActiveEdit();
     bool cancelActiveEdit();
     [[nodiscard]] std::unique_ptr<QMimeData> clipboardMimeData() const;
+    [[nodiscard]] std::unique_ptr<QMimeData> selectedCellsClipboardMimeData() const;
     [[nodiscard]] bool copySelectionToClipboard();
     void setCopyRequestHandler(std::function<bool(ScreenshotRecognitionCopy)> handler) {
         m_requestCopy = std::move(handler);
@@ -139,6 +140,7 @@ class ScreenshotTableEditor final : public QTableView {
     void synchronizeSpans();
     void updateTableMetrics();
     void applyTheme();
+    bool copyTableToClipboard(ScreenshotRecognitionCopy intent);
     void showContextMenu(const QPoint& globalPosition, const QModelIndex& clicked);
     void showCellEditorContextMenu(QPlainTextEdit* editor, const QPoint& globalPosition);
     [[nodiscard]] QModelIndex anchorIndex(const QModelIndex& index) const;

@@ -397,6 +397,10 @@
             <translation>Copy</translation>
         </message>
         <message>
+            <source>Copy selected cells</source>
+            <translation>Copy selected cells</translation>
+        </message>
+        <message>
             <source>Cut</source>
             <translation>Cut</translation>
         </message>

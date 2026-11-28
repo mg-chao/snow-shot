@@ -31,6 +31,7 @@
 #include <QCoreApplication>
 #include <QEventLoop>
 #include <QImage>
+#include <QItemSelectionModel>
 #include <QRectF>
 #include <QString>
 #include <QStringList>
@@ -653,6 +654,58 @@ void tablePreparationPreservesSessionAndSiblingPopovers() {
                 "stale or inactive failures do not affect current UI");
         verifyPopup(firstPopup);
         verifyPopup(secondPopup);
+    }
+}
+
+void tableSelectionCopyPreservesMergedCells() {
+    using Session = ScreenshotRecognitionSessionController;
+    ScreenshotRecognitionWindow window({});
+    const QRect windowRect(20, 20, 360, 240);
+    require(window.present(
+                {QGuiApplication::primaryScreen(), nullptr, windowRect, QRectF(0, 0, 360, 240)}),
+            "present the cached table copy fixture");
+    ScreenshotRecognitionSessionActions actions;
+    actions.ensureContent = [&] { return &window; };
+    Session session(nullptr, nullptr, nullptr, std::move(actions));
+    QImage image(windowRect.size(), QImage::Format_ARGB32);
+    image.fill(Qt::white);
+    ScreenshotRecognitionResults cached;
+    cached.key = QStringLiteral("table-selection-copy");
+    const QString html =
+        QStringLiteral("<table><tr><th>Outside</th><th colspan=\"2\">Merged</th></tr>"
+                       "<tr><td>Left</td><td>Final</td><td></td></tr>"
+                       "<tr><td>Margin</td><td>Bottom</td><td>Edge</td></tr></table>");
+    cached.table = SnowShotTableResult{html, {}, {}, 0};
+    session.setTarget({cached.key, image, QRectF(0, 0, 360, 240)});
+    session.seedRecognitionResults(std::move(cached));
+    session.activate(Session::Mode::Table);
+    auto* table = window.findChild<ScreenshotTableEditor*>();
+    require(table && session.ownsContentAttachment(), "cached result attaches a table editor");
+    table->selectionModel()->select(
+        QItemSelection(table->model()->index(0, 1), table->model()->index(1, 2)),
+        QItemSelectionModel::ClearAndSelect);
+
+    require(session.copyToClipboard(ScreenshotRecognitionCopy::TableSelection),
+            "selected table cells can be copied through the attached session");
+    const auto* mime = QApplication::clipboard()->mimeData();
+    require(mime && mime->text() == QStringLiteral("Merged\t\nFinal\t") && mime->hasHtml(),
+            "the selected clipboard text includes the merged and empty cell positions");
+    const auto selected = ScreenshotTableDocument::fromClipboardMimeData(*mime);
+    const auto* merged = selected.anchorCellAt(0, 0);
+    require(selected.rowCount() == 2 && selected.columnCount() == 2 && merged &&
+                merged->columnSpan == 2 && merged->header && selected.cellText(1, 1).isEmpty() &&
+                ScreenshotTableDocument::fromHtml(mime->html(), true) == selected,
+            "selected table clipboard formats preserve merged headers and empty cells");
+    require(window.isVisible() && session.tableModeActive() &&
+                table->selectedRange() == ScreenshotTableRange{0, 1, 1, 2},
+            "copying the table selection keeps the recognition session active");
+
+    const auto fullTable = ScreenshotTableDocument::fromHtml(html, true);
+    for (auto intent : {ScreenshotRecognitionCopy::Result, ScreenshotRecognitionCopy::Preview}) {
+        require(session.copyToClipboard(intent), "existing table copy command is accepted");
+        const auto* fullMime = QApplication::clipboard()->mimeData();
+        require(fullMime && ScreenshotTableDocument::fromClipboardMimeData(*fullMime) == fullTable,
+                "existing preview and result copy commands still export the full table");
     }
 }
 
@@ -2326,6 +2379,7 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (application.arguments().contains(QStringLiteral("--table-only"))) {
+        tableSelectionCopyPreservesMergedCells();
         tablePreparationPreservesSessionAndSiblingPopovers();
         snow_shot::storage::ApplicationStorage::instance().shutdown();
         return 0;
@@ -2357,6 +2411,7 @@ int main(int argc, char** argv) {
     cachedTextResultAccess();
     originalImagePreviewFollowsTextSessionLifecycle();
     deactivationNotifiesOnlyOnStateTransition();
+    tableSelectionCopyPreservesMergedCells();
     tablePreparationPreservesSessionAndSiblingPopovers();
     textBackgroundPolicyControlsRendering();
     cachedRecognitionUsesTheSelectedFillStyle();

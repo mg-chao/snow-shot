@@ -644,13 +644,25 @@ std::unique_ptr<QMimeData> ScreenshotTableEditor::clipboardMimeData() const {
     return m_session->document.toClipboardMimeData();
 }
 
+std::unique_ptr<QMimeData> ScreenshotTableEditor::selectedCellsClipboardMimeData() const {
+    if (m_previewOnly || m_session == nullptr)
+        return {};
+    return m_session->document.toClipboardMimeData(selectedRange());
+}
+
 bool ScreenshotTableEditor::copySelectionToClipboard() {
+    return copyTableToClipboard(ScreenshotRecognitionCopy::Preview);
+}
+
+bool ScreenshotTableEditor::copyTableToClipboard(ScreenshotRecognitionCopy intent) {
     if (const auto request = m_requestCopy)
-        return request(ScreenshotRecognitionCopy::Preview);
+        return request(intent);
     if (QApplication::clipboard() == nullptr) {
         return false;
     }
-    auto mimeData = clipboardMimeData();
+    auto mimeData = intent == ScreenshotRecognitionCopy::TableSelection
+                        ? selectedCellsClipboardMimeData()
+                        : clipboardMimeData();
     if (!mimeData) {
         return false;
     }
@@ -822,7 +834,8 @@ void ScreenshotTableEditor::showContextMenu(const QPoint& globalPosition,
 
     adqt::widgets::AdContextMenu menu(this);
     menu.setObjectName(QStringLiteral("screenshotTableContextMenu"));
-    QAction* copyAction = menu.addItem(tr("Copy"), adqt::icons::antd::outlined::Copy());
+    QAction* copyAction =
+        menu.addItem(tr("Copy selected cells"), adqt::icons::antd::outlined::Copy());
     QAction* pasteAction = menu.addItem(tr("Paste"), adqt::icons::antd::outlined::Snippets());
     QAction* clearAction =
         menu.addItem(tr("Clear contents"), adqt::icons::antd::outlined::IconDelete());
@@ -840,9 +853,8 @@ void ScreenshotTableEditor::showContextMenu(const QPoint& globalPosition,
     splitAction->setEnabled(state.canSplit);
 
     connect(copyAction, &QAction::triggered, this, [this]() {
-        if (selectionModel() != nullptr && !selectionModel()->selectedIndexes().isEmpty()) {
-            static_cast<void>(copySelectionToClipboard());
-        }
+        if (commandState().hasSelection)
+            static_cast<void>(copyTableToClipboard(ScreenshotRecognitionCopy::TableSelection));
     });
     connect(pasteAction, &QAction::triggered, this, &ScreenshotTableEditor::pasteSelection);
     connect(clearAction, &QAction::triggered, this, &ScreenshotTableEditor::clearSelectionContents);
