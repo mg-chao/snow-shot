@@ -92,33 +92,6 @@ pub(super) unsafe fn grayscale(frame: &Frame) -> Image {
     Image::from_buffer(frame.width() as usize, frame.height() as usize, pixels)
 }
 
-#[derive(Debug)]
-pub(super) struct ResizeBlock {
-    start: usize,
-    first: [u8; 8],
-    second: [u8; 8],
-    weights: [u16; 8],
-}
-
-pub(super) fn resize_plan(width: usize, coefficients: &[ResizeCoefficient]) -> Vec<ResizeBlock> {
-    let Some(last_load) = width.checked_sub(16) else {
-        return Vec::new();
-    };
-    coefficients
-        .chunks_exact(8)
-        .map_while(|group| {
-            // Each adjacent group in the ORB pyramid normally fits in a single 16-byte load.
-            let start = (group[0].first as usize).min(last_load);
-            ((group[7].second as usize) < start + 16).then(|| ResizeBlock {
-                start,
-                first: std::array::from_fn(|i| (group[i].first as usize - start) as u8),
-                second: std::array::from_fn(|i| (group[i].second as usize - start) as u8),
-                weights: std::array::from_fn(|i| group[i].second_weight),
-            })
-        })
-        .collect()
-}
-
 #[target_feature(enable = "neon")]
 pub(super) unsafe fn resize_blocks(
     blocks: &[ResizeBlock],
