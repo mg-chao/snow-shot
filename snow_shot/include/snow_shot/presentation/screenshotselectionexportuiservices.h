@@ -74,6 +74,9 @@ class ScreenshotSelectionExportUiServices final : public ScreenshotSelectionExpo
         ScreenshotClipboardContent content, QScreen* screen, bool autoResizeWindow,
         snow_shot::storage::PinnedWindowCreationSource source, bool initialAnnotationMode = false,
         PinnedCompletion completion = {});
+    [[nodiscard]] QString
+    reservePendingImagePin(const snow_shot::storage::PinnedSourceIdentity& sourceIdentity);
+    void cancelPendingImagePin(const QString& id);
     // A null image is accepted when imageLoader is provided and
     // initialWindowSize supplies the known canvas dimensions.
     [[nodiscard]] bool presentPinnedImage(
@@ -91,7 +94,8 @@ class ScreenshotSelectionExportUiServices final : public ScreenshotSelectionExpo
         std::optional<bool> initialBorderVisible = {},
         std::optional<bool> initialShadowVisible = {},
         std::shared_ptr<const ScreenshotAnimationSource> animationSource = {},
-        bool initialAnnotationMode = false, QImage preparedDisplayImage = {});
+        bool initialAnnotationMode = false, QImage preparedDisplayImage = {},
+        const QString& pendingPinId = {});
     // An already composited selection bitmap placed by screenshotSelectionPinRequest.
     [[nodiscard]] bool
     presentCompositedSelectionImage(const QImage& image,
@@ -188,7 +192,8 @@ class ScreenshotSelectionExportUiServices final : public ScreenshotSelectionExpo
         std::optional<bool> initialBorderVisible = {},
         std::optional<bool> initialShadowVisible = {},
         std::shared_ptr<const ScreenshotAnimationSource> animationSource = {},
-        bool initialAnnotationMode = false, QImage preparedDisplayImage = {});
+        bool initialAnnotationMode = false, QImage preparedDisplayImage = {},
+        const QString& pendingPinId = {});
 
     QHash<QString, QList<QPointer<ScreenshotPinnedWindow>>> m_sourceWindows;
     std::function<void()> m_restoreFailure;

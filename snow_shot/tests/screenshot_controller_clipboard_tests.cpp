@@ -13,6 +13,8 @@
 #include "snow_shot/presentation/directcaptureworkflow.h"
 #include "snow_shot/presentation/languagemanager.h"
 #include "snow_shot/presentation/mainwindow.h"
+#include "snow_shot/presentation/pinnedgeometry.h"
+#include "snow_shot/presentation/pinnedwindowgroupmanager.h"
 #include "snow_shot/presentation/screenshotoverlaywindow.h"
 #include "snow_shot/presentation/screenshotcontroller.h"
 #include "snow_shot/presentation/screenshothistoryservice.h"
@@ -97,6 +99,7 @@
 #undef CopyFile // Keep ExportTask::CopyFile visible below.
 #endif
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -1183,6 +1186,105 @@ void recognitionWindowsFollowSelectionTransitions(const QString& directory) {
     }
 }
 
+#if defined(Q_OS_WIN) || defined(_WIN32)
+void clipboardBitmapKeepsPendingGroupAndVisibility() {
+    auto& repository = snow_shot::storage::ApplicationStorage::instance().pinnedWindows();
+    snow_shot::presentation::PinnedWindowGroupManager groups(&repository);
+    ScreenshotController controller(nullptr, &groups);
+    QObject::connect(
+        &groups,
+        &snow_shot::presentation::PinnedWindowGroupManager::restoreActiveGroupWindowsRequested,
+        &controller, &ScreenshotController::restorePinnedWindows);
+    const QString originalGroup = groups.activeGroupId();
+    const auto otherGroup = groups.createGroup(QStringLiteral("Clipboard test"));
+    require(otherGroup.has_value(), "create another pin group");
+
+    const QImage source = fixture();
+    const auto startPin = [&] {
+        const auto before = repository.summariesIncludingPending();
+        QApplication::clipboard()->setImage(source);
+        controller.pinClipboardContentToScreen();
+        for (const auto& record : repository.summariesIncludingPending()) {
+            if (record.pending &&
+                std::none_of(before.cbegin(), before.cend(),
+                             [&](const auto& prior) { return prior.id == record.id; })) {
+                require(record.groupId == groups.activeGroupId(),
+                        "the pending bitmap must belong to the initiating group");
+                return record.id;
+            }
+        }
+        require(false, "the bitmap must have a reservation before the decode result is delivered");
+        return QString{};
+    };
+    const auto waitForSave = [&](const QString& id, bool hidden) {
+        waitUntil([&] { return repository.loadRecord(id).has_value(); },
+                  "the clipboard bitmap must persist");
+        const auto record = repository.loadRecord(id);
+        require(record && record->groupId == originalGroup && record->hidden == hidden &&
+                    record->image.convertToFormat(source.format()) == source,
+                "the saved bitmap must retain its original group, visibility, and pixels");
+        require(visiblePins().isEmpty(), "a hidden or inactive bitmap must stay off screen");
+    };
+
+    // Both commands run before the worker's queued GUI completion can be delivered.
+    const QString inactiveId = startPin();
+    require(groups.setActiveGroup(*otherGroup), "switch away while the bitmap is pending");
+    waitForSave(inactiveId, false);
+    require(groups.setActiveGroup(originalGroup), "switch back to the bitmap's original group");
+    waitUntil([&] { return groups.hasWindow(inactiveId); }, "restore the original group's pin");
+    closePins();
+    require(repository.remove(inactiveId).success, "clear the group switch fixture");
+
+    const QString hiddenId = startPin();
+    controller.togglePinnedWindowsVisibility();
+    const auto hidden = repository.summary(hiddenId);
+    require(hidden && hidden->pending && hidden->hidden, "Hide All must include the pending pin");
+    waitForSave(hiddenId, true);
+    controller.togglePinnedWindowsVisibility();
+    waitUntil([&] { return groups.hasWindow(hiddenId); }, "Show All must restore the bitmap");
+    closePins();
+    require(repository.remove(hiddenId).success, "clear the visibility fixture");
+
+    require(groups.setActiveGroup(*otherGroup), "activate the group to delete");
+    const QString deletedId = startPin();
+    require(groups.deleteSpecifiedGroup(*otherGroup),
+            "delete the group while its bitmap is pending");
+    waitUntil([] { return ScreenshotExportCoordinator::shared().pendingJobCount() == 0; },
+              "the deleted group's clipboard job must settle");
+    QCoreApplication::processEvents();
+    require(!repository.summary(deletedId) && visiblePins().isEmpty(),
+            "deleting the initiating group must not recreate the pin");
+}
+
+void directCapturePinsReadyPixels(ScreenshotController& controller) {
+    const QImage source = fixture();
+    const auto* screen = QGuiApplication::primaryScreen();
+    require(screen != nullptr, "direct capture pin needs a screen");
+    const auto fit = snow_shot::presentation::fitPinnedImageOnScreen(
+        *screen, source.size(), snow_shot::storage::PinToScreenSettings().autoResizeWindow());
+    require(fit.valid && fit.initialWindowSize == source.size(),
+            "direct capture fixture must fit at its native size");
+
+    controller.pinDirectCapture(source, screen->geometry());
+    const auto topLevels = QApplication::topLevelWidgets();
+    require(std::any_of(topLevels.cbegin(), topLevels.cend(),
+                        [](const QWidget* widget) {
+                            const auto* pin = qobject_cast<const ScreenshotPinnedWindow*>(widget);
+                            return pin && pin->isVisible() &&
+                                   !pin->persistenceSnapshot().image.isNull();
+                        }),
+            "direct capture must attach the raster before showing the pin");
+    waitUntil([] { return visiblePins().size() == 1; }, "the direct capture pin must be ready");
+    const auto record = visiblePins().constFirst()->persistenceSnapshot();
+    require(record.image.convertToFormat(source.format()) == source &&
+                record.nativeGeometry == fit.nativeGeometry &&
+                record.initialWindowSize == fit.initialWindowSize &&
+                record.creationSource == snow_shot::storage::PinnedWindowCreationSource::Screenshot,
+            "the ready capture pin must preserve pixels, native placement and capture origin");
+    closePins();
+}
+#endif
+
 void clipboardPinPrefersActiveScreenshotSelection(ScreenshotController& controller) {
     using snow_shot::storage::PinnedWindowCreationSource;
 
@@ -1208,6 +1310,15 @@ void clipboardPinPrefersActiveScreenshotSelection(ScreenshotController& controll
     closePins();
 
     controller.pinClipboardContentToScreen();
+#if defined(Q_OS_WIN) || defined(_WIN32)
+    const auto topLevels = QApplication::topLevelWidgets();
+    require(std::none_of(topLevels.cbegin(), topLevels.cend(),
+                         [](const QWidget* widget) {
+                             return widget->isVisible() &&
+                                    qobject_cast<const ScreenshotPinnedWindow*>(widget);
+                         }),
+            "the clipboard pin must wait for its pixels before showing a window");
+#endif
     waitUntil([] { return visiblePins().size() == 1; },
               "clipboard action must still pin when idle");
     const auto clipboardPin = visiblePins().constFirst()->persistenceSnapshot();
@@ -4068,10 +4179,16 @@ int runScreenshotControllerClipboardTests(int argc, char** argv) {
         storage.shutdown();
         return EXIT_SUCCESS;
     }
+#if defined(Q_OS_WIN) || defined(_WIN32)
+    clipboardBitmapKeepsPendingGroupAndVisibility();
+#endif
     {
         ScreenshotController controller;
         combinedCopiesPreserveImagePlacementAndAppearance(controller);
         fileOnlyClipboardStillPinsEveryFile(controller);
+#if defined(Q_OS_WIN) || defined(_WIN32)
+        directCapturePinsReadyPixels(controller);
+#endif
     }
     imageToolsPreferInlineClipboardPixels();
     QApplication::clipboard()->clear();

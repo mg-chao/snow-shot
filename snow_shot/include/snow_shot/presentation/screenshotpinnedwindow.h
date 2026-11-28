@@ -169,7 +169,7 @@ class ScreenshotPinnedWindow final : public QWidget {
         bool changed = false;
         Action action = Action::Hide;
     };
-    enum class PresentationPolicy { Activate, PreserveFocus };
+    enum class PresentationPolicy { Activate, PreserveFocus, PersistOnly };
     enum class ReplacementPersistenceResult { Accepted, PendingCreation, Failed };
     using ReplacementPersistenceWriter =
         std::function<ReplacementPersistenceResult(const snow_shot::storage::PinnedWindowRecord&)>;

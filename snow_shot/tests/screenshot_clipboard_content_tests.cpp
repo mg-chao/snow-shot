@@ -110,6 +110,24 @@ void clipboardImagesTakePriorityOverAccompanyingFiles() {
     }
     require(ScreenshotClipboardContentReader::filePathsForImport(nullptr).isEmpty(),
             "missing clipboard MIME data must not offer file imports");
+
+    class TextOnlyMimeData final : public QMimeData {
+      public:
+        bool hasFormat(const QString& type) const override {
+            if (type == QStringLiteral("text/uri-list"))
+                return false;
+            return QMimeData::hasFormat(type);
+        }
+        QStringList formats() const override {
+            ++formatRequests;
+            return QMimeData::formats();
+        }
+        mutable int formatRequests = 0;
+    } textOnly;
+    textOnly.setText(QStringLiteral("clipboard text"));
+    require(ScreenshotClipboardContentReader::filePathsForImport(&textOnly).isEmpty() &&
+                textOnly.formatRequests == 0,
+            "clipboard file routing must skip image format discovery when no URLs are offered");
 }
 
 void imageFilesDecodeByContent() {
@@ -1952,7 +1970,7 @@ void nativeDibSnapshotDecodesOffClipboard() {
     pixels[0] = 0xff0000ff; // bottom row: blue, red
     pixels[1] = 0xffff0000;
     pixels[2] = 0xff00ff00; // top row: green, white
-    pixels[3] = 0xffffffff;
+    pixels[3] = 0x8064c832;
 
     for (const int maskOrder : {0, 1, 2}) {
         QByteArray payload = bytes;
@@ -1970,10 +1988,10 @@ void nativeDibSnapshotDecodesOffClipboard() {
         require(decoded.has_value() && decoded->image.size() == QSize(2, 2),
                 "native DIB snapshot should decode into an image");
         require(decoded->image.pixelColor(0, 0) == QColor(Qt::green) &&
-                    decoded->image.pixelColor(1, 0) == QColor(Qt::white) &&
+                    decoded->image.pixel(1, 0) == qPremultiply(QRgb(0x8064c832)) &&
                     decoded->image.pixelColor(0, 1) == QColor(Qt::blue) &&
                     decoded->image.pixelColor(1, 1) == QColor(Qt::red),
-                "native DIB snapshot should preserve orientation and channels");
+                "native DIB snapshot should preserve orientation and premultiply alpha");
         if (maskOrder != 0) {
             // Declare the table so truncation is unambiguous: an undeclared
             // partial table is indistinguishable from pixels and trailing data.
