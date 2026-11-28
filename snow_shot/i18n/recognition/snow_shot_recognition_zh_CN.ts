@@ -397,6 +397,10 @@
             <translation>复制</translation>
         </message>
         <message>
+            <source>Copy selected cells</source>
+            <translation>复制选中的单元格</translation>
+        </message>
+        <message>
             <source>Cut</source>
             <translation>剪切</translation>
         </message>

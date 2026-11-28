@@ -2464,10 +2464,15 @@ bool ScreenshotRecognitionWindow::requestCopy(ScreenshotRecognitionCopy intent) 
     m_previewCommit.cancel();
     const auto active = m_sessionCallbacks.translationActive;
     const auto provider = m_sessionCallbacks.translationClipboard;
-    const bool translating = owner && active && active();
+    const bool translating =
+        intent != ScreenshotRecognitionCopy::TableSelection && owner && active && active();
     if (!self || !commandAttachmentMatches(owner, token))
         return false;
-    auto mime = translating ? (provider ? provider() : nullptr) : previewClipboardMimeData();
+    std::unique_ptr<QMimeData> mime;
+    if (intent == ScreenshotRecognitionCopy::TableSelection)
+        mime = tableSelectionClipboardMimeData();
+    else
+        mime = translating ? (provider ? provider() : nullptr) : previewClipboardMimeData();
     if (!self || !commandAttachmentMatches(owner, token) || !mime)
         return false;
     auto handle = ScreenshotClipboardService::publishMimeData(
@@ -2481,6 +2486,14 @@ bool ScreenshotRecognitionWindow::requestCopy(ScreenshotRecognitionCopy intent) 
     else
         handle.cancel();
     return true;
+}
+
+std::unique_ptr<QMimeData> ScreenshotRecognitionWindow::tableSelectionClipboardMimeData() const {
+#if SNOW_SHOT_ENABLE_TABLE_RECOGNITION
+    if (!m_showOriginalImage && m_tableEditor && m_stack->currentWidget() == m_tableEditor)
+        return m_tableEditor->selectedCellsClipboardMimeData();
+#endif
+    return {};
 }
 
 std::unique_ptr<QMimeData> ScreenshotRecognitionWindow::previewClipboardMimeData() const {

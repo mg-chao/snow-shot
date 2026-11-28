@@ -245,6 +245,7 @@ class ScreenshotRecognitionWindow final : public QWidget {
 
     [[nodiscard]] bool copyVisibleContentToClipboard();
     [[nodiscard]] std::unique_ptr<QMimeData> previewClipboardMimeData() const;
+    [[nodiscard]] std::unique_ptr<QMimeData> tableSelectionClipboardMimeData() const;
     [[nodiscard]] bool isOcrBackgroundAt(const QPointF& localPosition) const;
     [[nodiscard]] bool boxSelectionEnabled() const;
     [[nodiscard]] bool lineBoxSelectionActive() const;

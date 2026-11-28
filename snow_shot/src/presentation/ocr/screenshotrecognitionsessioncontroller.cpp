@@ -1600,7 +1600,8 @@ bool ScreenshotRecognitionSessionController::prepareClipboardCopy(
         }
         return true;
     }
-    if (!m_active || !canPublishUi())
+    if (!m_active || !canPublishUi() ||
+        (intent == ScreenshotRecognitionCopy::TableSelection && !tableModeActive()))
         return false;
 #if SNOW_SHOT_ENABLE_DOCUMENT_RECOGNITION
     if (m_mode == Mode::Document) {
@@ -1619,6 +1620,13 @@ bool ScreenshotRecognitionSessionController::prepareClipboardCopy(
         content()->commitActiveTableEdit();
     if (!current())
         return false;
+    if (intent == ScreenshotRecognitionCopy::TableSelection) {
+        auto mime = content() ? content()->tableSelectionClipboardMimeData() : nullptr;
+        if (!mime)
+            return false;
+        deliver(std::move(mime));
+        return true;
+    }
     if (prepareSmartClipboard(displayed, false, [self, current, deliver](auto mime) {
             if (!current())
                 return;
