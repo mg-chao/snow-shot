@@ -24,6 +24,7 @@ class ScreenshotImageConversionView final : public QWidget {
     [[nodiscard]] QString source() const {
         return m_source;
     }
+    [[nodiscard]] bool hasTextSelection() const;
     [[nodiscard]] std::unique_ptr<QMimeData> clipboardMimeData() const;
     [[nodiscard]] bool copyToClipboard() const;
     void selectAll();

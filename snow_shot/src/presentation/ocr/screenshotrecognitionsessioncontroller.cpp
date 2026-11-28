@@ -3682,7 +3682,7 @@ std::unique_ptr<QMimeData> ScreenshotRecognitionSessionController::recognitionCl
     if (m_mode == Mode::Document)
         return documentCopyRequest().mimeData();
 #endif
-    // Result widgets own their text and table selections. Resolve those before falling
+    // Result widgets own their text selections. Resolve those before falling
     // back to complete cached results; conversion Copy above intentionally exports source.
     if (!copyFullTextResult && m_active && !originalImageTranslationActive() && content()) {
         if (auto selected = content()->textSelectionClipboardMimeData())

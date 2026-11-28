@@ -150,6 +150,10 @@ void ScreenshotImageConversionView::render() {
     m_browser->horizontalScrollBar()->setValue(horizontal);
 }
 
+bool ScreenshotImageConversionView::hasTextSelection() const {
+    return m_browser->textCursor().hasSelection();
+}
+
 std::unique_ptr<QMimeData> ScreenshotImageConversionView::clipboardMimeData() const {
     return snow_shot::presentation::imageConversionClipboardMimeData(m_format, m_source,
                                                                      m_browser->textCursor());

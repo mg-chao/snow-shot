@@ -1267,11 +1267,6 @@ std::unique_ptr<QMimeData> ScreenshotRecognitionWindow::textSelectionClipboardMi
         return mime;
     }
 #endif
-#if SNOW_SHOT_ENABLE_TABLE_RECOGNITION
-    if (m_tableEditor && m_stack->currentWidget() == m_tableEditor &&
-        m_tableEditor->selectedRange().isValid())
-        return m_tableEditor->clipboardMimeData();
-#endif
     if (m_stack->currentWidget() != m_textLayer || !m_ocrPresentation ||
         !m_ocrPresentation->hasTextSelection())
         return {};
@@ -2067,20 +2062,20 @@ void ScreenshotRecognitionWindow::registerWindowShortcuts() {
         };
 
     const auto copyCommandsAllowed = [this](const ShortcutManager::ActivationContext& context) {
-        if (m_selectionOnly && m_presentationMode == PresentationMode::EmbeddedChild) {
+        if (!isVisible() ||
+            (m_selectionOnly && m_presentationMode == PresentationMode::EmbeddedChild)) {
             return false;
         }
         QWidget* focus = context.focusWidget;
-        if (context.scopeWindow != this || !isVisible()) {
+        if (m_conversionView || m_recognizedDocument) {
+            return context.scopeWindow == window() && focusInside(this, focus);
+        }
+        if (context.scopeWindow != this) {
             return false;
         }
         if (m_showOriginalImage) {
-            return m_conversionView != nullptr || m_tableEditor != nullptr ||
-                   m_textEditor != nullptr || m_qrBrowser != nullptr ||
+            return m_tableEditor != nullptr || m_textEditor != nullptr || m_qrBrowser != nullptr ||
                    m_ocrPresentation != nullptr;
-        }
-        if (m_conversionView != nullptr) {
-            return focusInside(m_conversionView, focus);
         }
         if (m_tableEditor != nullptr) {
 #if SNOW_SHOT_ENABLE_TABLE_RECOGNITION
@@ -2146,8 +2141,11 @@ void ScreenshotRecognitionWindow::registerWindowShortcuts() {
             return true;
         }
 #endif
-        // These inspectors have their own selectable representation of the result.
-        const bool preview = m_conversionView || m_recognizedDocument
+        // A selection in a rendered preview uses its own clipboard format.
+        const bool preview = (m_recognizedDocument && m_textEditor->textCursor().hasSelection())
+#if SNOW_SHOT_ENABLE_IMAGE_CONVERSION
+                             || (m_conversionView && m_conversionView->hasTextSelection())
+#endif
 #if SNOW_SHOT_ENABLE_LATEX_RECOGNITION
                              || m_latexDocument
 #endif
