@@ -7,26 +7,26 @@ use crate::{Frame, PixelFormat};
 
 #[cfg(target_arch = "x86")]
 use std::arch::x86::{
-    __m128i, __m256i, _mm_loadl_epi64, _mm_loadu_si128, _mm256_add_epi32, _mm256_add_ps,
-    _mm256_and_si256, _mm256_cmpgt_epi16, _mm256_cvtepi32_ps, _mm256_cvtepu8_epi16,
-    _mm256_cvtepu8_epi32, _mm256_cvtps_epi32, _mm256_cvttps_epi32, _mm256_i32gather_epi32,
-    _mm256_loadu_ps, _mm256_loadu_si256, _mm256_movemask_epi8, _mm256_mul_ps, _mm256_mullo_epi32,
-    _mm256_or_si256, _mm256_set1_epi16, _mm256_set1_epi32, _mm256_set1_ps, _mm256_setr_epi32,
-    _mm256_setzero_si256, _mm256_srli_epi32, _mm256_storeu_ps, _mm256_storeu_si256,
-    _mm256_sub_epi16, _mm256_sub_ps,
+    __m128i, __m256i, _mm_loadl_epi64, _mm256_add_epi32, _mm256_add_ps, _mm256_and_si256,
+    _mm256_cvtepi32_ps, _mm256_cvtepu8_epi32, _mm256_cvtps_epi32, _mm256_cvttps_epi32,
+    _mm256_i32gather_epi32, _mm256_loadu_ps, _mm256_loadu_si256, _mm256_mul_ps, _mm256_mullo_epi32,
+    _mm256_set1_epi32, _mm256_set1_ps, _mm256_setr_epi32, _mm256_srli_epi32, _mm256_storeu_ps,
+    _mm256_storeu_si256, _mm256_sub_ps,
 };
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{
     __m128i, __m256i, _mm_cmpgt_epi16, _mm_cvtsi128_si32, _mm_loadl_epi64, _mm_loadu_si128,
     _mm_max_epi16, _mm_min_epi16, _mm_movemask_epi8, _mm_or_si128, _mm_packs_epi16, _mm_set1_epi16,
     _mm_setzero_si128, _mm_slli_si128, _mm_srli_si128, _mm_sub_epi16, _mm256_add_epi32,
-    _mm256_add_ps, _mm256_and_si256, _mm256_cmpgt_epi16, _mm256_cvtepi32_ps, _mm256_cvtepu8_epi16,
-    _mm256_cvtepu8_epi32, _mm256_cvtps_epi32, _mm256_cvttps_epi32, _mm256_i32gather_epi32,
-    _mm256_loadu_ps, _mm256_loadu_si256, _mm256_movemask_epi8, _mm256_mul_ps, _mm256_mullo_epi32,
-    _mm256_or_si256, _mm256_set1_epi16, _mm256_set1_epi32, _mm256_set1_ps, _mm256_setr_epi32,
-    _mm256_setzero_si256, _mm256_srli_epi32, _mm256_storeu_ps, _mm256_storeu_si256,
-    _mm256_sub_epi16, _mm256_sub_ps,
+    _mm256_add_ps, _mm256_and_si256, _mm256_cvtepi32_ps, _mm256_cvtepu8_epi32, _mm256_cvtps_epi32,
+    _mm256_cvttps_epi32, _mm256_i32gather_epi32, _mm256_loadu_ps, _mm256_loadu_si256,
+    _mm256_mul_ps, _mm256_mullo_epi32, _mm256_set1_epi32, _mm256_set1_ps, _mm256_setr_epi32,
+    _mm256_srli_epi32, _mm256_storeu_ps, _mm256_storeu_si256, _mm256_sub_ps,
 };
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[path = "orb_avx2.rs"]
+mod avx2;
 
 #[cfg(target_arch = "aarch64")]
 #[path = "orb_neon.rs"]
@@ -109,8 +109,8 @@ struct ResizePlan {
     width: usize,
     height: usize,
     horizontal: Vec<ResizeCoefficient>,
-    #[cfg(target_arch = "aarch64")]
-    blocks: Vec<neon::ResizeBlock>,
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86", target_arch = "x86_64"))]
+    blocks: Vec<ResizeBlock>,
     vertical: Vec<ResizeCoefficient>,
 }
 
@@ -120,6 +120,35 @@ struct ResizeCoefficient {
     second: u32,
     first_weight: u16,
     second_weight: u16,
+}
+
+#[cfg(any(target_arch = "aarch64", target_arch = "x86", target_arch = "x86_64"))]
+#[derive(Debug)]
+struct ResizeBlock {
+    start: usize,
+    first: [u8; 8],
+    second: [u8; 8],
+    weights: [u16; 8],
+}
+
+#[cfg(any(target_arch = "aarch64", target_arch = "x86", target_arch = "x86_64"))]
+fn resize_blocks_plan(width: usize, coefficients: &[ResizeCoefficient]) -> Vec<ResizeBlock> {
+    let Some(last_load) = width.checked_sub(16) else {
+        return Vec::new();
+    };
+    coefficients
+        .chunks_exact(8)
+        .map_while(|group| {
+            // Each adjacent group in the ORB pyramid normally fits in a single 16-byte load.
+            let start = (group[0].first as usize).min(last_load);
+            ((group[7].second as usize) < start + 16).then(|| ResizeBlock {
+                start,
+                first: std::array::from_fn(|i| (group[i].first as usize - start) as u8),
+                second: std::array::from_fn(|i| (group[i].second as usize - start) as u8),
+                weights: std::array::from_fn(|i| group[i].second_weight),
+            })
+        })
+        .collect()
 }
 
 #[derive(Debug)]
@@ -450,9 +479,9 @@ fn score_fast_row_scalar(
     row: &mut [u8],
     y: u32,
     threshold: i16,
-    border: u32,
+    columns: std::ops::Range<u32>,
 ) {
-    for x in border..width - border {
+    for x in columns {
         if may_pass_fast_9_16(width, pixels, x, y, threshold) {
             row[x as usize] = score(circle_values(width, pixels, x, y), threshold).unwrap_or(0);
         }
@@ -474,76 +503,10 @@ fn fast_scores_scalar(
         .for_each(|(y, row)| {
             let y = y as u32;
             if (border..height - border).contains(&y) {
-                score_fast_row_scalar(width, pixels, row, y, threshold, border);
+                score_fast_row_scalar(width, pixels, row, y, threshold, border..width - border);
             }
         });
     scores
-}
-
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-#[target_feature(enable = "avx2")]
-unsafe fn score_fast_row_avx2(
-    width: u32,
-    pixels: &[u8],
-    row: &mut [u8],
-    y: u32,
-    threshold: i16,
-    border: u32,
-) {
-    let width_usize = width as usize;
-    let threshold_vector = _mm256_set1_epi16(threshold);
-    let one = _mm256_set1_epi16(1);
-    let mut x = border as usize;
-    while x + 16 <= width_usize - border as usize {
-        let center_index = y as usize * width_usize + x;
-        let center = unsafe {
-            _mm256_cvtepu8_epi16(_mm_loadu_si128(
-                pixels.as_ptr().add(center_index).cast::<__m128i>(),
-            ))
-        };
-        let mut dark_count = _mm256_setzero_si256();
-        let mut bright_count = _mm256_setzero_si256();
-        macro_rules! count_sample {
-            ($index:expr) => {{
-                let sample = unsafe {
-                    _mm256_cvtepu8_epi16(_mm_loadu_si128(
-                        pixels.as_ptr().add($index).cast::<__m128i>(),
-                    ))
-                };
-                dark_count = _mm256_sub_epi16(
-                    dark_count,
-                    _mm256_cmpgt_epi16(_mm256_sub_epi16(center, sample), threshold_vector),
-                );
-                bright_count = _mm256_sub_epi16(
-                    bright_count,
-                    _mm256_cmpgt_epi16(_mm256_sub_epi16(sample, center), threshold_vector),
-                );
-            }};
-        }
-        count_sample!(center_index + width_usize * 3);
-        count_sample!(center_index + 3);
-        count_sample!(center_index - width_usize * 3);
-        count_sample!(center_index - 3);
-        let passes = _mm256_or_si256(
-            _mm256_cmpgt_epi16(dark_count, one),
-            _mm256_cmpgt_epi16(bright_count, one),
-        );
-        let mask = _mm256_movemask_epi8(passes) as u32;
-        for lane in 0..16 {
-            if mask & (1 << (lane * 2)) != 0 {
-                let target_x = (x + lane) as u32;
-                row[x + lane] =
-                    score(circle_values(width, pixels, target_x, y), threshold).unwrap_or(0);
-            }
-        }
-        x += 16;
-    }
-    for target_x in x as u32..width - border {
-        if may_pass_fast_9_16(width, pixels, target_x, y, threshold) {
-            row[target_x as usize] =
-                score(circle_values(width, pixels, target_x, y), threshold).unwrap_or(0);
-        }
-    }
 }
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -561,7 +524,7 @@ unsafe fn fast_scores_avx2(
         .for_each(|(y, row)| {
             let y = y as u32;
             if (border..height - border).contains(&y) {
-                unsafe { score_fast_row_avx2(width, pixels, row, y, threshold, border) };
+                unsafe { avx2::score_fast_row(width, pixels, row, y, threshold, border) };
             }
         });
     scores
@@ -736,6 +699,8 @@ fn resize_linear_exact(source: &Image, plan: &ResizePlan) -> Image {
         return source.clone();
     }
     let source_pixels = source.pixels.as_slice();
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    let use_avx2 = std::arch::is_x86_feature_detected!("avx2");
     let mut pixels = RasterBuffer::zeroed(plan.width * plan.height);
     pixels
         .par_chunks_mut(plan.width)
@@ -749,7 +714,13 @@ fn resize_linear_exact(source: &Image, plan: &ResizePlan) -> Image {
             #[cfg(target_arch = "aarch64")]
             let processed =
                 unsafe { neon::resize_blocks(&plan.blocks, vertical, top, bottom, output) };
-            #[cfg(not(target_arch = "aarch64"))]
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            let processed = if use_avx2 {
+                unsafe { avx2::resize_blocks(&plan.blocks, vertical, top, bottom, output) }
+            } else {
+                0
+            };
+            #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")))]
             let processed = 0;
             for (target, horizontal) in output[processed..]
                 .iter_mut()
@@ -840,8 +811,12 @@ impl PyramidPlan {
                     source_height,
                     width: target_width,
                     height: target_height,
-                    #[cfg(target_arch = "aarch64")]
-                    blocks: neon::resize_plan(source_width, &horizontal),
+                    #[cfg(any(
+                        target_arch = "aarch64",
+                        target_arch = "x86",
+                        target_arch = "x86_64"
+                    ))]
+                    blocks: resize_blocks_plan(source_width, &horizontal),
                     horizontal,
                     vertical: resize_coefficients(source_height, target_height),
                 };
@@ -1000,6 +975,7 @@ fn fast_atan2(y: f32, x: f32) -> f32 {
     angle
 }
 
+#[cfg(any(test, not(target_arch = "aarch64")))]
 fn orient(image: &Image, keypoint: &mut Keypoint, maximum_x: &[usize]) {
     let pixels = image.pixels.as_slice();
     let x = cv_round(keypoint.x) as usize;
@@ -1401,6 +1377,10 @@ pub(crate) fn detect(
     let quotas = feature_quota(max_features);
     let levels = pyramid(image, pyramid_plan);
     let maximum_x = umax();
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    let weights = std::arch::is_x86_feature_detected!("avx2").then(avx2::moment_weights);
+    #[cfg(target_arch = "aarch64")]
+    let weights = neon::MomentWeights::new(&maximum_x);
     let by_level = levels
         .par_iter()
         .enumerate()
@@ -1431,6 +1411,23 @@ pub(crate) fn detect(
                 .for_each(|keypoint| harris_response(level_image, keypoint));
             retain_best(&mut keypoints, quotas[level]);
             keypoints.par_iter_mut().for_each(|keypoint| {
+                #[cfg(target_arch = "aarch64")]
+                // FAST points are inside EDGE_THRESHOLD, beyond the orientation patch.
+                unsafe {
+                    neon::orient(level_image, keypoint, &weights)
+                };
+                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                if let Some(weights) = weights {
+                    // The FAST border covers the 32-byte loads across the 31-pixel disc.
+                    unsafe { avx2::orient(level_image, keypoint, weights) };
+                } else {
+                    orient(level_image, keypoint, &maximum_x);
+                }
+                #[cfg(not(any(
+                    target_arch = "x86",
+                    target_arch = "x86_64",
+                    target_arch = "aarch64"
+                )))]
                 orient(level_image, keypoint, &maximum_x);
                 let scale = scale_for_level(level);
                 keypoint.x *= scale;
@@ -2201,8 +2198,8 @@ mod tests {
 
     #[test]
     fn fast_prefilter_keeps_every_nine_pixel_arc() {
-        const WIDTH: u32 = 7;
-        const CENTER: u32 = 3;
+        const WIDTH: u32 = 39;
+        const CENTER: u32 = WIDTH / 2;
         for sample in [0_u8, u8::MAX] {
             for start in 0..CIRCLE.len() {
                 let mut pixels = vec![128_u8; (WIDTH * WIDTH) as usize];
@@ -2229,15 +2226,19 @@ mod tests {
             return;
         }
         for seed in 0..8 {
-            for (width, height) in [(7_u32, 7_u32), (21, 13), (22, 17), (37, 29), (96, 73)] {
-                let pixels = (0..width as usize * height as usize)
-                    .map(|index| ((index * 73 + index / 7 * 19 + seed * 31 + 11) % 256) as u8)
-                    .collect::<Vec<_>>();
+            for (width, height) in [
+                (7_u32, 7_u32),
+                (37, 13),
+                (38, 17),
+                (39, 29),
+                (70, 17),
+                (96, 73),
+            ] {
+                let pixels = random_pixels(width as usize * height as usize, seed + 1);
+                let threshold = [0, 1, 20, 60, 127, 128, 254, 255][seed as usize];
                 assert_eq!(
-                    unsafe {
-                        fast_scores_avx2(width, height, &pixels, i16::from(FAST_THRESHOLD), 3)
-                    },
-                    fast_scores_scalar(width, height, &pixels, i16::from(FAST_THRESHOLD), 3),
+                    unsafe { fast_scores_avx2(width, height, &pixels, threshold, 3) },
+                    fast_scores_scalar(width, height, &pixels, threshold, 3),
                     "{width}x{height}, seed {seed}"
                 );
             }
