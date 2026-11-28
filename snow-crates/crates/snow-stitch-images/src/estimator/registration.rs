@@ -338,17 +338,31 @@ impl OverlapResiduals {
 
 impl Pair<'_> {
     fn fit<const GRADIENT: bool>(&self, offset: i32, bias: [i16; 3], grid: FitGrid) -> Fit {
+        let apply_exposure = !GRADIENT && bias != [0; 3];
+        match (grid, apply_exposure) {
+            (FitGrid::Proposal, false) => self.fit_grid::<GRADIENT, false, false>(offset, bias),
+            (FitGrid::Proposal, true) => self.fit_grid::<GRADIENT, false, true>(offset, bias),
+            (FitGrid::Verification, false) => self.fit_grid::<GRADIENT, true, false>(offset, bias),
+            (FitGrid::Verification, true) => self.fit_grid::<GRADIENT, true, true>(offset, bias),
+        }
+    }
+
+    fn fit_grid<const GRADIENT: bool, const NATIVE: bool, const BIASED: bool>(
+        &self,
+        offset: i32,
+        bias: [i16; 3],
+    ) -> Fit {
         let height = self.incoming.height;
         let width = self.incoming.width;
-        let (count, stride) = match grid {
-            FitGrid::Proposal => (self.incoming.columns, (height / 256).max(1)),
-            FitGrid::Verification => (
+        let (count, stride) = if NATIVE {
+            (
                 width.min(VERIFICATION_COLUMNS),
                 height.div_ceil(VERIFICATION_ROWS),
-            ),
+            )
+        } else {
+            (self.incoming.columns, (height / 256).max(1))
         };
-        let native = !matches!(grid, FitGrid::Proposal);
-        let verification = matches!(grid, FitGrid::Verification);
+        let bias = if BIASED { bias } else { [0; 3] };
         let mut rows = vec![[Residual::default(); LANES]; height.div_ceil(stride)];
         let mut stripe_residual = [0_u64; LANES];
         let mut band_gain = [0_u64; LANES];
@@ -372,7 +386,7 @@ impl Pair<'_> {
             .skip(overlap.start / stride)
         {
             let start = row * stride;
-            let y = if verification {
+            let y = if NATIVE {
                 let span = stride.min(height - start);
                 start + (((row as u32).wrapping_mul(0x9e37_79b9) >> 16) as usize % span)
             } else {
@@ -395,19 +409,19 @@ impl Pair<'_> {
                 let mut source_change = 0u32;
                 let mut last = None;
                 for x in xs.clone() {
-                    let x = if verification {
+                    let x = if NATIVE {
                         verification_column(y, x, width)
                     } else {
                         x
                     };
-                    let next = self.incoming.signal::<GRADIENT>(y, x, native);
+                    let next = self.incoming.signal::<GRADIENT>(y, x, NATIVE);
                     let moved = distance::<GRADIENT>(
-                        self.reference.signal::<GRADIENT>(r, x, native),
+                        self.reference.signal::<GRADIENT>(r, x, NATIVE),
                         next,
                         bias,
                     );
                     let stationary = distance::<GRADIENT>(
-                        self.reference.signal::<GRADIENT>(y, x, native),
+                        self.reference.signal::<GRADIENT>(y, x, NATIVE),
                         next,
                         bias,
                     );
@@ -419,10 +433,10 @@ impl Pair<'_> {
                     last = Some(next);
                     aligned += moved;
                     target_change +=
-                        distance::<GRADIENT>(self.raw.signal::<GRADIENT>(y, x, native), next, bias);
+                        distance::<GRADIENT>(self.raw.signal::<GRADIENT>(y, x, NATIVE), next, bias);
                     source_change += distance::<GRADIENT>(
-                        self.raw.signal::<GRADIENT>(r, x, native),
-                        self.incoming.signal::<GRADIENT>(r, x, native),
+                        self.raw.signal::<GRADIENT>(r, x, NATIVE),
+                        self.incoming.signal::<GRADIENT>(r, x, NATIVE),
                         bias,
                     );
                 }

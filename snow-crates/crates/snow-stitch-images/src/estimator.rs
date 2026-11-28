@@ -60,7 +60,6 @@ struct FeatureEvidence {
 
 struct EvaluationImages<'a> {
     reference: &'a Frame,
-    previous_raw: &'a Frame,
     incoming: &'a Frame,
     reference_gray: &'a GrayImage,
     incoming_gray: &'a GrayImage,
@@ -411,6 +410,7 @@ fn prune_reverse_candidates(forward: &mut [Option<DescriptorMatch>], incoming_co
 fn match_with_exact_lookup(
     reference: &[BinaryFeature],
     incoming: &[BinaryFeature],
+    axis: StitchAxis,
 ) -> Vec<Option<DescriptorMatch>> {
     if incoming.len() < 32 || reference.len() < 32 {
         return match_descriptors(reference, incoming);
@@ -424,30 +424,62 @@ fn match_with_exact_lookup(
             .and_modify(|index| *index = None)
             .or_insert(Some(i));
     }
-    let mut forward = vec![None; reference.len()];
-    let mut unresolved = Vec::with_capacity(reference.len());
-    let mut indices = Vec::with_capacity(reference.len());
-    for (i, feature) in reference.iter().enumerate() {
-        match exact.get(&feature.descriptor) {
-            Some(index) => {
-                forward[i] = index.map(|train_index| DescriptorMatch {
+    let coordinate = |feature: &BinaryFeature| match axis {
+        StitchAxis::Vertical => round_coordinate(feature.x),
+        StitchAxis::Horizontal => round_coordinate(feature.y),
+    };
+    let mut ordered: Vec<_> = incoming
+        .iter()
+        .enumerate()
+        .map(|(i, feature)| (coordinate(feature), i))
+        .collect();
+    ordered.sort_unstable();
+    reference
+        .par_iter()
+        .map(|feature| {
+            if let Some(index) = exact.get(&feature.descriptor) {
+                // Off-axis exact matches can still veto duplicate reference descriptors
+                // during reverse pruning.
+                return index.map(|train_index| DescriptorMatch {
                     train_index,
                     distance: 0,
+                });
+            }
+            let cross = coordinate(feature);
+            let start =
+                ordered.partition_point(|&(x, _)| x < cross.saturating_sub(MAX_CROSS_AXIS_DELTA));
+            let end =
+                ordered.partition_point(|&(x, _)| x <= cross.saturating_add(MAX_CROSS_AXIS_DELTA));
+            let (distance, train_index) = ordered[start..end]
+                .iter()
+                .map(|&(_, i)| {
+                    (
+                        hamming_distance(&feature.descriptor, &incoming[i].descriptor),
+                        i,
+                    )
                 })
+                .min()?;
+            if distance as f32 > MAX_HAMMING_DISTANCE {
+                return None;
             }
-            None => {
-                unresolved.push(*feature);
-                indices.push(i);
-            }
-        }
-    }
-    for (i, matched) in indices
-        .into_iter()
-        .zip(match_descriptors(&unresolved, incoming))
-    {
-        forward[i] = matched;
-    }
-    forward
+            // Only an on-axis winner can contribute motion, but every descriptor,
+            // including off-axis rivals, must still lose the original ratio test.
+            incoming
+                .iter()
+                .enumerate()
+                .all(|(i, rival)| {
+                    i == train_index
+                        || beats_lowe_ratio(
+                            distance,
+                            hamming_distance(&feature.descriptor, &rival.descriptor),
+                        )
+                })
+                .then_some(DescriptorMatch {
+                    train_index,
+                    distance,
+                })
+        })
+        .collect()
 }
 
 fn mutual_observations_rust(
@@ -459,7 +491,7 @@ fn mutual_observations_rust(
     if reference.len() < 2 || incoming.len() < 2 {
         return Vec::new();
     }
-    let mut forward = match_with_exact_lookup(reference, incoming);
+    let mut forward = match_with_exact_lookup(reference, incoming, axis);
     prune_reverse_candidates(&mut forward, incoming.len());
     forward
         .into_par_iter()
@@ -1203,12 +1235,31 @@ impl VerticalMotionEstimator {
                 &mut cache.reference_features,
             )
         };
-        let (maps, (evidence, incoming_features)) = if self.parallel_work && self.sampling.reduced()
-        {
-            crate::perf::join(prepare_maps, detect)
-        } else {
-            (prepare_maps(), detect())
+        let primary_extent = self
+            .axis
+            .primary_extent(self.geometry.width, self.geometry.height);
+        let maximum_shift = (primary_extent as f32 * self.options.max_motion_ratio).floor() as i32;
+        // Registration samples native pixels independently of ORB and the similarity maps.
+        // Build its proposals while the feature and map workers have the same frames hot.
+        let prepare_search = || {
+            (maximum_shift > 0).then(|| {
+                let _scope = crate::perf::Scope::new(crate::perf::Stage::CandidateScoring);
+                RegistrationSearch::new(
+                    motion_reference,
+                    previous_raw,
+                    incoming,
+                    self.axis,
+                    maximum_shift,
+                    self.options.min_confidence,
+                )
+            })
         };
+        let (maps, ((evidence, incoming_features), mut search)) =
+            if self.parallel_work && self.sampling.reduced() {
+                crate::perf::join(prepare_maps, || crate::perf::join(detect, prepare_search))
+            } else {
+                (prepare_maps(), (detect(), prepare_search()))
+            };
         let (incoming_gray, direct, separate_zero) = maps?;
         let zero_alignment = separate_zero.as_ref().unwrap_or(&direct);
         let reference_gray = cache
@@ -1216,21 +1267,15 @@ impl VerticalMotionEstimator {
             .as_ref()
             .expect("prepared reference grayscale");
         cache.previous_features = Some(incoming_features);
-        let primary_extent = self
-            .axis
-            .primary_extent(self.geometry.width, self.geometry.height);
-        let maximum_shift = (primary_extent as f32 * self.options.max_motion_ratio).floor() as i32;
         let images = EvaluationImages {
             reference: motion_reference,
-            previous_raw,
             incoming,
             reference_gray,
             incoming_gray: &incoming_gray,
             direct: &direct,
             zero_alignment,
         };
-        let mut search = None;
-        let mut evaluated = self.evaluate(&images, evidence, maximum_shift, &mut search);
+        let mut evaluated = self.evaluate(&images, evidence, maximum_shift, search.as_mut());
         if self.sampling.reduced() && evaluated.needs_full_resolution() {
             let pyramid = self.full_pyramid_plan.get_or_init(|| {
                 crate::orb::PyramidPlan::new(
@@ -1250,7 +1295,7 @@ impl VerticalMotionEstimator {
                 &mut cache.full_reference_features,
             );
             cache.previous_full_features = Some(incoming_features);
-            evaluated = self.evaluate(&images, evidence, maximum_shift, &mut search);
+            evaluated = self.evaluate(&images, evidence, maximum_shift, search.as_mut());
         }
         cache.previous_raw = Some(Arc::new(incoming_gray));
         Ok(self.commit_evaluation(evaluated))
@@ -1270,16 +1315,15 @@ impl VerticalMotionEstimator {
         }
     }
 
-    fn evaluate<'a>(
+    fn evaluate(
         &self,
-        images: &EvaluationImages<'a>,
+        images: &EvaluationImages<'_>,
         evidence: FeatureEvidence,
         maximum_shift: i32,
-        search: &mut Option<RegistrationSearch<'a>>,
+        search: Option<&mut RegistrationSearch<'_>>,
     ) -> EvaluatedMotion {
         let EvaluationImages {
             reference: motion_reference,
-            previous_raw,
             incoming,
             reference_gray,
             incoming_gray,
@@ -1295,22 +1339,9 @@ impl VerticalMotionEstimator {
         diagnostics.mutual_matches = observations.len() as u32;
         let candidates = candidate_offsets(&observations, self.axis, maximum_shift);
         let scoring_perf = crate::perf::Scope::new(crate::perf::Stage::CandidateScoring);
-        let registration = if maximum_shift > 0 {
-            search
-                .get_or_insert_with(|| {
-                    RegistrationSearch::new(
-                        motion_reference,
-                        previous_raw,
-                        incoming,
-                        self.axis,
-                        maximum_shift,
-                        self.options.min_confidence,
-                    )
-                })
-                .register(&candidates)
-        } else {
-            Registration::Unavailable
-        };
+        let registration = search.map_or(Registration::Unavailable, |search| {
+            search.register(&candidates)
+        });
         if let Registration::Ambiguous(aliases) = registration {
             diagnostics.stage = MotionStage::LowConfidence;
             diagnostics.ambiguous_offsets = aliases;
@@ -1932,6 +1963,41 @@ mod tests {
     }
 
     #[test]
+    fn off_axis_rivals_still_veto_spatially_eligible_matches() {
+        let layout = TileLayout::new(128, 128, 32);
+        for axis in [StitchAxis::Vertical, StitchAxis::Horizontal] {
+            let feature = |cross, along, bits| {
+                let (x, y) = match axis {
+                    StitchAxis::Vertical => (cross, along),
+                    StitchAxis::Horizontal => (along, cross),
+                };
+                let mut descriptor = [0; 32];
+                descriptor[0] = bits;
+                BinaryFeature { x, y, descriptor }
+            };
+            let filler = BinaryFeature {
+                descriptor: [255; 32],
+                ..feature(90.0, 90.0, 0)
+            };
+            let mut reference = vec![filler; 40];
+            let mut incoming = vec![filler; 40];
+            reference[0] = feature(20.0, 52.0, 0);
+            incoming[0] = feature(24.0, 40.0, 0b111);
+            incoming[1] = feature(25.0, 40.0, 0b1011);
+            assert!(mutual_observations_rust(&reference, &incoming, layout, axis).is_empty());
+
+            incoming[1].descriptor[0] = 0b1111;
+            let matches = mutual_observations_rust(&reference, &incoming, layout, axis);
+            assert_eq!(matches.len(), 1);
+            assert_eq!(matches[0].distance, 3.0);
+
+            incoming[0].descriptor[0] = 0;
+            reference[1] = feature(72.0, 61.0, 0);
+            assert!(mutual_observations_rust(&reference, &incoming, layout, axis).is_empty());
+        }
+    }
+
+    #[test]
     fn exact_lookup_preserves_duplicates_unmatched_queries_and_ratio_ties() {
         let feature = |i: u8| BinaryFeature {
             x: f32::from(i),
@@ -1948,7 +2014,7 @@ mod tests {
         }
         queries[57] = feature(200);
         assert_eq!(
-            match_with_exact_lookup(&queries, &train),
+            match_with_exact_lookup(&queries, &train, StitchAxis::Horizontal),
             match_descriptors_portable(&queries, &train)
         );
     }

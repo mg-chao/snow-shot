@@ -30,8 +30,7 @@ std::uint8_t paeth(int left, int up, int corner) {
 }
 
 unsigned magnitude(int difference) {
-    const auto byte = static_cast<std::uint8_t>(difference);
-    return std::min<unsigned>(byte, 256U - byte);
+    return static_cast<unsigned>(std::abs(static_cast<int>(static_cast<std::int8_t>(difference))));
 }
 
 // Use the PNG adaptive filter's sum of signed byte magnitudes. Ties prefer
@@ -44,39 +43,46 @@ void filter_row(std::span<const std::uint8_t> row, std::span<const std::uint8_t>
         return;
     }
     std::array<unsigned, 5> costs{};
-    for (std::size_t x = 0; x < row.size(); ++x) {
+    const auto first = std::min<std::size_t>(channels, row.size());
+    auto score = [&](std::size_t x, int left, int corner) {
         const int value = row[x], up = prev[x];
-        const int left = x >= channels ? row[x - channels] : 0;
-        const int corner = x >= channels ? prev[x - channels] : 0;
         costs[0] += magnitude(value);
         costs[1] += magnitude(value - left);
         costs[2] += magnitude(value - up);
         costs[3] += magnitude(value - (left + up) / 2);
         costs[4] += magnitude(value - paeth(left, up, corner));
-    }
+    };
+    for (std::size_t x = 0; x < first; ++x)
+        score(x, 0, 0);
+    for (std::size_t x = first; x < row.size(); ++x)
+        score(x, row[x - channels], prev[x - channels]);
     const auto filter =
         static_cast<std::uint8_t>(std::min_element(costs.begin(), costs.end()) - costs.begin());
     out[0] = filter;
     auto dst = out.subspan(1);
-    for (std::size_t x = 0; x < row.size(); ++x) {
-        const int left = x >= channels ? row[x - channels] : 0;
-        const int up = prev[x];
-        int predictor = 0;
-        switch (filter) {
-        case 1:
-            predictor = left;
-            break;
-        case 2:
-            predictor = up;
-            break;
-        case 3:
-            predictor = (left + up) / 2;
-            break;
-        case 4:
-            predictor = paeth(left, up, x >= channels ? prev[x - channels] : 0);
-            break;
-        }
-        dst[x] = static_cast<std::uint8_t>(row[x] - predictor);
+    auto apply = [&](auto predict) {
+        for (std::size_t x = 0; x < first; ++x)
+            dst[x] = static_cast<std::uint8_t>(row[x] - predict(0, prev[x], 0));
+        for (std::size_t x = first; x < row.size(); ++x)
+            dst[x] = static_cast<std::uint8_t>(
+                row[x] - predict(row[x - channels], prev[x], prev[x - channels]));
+    };
+    switch (filter) {
+    case 0:
+        std::copy(row.begin(), row.end(), dst.begin());
+        break;
+    case 1:
+        apply([](int left, int, int) { return left; });
+        break;
+    case 2:
+        apply([](int, int up, int) { return up; });
+        break;
+    case 3:
+        apply([](int left, int up, int) { return (left + up) / 2; });
+        break;
+    case 4:
+        apply(paeth);
+        break;
     }
 }
 
@@ -98,9 +104,14 @@ Result<Bytes> filter_stripe(Bytes raw, std::uint32_t width, unsigned channels,
         const auto* input = raw.data() + y * input_stride;
         if (channels == 4)
             std::copy_n(input, stride, row.data());
-        else
-            for (std::size_t x = 0; x < width; ++x)
-                std::copy_n(input + 4 * x, 3, row.data() + 3 * x);
+        else {
+            auto* rgb = row.data();
+            for (std::size_t x = 0; x < width; ++x) {
+                rgb[3 * x] = input[4 * x];
+                rgb[3 * x + 1] = input[4 * x + 1];
+                rgb[3 * x + 2] = input[4 * x + 2];
+            }
+        }
         filter_row(row, previous, channels,
                    std::span(filtered).subspan(y * (stride + 1), stride + 1));
         row.swap(previous);

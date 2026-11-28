@@ -1000,6 +1000,7 @@ fn fast_atan2(y: f32, x: f32) -> f32 {
     angle
 }
 
+#[cfg(any(test, not(target_arch = "aarch64")))]
 fn orient(image: &Image, keypoint: &mut Keypoint, maximum_x: &[usize]) {
     let pixels = image.pixels.as_slice();
     let x = cv_round(keypoint.x) as usize;
@@ -1401,6 +1402,8 @@ pub(crate) fn detect(
     let quotas = feature_quota(max_features);
     let levels = pyramid(image, pyramid_plan);
     let maximum_x = umax();
+    #[cfg(target_arch = "aarch64")]
+    let weights = neon::MomentWeights::new(&maximum_x);
     let by_level = levels
         .par_iter()
         .enumerate()
@@ -1431,6 +1434,12 @@ pub(crate) fn detect(
                 .for_each(|keypoint| harris_response(level_image, keypoint));
             retain_best(&mut keypoints, quotas[level]);
             keypoints.par_iter_mut().for_each(|keypoint| {
+                #[cfg(target_arch = "aarch64")]
+                // FAST points are inside EDGE_THRESHOLD, beyond the orientation patch.
+                unsafe {
+                    neon::orient(level_image, keypoint, &weights)
+                };
+                #[cfg(not(target_arch = "aarch64"))]
                 orient(level_image, keypoint, &maximum_x);
                 let scale = scale_for_level(level);
                 keypoint.x *= scale;

@@ -359,6 +359,83 @@ unsafe fn load_four_bytes(source: *const u8) -> float32x4_t {
     }
 }
 
+// Signed moment weights for the two 16-byte loads spanning the 31-pixel disc.
+// The center belongs to the first half. It has zero weight in the second.
+pub(super) struct MomentWeights {
+    x: [[[i8; 16]; 2]; 16],
+    y: [[[i8; 16]; 2]; 16],
+}
+
+impl MomentWeights {
+    pub(super) fn new(radii: &[usize]) -> Self {
+        const { assert!(PATCH_SIZE == 31) };
+        Self {
+            x: std::array::from_fn(|y| {
+                std::array::from_fn(|half| {
+                    std::array::from_fn(|i| {
+                        let x = (half * 15 + i) as i8 - 15;
+                        if usize::from(x.unsigned_abs()) <= radii[y] {
+                            x
+                        } else {
+                            0
+                        }
+                    })
+                })
+            }),
+            y: std::array::from_fn(|y| {
+                std::array::from_fn(|half| {
+                    std::array::from_fn(|i| {
+                        let x = (half * 15 + i) as i8 - 15;
+                        if (half == 0 || i > 0) && usize::from(x.unsigned_abs()) <= radii[y] {
+                            y as i8
+                        } else {
+                            0
+                        }
+                    })
+                })
+            }),
+        }
+    }
+}
+
+#[target_feature(enable = "neon")]
+pub(super) unsafe fn orient(image: &Image, point: &mut Keypoint, weights: &MomentWeights) {
+    let x = cv_round(point.x) as usize;
+    let y = cv_round(point.y) as usize;
+    // The detector's border contains the whole disc, including its enclosing square.
+    let center = y * image.width + x;
+    unsafe {
+        let mut mx = vdupq_n_s32(0);
+        let mut my = vdupq_n_s32(0);
+        let dot = |acc, a, b| {
+            vpadalq_s16(
+                vpadalq_s16(acc, vmull_s8(vget_low_s8(a), vget_low_s8(b))),
+                vmull_high_s8(a, b),
+            )
+        };
+        let load = |i| {
+            vreinterpretq_s8_u8(veorq_u8(
+                vld1q_u8(image.pixels.as_ptr().add(i)),
+                vdupq_n_u8(128),
+            ))
+        };
+        // Subtracting 128 from each intensity cancels in the symmetric moments.
+        for half in 0..2 {
+            let start = center - 15 + half * 15;
+            mx = dot(mx, load(start), vld1q_s8(weights.x[0][half].as_ptr()));
+            for dy in 1..16 {
+                let lower = load(start + dy * image.width);
+                let upper = load(start - dy * image.width);
+                let wx = vld1q_s8(weights.x[dy][half].as_ptr());
+                let wy = vld1q_s8(weights.y[dy][half].as_ptr());
+                mx = dot(dot(mx, lower, wx), upper, wx);
+                my = dot(dot(my, lower, wy), upper, vnegq_s8(wy));
+            }
+        }
+        point.angle = fast_atan2(vaddvq_s32(my) as f32, vaddvq_s32(mx) as f32);
+    }
+}
+
 #[target_feature(enable = "neon")]
 pub(super) unsafe fn blur(image: &Image) -> Image {
     blur_with_rows(
@@ -483,6 +560,39 @@ pub(super) unsafe fn descriptor(image: &Image, keypoint: Keypoint) -> [u8; 32] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn orientation_matches_scalar_at_patch_edges_and_for_uniform_intensities() {
+        let radii = umax();
+        let weights = MomentWeights::new(&radii);
+        for seed in [0, 1, 127, 255] {
+            let image = Image::new(
+                65,
+                47,
+                (0..65 * 47)
+                    .map(|i| match seed {
+                        0 | 255 => seed as u8,
+                        _ => ((i * seed + i / 7) ^ (i >> 1)) as u8,
+                    })
+                    .collect(),
+            );
+            for y in 15..image.height - 15 {
+                for x in [15, 17, image.width - 16] {
+                    let mut expected = Keypoint {
+                        x: x as f32,
+                        y: y as f32,
+                        octave: 0,
+                        response: 0.0,
+                        angle: -1.0,
+                    };
+                    let mut actual = expected;
+                    super::super::orient(&image, &mut expected, &radii);
+                    unsafe { super::orient(&image, &mut actual, &weights) };
+                    assert_eq!(actual.angle, expected.angle);
+                }
+            }
+        }
+    }
 
     #[test]
     fn neutral_and_mixed_vectors_preserve_grayscale_for_every_intensity() {
