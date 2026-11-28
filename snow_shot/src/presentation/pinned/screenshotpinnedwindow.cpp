@@ -2664,6 +2664,11 @@ bool ScreenshotPinnedWindow::present(const Config& requestedConfig,
         m_screenshotRenderer->setImageSource({});
     }
     SNOW_SHOT_PIN_PERF_MILESTONE("window.canvas_configured");
+    if (config.presentationPolicy == PresentationPolicy::PersistOnly) {
+        const bool ready = !deferContent && !m_originalImage.isNull();
+        finishPresentation(ready, m_originalImage);
+        return ready;
+    }
 #if defined(Q_OS_WIN) || defined(_WIN32)
     // Only local dimensions belong to QWidget. The screen position is a
     // physical-pixel property of the HWND and is applied after creation.
@@ -2764,6 +2769,7 @@ bool ScreenshotPinnedWindow::present(const Config& requestedConfig,
         return false;
     }
     static_cast<void>(m_nativeGeometryController->commitTarget());
+    SNOW_SHOT_PIN_PERF_MILESTONE("window.post_show_geometry");
     m_presented = true;
     m_accessibility->update();
     refreshColorSwatch();
@@ -2777,6 +2783,24 @@ bool ScreenshotPinnedWindow::present(const Config& requestedConfig,
     if (m_stackingCoordinator && !isLiveWindow())
         m_stackingCoordinator->presented(this, config.presentationPolicy ==
                                                    PresentationPolicy::PreserveFocus);
+    SNOW_SHOT_PIN_PERF_MILESTONE("window.post_show_stacking");
+#if defined(Q_OS_WIN) || defined(_WIN32)
+    // For live pins, the first paint attaches the native preview and dismisses
+    // the capture overlay before the explicit native paint flush.
+    const bool paintBeforeActivation =
+        !deferContent && !isLiveWindow() && paintFirstFrameSynchronously();
+#else
+    constexpr bool paintBeforeActivation = false;
+#endif
+    if (paintBeforeActivation) {
+        // A ready image can reach the backing store before the native activation
+        // handshake, which can wait on the foreground process's input queue.
+        const QPointer<ScreenshotPinnedWindow> window(this);
+        requestFirstContentFramePaint();
+        if (!window || m_closing)
+            return true;
+    }
+
     if (config.presentationPolicy == PresentationPolicy::Activate && !hideToTopActive() &&
         !m_clickThroughActive) {
         raise();
@@ -2791,10 +2815,7 @@ bool ScreenshotPinnedWindow::present(const Config& requestedConfig,
             setFocus(Qt::OtherFocusReason);
         }
     }
-    if (!deferContent) {
-        m_completePresentationAfterFirstFrame = true;
-        requestFirstContentFramePaint();
-    }
+    SNOW_SHOT_PIN_PERF_MILESTONE("window.activation_complete");
     if (deferContent) {
         m_completePresentationAfterFirstFrame = true;
         requestMaterializedImage([this](bool succeeded) {
@@ -2809,6 +2830,13 @@ bool ScreenshotPinnedWindow::present(const Config& requestedConfig,
             }
             requestFirstContentFramePaint();
         });
+    } else if (paintBeforeActivation && m_firstContentFramePublished) {
+        // The presentation callback still observes the completed activation.
+        finishPresentation(true, m_originalImage);
+    } else {
+        m_completePresentationAfterFirstFrame = true;
+        if (!paintBeforeActivation)
+            requestFirstContentFramePaint();
     }
     return true;
 }

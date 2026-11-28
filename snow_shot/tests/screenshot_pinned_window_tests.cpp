@@ -330,6 +330,9 @@ class ObservedPinnedPlatform final : public snow_shot::presentation::PinnedWindo
     int applications = 0;
     GeometryUpdate lastUpdate = GeometryUpdate::PreserveContents;
     std::function<void()> notification;
+    std::function<void()> onActivate;
+    std::function<void()> onInvalidate;
+    std::function<void()> onFlush;
     bool attach() override {
         return true;
     }
@@ -365,6 +368,13 @@ class ObservedPinnedPlatform final : public snow_shot::presentation::PinnedWindo
         return true;
     }
     bool activate() override {
+        if (onActivate)
+            onActivate();
+        return true;
+    }
+    bool synchronizePaint(bool invalidate) override {
+        if (const auto& callback = invalidate ? onInvalidate : onFlush)
+            callback();
         return true;
     }
 };
@@ -6104,6 +6114,52 @@ void pinnedContextMenuPreservesNativeGeometry(SnowCanvasRuntime&) {
     require(processUntilDeleted(guardedWindow, 2000), "context geometry pin was not deleted");
 #endif
 }
+
+#if defined(Q_OS_WIN) || defined(_WIN32)
+void readyPinPaintsBeforeActivation() {
+    QScreen* screen = QGuiApplication::primaryScreen();
+    require(screen != nullptr, "a primary screen is required");
+
+    QImage source(QSize(160, 96), QImage::Format_ARGB32_Premultiplied);
+    source.fill(QColor(36, 132, 204));
+    ScreenshotPinnedWindow::Config config;
+    config.nativeGeometry = physicalPinGeometry(*screen, QPoint(60, 60), source.size());
+    config.canvasSourceRect = QRectF(QPointF(), QSizeF(source.size()));
+    config.imageSource = ScreenshotImageSource::fromImage(source, config.canvasSourceRect);
+    config.initialWindowSize = source.size();
+    config.screen = screen;
+
+    QPointer<ScreenshotPinnedWindow> window(new ScreenshotPinnedWindow());
+    auto* platform = ScreenshotPinnedWindowTestAccess::installObservedPlatform(*window);
+    bool activated = false;
+    int completionCount = 0;
+    platform->onInvalidate = [&] {
+        auto* canvas = window->findChild<SnowCanvasWidget*>();
+        require(canvas != nullptr, "a ready pin must create its canvas");
+        const QImage frame = renderWidget(*canvas);
+        require(frame.pixelColor(frame.rect().center()) ==
+                    source.pixelColor(source.rect().center()),
+                "the first paint must contain the source pixels");
+    };
+    platform->onActivate = [&] {
+        require(ScreenshotPinnedWindowTestAccess::shakeContentReady(*window) &&
+                    completionCount == 0,
+                "ready pin pixels must paint before native activation and completion");
+        activated = true;
+    };
+    require(window->present(
+                config,
+                [&](bool succeeded, QImage image) {
+                    require(succeeded && image == source && activated,
+                            "ready pin completion must follow activation and carry its image");
+                    ++completionCount;
+                }) &&
+                completionCount == 1,
+            "a ready pin must complete synchronously once");
+    window->close();
+    require(processUntilDeleted(window, 2000), "ready pin must close");
+}
+#endif
 
 void pinnedAsyncPresentationDefersContent(SnowCanvasRuntime&) {
     QScreen* screen = QGuiApplication::primaryScreen();
@@ -30332,6 +30388,9 @@ int main(int argc, char* argv[]) {
             return 0;
         }
         if (app.arguments().contains(QStringLiteral("--async-presentation-only"))) {
+#if defined(Q_OS_WIN) || defined(_WIN32)
+            readyPinPaintsBeforeActivation();
+#endif
             pinnedAsyncPresentationDefersContent(sourceRuntime);
             return 0;
         }

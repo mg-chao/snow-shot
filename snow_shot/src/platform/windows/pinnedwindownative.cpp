@@ -490,6 +490,13 @@ bool screenshot_pinned_window_native::activateWindow(WId windowId) {
         return false;
     }
 
+    if (GetForegroundWindow() == hwnd ||
+        (SetForegroundWindow(hwnd) != FALSE && GetForegroundWindow() == hwnd)) {
+        static_cast<void>(BringWindowToTop(hwnd));
+        static_cast<void>(SetFocus(hwnd));
+        return true;
+    }
+
     const HWND foregroundHwnd = GetForegroundWindow();
     const DWORD currentThread = GetCurrentThreadId();
     const DWORD foregroundThread =

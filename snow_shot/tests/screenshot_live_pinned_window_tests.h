@@ -364,6 +364,45 @@ void present(ScreenshotPinnedWindow& window, const ScreenshotPinnedWindow::Confi
             "an initialized source must be a live pin after its first frame");
 }
 
+#ifdef Q_OS_WIN
+void nativePreviewAttachesBeforeFirstPaintFlush() {
+    auto source = std::make_shared<FakeSource>();
+    source->nativePresentation = true;
+    ScreenshotPinnedWindow window;
+    auto* platform = ScreenshotPinnedWindowTestAccess::installObservedPlatform(window);
+    bool activated = false;
+    bool completed = false;
+    bool flushed = false;
+
+    platform->onActivate = [&] { activated = true; };
+    platform->onInvalidate = [&] {
+        auto* canvas = window.findChild<SnowCanvasWidget*>();
+        require(canvas != nullptr, "the live pin must have a canvas for the initial image");
+        static_cast<void>(renderWidget(*canvas));
+    };
+    platform->onFlush = [&] {
+        require(completed && !source->presentations.isEmpty(),
+                "the live preview and completion must precede the first native paint flush");
+        flushed = true;
+    };
+    require(
+        window.present(
+            config(source),
+            [&](bool success, const QImage& image) {
+                require(
+                    success && activated && window.liveFrameAvailable() && image == source->frame &&
+                        !source->presentations.isEmpty(),
+                    "the live pin must activate and attach its preview with the captured image");
+                completed = true;
+            }),
+        "the live pin must start presentation");
+    require(flushed && source->initialFrameReleases == 1,
+            "the live pin must flush its first content paint and release the initial frame");
+    window.setAttribute(Qt::WA_DeleteOnClose, false);
+    window.closeLiveWindow();
+}
+#endif
+
 QImage image(const std::shared_ptr<ScreenshotExportArtifact>& artifact, QObject* receiver) {
     require(bool(artifact), "current live frame must provide an export artifact");
     bool completed = false;
@@ -1777,6 +1816,9 @@ void batchAndShakeRespectLiveCapabilities() {
 } // namespace live_pinned_tests
 
 void pinnedLiveWindowTests() {
+#ifdef Q_OS_WIN
+    live_pinned_tests::nativePreviewAttachesBeforeFirstPaintFlush();
+#endif
     live_pinned_tests::liveFramesPaintTransforms();
     live_pinned_tests::rotatedLiveSaveOpensDialog();
     live_pinned_tests::liveFramesReplacePixelsWithoutEditingSetup();

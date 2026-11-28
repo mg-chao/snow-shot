@@ -6,6 +6,7 @@
 #include <QColorSpace>
 #include <QEventLoop>
 #include <QMimeData>
+#include <QScopeGuard>
 #include <QTimer>
 #include <QTemporaryDir>
 #include <QUrl>
@@ -139,18 +140,22 @@ void verifyPng(const ScreenshotClipboardPayload& payload) {
         require(bytes[offset] == 0, "PNG allocator padding must be initialized");
 }
 
-QByteArray nativeBytes(UINT format) {
+void openNativeClipboard(HWND owner = nullptr) {
     // The OS clipboard is a shared resource; the clipboard history service or
     // a neighbouring application can hold it briefly, so the open needs
     // bounded retries before the payload can be judged.
     bool opened = false;
     for (int attempt = 0; attempt < 50 && !opened; ++attempt) {
-        opened = OpenClipboard(nullptr) != FALSE;
+        opened = OpenClipboard(owner) != FALSE;
         if (!opened) {
             Sleep(20);
         }
     }
     require(opened, "could not open clipboard");
+}
+
+QByteArray nativeBytes(UINT format) {
+    openNativeClipboard();
     const auto handle = static_cast<HGLOBAL>(GetClipboardData(format));
     const auto* memory = handle == nullptr ? nullptr : static_cast<const char*>(GlobalLock(handle));
     QByteArray bytes = memory == nullptr ? QByteArray{} : QByteArray(memory, GlobalSize(handle));
@@ -258,7 +263,7 @@ void publishAndReadThroughQt(bool includeFile) {
     require(nativeBytes(pngFormat).startsWith(expectedPng),
             "published PNG differs from prepared bytes");
     verifyDib(source, nativeBytes(CF_DIB));
-    require(OpenClipboard(nullptr) != FALSE, "could not inspect format order");
+    openNativeClipboard();
     const UINT first = EnumClipboardFormats(0);
     CloseClipboard();
     require(first == pngFormat, "PNG must be published first");
@@ -301,6 +306,44 @@ void corruptEncodedImageRetainsNativeBitmap() {
             "corrupt encoded data must fall back to the owned native bitmap");
     comparePixels(source, decoded->image.convertToFormat(QImage::Format_ARGB32));
 }
+
+void pngOnlyProviderDefersDecoding() {
+    const QImage source = browserFixture();
+    const QByteArray encoded = snow_shot::image_codec::encodePng(source);
+    require(!encoded.isEmpty(), "encode native PNG fixture");
+    const HWND owner = CreateWindowExW(0, L"STATIC", L"", WS_POPUP, 0, 0, 0, 0, nullptr, nullptr,
+                                       GetModuleHandleW(nullptr), nullptr);
+    require(owner != nullptr, "create hidden clipboard owner");
+    const auto destroyOwner = qScopeGuard([owner] { DestroyWindow(owner); });
+    HGLOBAL handle =
+        GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, static_cast<SIZE_T>(encoded.size()));
+    require(handle != nullptr, "allocate native PNG");
+    const auto releaseHandle = qScopeGuard([&handle] {
+        if (handle != nullptr)
+            GlobalFree(handle);
+    });
+    void* bytes = GlobalLock(handle);
+    require(bytes != nullptr, "lock native PNG");
+    std::memcpy(bytes, encoded.constData(), static_cast<std::size_t>(encoded.size()));
+    GlobalUnlock(handle);
+    {
+        openNativeClipboard(owner);
+        const auto close = qScopeGuard([] { CloseClipboard(); });
+        require(EmptyClipboard() != FALSE &&
+                    SetClipboardData(RegisterClipboardFormatW(L"PNG"), handle) != nullptr,
+                "publish an encoded image without a bitmap");
+        handle = nullptr;
+    }
+
+    QApplication::processEvents();
+    auto snapshot = ScreenshotClipboardContentReader::snapshot(QApplication::clipboard(), 1.0);
+    require(snapshot && snapshot->encodedImages.size() == 1 && !snapshot->nativeDib &&
+                snapshot->detachedImage.isNull() && snapshot->nativePngFallback,
+            "the snapshot must keep the PNG encoded through the GUI-thread handoff");
+    const auto decoded = ScreenshotClipboardContentReader::decode(std::move(*snapshot));
+    require(decoded.has_value(), "deferred PNG must decode");
+    comparePixels(source, decoded->image.convertToFormat(QImage::Format_ARGB32));
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -319,6 +362,7 @@ int main(int argc, char** argv) {
         publishAndReadThroughQt(true);
         publishAndReadThroughQt(false);
         corruptEncodedImageRetainsNativeBitmap();
+        pngOnlyProviderDefersDecoding();
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return EXIT_FAILURE;
