@@ -1905,6 +1905,8 @@ QColor BuiltInSettingsBackend::colorValue(SettingsColorBinding binding) const {
         return screenshot.cursorGuideLineColor();
     case SettingsColorBinding::SelectionCenterGuideLineColor:
         return screenshot.selectionCenterGuideLineColor();
+    case SettingsColorBinding::SelectionGridGuideLineColor:
+        return screenshot.selectionGridGuideLineColor();
     case SettingsColorBinding::MonitorCenterGuideLineColor:
         return screenshot.monitorCenterGuideLineColor();
     case SettingsColorBinding::ColorPickerCenterGuideLineColor:
@@ -1942,6 +1944,8 @@ bool BuiltInSettingsBackend::applyColorValue(SettingsColorBinding binding, const
         return screenshot.setCursorGuideLineColor(value);
     case SettingsColorBinding::SelectionCenterGuideLineColor:
         return screenshot.setSelectionCenterGuideLineColor(value);
+    case SettingsColorBinding::SelectionGridGuideLineColor:
+        return screenshot.setSelectionGridGuideLineColor(value);
     case SettingsColorBinding::MonitorCenterGuideLineColor:
         return screenshot.setMonitorCenterGuideLineColor(value);
     case SettingsColorBinding::ColorPickerCenterGuideLineColor:
@@ -2964,6 +2968,9 @@ SettingsResetResult BuiltInSettingsBackend::resetSectionWithResults(SettingsSect
             {QStringLiteral("screenshot_ui/selection_center_guide_line_color"),
              storage::ConfigurationSchema::defaultValue(
                  QStringLiteral("screenshot_ui/selection_center_guide_line_color"))},
+            {QStringLiteral("screenshot_ui/selection_grid_guide_line_color"),
+             storage::ConfigurationSchema::defaultValue(
+                 QStringLiteral("screenshot_ui/selection_grid_guide_line_color"))},
             {QStringLiteral("screenshot_ui/monitor_center_guide_line_color"),
              storage::ConfigurationSchema::defaultValue(
                  QStringLiteral("screenshot_ui/monitor_center_guide_line_color"))},

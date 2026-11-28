@@ -209,6 +209,12 @@ void ScreenshotOverlayWindow::setSelectionCenterGuideLineColor(const QColor& col
     }
 }
 
+void ScreenshotOverlayWindow::setSelectionGridGuide(const QRectF& bounds, const QColor& color) {
+    if (m_screenshotRenderer != nullptr) {
+        m_screenshotRenderer->setSelectionGridGuide(bounds, color);
+    }
+}
+
 QRectF ScreenshotOverlayWindow::screenshotSelection() const {
     return m_screenshotRenderer != nullptr ? m_screenshotRenderer->selection() : QRectF();
 }

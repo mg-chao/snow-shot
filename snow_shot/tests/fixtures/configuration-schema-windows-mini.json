@@ -4121,6 +4121,16 @@
       "allowedStringValues": [],
       "defaultJsonType": 3,
       "defaultStringIsNull": false,
+      "defaultValue": "#4096FF00",
+      "integerRange": null,
+      "key": "screenshot_ui/selection_grid_guide_line_color",
+      "maximumListItems": -1,
+      "valueKind": "String"
+    },
+    {
+      "allowedStringValues": [],
+      "defaultJsonType": 3,
+      "defaultStringIsNull": false,
       "defaultValue": "#FF0000FF",
       "integerRange": null,
       "key": "screenshot_ui/monitor_center_guide_line_color",

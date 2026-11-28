@@ -46,6 +46,8 @@ class ScreenshotOverlayCanvasPresenter final {
                                      const QColor& cursorColor, const QColor& monitorCenterColor,
                                      const QColor& selectionCenterColor = Qt::transparent) const;
     void clearGuideLines(const ScreenshotDisplaySession& displaySession) const;
+    void updateSelectionGridGuide(ScreenshotOverlayWindow* owner, const QRectF& bounds,
+                                  const QColor& color) const;
     void setOverlayCursor(ScreenshotOverlayWindow* overlay,
                           ScreenshotSelectionDragMode dragMode) const;
     static void setOverlayEffectCursor(ScreenshotOverlayWindow* overlay,
@@ -94,6 +96,7 @@ class ScreenshotOverlayCanvasPresenter final {
   private:
     OverlayFactory m_ensureOverlay;
     mutable QPointer<ScreenshotOverlayWindow> m_guideLineOwner;
+    mutable QPointer<ScreenshotOverlayWindow> m_selectionGridGuideOwner;
 };
 
 #endif // SNOW_SHOT_PRESENTATION_SCREENSHOTOVERLAYCANVASPRESENTER_H

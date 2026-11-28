@@ -1501,6 +1501,29 @@ QRegion planCrosshairDamage(const QRect& viewportRect, const std::optional<QPoin
     return dirtyRegion;
 }
 
+QRegion planSelectionGridGuideDamage(const QRect& viewport, const QRectF& previous,
+                                     const QRectF& next, bool colorChanged) {
+    QRegion dirty;
+    const bool wasVisible = !previous.isEmpty();
+    const bool isVisible = !next.isEmpty();
+    const auto addEdgeDamage = [&](qreal oldEdge, qreal newEdge, auto strip) {
+        if (!colorChanged && wasVisible == isVisible && oldEdge == newEdge) {
+            return;
+        }
+        if (wasVisible) {
+            dirty += strip(viewport, qFloor(oldEdge));
+        }
+        if (isVisible) {
+            dirty += strip(viewport, qFloor(newEdge));
+        }
+    };
+    addEdgeDamage(previous.left(), next.left(), guideLineVerticalRegion);
+    addEdgeDamage(previous.right(), next.right(), guideLineVerticalRegion);
+    addEdgeDamage(previous.top(), next.top(), guideLineHorizontalRegion);
+    addEdgeDamage(previous.bottom(), next.bottom(), guideLineHorizontalRegion);
+    return dirty;
+}
+
 QRegion planGuideLineDamage(const QRect& viewportRect, const QPoint& previousCursorPosition,
                             const QColor& previousCursorColor,
                             const QColor& previousMonitorCenterColor,
@@ -2869,6 +2892,26 @@ void ScreenshotCanvasRenderer::setSelectionCenterGuideLineColor(const QColor& co
                           m_monitorCenterGuideLineColor.alpha() > 0 || nextColor.alpha() > 0;
 }
 
+void ScreenshotCanvasRenderer::setSelectionGridGuide(const QRectF& bounds, const QColor& color) {
+    const bool visible = color.isValid() && color.alpha() > 0 && bounds.isValid() &&
+                         !bounds.isEmpty() && finiteRect(bounds);
+    const QRectF nextBounds = visible ? bounds : QRectF();
+    const QColor nextColor = visible ? color : QColor(Qt::transparent);
+    if (m_selectionGridGuideBounds == nextBounds && m_selectionGridGuideColor == nextColor) {
+        return;
+    }
+
+    const QTransform canvasToView = m_canvas.canvasToViewTransform();
+    const QRegion dirty = planSelectionGridGuideDamage(
+        m_canvas.rect(), canvasToView.mapRect(m_selectionGridGuideBounds),
+        canvasToView.mapRect(nextBounds), m_selectionGridGuideColor != nextColor);
+    m_selectionGridGuideBounds = nextBounds;
+    m_selectionGridGuideColor = nextColor;
+    if (!dirty.isEmpty()) {
+        m_canvas.update(dirty);
+    }
+}
+
 void ScreenshotCanvasRenderer::clearGuideLines() {
     setGuideLines({}, Qt::transparent, Qt::transparent);
     setSelectionCenterGuideLineColor(Qt::transparent);
@@ -3210,7 +3253,7 @@ void ScreenshotCanvasRenderer::reset() {
                           m_selectionState.present || m_selectionState.effectWidth > 0 ||
                           m_selectionState.toolbarHovered || !m_selectionState.borderVisible ||
                           m_ocrPresentation != nullptr || !m_ocrFilteredImage.isNull() ||
-                          m_guideLinesVisible;
+                          guideLinesVisible();
     m_imageSource = {};
     m_samplingImageSource = {};
     m_pinnedLiveFrames = false;
@@ -3236,6 +3279,8 @@ void ScreenshotCanvasRenderer::reset() {
     m_guideLineCursorPosition = {};
     m_cursorGuideLineColor = QColor(0, 0, 0, 0);
     m_selectionCenterGuideLineColor = QColor(0, 0, 0, 0);
+    m_selectionGridGuideBounds = {};
+    m_selectionGridGuideColor = Qt::transparent;
     m_monitorCenterGuideLineColor = QColor(0, 0, 0, 0);
     m_guideLinesVisible = false;
     m_ocrPresentation.reset();
@@ -3335,7 +3380,7 @@ QColor ScreenshotCanvasRenderer::maskColor() const {
 }
 
 bool ScreenshotCanvasRenderer::guideLinesVisible() const {
-    return m_guideLinesVisible;
+    return m_guideLinesVisible || !m_selectionGridGuideBounds.isEmpty();
 }
 
 bool ScreenshotCanvasRenderer::hasSelection() const {
@@ -4064,7 +4109,7 @@ void ScreenshotCanvasRenderer::renderAfterCanvas(QPainter& painter,
         return;
     }
     if (!m_maskVisible && !m_selectionState.present && m_ocrPresentation == nullptr &&
-        !m_guideLinesVisible) {
+        !guideLinesVisible()) {
         return;
     }
 
@@ -4151,9 +4196,11 @@ void ScreenshotCanvasRenderer::renderAfterCanvas(QPainter& painter,
             !m_outlineCache.draw(painter, draftViewPath, color, false, context.viewportRect))
             painter.drawPath(draftViewPath);
     }
-    if (m_renderMode == RenderMode::Standard && m_selectionState.present) {
-        const QColor selectionAccent = m_selectionBorderColor;
-        const QRectF selectionView = context.canvasToViewTransform.mapRect(m_selectionState.bounds);
+    const bool drawSelection = m_renderMode == RenderMode::Standard && m_selectionState.present;
+    const QColor selectionAccent = m_selectionBorderColor;
+    const QRectF selectionView =
+        drawSelection ? context.canvasToViewTransform.mapRect(m_selectionState.bounds) : QRectF();
+    if (drawSelection) {
         if (effectsPreview) {
             if (!shaped) {
                 paintSelectionPreview(painter, context);
@@ -4213,7 +4260,14 @@ void ScreenshotCanvasRenderer::renderAfterCanvas(QPainter& painter,
                 painter.drawRect(context.canvasToViewTransform.mapRect(m_selectionState.marquee));
             }
         }
-
+    }
+    if (m_renderMode == RenderMode::Standard && !m_selectionGridGuideBounds.isEmpty()) {
+        paintScreenshotSelectionGridGuide(
+            painter, QRectF(context.viewportRect),
+            context.canvasToViewTransform.mapRect(m_selectionGridGuideBounds),
+            m_selectionGridGuideColor, &context.exposedRegion);
+    }
+    if (drawSelection) {
         const double minSide = std::min(selectionView.width(), selectionView.height());
         std::array<QPointF, 8> handles{};
         std::size_t handleCount = 0;

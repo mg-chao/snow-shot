@@ -239,6 +239,138 @@ void adaptiveGuidesUseTheActiveMonitorAtMixedDpi() {
     fixture.displays.removeDisplayAt(1);
 }
 
+void requireGridAtSelectionEdges(ScreenshotOverlayWindow& overlay, const QRectF& bounds,
+                                 const QColor& color) {
+    const QImage image = overlayDecorationImage(overlay);
+    const QRectF view = overlay.canvas()->canvasToViewTransform().mapRect(bounds);
+    require(image.pixelColor(qFloor(view.left()), 0) == color &&
+                image.pixelColor(qFloor(view.right()), 0) == color &&
+                image.pixelColor(0, qFloor(view.top())) == color &&
+                image.pixelColor(0, qFloor(view.bottom())) == color,
+            "the grid must span the four edges of the displayed selection");
+}
+
+void selectionGridGuideFollowsPreviewAndConfirmedRegionBounds() {
+    Fixture fixture(QSize(400, 300));
+    const QColor gridColor(255, 0, 255, 127);
+    auto& display = fixture.displays.displayAt(0);
+    display.image.fill(Qt::magenta);
+    fixture.coordinator.applyDisplayModels(fixture.displays);
+    fixture.preferences.selectionMaskColor = Qt::transparent;
+    fixture.preferences.cursorGuideLineColor = Qt::transparent;
+    fixture.preferences.monitorCenterGuideLineColor = Qt::transparent;
+    fixture.preferences.selectionCenterGuideLineColor = Qt::cyan;
+    fixture.services->setUiPreferences(fixture.preferences);
+    fixture.enableGuides();
+    require(!containsGuideColor(decorationImage(fixture), gridColor),
+            "a transparent default must hide the grid even with session guides enabled");
+
+    fixture.preferences.selectionGridGuideLineColor = gridColor;
+    fixture.services->setUiPreferences(fixture.preferences);
+    fixture.flushFrame();
+    const QRectF initial = fixture.displayedSelection();
+    requireGridAtSelectionEdges(fixture.overlay, initial, gridColor);
+
+    const QRectF target = initial.translated(110.0, 75.0);
+    fixture.requestSelection(target);
+    fixture.flushFrame();
+    fixture.advanceClock(17);
+    fixture.flushFrame();
+    const QRectF preview = fixture.displayedSelection();
+    require(preview != initial && preview != target, "the grid test requires an animated preview");
+    requireGridAtSelectionEdges(fixture.overlay, preview, gridColor);
+    const QImage adaptive = decorationImage(fixture);
+    fixture.preferences.adaptiveGuideColors = false;
+    fixture.services->setUiPreferences(fixture.preferences);
+    fixture.flushFrame();
+    require(decorationImage(fixture) == adaptive,
+            "adaptive guide colors must preserve the grid color and opacity");
+
+    fixture.interaction.confirmSelection();
+    fixture.selection.setSelectionRect(QRect(48, 45, 31, 27));
+    fixture.selection.beginRegionOperation(ScreenshotSelectionModel::RegionOperation::Add);
+    fixture.selection.setSelectionRect(QRect(249, 174, 55, 41));
+    fixture.selection.commitRegionOperation();
+    fixture.services->updateOverlayState();
+    fixture.flushFrame();
+    requireGridAtSelectionEdges(fixture.overlay, QRectF(48, 45, 256, 170), gridColor);
+    const QImage compound = decorationImage(fixture);
+    require(compound.pixelColor(79, 0).alpha() == 0 && compound.pixelColor(249, 0).alpha() == 0,
+            "interior region edges must not add extra grid lines");
+
+    fixture.services->setGuideLinesVisible(false);
+    fixture.flushFrame();
+    require(!containsGuideColor(decorationImage(fixture), gridColor),
+            "turning off session guides must erase a stationary grid");
+    fixture.enableGuides();
+    requireGridAtSelectionEdges(fixture.overlay, QRectF(48, 45, 256, 170), gridColor);
+    fixture.requestSelection(QRectF());
+    fixture.flushFrame();
+    require(!containsGuideColor(decorationImage(fixture), gridColor),
+            "clearing the selection must erase the grid");
+}
+
+void selectionGridGuideBelongsToTheAssignedMonitor() {
+    Fixture fixture(QSize(400, 300), false);
+    fixture.displays.startup->resumeLiveInput();
+    const auto& firstDisplay = fixture.displays.displayAt(0);
+    ScreenshotOverlayWindow other(fixture.events, new SnowCanvasWidget(fixture.canvasRuntime));
+    CapturedDisplayModel otherDisplay;
+    otherDisplay.stableId = QStringLiteral("grid-monitor");
+    otherDisplay.logicalRect = QRect(firstDisplay.logicalRect.right() + 1, 0, 240, 200);
+    otherDisplay.physicalRect = QRect(firstDisplay.physicalRect.right() + 1, 0, 480, 400);
+    otherDisplay.logicalToPhysicalScale = 2.0;
+    otherDisplay.geometryResolved = true;
+    otherDisplay.active = true;
+    otherDisplay.image = QImage(480, 400, QImage::Format_RGBA8888);
+    otherDisplay.image.fill(Qt::black);
+    fixture.displays.appendDisplay(std::move(otherDisplay), &other);
+    fixture.geometry.rebuild(fixture.displays);
+    fixture.coordinator.applyDisplayModels(fixture.displays);
+    other.show();
+    Fixture::processEvents();
+
+    const QColor gridColor = Qt::magenta;
+    fixture.preferences.selectionGridGuideLineColor = gridColor;
+    fixture.preferences.selectionCenterGuideLineColor = Qt::transparent;
+    fixture.preferences.monitorCenterGuideLineColor = Qt::transparent;
+    fixture.preferences.cursorGuideLineColor = Qt::red;
+    fixture.preferences.adaptiveGuideColors = false;
+    fixture.services->setUiPreferences(fixture.preferences);
+    fixture.requestPointer(QPointF(10, 10));
+    fixture.enableGuides();
+    require(containsGuideColor(decorationImage(fixture), gridColor) &&
+                !containsGuideColor(overlayDecorationImage(other), gridColor),
+            "the first selection must paint its grid only on the first monitor");
+
+    fixture.services->updatePointerPresentation(&other, QPointF(20, 20));
+    fixture.flushFrame();
+    require(containsGuideColor(decorationImage(fixture), gridColor) &&
+                !containsGuideColor(overlayDecorationImage(other), gridColor),
+            "moving the pointer to another monitor must leave the selection grid in place");
+
+    fixture.requestPointer(QPointF(10, 10));
+    const auto& first = fixture.displays.displayAt(0).canvasRect;
+    const auto& second = fixture.displays.displayAt(1).canvasRect;
+    const QRectF spanning(QPointF(first.right() - 30, second.top() + 60),
+                          QPointF(second.left() + 140, second.top() + 156));
+    fixture.requestSelection(spanning);
+    fixture.flushFrame();
+    const QImage assigned = overlayDecorationImage(other);
+    const QRectF view = other.canvas()->canvasToViewTransform().mapRect(spanning);
+    require(!containsGuideColor(decorationImage(fixture), gridColor) &&
+                assigned.pixelColor(0, qFloor(view.top())) == gridColor &&
+                assigned.pixelColor(assigned.width() - 1, qFloor(view.bottom())) == gridColor &&
+                assigned.pixelColor(qFloor(view.right()), 0) == gridColor &&
+                assigned.pixelColor(0, 0) != gridColor,
+            "the assigned monitor must clip the spanning grid and clear the old owner's grid");
+
+    fixture.services->resetPresentation();
+    require(!containsGuideColor(overlayDecorationImage(other), gridColor),
+            "resetting capture presentation must clear the selection grid");
+    fixture.displays.removeDisplayAt(1);
+}
+
 void regionSnapGuidesReachPresentationFrames() {
     Fixture fixture(QSize(800, 600), false);
     auto& model = fixture.selection;
@@ -2270,6 +2402,8 @@ int main(int argc, char* argv[]) {
         adaptiveGuideColorsUseTheirOwnCapturePixels();
         cursorGuideUsesTheMagnifierResizeAnchor();
         adaptiveGuidesUseTheActiveMonitorAtMixedDpi();
+        selectionGridGuideFollowsPreviewAndConfirmedRegionBounds();
+        selectionGridGuideBelongsToTheAssignedMonitor();
         return 0;
     }
     if (application.arguments().contains(QStringLiteral("--toolbar-presenter-lifetime-only"))) {

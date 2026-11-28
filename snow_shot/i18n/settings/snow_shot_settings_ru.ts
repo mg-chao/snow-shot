@@ -2999,6 +2999,10 @@
             <translation>Рисовать четыре отрезка направляющих вокруг центрального пикселя образца</translation>
         </message>
         <message>
+            <source>Draw solid grid lines along the screenshot selection edges</source>
+            <translation>Рисовать сплошные линии сетки вдоль границ выделенной области скриншота</translation>
+        </message>
+        <message>
             <source>Duplicate latest region</source>
             <translation>Дублировать последнюю область</translation>
         </message>
@@ -4785,6 +4789,10 @@
         <message>
             <source>Selection center guide color</source>
             <translation>Цвет центральной направляющей выделения</translation>
+        </message>
+        <message>
+            <source>Selection grid guide color</source>
+            <translation>Цвет направляющих сетки выделения</translation>
         </message>
         <message>
             <source>Selection mask color</source>

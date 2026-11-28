@@ -594,6 +594,25 @@ void builtInCatalogIsCompleteAndValid() {
                            QStringLiteral("interface.screenshot.selection-center-guide-line-color");
             }) != screenshotInterface->items.cend(),
         "selection center guide color must appear immediately below cursor guide color");
+    const auto gridGuideId = QStringLiteral("interface.screenshot.selection-grid-guide-line-color");
+    require(
+        std::adjacent_find(screenshotInterface->items.cbegin(), screenshotInterface->items.cend(),
+                           [&gridGuideId](const auto& first, const auto& second) {
+                               return first.id ==
+                                          QStringLiteral("interface.screenshot."
+                                                         "selection-center-guide-line-color") &&
+                                      second.id == gridGuideId;
+                           }) != screenshotInterface->items.cend(),
+        "selection grid guide color must appear immediately below selection center guide color");
+    const auto* gridGuide = catalog.item(
+        {QStringLiteral("screenshots"), QStringLiteral("interface-screenshot"), gridGuideId});
+    require(gridGuide != nullptr &&
+                gridGuide->configurationKey ==
+                    QStringLiteral("screenshot_ui/selection_grid_guide_line_color") &&
+                std::get<settings::SettingsColorDefinition>(gridGuide->payload).binding ==
+                    settings::SettingsColorBinding::SelectionGridGuideLineColor &&
+                std::get<settings::SettingsColorDefinition>(gridGuide->payload).alphaChannelEnabled,
+            "the selection grid must expose a color picker with opacity");
 #ifdef Q_OS_MACOS
     require(catalog.pages().size() == 19, "macOS includes Account and App Permissions");
 #else

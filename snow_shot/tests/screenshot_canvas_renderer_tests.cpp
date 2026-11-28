@@ -2042,6 +2042,7 @@ void screenshotUiPreferencesNormalizeAndApplyPickerVisibilityPolicies() {
     preferences.shortcutHintOpacity = 1.5;
     preferences.cursorGuideLineColor = QColor();
     preferences.selectionCenterGuideLineColor = QColor();
+    preferences.selectionGridGuideLineColor = QColor();
     preferences.monitorCenterGuideLineColor = QColor();
     preferences.colorPickerCenterGuideLineColor = QColor();
     const ScreenshotUiPreferences normalized = preferences.normalized();
@@ -2054,6 +2055,7 @@ void screenshotUiPreferencesNormalizeAndApplyPickerVisibilityPolicies() {
             "shortcut hint opacity must normalize to its maximum");
     require(!normalized.showGuidesByDefault && normalized.cursorGuideLineColor == QColor(0, 0, 0) &&
                 normalized.selectionCenterGuideLineColor == QColor(0x40, 0x96, 0xff) &&
+                normalized.selectionGridGuideLineColor == QColor(0x40, 0x96, 0xff, 0) &&
                 normalized.monitorCenterGuideLineColor == QColor(255, 0, 0) &&
                 normalized.colorPickerCenterGuideLineColor == QColor(0, 0, 0, 0),
             "invalid screenshot guide colors must normalize to their configured defaults");
@@ -2630,6 +2632,108 @@ void incrementalGuideMovementMatchesFreshCompositedFrames() {
             }
         }
     }
+}
+
+void selectionGridGuideDrawsClippedPhysicalPixels() {
+    const QRectF viewport(4.0, 8.0, 88.0, 60.0);
+    const QColor color(255, 0, 255, 127);
+    for (qreal dpr : {1.0, 1.25, 1.5, 1.75, 2.0}) {
+        for (const QRectF& selection :
+             {QRectF(18.25, 24.5, 28.5, 21.25), QRectF(-9.0, 24.5, 101.0, 21.25)}) {
+            QImage image(QSize(qCeil(100 * dpr), qCeil(76 * dpr)),
+                         QImage::Format_ARGB32_Premultiplied);
+            image.setDevicePixelRatio(dpr);
+            image.fill(Qt::transparent);
+            {
+                QPainter painter(&image);
+                paintScreenshotSelectionGridGuide(painter, viewport, selection, color);
+            }
+            for (int y = 0; y < image.height(); ++y) {
+                for (int x = 0; x < image.width(); ++x) {
+                    const bool inside = x >= viewport.left() * dpr && x < viewport.right() * dpr &&
+                                        y >= viewport.top() * dpr && y < viewport.bottom() * dpr;
+                    const bool vertical =
+                        x == qFloor(selection.left() * dpr) || x == qFloor(selection.right() * dpr);
+                    const bool horizontal =
+                        y == qFloor(selection.top() * dpr) || y == qFloor(selection.bottom() * dpr);
+                    const QColor pixel = image.pixelColor(x, y);
+                    if (!inside || (!vertical && !horizontal)) {
+                        require(pixel.alpha() == 0, "grid strokes must be one pixel and clipped");
+                    } else if (vertical && horizontal) {
+                        require(pixel.alpha() > color.alpha() && pixel.alpha() < 255,
+                                "translucent grid strokes must blend at crossings");
+                    } else {
+                        require(pixel == color, "each solid grid stroke must reach both edges");
+                    }
+                }
+            }
+        }
+    }
+}
+
+void selectionGridGuideDamageMatchesFreshFrames() {
+    SnowCanvasWidget canvas;
+    canvas.resize(128, 104);
+    canvas.setClearBackgroundEnabled(false);
+    require(canvas.setViewportCamera(0.0, 0.0, 1.0), "grid damage needs a stable camera");
+    ScreenshotCanvasRenderer renderer(canvas);
+    canvas.setCustomRenderer(&renderer);
+    canvas.show();
+    QApplication::processEvents();
+    CanvasPaintRegionObserver observer;
+    canvas.installEventFilter(&observer);
+
+    const QRect viewport = canvas.rect();
+    const QTransform transform = canvas.canvasToViewTransform();
+    const QColor color(255, 0, 255, 127);
+    const QRectF selection(-20.25, -19.0, 38.5, 34.5);
+    for (qreal dpr : {1.0, 1.25, 1.5, 1.75, 2.0}) {
+        const auto paint = [&](QImage& image, const QRegion& exposure) {
+            QPainter painter(&image);
+            painter.translate(3.25, 4.125);
+            painter.setClipRegion(exposure);
+            painter.setCompositionMode(QPainter::CompositionMode_Source);
+            painter.fillRect(viewport, Qt::transparent);
+            painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+            renderer.renderAfterCanvas(painter, {viewport, exposure, transform, dpr});
+        };
+        const auto fresh = [&]() {
+            QImage image(QSize(qCeil(144 * dpr), qCeil(120 * dpr)),
+                         QImage::Format_ARGB32_Premultiplied);
+            image.setDevicePixelRatio(dpr);
+            image.fill(Qt::transparent);
+            paint(image, QRegion(viewport));
+            return image;
+        };
+
+        renderer.setSelectionGridGuide(selection, color);
+        QApplication::processEvents();
+        QImage incremental = fresh();
+        const auto changeGrid = [&](const QRectF& bounds, const QColor& nextColor) {
+            observer.begin();
+            renderer.setSelectionGridGuide(bounds, nextColor);
+            QApplication::processEvents();
+            const QRegion damage = observer.region();
+            require(damage != QRegion(viewport), "changing the grid must use a partial repaint");
+            paint(incremental, damage);
+            require(incremental == fresh(),
+                    "grid damage must restore the old strokes and redraw translucent crossings");
+            return damage;
+        };
+        require(changeGrid(selection, color).isEmpty(), "an unchanged grid must not repaint");
+        const QRectF moved = selection.translated(3.0, 0.0);
+        const QRegion moveDamage = changeGrid(moved, color);
+        require(moveDamage.contains(QPoint(43, 5)) && moveDamage.contains(QPoint(46, 5)) &&
+                    !moveDamage.contains(QPoint(5, 33)),
+                "horizontal grid motion must invalidate just the moved vertical strips");
+        const QRectF resized = moved.adjusted(0.25, -0.5, 5.5, 8.25);
+        changeGrid(resized, color);
+        changeGrid(resized, QColor(0, 255, 0, 204));
+        changeGrid(resized, Qt::transparent);
+        require(!renderer.guideLinesVisible(), "a zero-alpha grid must leave guides idle");
+    }
+    canvas.removeEventFilter(&observer);
+    canvas.setCustomRenderer(nullptr);
 }
 
 void selectionCenterGuideTracksSelectionAndRemainsOverlayOnly() {
@@ -9130,6 +9234,8 @@ void runGuideRenderingTests() {
     incrementalGuideMovementMatchesFreshCompositedFrames();
     selectionCenterGuideTracksSelectionAndRemainsOverlayOnly();
     selectionCenterGuideDamageTracksOnlyVisualChanges();
+    selectionGridGuideDrawsClippedPhysicalPixels();
+    selectionGridGuideDamageMatchesFreshFrames();
     cursorGuideFollowsCanvasPointerDuringDrawingInput();
     cursorGuideLineMovementInvalidatesOnlyChangedAxes();
     hiddenAndSamePixelCursorMovementDoesNotRepaintGuideLines();

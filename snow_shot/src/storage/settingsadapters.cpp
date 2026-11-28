@@ -2153,6 +2153,14 @@ bool ScreenshotUiSettings::setSelectionCenterGuideLineColor(const QColor& color)
     return setColorValue(QStringLiteral("screenshot_ui/selection_center_guide_line_color"), color);
 }
 
+QColor ScreenshotUiSettings::selectionGridGuideLineColor() const {
+    return colorValue(QStringLiteral("screenshot_ui/selection_grid_guide_line_color"));
+}
+
+bool ScreenshotUiSettings::setSelectionGridGuideLineColor(const QColor& color) const {
+    return setColorValue(QStringLiteral("screenshot_ui/selection_grid_guide_line_color"), color);
+}
+
 QColor ScreenshotUiSettings::monitorCenterGuideLineColor() const {
     return colorValue(QStringLiteral("screenshot_ui/monitor_center_guide_line_color"));
 }

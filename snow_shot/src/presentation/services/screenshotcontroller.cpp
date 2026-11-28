@@ -923,6 +923,7 @@ void ScreenshotController::Impl::reloadUiPreferences() {
         preferences.adaptiveGuideColors = settings.adaptiveGuideColors();
         preferences.cursorGuideLineColor = settings.cursorGuideLineColor();
         preferences.selectionCenterGuideLineColor = settings.selectionCenterGuideLineColor();
+        preferences.selectionGridGuideLineColor = settings.selectionGridGuideLineColor();
         preferences.monitorCenterGuideLineColor = settings.monitorCenterGuideLineColor();
         preferences.colorPickerCenterGuideLineColor = settings.colorPickerCenterGuideLineColor();
     }

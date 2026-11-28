@@ -538,6 +538,13 @@ void screenshotGuideSettingsPersistAndReset(const QString& configurationPath) {
     const storage::ScreenshotUiSettings ui;
     const storage::ScreenshotShortcutSettings shortcutSettings;
     constexpr auto adaptiveColors = settings::SettingsSwitchBinding::AdaptiveGuideColors;
+    constexpr auto gridGuide = settings::SettingsColorBinding::SelectionGridGuideLineColor;
+    const QColor gridDefault(0x40, 0x96, 0xff, 0);
+    const QColor gridCustom(12, 34, 56, 78);
+    require(backend.colorValue(gridGuide) == gridDefault &&
+                backend.applyColorValue(gridGuide, gridCustom) &&
+                ui.selectionGridGuideLineColor() == gridCustom,
+            "the grid color must default to transparent blue and accept RGBA changes");
     require(backend.switchValue(adaptiveColors) && ui.adaptiveGuideColors() &&
                 backend.applySwitchValue(adaptiveColors, false) &&
                 !backend.switchValue(adaptiveColors) && !ui.adaptiveGuideColors(),
@@ -548,6 +555,9 @@ void screenshotGuideSettingsPersistAndReset(const QString& configurationPath) {
     require(reloaded.value(QStringLiteral("screenshot_ui/adaptive_guide_colors")) ==
                 QJsonValue(false),
             "disabled adaptive guide colors must survive a configuration reload");
+    require(reloaded.value(QStringLiteral("screenshot_ui/selection_grid_guide_line_color")) ==
+                QJsonValue(QStringLiteral("#0C22384E")),
+            "selection grid RGBA must survive a configuration reload");
     require(ui.setShowGuidesByDefault(true) && ui.setCursorGuideLineColor(QColor(12, 34, 56, 78)) &&
                 ui.setSelectionCenterGuideLineColor(QColor(22, 33, 44, 55)) &&
                 ui.setMonitorCenterGuideLineColor(QColor(90, 80, 70, 60)) &&
@@ -565,6 +575,7 @@ void screenshotGuideSettingsPersistAndReset(const QString& configurationPath) {
                 backend.switchValue(adaptiveColors) && !ui.showGuidesByDefault() &&
                 ui.cursorGuideLineColor() == QColor(0, 0, 0) &&
                 ui.selectionCenterGuideLineColor() == QColor(0x40, 0x96, 0xff) &&
+                backend.colorValue(gridGuide) == gridDefault &&
                 ui.monitorCenterGuideLineColor() == QColor(255, 0, 0) &&
                 shortcutSettings.toggleGuides().first().portableText == QStringLiteral("Ctrl+G"),
             "screenshot interface reset must restore guide defaults without resetting shortcuts");
