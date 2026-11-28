@@ -3625,6 +3625,16 @@ constexpr CatalogInlineItem catalogItemInterfaceScreenshotSelectionCenterGuideLi
     .binding = int(SettingsColorBinding ::SelectionCenterGuideLineColor),
 };
 
+constexpr CatalogInlineItem catalogItemInterfaceScreenshotSelectionGridGuideLineColor{
+    .kind = CatalogItemKind::Color,
+    .id = u"interface.screenshot.selection-grid-guide-line-color",
+    .title = settingsText(QT_TRANSLATE_NOOP("SettingsCatalog", "Selection grid guide color")),
+    .description = settingsText(QT_TRANSLATE_NOOP(
+        "SettingsCatalog", "Draw solid grid lines along the screenshot selection edges")),
+    .key = u"screenshot_ui/selection_grid_guide_line_color",
+    .binding = int(SettingsColorBinding ::SelectionGridGuideLineColor),
+};
+
 constexpr CatalogInlineItem catalogItemInterfaceScreenshotMonitorCenterGuideLineColor{
     .kind = CatalogItemKind::Color,
     .id = u"interface.screenshot.monitor-center-guide-line-color",
@@ -4372,6 +4382,7 @@ constexpr CatalogItemFactory catalogPageScreenshotsSectionInterfaceScreenshotIte
     {adaptiveGuideColorsItem},
     {nullptr, &catalogItemInterfaceScreenshotCursorGuideLineColor},
     {nullptr, &catalogItemInterfaceScreenshotSelectionCenterGuideLineColor},
+    {nullptr, &catalogItemInterfaceScreenshotSelectionGridGuideLineColor},
     {nullptr, &catalogItemInterfaceScreenshotMonitorCenterGuideLineColor},
     {nullptr, &catalogItemInterfaceScreenshotColorPickerCenterGuideLineColor},
     {showEditSelectionToolbarItem},
@@ -7085,6 +7096,10 @@ QStringList SettingsCatalog::validationErrors() const {
                     case SettingsColorBinding::SelectionCenterGuideLineColor:
                         expectedKey =
                             QStringLiteral("screenshot_ui/selection_center_guide_line_color");
+                        break;
+                    case SettingsColorBinding::SelectionGridGuideLineColor:
+                        expectedKey =
+                            QStringLiteral("screenshot_ui/selection_grid_guide_line_color");
                         break;
                     case SettingsColorBinding::MonitorCenterGuideLineColor:
                         expectedKey =

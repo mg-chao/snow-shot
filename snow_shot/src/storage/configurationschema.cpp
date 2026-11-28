@@ -1588,6 +1588,8 @@ constexpr SchemaEntryDescriptor kEntryDescriptors[] = {
      ConfigurationValueKind::String},
     {u"screenshot_ui/selection_center_guide_line_color", stringDefault(u"#4096FFFF"),
      ConfigurationValueKind::String},
+    {u"screenshot_ui/selection_grid_guide_line_color", stringDefault(u"#4096FF00"),
+     ConfigurationValueKind::String},
     {u"screenshot_ui/monitor_center_guide_line_color", stringDefault(u"#FF0000FF"),
      ConfigurationValueKind::String},
     {u"screenshot_ui/color_picker_center_guide_line_color", stringDefault(u"#00000000"),
@@ -2267,6 +2269,7 @@ bool isRgbaColorKey(const QString& key) {
            key == QStringLiteral("screenshot_ui/selection_mask_color") ||
            key == QStringLiteral("screenshot_ui/cursor_guide_line_color") ||
            key == QStringLiteral("screenshot_ui/selection_center_guide_line_color") ||
+           key == QStringLiteral("screenshot_ui/selection_grid_guide_line_color") ||
            key == QStringLiteral("screenshot_ui/monitor_center_guide_line_color") ||
            key == QStringLiteral("screenshot_ui/color_picker_center_guide_line_color") ||
            key == QStringLiteral("pin_to_screen/border_color") ||

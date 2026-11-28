@@ -222,9 +222,14 @@ void cloudSyncConfiguration() {
     using namespace snow_shot::storage;
     const auto& keys = cloudSettingKeys();
     const QSet<QString> unique(keys.cbegin(), keys.cend());
-    require(keys.size() == 347 && unique.size() == keys.size() &&
+    require(keys.size() == 348 && unique.size() == keys.size() &&
                 std::count_if(keys.cbegin(), keys.cend(), cloudSettingPlatformSpecific) == 195,
-            "cloud allowlist requires all 347 unique schema keys and 195 platform records");
+            "cloud allowlist requires all 348 unique schema keys and 195 platform records");
+    const QString gridGuideKey = QStringLiteral("screenshot_ui/selection_grid_guide_line_color");
+    require(unique.contains(gridGuideKey) && !cloudSettingPlatformSpecific(gridGuideKey) &&
+                cloudSettingSupported(gridGuideKey) == !snow_shot::app::edition::isMini &&
+                ConfigurationSchema::defaultValue(gridGuideKey) == QStringLiteral("#4096FF00"),
+            "the transparent grid default applies in both editions and syncs in Full");
     const QString themeKey = QStringLiteral("interface/theme_mode");
     const QString fontKey = QStringLiteral("interface/app_font_size");
     const QString tasksKey = QStringLiteral("export_tasks/screenshot_copy");
@@ -241,6 +246,9 @@ void cloudSyncConfiguration() {
     if constexpr (snow_shot::app::edition::isMini) {
         require(!cloudSettingSupported(themeKey), "Mini has no settings sync");
     } else {
+        require(cloudSettingValue(gridGuideKey, QStringLiteral("#12345678")) ==
+                    QStringLiteral("#12345678"),
+                "cloud sync must preserve the selection grid RGBA");
         const QJsonArray scopedUpload{QStringLiteral("upload_to_cloud.focused_window")};
         const QJsonArray scopedSave{QStringLiteral("auto_save.scrolling")};
         require(cloudSettingSupported(scopedTasksKey) &&

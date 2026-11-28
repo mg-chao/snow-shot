@@ -101,6 +101,7 @@ class ScreenshotPresentationServices final {
     void scheduleFrame();
     [[nodiscard]] qint64 nowNanoseconds() const;
     void presentOverlayState(const QRectF& selection, bool semanticChanged, bool geometryChanged);
+    void presentSelectionGridGuide() const;
     void presentGuideLines(ScreenshotOverlayWindow* owner, const CapturedDisplayModel* display,
                            const QPointF& localPosition, bool anchored) const;
     [[nodiscard]] ScreenshotToolbarPresentationState toolbarPresentationState() const;

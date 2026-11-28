@@ -2999,6 +2999,10 @@
             <translation>在取样中心像素周围绘制四段辅助线</translation>
         </message>
         <message>
+            <source>Draw solid grid lines along the screenshot selection edges</source>
+            <translation>沿截图选区边缘绘制实线网格辅助线</translation>
+        </message>
+        <message>
             <source>Duplicate latest region</source>
             <translation>复制最新选区</translation>
         </message>
@@ -4785,6 +4789,10 @@
         <message>
             <source>Selection center guide color</source>
             <translation>选区中心辅助线颜色</translation>
+        </message>
+        <message>
+            <source>Selection grid guide color</source>
+            <translation>选区网格辅助线颜色</translation>
         </message>
         <message>
             <source>Selection mask color</source>

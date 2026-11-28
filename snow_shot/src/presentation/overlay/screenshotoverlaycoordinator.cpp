@@ -330,6 +330,12 @@ void ScreenshotOverlayCoordinator::clearGuideLines(
     m_canvasPresenter.clearGuideLines(displaySession);
 }
 
+void ScreenshotOverlayCoordinator::updateSelectionGridGuide(ScreenshotOverlayWindow* owner,
+                                                            const QRectF& bounds,
+                                                            const QColor& color) const {
+    m_canvasPresenter.updateSelectionGridGuide(owner, bounds, color);
+}
+
 void ScreenshotOverlayCoordinator::setOverlayCursor(ScreenshotOverlayWindow* overlay,
                                                     ScreenshotSelectionDragMode dragMode) const {
     m_canvasPresenter.setOverlayCursor(overlay, dragMode);

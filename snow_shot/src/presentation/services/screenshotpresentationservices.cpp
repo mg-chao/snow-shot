@@ -321,6 +321,7 @@ qint64 ScreenshotPresentationServices::nowNanoseconds() const {
 }
 
 void ScreenshotPresentationServices::resetPresentation() {
+    m_context.overlayCoordinator.updateSelectionGridGuide(nullptr, {}, Qt::transparent);
     m_state->scheduler->stop();
     m_state->frameClock.reset();
     discardColorPickerPresentation();
@@ -724,6 +725,7 @@ void ScreenshotPresentationServices::presentOverlayState(const QRectF& selection
             m_context.displaySession, visualState, m_context.interaction.intelligentSelecting(),
             m_context.interaction.marqueeSelecting(), m_context.interaction.dragging(),
             semanticChanged);
+        presentSelectionGridGuide();
         m_state->selectionOwner.clear();
         m_state->selectionGlobal = {};
         if (selection.isValid() && !selection.isEmpty()) {
@@ -788,6 +790,32 @@ void ScreenshotPresentationServices::updateOverlayCursors() const {
         m_context.interaction.intelligentSelecting() || m_context.interaction.marqueeSelecting();
     m_context.overlayCoordinator.updateOverlayCursors(m_context.displaySession, selecting,
                                                       m_context.interaction.dragging());
+}
+
+void ScreenshotPresentationServices::presentSelectionGridGuide() const {
+    const QRectF& bounds = m_state->displayedSelectionBounds;
+    const QColor& color = m_uiPreferences.selectionGridGuideLineColor;
+    ScreenshotOverlayWindow* owner = nullptr;
+    if (m_guideLinesVisible && color.alpha() > 0 && !bounds.isEmpty() &&
+        !m_context.interaction.inactive() && !m_context.captureState.presentationSuppressed) {
+        const auto& session = m_context.displaySession;
+        const auto* display = m_context.geometry.displayForCanvasRect(session, bounds);
+        owner = session.overlayForDisplay(display);
+        if (owner && !ScreenshotGeometryMapper::displayCanvasRect(*display).intersects(bounds)) {
+            // A center in a monitor gap can assign the selection to a nearby display.
+            // A wholly off-screen selection has no visible decoration.
+            bool visible = false;
+            session.forEachActiveOverlay([&](qsizetype, const CapturedDisplayModel& active,
+                                             ScreenshotOverlayWindow*) {
+                visible = visible ||
+                          ScreenshotGeometryMapper::displayCanvasRect(active).intersects(bounds);
+            });
+            if (!visible) {
+                owner = nullptr;
+            }
+        }
+    }
+    m_context.overlayCoordinator.updateSelectionGridGuide(owner, bounds, color);
 }
 
 void ScreenshotPresentationServices::presentGuideLines(ScreenshotOverlayWindow* owner,

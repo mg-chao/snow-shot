@@ -273,6 +273,7 @@ enum class SettingsColorBinding {
     SelectionMaskColor,
     CursorGuideLineColor,
     SelectionCenterGuideLineColor,
+    SelectionGridGuideLineColor,
     MonitorCenterGuideLineColor,
     ColorPickerCenterGuideLineColor,
     PinBorderColor,

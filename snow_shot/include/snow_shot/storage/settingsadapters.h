@@ -536,6 +536,8 @@ class ScreenshotUiSettings final {
     bool setCursorGuideLineColor(const QColor& color) const;
     [[nodiscard]] QColor selectionCenterGuideLineColor() const;
     bool setSelectionCenterGuideLineColor(const QColor& color) const;
+    [[nodiscard]] QColor selectionGridGuideLineColor() const;
+    bool setSelectionGridGuideLineColor(const QColor& color) const;
     [[nodiscard]] QColor monitorCenterGuideLineColor() const;
     bool setMonitorCenterGuideLineColor(const QColor& color) const;
     [[nodiscard]] QColor colorPickerCenterGuideLineColor() const;

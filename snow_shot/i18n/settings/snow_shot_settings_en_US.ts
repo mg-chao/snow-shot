@@ -2999,6 +2999,10 @@
             <translation>Draw four guide segments around the sampled center pixel</translation>
         </message>
         <message>
+            <source>Draw solid grid lines along the screenshot selection edges</source>
+            <translation>Draw solid grid lines along the screenshot selection edges</translation>
+        </message>
+        <message>
             <source>Duplicate latest region</source>
             <translation>Duplicate latest region</translation>
         </message>
@@ -4785,6 +4789,10 @@
         <message>
             <source>Selection center guide color</source>
             <translation>Selection center guide color</translation>
+        </message>
+        <message>
+            <source>Selection grid guide color</source>
+            <translation>Selection grid guide color</translation>
         </message>
         <message>
             <source>Selection mask color</source>

@@ -12,6 +12,7 @@
 #include <QVector>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 
@@ -44,13 +45,8 @@ namespace screenshot_guide_line_rendering {
 constexpr qreal kDashLength = 10.0;
 constexpr qreal kDashGap = 3.0;
 
-struct CrosshairGeometry {
-    QLineF vertical;
-    QLineF horizontal;
-};
-
-[[nodiscard]] inline CrosshairGeometry crosshairGeometry(const QRectF& bounds,
-                                                         const QPointF& center) {
+[[nodiscard]] inline std::array<QLineF, 2> crosshairGeometry(const QRectF& bounds,
+                                                             const QPointF& center) {
     const qreal left = screenshotGuideLinePixelCenter(bounds.left());
     const qreal top = screenshotGuideLinePixelCenter(bounds.top());
     const qreal right = std::ceil(bounds.right()) - 0.5;
@@ -137,21 +133,20 @@ struct CrosshairGeometry {
     return true;
 }
 
-inline void drawCrosshair(QPainter& painter, const CrosshairGeometry& geometry, const QColor& color,
-                          bool dashed, const QRegion* exposedRegion = nullptr) {
+template <std::size_t N>
+void drawGuideLines(QPainter& painter, const std::array<QLineF, N>& geometry, const QColor& color,
+                    bool dashed, const QRegion* exposedRegion) {
     if (!color.isValid() || color.alpha() == 0) {
         return;
     }
 
-    QLineF lines[2];
-    int lineCount = 0;
+    std::array<QLineF, N> lines;
+    std::size_t lineCount = 0;
     const QTransform deviceTransform = painter.deviceTransform();
-    if (exposedLine(geometry.vertical, deviceTransform, dashed, exposedRegion, lines[lineCount])) {
-        ++lineCount;
-    }
-    if (exposedLine(geometry.horizontal, deviceTransform, dashed, exposedRegion,
-                    lines[lineCount])) {
-        ++lineCount;
+    for (const QLineF& line : geometry) {
+        if (exposedLine(line, deviceTransform, dashed, exposedRegion, lines[lineCount])) {
+            ++lineCount;
+        }
     }
     if (lineCount == 0) {
         return;
@@ -163,7 +158,7 @@ inline void drawCrosshair(QPainter& painter, const CrosshairGeometry& geometry, 
         pen.setDashPattern(dashPattern);
     }
     painter.setPen(pen);
-    painter.drawLines(lines, lineCount);
+    painter.drawLines(lines.data(), static_cast<int>(lineCount));
 }
 } // namespace screenshot_guide_line_rendering
 
@@ -177,7 +172,7 @@ inline void paintScreenshotGuideLineCrosshair(QPainter& painter, const QRectF& b
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing, false);
     painter.setBrush(Qt::NoBrush);
-    screenshot_guide_line_rendering::drawCrosshair(
+    screenshot_guide_line_rendering::drawGuideLines(
         painter, screenshot_guide_line_rendering::crosshairGeometry(bounds, center), color, dashed,
         exposedRegion);
     painter.restore();
@@ -195,12 +190,47 @@ inline void paintScreenshotGuideLines(QPainter& painter, const QRectF& bounds,
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing, false);
     painter.setBrush(Qt::NoBrush);
-    screenshot_guide_line_rendering::drawCrosshair(
+    screenshot_guide_line_rendering::drawGuideLines(
         painter, screenshot_guide_line_rendering::crosshairGeometry(bounds, cursorCenter),
         cursorColor, true, exposedRegion);
-    screenshot_guide_line_rendering::drawCrosshair(
+    screenshot_guide_line_rendering::drawGuideLines(
         painter, screenshot_guide_line_rendering::crosshairGeometry(bounds, bounds.center()),
         monitorCenterColor, false, exposedRegion);
+    painter.restore();
+}
+
+inline void paintScreenshotSelectionGridGuide(QPainter& painter, const QRectF& viewport,
+                                              const QRectF& selection, const QColor& color,
+                                              const QRegion* exposedRegion = nullptr) {
+    if (!color.isValid() || color.alpha() == 0 || viewport.isEmpty() || selection.isEmpty()) {
+        return;
+    }
+
+    const QTransform device = painter.deviceTransform();
+    // Grid edges can move by a physical pixel within the same logical pixel.
+    const bool axisAligned =
+        device.type() <= QTransform::TxScale && device.m11() > 0.0 && device.m22() > 0.0;
+    const auto pixelCenter = [axisAligned](qreal position, qreal scale, qreal offset) {
+        return axisAligned
+                   ? (screenshotGuideLinePixelCenter(position * scale + offset) - offset) / scale
+                   : position;
+    };
+    const auto vertical = [&](qreal x) {
+        const qreal center = pixelCenter(x, device.m11(), device.dx());
+        return QLineF(center, viewport.top(), center, viewport.bottom());
+    };
+    const auto horizontal = [&](qreal y) {
+        const qreal center = pixelCenter(y, device.m22(), device.dy());
+        return QLineF(viewport.left(), center, viewport.right(), center);
+    };
+
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing, false);
+    painter.setClipRect(viewport, Qt::IntersectClip);
+    painter.setBrush(Qt::NoBrush);
+    const std::array lines{vertical(selection.left()), vertical(selection.right()),
+                           horizontal(selection.top()), horizontal(selection.bottom())};
+    screenshot_guide_line_rendering::drawGuideLines(painter, lines, color, false, exposedRegion);
     painter.restore();
 }
 

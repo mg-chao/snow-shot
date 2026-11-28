@@ -51,6 +51,7 @@ inline constexpr const char* kCloudSettingKeys[] = {
     "screenshot_ui/adaptive_guide_colors",
     "screenshot_ui/cursor_guide_line_color",
     "screenshot_ui/selection_center_guide_line_color",
+    "screenshot_ui/selection_grid_guide_line_color",
     "screenshot_ui/monitor_center_guide_line_color",
     "screenshot_ui/color_picker_center_guide_line_color",
     "drawing/automatically_select_newly_created_elements",

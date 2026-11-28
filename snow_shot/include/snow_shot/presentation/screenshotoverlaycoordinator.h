@@ -87,6 +87,8 @@ class ScreenshotOverlayCoordinator final : public ScreenshotOverlayExclusionPort
                                      const QColor& cursorColor, const QColor& monitorCenterColor,
                                      const QColor& selectionCenterColor = Qt::transparent) const;
     void clearGuideLines(const ScreenshotDisplaySession& displaySession) const;
+    void updateSelectionGridGuide(ScreenshotOverlayWindow* owner, const QRectF& bounds,
+                                  const QColor& color) const;
     void setOverlayCursor(ScreenshotOverlayWindow* overlay,
                           ScreenshotSelectionDragMode dragMode) const;
     void setCanvasInteractionEnabled(const ScreenshotDisplaySession& displaySession,

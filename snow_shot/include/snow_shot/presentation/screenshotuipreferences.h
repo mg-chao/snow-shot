@@ -30,6 +30,7 @@ struct ScreenshotUiPreferences {
     bool adaptiveGuideColors = true;
     QColor cursorGuideLineColor = QColor(0, 0, 0);
     QColor selectionCenterGuideLineColor = QColor(0x40, 0x96, 0xff);
+    QColor selectionGridGuideLineColor = QColor(0x40, 0x96, 0xff, 0);
     QColor monitorCenterGuideLineColor = QColor(255, 0, 0);
     QColor colorPickerCenterGuideLineColor = QColor(0, 0, 0, 0);
     [[nodiscard]] bool operator==(const ScreenshotUiPreferences&) const = default;
@@ -50,6 +51,9 @@ struct ScreenshotUiPreferences {
         }
         if (!result.selectionCenterGuideLineColor.isValid()) {
             result.selectionCenterGuideLineColor = QColor(0x40, 0x96, 0xff);
+        }
+        if (!result.selectionGridGuideLineColor.isValid()) {
+            result.selectionGridGuideLineColor = QColor(0x40, 0x96, 0xff, 0);
         }
         if (!result.monitorCenterGuideLineColor.isValid()) {
             result.monitorCenterGuideLineColor = QColor(255, 0, 0);

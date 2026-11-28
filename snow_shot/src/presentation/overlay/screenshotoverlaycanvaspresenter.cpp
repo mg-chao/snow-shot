@@ -38,6 +38,9 @@ void ScreenshotOverlayCanvasPresenter::clearOverlayCanvas(ScreenshotOverlayWindo
     }
 
     overlay->resetScreenshotRendering();
+    if (m_selectionGridGuideOwner == overlay) {
+        m_selectionGridGuideOwner.clear();
+    }
     overlay->canvas()->cancelActiveTextEditing();
     overlay->canvas()->clearRenderState();
     overlay->canvas()->clearCursorForLayer(SnowCanvasCursorLayer::Host);
@@ -516,6 +519,7 @@ void ScreenshotOverlayCanvasPresenter::updateGuideLinesAtGlobalPosition(
 
 void ScreenshotOverlayCanvasPresenter::clearGuideLines(
     const ScreenshotDisplaySession& displaySession) const {
+    updateSelectionGridGuide(nullptr, {}, Qt::transparent);
     const QPointer<ScreenshotOverlayWindow> previousOwner = m_guideLineOwner;
     m_guideLineOwner = nullptr;
     if (previousOwner != nullptr) {
@@ -529,6 +533,18 @@ void ScreenshotOverlayCanvasPresenter::clearGuideLines(
             overlay->canvas()->setCanvasSnapGuideTargets({});
         }
     });
+}
+
+void ScreenshotOverlayCanvasPresenter::updateSelectionGridGuide(ScreenshotOverlayWindow* owner,
+                                                                const QRectF& bounds,
+                                                                const QColor& color) const {
+    if (m_selectionGridGuideOwner && m_selectionGridGuideOwner != owner) {
+        m_selectionGridGuideOwner->setSelectionGridGuide({}, Qt::transparent);
+    }
+    m_selectionGridGuideOwner = owner;
+    if (owner != nullptr) {
+        owner->setSelectionGridGuide(bounds, color);
+    }
 }
 
 void ScreenshotOverlayCanvasPresenter::setOverlayCursor(
